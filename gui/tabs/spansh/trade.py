@@ -51,6 +51,10 @@ class TradeTab(ttk.Frame):
 
         # D3c – pierwsze uzupełnienie pól z app_state
         self.refresh_from_app_state()
+        self.bind("<Visibility>", self._on_visibility)
+
+    def _on_visibility(self, _event):
+        self.refresh_from_app_state()
 
     def _build_ui(self):
         fr = ttk.Frame(self)
