@@ -1,0 +1,142 @@
+import tkinter as tk
+from tkinter import ttk
+import threading
+import pyperclip
+import config
+from logic import utils, ammonia
+from gui import common
+from gui.common_autocomplete import AutocompleteController
+from app.route_manager import route_manager
+
+
+class AmmoniaTab(ttk.Frame):
+    def __init__(self, parent, root_window):
+        super().__init__(parent)
+        self.root = root_window
+        self.pack(fill="both", expand=1)
+
+        self.var_start = tk.StringVar()
+        self.var_cel = tk.StringVar()
+        self.var_range = tk.DoubleVar(value=50.0)
+        self.var_max_dist = tk.IntVar(value=5000)
+        self.var_loop = tk.BooleanVar(value=False)
+        self.var_avoid_tharg = tk.BooleanVar(value=True)
+
+        self._build_ui()
+
+    def _build_ui(self):
+        fr = ttk.Frame(self)
+        fr.pack(fill="both", expand=True, padx=8, pady=8)
+
+        # Start / Cel
+        f_sys = ttk.Frame(fr)
+        f_sys.pack(fill="x", pady=4)
+
+        ttk.Label(f_sys, text="Start:", width=8).pack(side="left")
+        self.e_start = ttk.Entry(f_sys, textvariable=self.var_start, width=25)
+        self.e_start.pack(side="left", padx=(0, 10))
+
+        ttk.Label(f_sys, text="Cel:", width=8).pack(side="left")
+        self.e_cel = ttk.Entry(f_sys, textvariable=self.var_cel, width=25)
+        self.e_cel.pack(side="left")
+
+        # Autocomplete poprawione
+        self.ac = AutocompleteController(self.root, self.e_start)
+        self.ac_c = AutocompleteController(self.root, self.e_cel)
+
+        # Range
+        f_rng = ttk.Frame(fr)
+        f_rng.pack(fill="x", pady=4)
+
+        ttk.Label(f_rng, text="Range:", width=10).pack(side="left")
+        ttk.Entry(f_rng, textvariable=self.var_range, width=7).pack(side="left", padx=(0, 12))
+        ttk.Scale(
+            f_rng, from_=10, to=100, variable=self.var_range, orient="horizontal"
+        ).pack(side="left", fill="x", expand=True, padx=5)
+
+        # Radius + Max Sys
+        f_rm = ttk.Frame(fr)
+        f_rm.pack(fill="x", padx=5, pady=2)
+
+        ttk.Label(f_rm, text="Radius (LY):", width=10).pack(side="left")
+        self.e_radius = ttk.Entry(f_rm, width=5)
+        self.e_radius.insert(0, "50")
+        self.e_radius.pack(side="left", padx=(0, 12))
+
+        ttk.Label(f_rm, text="Max Sys:", width=8).pack(side="left")
+        self.e_maxsys = ttk.Entry(f_rm, width=5)
+        self.e_maxsys.insert(0, "25")
+        self.e_maxsys.pack(side="left")
+
+        # Max dist + loop + avoid thargoids
+        f_md = ttk.Frame(fr)
+        f_md.pack(fill="x", padx=5, pady=2)
+
+        ttk.Label(f_md, text="Max DTA (ls):", width=10).pack(side="left")
+        ttk.Entry(f_md, textvariable=self.var_max_dist, width=7).pack(side="left", padx=(0, 12))
+        ttk.Scale(
+            f_md, from_=100, to=10000, variable=self.var_max_dist, orient="horizontal"
+        ).pack(side="left", fill="x", expand=True, padx=5)
+
+        f_chk = ttk.Frame(fr)
+        f_chk.pack(fill="x", padx=5, pady=2)
+
+        ttk.Checkbutton(f_chk, text="Loop", variable=self.var_loop).pack(side="left", padx=5)
+        ttk.Checkbutton(f_chk, text="Avoid Thargoids", variable=self.var_avoid_tharg).pack(
+            side="left", padx=5
+        )
+
+        bf = ttk.Frame(fr)
+        bf.pack(pady=6)
+
+        ttk.Button(bf, text="Wyznacz Ammonia", command=self.run_amm).pack(side="left", padx=5)
+        ttk.Button(bf, text="Wyczyść", command=self.clear_amm).pack(side="left", padx=5)
+
+        self.lst_amm = common.stworz_liste_trasy(self, title="Ammonia Route")
+
+    # ------------------------------------------------------------------ public
+
+    def hide_suggestions(self):
+        self.ac.hide()
+        self.ac_c.hide()
+
+    def run_amm(self):
+        self.clear_amm()
+
+        start_sys = self.e_start.get().strip() or config.STATE.get("sys", "Nieznany")
+        cel = self.e_cel.get().strip()
+        jump_range = self.var_range.get()
+        radius = self.e_radius.get()
+        max_sys = self.e_maxsys.get()
+        max_dist = self.var_max_dist.get()
+        loop = self.var_loop.get()
+        avoid_tharg = self.var_avoid_tharg.get()
+
+        args = (start_sys, cel, jump_range, radius, max_sys, max_dist, loop, avoid_tharg)
+        route_manager.start_route_thread("ammonia", self._th, args=args, gui_ref=self.root)
+
+    def _th(self, s, cel, rng, rad, mx, max_dist, loop, avoid):
+        tr, det = ammonia.oblicz_ammonia(s, cel, rng, rad, mx, max_dist, loop, avoid, None)
+
+        if tr:
+            route_manager.set_route(tr, "ammonia")
+            opis = [f"{sys} ({len(det.get(sys, []))} ciał)" for sys in tr]
+
+            nxt = None
+            if config.SETTINGS.get("COPY") and len(tr) > 0:
+                nxt = 1 if len(tr) > 1 and tr[0].lower() == s.lower() else 0
+                pyperclip.copy(tr[nxt])
+
+                config.STATE["copied_idx"] = nxt
+                config.STATE["copied_sys"] = tr[nxt]
+
+            common.wypelnij_liste(self.lst_amm, opis, copied_index=nxt)
+            utils.MSG_QUEUE.put(("status_amm", (f"Znaleziono {len(tr)}", "green")))
+        else:
+            utils.MSG_QUEUE.put(("status_amm", ("Brak wyników", "red")))
+
+    def clear_amm(self):
+        self.lst_amm.delete(0, tk.END)
+        utils.MSG_QUEUE.put(("status_amm", ("Wyczyszczono", "grey")))
+        config.STATE["rtr_data"] = {}
+        config.STATE["trasa"] = []

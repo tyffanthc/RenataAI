@@ -1,0 +1,110 @@
+Repo jest oczyszczone z martwego kodu,
+
+Watchery nie udają już, że potrzebują log_dir,
+
+Logika aplikacji nie została zmieniona,
+
+Błąd TypeError: takes 5 positional arguments but 6 were given został naprawiony.
+--------
+
+powstał jeden centralny klient SPANSH (SpanshClient),
+
+autocomplete i neutron przeszły na tego klienta,
+
+Trade Planner dostał prawdziwy backend pod /api/trade/route (przez klienta),
+
+błędy SPANSH są teraz standaryzowane przez spansh_error + DEBOUNCER,
+--------
+
+1. Jeden centralny klient SPANSH
+
+Powstał kompletny SpanshClient jako jedyne miejsce w projekcie robiące requests.* do SPANSH.
+
+Obsługuje:
+
+/api/systems (autocomplete),
+
+/api/<mode>/route (riches, ammonia, elw, hmc, exobiology, trade),
+
+/api/route (neutron),
+
+/api/results/<job> (polling wyników).
+
+2. Przeniesienie WSZYSTKICH tras na SpanshClient
+
+Neutron → korzysta z client.neutron_route.
+
+Riches, Ammonia, ELW, HMC, Exomastery → korzystają z client.route.
+
+Trade Planner → dostał prawdziwy backend /api/trade/route, też przez client.route.
+
+Autocomplete → wyłącznie przez client.systems_suggest.
+
+3. Wyrzucone całkowicie „gołe” requests
+
+Usunięte z:
+
+logic/neutron.py,
+
+logic/utils/http_spansh.py (przedtem GET /api/systems),
+
+wszystkich modułów tras (riches / ammonia / elw / hmc / exobiology),
+
+starego stuba w trade.
+
+4. Jednolita konfiguracja SPANSH
+
+SpanshClient ładuje:
+
+spansh_timeout,
+
+spansh_retries,
+
+spansh_base_url,
+
+z config.SETTINGS (user_settings.json).
+
+Usunięto lokalne timeouty i URL-e z innych plików.
+
+5. Standaryzowany error-handling
+
+Dodany spansh_error().
+
+Wszystkie błędy SPANSH raportują w ten sam sposób:
+
+wyjątki HTTP,
+
+HTTP 4xx/5xx,
+
+zły JSON,
+
+brak job ID,
+
+timeout pollingu,
+
+status joba ≠ ok.
+
+Jednolite komunikaty + TTS + GUI.
+
+6. Anti-spam (DEBOUNCER)
+
+Autocomplete: cooldown ~0.8s per zapytanie.
+
+Route planner: cooldown ~1s per tryb (neutron, riches, trade itd.).
+
+Brak floodu do SPANSH przy spam-klikaniu lub szybkim wpisywaniu.
+
+7. Cleanup martwego / zdublowanego kodu
+
+Usunięto:
+
+stary stub w trade,
+
+stary kod HTTP w http_spansh,
+
+stare lokalne komunikaty błędów,
+
+lokalne BASE_URL i timeouty.
+
+logic/utils/__init__.py re-eksportuje tylko aktualne symbole.
+-------

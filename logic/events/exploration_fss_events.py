@@ -1,0 +1,194 @@
+# logic/events/exploration_fss_events.py
+
+from __future__ import annotations
+
+from typing import Any, Dict
+
+from logic.utils import powiedz, DEBOUNCER
+from logic import utils
+from app.state import app_state
+
+from logic.events.exploration_high_value_events import (
+    check_high_value_planet,
+    reset_high_value_flags,
+)
+from logic.events.exploration_bio_events import reset_bio_flags
+from logic.events.exploration_misc_events import reset_footfall_flags
+
+
+# --- FSS ASSISTANT (S2-LOGIC-02) ---
+FSS_TOTAL_BODIES = 0       # ile ciał w systemie (z FSSDiscoveryScan)
+FSS_DISCOVERED = 0         # ile już „zaliczonych” skanów
+FSS_SCANNED_BODIES = set()  # BodyName/BodyID, żeby nie liczyć 2x
+
+FSS_25_WARNED = False
+FSS_50_WARNED = False
+FSS_75_WARNED = False
+FSS_LAST_WARNED = False
+
+# --- FIRST DISCOVERY (S2-LOGIC-05) ---
+FIRST_SYS_DISC_WARNED = False           # komunikat o dziewiczym systemie
+FIRST_BODY_DISC_WARNED_BODIES = set()   # ciała, dla których padł komunikat discovery
+
+
+def reset_fss_progress() -> None:
+    """Reset liczników FSS oraz powiązanych flag discovery.
+
+    To jest orkiestrator resetów eksploracyjnych:
+    - czyści lokalny stan FSS oraz first-discovery,
+    - resetuje flagi high-value planet,
+    - resetuje flagi biologii,
+    - resetuje flagi first footfall.
+    """
+    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES
+    global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED
+    global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES
+
+    # Lokalny stan FSS
+    FSS_TOTAL_BODIES = 0
+    FSS_DISCOVERED = 0
+    FSS_SCANNED_BODIES = set()
+    FSS_25_WARNED = False
+    FSS_50_WARNED = False
+    FSS_75_WARNED = False
+    FSS_LAST_WARNED = False
+
+    # First discovery (system + ciała)
+    FIRST_SYS_DISC_WARNED = False
+    FIRST_BODY_DISC_WARNED_BODIES = set()
+
+    # Resety w innych modułach eksploracyjnych
+    reset_high_value_flags()
+    reset_bio_flags()
+    reset_footfall_flags()
+
+
+def _set_fss_total_bodies(count: int):
+    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES
+    FSS_TOTAL_BODIES = max(count, 0)
+    FSS_DISCOVERED = 0
+    FSS_SCANNED_BODIES = set()
+
+
+def _check_fss_thresholds(gui_ref=None):
+    """
+    Sprawdza progi 25/50/75% i moment 'ostatnia planeta'.
+    Odpala TTS tylko raz na próg (anty-spam flagami FSS_*_WARNED),
+    a dodatkowo zabezpiecza przed glitchami z użyciem DEBOUNCER-a.
+    """
+    global FSS_TOTAL_BODIES, FSS_DISCOVERED
+    global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED
+
+    if FSS_TOTAL_BODIES <= 0:
+        return
+
+    progress = FSS_DISCOVERED / FSS_TOTAL_BODIES
+    system_name = app_state.current_system or None
+
+    # 25%
+    if not FSS_25_WARNED and progress >= 0.25:
+        # zachowujemy starą logikę flag (jedno odpalenie na próg)
+        FSS_25_WARNED = True
+        if DEBOUNCER.can_send("FSS_25", 120, context=system_name):
+            powiedz("25% systemu przeskanowane.", gui_ref)
+
+    # 50%
+    if not FSS_50_WARNED and progress >= 0.5:
+        FSS_50_WARNED = True
+        if DEBOUNCER.can_send("FSS_50", 120, context=system_name):
+            powiedz("Połowa systemu przeskanowana.", gui_ref)
+
+    # 75%
+    if not FSS_75_WARNED and progress >= 0.75:
+        FSS_75_WARNED = True
+        if DEBOUNCER.can_send("FSS_75", 120, context=system_name):
+            powiedz("75% systemu przeskanowane.", gui_ref)
+
+    # Ostatnia planeta do skanowania
+    remaining = FSS_TOTAL_BODIES - FSS_DISCOVERED
+    if not FSS_LAST_WARNED and FSS_TOTAL_BODIES > 1 and remaining == 1:
+        FSS_LAST_WARNED = True
+        if DEBOUNCER.can_send("FSS_LAST", 120, context=system_name):
+            powiedz("Ostatnia planeta do skanowania.", gui_ref)
+
+
+def handle_scan(ev: Dict[str, Any], gui_ref=None):
+    """
+    Obsługa eventu Scan — FSS progress, Discovery, High Value.
+    To jest 1:1 przeniesiony EventHandler._handle_scan.
+    """
+    body_name = (
+        ev.get("BodyName")
+        or ev.get("BodyID")
+        or ev.get("Body")
+        or None
+    )
+
+    global FSS_SCANNED_BODIES, FSS_DISCOVERED
+    global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES
+
+    if not body_name:
+        return
+
+    # Jeśli nie znamy jeszcze całkowitej liczby ciał w systemie,
+    # nie liczymy procentów – ale i tak możemy policzyć discovery.
+    # Czy to pierwszy skan w systemie (przed dodaniem do setu)?
+    first_scan_in_system = len(FSS_SCANNED_BODIES) == 0
+
+    # Jeśli to nowe ciało – aktualizujemy licznik FSS
+    if body_name not in FSS_SCANNED_BODIES:
+        FSS_SCANNED_BODIES.add(body_name)
+        FSS_DISCOVERED += 1
+
+        # --- S2-LOGIC-05: First Discovery detection ---
+        was_discovered = ev.get("WasDiscovered")
+        # W journalu to jest zwykle bool; interesuje nas wyraźne False / 0
+        if was_discovered is False or was_discovered == 0:
+            # System – pierwszy skan w systemie i brak wcześniejszego odkrycia
+            if first_scan_in_system and not FIRST_SYS_DISC_WARNED:
+                powiedz(
+                    "Gratulacje. Jesteś pierwszym człowiekiem w tym układzie.",
+                    gui_ref,
+                )
+                FIRST_SYS_DISC_WARNED = True
+
+            # Planeta – indywidualny komunikat per ciało
+            if body_name not in FIRST_BODY_DISC_WARNED_BODIES:
+                powiedz("To ciało nie ma wcześniejszego odkrywcy.", gui_ref)
+                FIRST_BODY_DISC_WARNED_BODIES.add(body_name)
+
+        # --- FSS progi + high-value planets ---
+        _check_fss_thresholds(gui_ref)
+        check_high_value_planet(ev, gui_ref)
+
+
+def handle_fss_discovery_scan(ev: Dict[str, Any], gui_ref=None):
+    """
+    Obsługa eventu FSSDiscoveryScan — ustawienie liczby ciał w systemie.
+    """
+    body_count = ev.get("BodyCount") or 0
+    try:
+        count = int(body_count)
+    except Exception:
+        count = 0
+
+    reset_fss_progress()
+    if count > 0:
+        _set_fss_total_bodies(count)
+        utils.MSG_QUEUE.put(
+            ("log", f"[FSS] System ma {count} ciał (wg FSSDiscoveryScan).")
+        )
+
+
+def handle_fss_all_bodies_found(ev: Dict[str, Any], gui_ref=None):
+    """
+    Obsługa eventu FSSAllBodiesFound — wszystko znalezione.
+    """
+    global FSS_TOTAL_BODIES, FSS_DISCOVERED
+    if FSS_TOTAL_BODIES > 0:
+        FSS_DISCOVERED = FSS_TOTAL_BODIES
+        _check_fss_thresholds(gui_ref)
+
+        system_name = app_state.current_system or None
+        if DEBOUNCER.can_send("FSS_FULL", 120, context=system_name):
+            powiedz("System w pełni przeskanowany.", gui_ref)

@@ -1,0 +1,1208 @@
+C:\Users\Patryk\Desktop\RenataAI>tools/smoke_tests_journal.py
+'tools' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>T2 - Smoke / stress test journala + AppState + DEBOUNCER.
+'T2' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>Uruchom z katalogu głównego projektu:
+'Uruchom' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    python tools/smoke_tests_journal.py
+nie znaleziono Python; uruchom bez argumentˇw, aby zainstalowa
+C:\Users\Patryk\Desktop\RenataAI>"""
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>from __future__ import annotations
+'from' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>import os
+'import' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>import sys
+'import' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>import json
+'import' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>import traceback
+'import' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>import queue
+'import' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>from typing import Callable, List, Tuple
+'from' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+'THIS_DIR' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>ROOT_DIR = os.path.dirname(THIS_DIR)
+'ROOT_DIR' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>if ROOT_DIR not in sys.path:
+not was unexpected at this time.
+C:\Users\Patryk\Desktop\RenataAI>    sys.path.insert(0, ROOT_DIR)
+'sys.path.insert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>import config  # type: ignore
+'import' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>from logic.utils import MSG_QUEUE, DEBOUNCER  # type: ignore
+'from' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>from logic.event_handler import handler  # type: ignore
+'from' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>from app.state import app_state  # type: ignore
+'from' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>from app.route_manager import route_manager  # type: ignore
+'from' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>class TestContext:
+'class' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    Prosty kontekst dla smoke-testów journala.
+'Prosty' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    Trzyma referencję do MSG_QUEUE i daje helpery do czyszczenia / odczytu
+'Trzyma' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    komunikatów między testami.
+'komunikatów' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    def __init__(self) -> None:
+'def' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        self.msg_queue = MSG_QUEUE
+'self.msg_queue' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    def clear_queue(self) -> None:
+'def' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        """Czyści globalną kolejkę komunikatów."""
+'"""Czyści globalną kolejkę komunikatów."""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        try:
+'try:' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            while True:
+'while' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>                self.msg_queue.get_nowait()
+'self.msg_queue.get_nowait' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        except queue.Empty:
+'except' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            pass
+'pass' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    def drain_queue(self) -> list:
+'def' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        """Zwraca listę wszystkich komunikatów z kolejki i ją czyści."""
+'"""Zwraca listę wszystkich komunikatów z kolejki i ją czyści."""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        items = []
+'items' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        try:
+'try:' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            while True:
+'while' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>                items.append(self.msg_queue.get_nowait())
+'items.append' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        except queue.Empty:
+'except' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            pass
+'pass' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        return items
+'return' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    def reset_debouncer(self) -> None:
+'def' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        """Czyści wewnętrzny stan DEBOUNCER-a (cooldowny)."""
+'"""Czyści wewnętrzny stan DEBOUNCER-a (cooldowny)."""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        try:
+'try:' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            last = getattr(DEBOUNCER, "_last", None)
+'last' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            if isinstance(last, dict):
+dict): was unexpected at this time.
+
+C:\Users\Patryk\Desktop\RenataAI>                last.clear()
+'last.clear' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        except Exception:
+'except' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            # Smoke-test: nie panikujemy jeśli coś pójdzie nie tak
+'#' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            pass
+'pass' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>def _ensure_voice_disabled() -> None:
+'def' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    Na czas smoke-testów wyłączamy TTS, żeby nie odpalać pyttsx3.
+'Na' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    Modyfikujemy tylko stan w pamięci (config.config._settings), nie zapisujemy
+'Modyfikujemy' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    nic do user_settings.json.
+'nic' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    try:
+'try:' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        settings = config.config._settings  # type: ignore[attr-defined]
+'settings' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        if isinstance(settings, dict):
+dict): was unexpected at this time.
+
+C:\Users\Patryk\Desktop\RenataAI>            settings["voice_enabled"] = False
+'settings["voice_enabled"]' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    except Exception:
+'except' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        # Smoke-test ma być odporny - jeśli się nie uda, trudno, TTS się odpali.
+'#' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        pass
+'pass' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI># --- TESTY -------------------------------------------------------------------
+'#' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>def test_journal_location_and_fsdjump_app_state(ctx: TestContext) -> None:
+'def' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    Sprawdza, że:
+'Sprawdza' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    - Location ustawia system w AppState i config.STATE, ale NIE mówi 'Skok: ...'
+'-' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    - FSDJump ustawia system + mówi 'Skok: ...'.
+'-' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx.clear_queue()
+'ctx.clear_queue' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx.reset_debouncer()
+'ctx.reset_debouncer' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    # Location
+'#' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    sys_loc = "SMOKE_T2_LOC_SYS"
+'sys_loc' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ev_loc = {
+'ev_loc' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "event": "Location",
+'"event":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "StarSystem": sys_loc,
+'"StarSystem":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    }
+'}' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    handler.handle_event(json.dumps(ev_loc), gui_ref=None)
+'handler.handle_event' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    msgs_loc = ctx.drain_queue()
+'msgs_loc' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    assert app_state.current_system == sys_loc, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"AppState.current_system after Location should be {sys_loc}, "
+'f"AppState.current_system after Location should be {sys_loc}, "' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got {app_state.current_system!r}"
+'f"got {app_state.current_system!r}"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>    assert config.STATE.get("sys") == sys_loc, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"config.STATE['sys'] after Location should be {sys_loc}, "
+'f"config.STATE['sys'] after Location should be {sys_loc}, "' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got {config.STATE.get('sys')!r}"
+'f"got {config.STATE.get('sys')!r}"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    joined_loc = " | ".join(str(m) for m in msgs_loc)
+'joined_loc' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    assert f"[STATE] System = {sys_loc}" in joined_loc, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "Expected [STATE] System log after Location, "
+'"Expected [STATE] System log after Location, "' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got: {joined_loc}"
+Nazwa pliku, nazwa katalogu lub składnia etykiety woluminu jest niepoprawna.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>    assert f"Skok: {sys_loc}" not in joined_loc, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "Location should not trigger 'Skok:' voice line, "
+Nazwa pliku, nazwa katalogu lub składnia etykiety woluminu jest niepoprawna.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"but messages were: {joined_loc}"
+Nazwa pliku, nazwa katalogu lub składnia etykiety woluminu jest niepoprawna.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    # FSDJump
+'#' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx.clear_queue()
+'ctx.clear_queue' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx.reset_debouncer()
+'ctx.reset_debouncer' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    sys_jump = "SMOKE_T2_JUMP_SYS"
+'sys_jump' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ev_jump = {
+'ev_jump' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "event": "FSDJump",
+'"event":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "StarSystem": sys_jump,
+'"StarSystem":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    }
+'}' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    handler.handle_event(json.dumps(ev_jump), gui_ref=None)
+'handler.handle_event' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    msgs_jump = ctx.drain_queue()
+'msgs_jump' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    assert app_state.current_system == sys_jump, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"AppState.current_system after FSDJump should be {sys_jump}, "
+'f"AppState.current_system after FSDJump should be {sys_jump}, "' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got {app_state.current_system!r}"
+'f"got {app_state.current_system!r}"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>    assert config.STATE.get("sys") == sys_jump, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"config.STATE['sys'] after FSDJump should be {sys_jump}, "
+'f"config.STATE['sys'] after FSDJump should be {sys_jump}, "' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got {config.STATE.get('sys')!r}"
+'f"got {config.STATE.get('sys')!r}"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    joined_jump = " | ".join(str(m) for m in msgs_jump)
+'joined_jump' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    assert f"[STATE] System = {sys_jump}" in joined_jump, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "Expected [STATE] System log after FSDJump, "
+'"Expected [STATE] System log after FSDJump, "' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got: {joined_jump}"
+Nazwa pliku, nazwa katalogu lub składnia etykiety woluminu jest niepoprawna.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>    assert f"Skok: {sys_jump}" in joined_jump, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "Expected 'Skok:' voice line after FSDJump, "
+Nazwa pliku, nazwa katalogu lub składnia etykiety woluminu jest niepoprawna.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got: {joined_jump}"
+Nazwa pliku, nazwa katalogu lub składnia etykiety woluminu jest niepoprawna.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>def test_journal_docked_updates_station(ctx: TestContext) -> None:
+'def' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    Sprawdza, że Docked:
+'Sprawdza' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    - ustawia station w AppState i config.STATE,
+'-' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    - generuje komunikat tekstowy o dokowaniu.
+'-' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx.clear_queue()
+'ctx.clear_queue' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx.reset_debouncer()
+'ctx.reset_debouncer' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    station = "SMOKE_T2_STATION"
+'station' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    sysname = "SMOKE_T2_STATION_SYS"
+'sysname' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    ev_docked = {
+'ev_docked' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "event": "Docked",
+'"event":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "StationName": station,
+'"StationName":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "StarSystem": sysname,
+'"StarSystem":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    }
+'}' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    handler.handle_event(json.dumps(ev_docked), gui_ref=None)
+'handler.handle_event' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    msgs = ctx.drain_queue()
+'msgs' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    assert app_state.current_station == station, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"AppState.current_station after Docked should be {station}, "
+'f"AppState.current_station after Docked should be {station}, "' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got {app_state.current_station!r}"
+'f"got {app_state.current_station!r}"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>    assert config.STATE.get("station") == station, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"config.STATE['station'] after Docked should be {station}, "
+'f"config.STATE['station'] after Docked should be {station}, "' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got {config.STATE.get('station')!r}"
+'f"got {config.STATE.get('station')!r}"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    joined = " | ".join(str(m) for m in msgs)
+'joined' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    assert f"[STATE] Station = {station}" in joined, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "Expected [STATE] Station log after Docked, "
+'"Expected [STATE] Station log after Docked, "' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got: {joined}"
+Nazwa pliku, nazwa katalogu lub składnia etykiety woluminu jest niepoprawna.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>    assert f"Dokowano w {station}" in joined, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "Expected 'Dokowano w ...' voice line after Docked, "
+'"Expected 'Dokowano w ...' voice line after Docked, "' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got: {joined}"
+Nazwa pliku, nazwa katalogu lub składnia etykiety woluminu jest niepoprawna.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>def test_debouncer_basic(ctx: TestContext) -> None:
+'def' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    Prosty test DEBOUNCER-a:
+'Prosty' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    - pierwszy can_send dla danego (key, context) zwraca True,
+'-' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    - drugi od razu po nim zwraca False,
+'-' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    - inny context nadal zwraca True.
+'-' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx.reset_debouncer()
+'ctx.reset_debouncer' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    key = "SMOKE_T2_TEST_KEY"
+'key' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx1 = "CTX1"
+'ctx1' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx2 = "CTX2"
+'ctx2' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    first = DEBOUNCER.can_send(key, 60.0, context=ctx1)
+'first' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    second = DEBOUNCER.can_send(key, 60.0, context=ctx1)
+'second' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    third = DEBOUNCER.can_send(key, 60.0, context=ctx2)
+'third' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    assert first is True, "First DEBOUNCER.can_send should return True"
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    assert second is False, "Second DEBOUNCER.can_send for same context should return False"
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    assert third is True, "DEBOUNCER.can_send for different context should return True"
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>def test_journal_sequence_no_crash(ctx: TestContext) -> None:
+'def' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    Mała sekwencja różnych eventów z journala, która:
+'Mała' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    - przechodzi przez kilka modułów (navigation, bio, misc),
+'-' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    - nie rzuca wyjątków,
+'-' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    - kończy z sensownym stanem AppState.
+'-' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx.clear_queue()
+'ctx.clear_queue' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx.reset_debouncer()
+'ctx.reset_debouncer' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    sys1 = "SMOKE_T2_SEQ_SYS_1"
+'sys1' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    sys2 = "SMOKE_T2_SEQ_SYS_2"
+'sys2' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    body = "SMOKE_T2_SEQ_BODY"
+'body' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    station = "SMOKE_T2_SEQ_STATION"
+'station' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    events = [
+'events' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        {"event": "Location", "StarSystem": sys1},
+'{"event":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        {"event": "Docked", "StarSystem": sys1, "StationName": station},
+'{"event":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        {"event": "Undocked"},
+'{"event":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        {"event": "FSDJump", "StarSystem": sys2},
+'{"event":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        {
+'{' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            "event": "SAASignalsFound",
+'"event":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            "BodyName": body,
+'"BodyName":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            "Signals": [{"Type": "Biological", "Count": 3}],
+'"Signals":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        },
+'}' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        {
+'{' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            "event": "Footfall",
+'"event":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            "BodyName": body,
+'"BodyName":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            "FirstFootfall": True,
+'"FirstFootfall":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        },
+'}' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ]
+']' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    for ev in events:
+ev was unexpected at this time.
+C:\Users\Patryk\Desktop\RenataAI>        handler.handle_event(json.dumps(ev), gui_ref=None)
+'handler.handle_event' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    msgs = ctx.drain_queue()
+'msgs' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    assert len(msgs) > 0, "Expected some messages in MSG_QUEUE after journal sequence, got none"
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    assert app_state.current_system == sys2, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"After sequence, AppState.current_system should be {sys2}, "
+'f"After sequence, AppState.current_system should be {sys2}, "' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got {app_state.current_system!r}"
+'f"got {app_state.current_system!r}"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>def test_route_manager_autoschowek_integration(ctx: TestContext) -> None:
+'def' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    Sprawdza prostą integrację:
+'Sprawdza' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    - ustawiamy krótką trasę w RouteManagerze,
+'-' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    - wysyłamy FSDJump z pierwszego systemu,
+'-' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    - oczekujemy, że current_index w RouteManagerze przesunie się do przodu
+'-' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>      (jak po advance_route) i nie ma wyjątków.
+i was unexpected at this time.
+
+C:\Users\Patryk\Desktop\RenataAI>    """
+'"""' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx.clear_queue()
+'ctx.clear_queue' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx.reset_debouncer()
+'ctx.reset_debouncer' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    route = ["SMOKE_T2_ROUTE_A", "SMOKE_T2_ROUTE_B"]
+
+Manipulates network routing tables.
+
+ROUTE [-f] [-p] [-4|-6] command [destination]
+                  [MASK netmask]  [gateway] [METRIC metric]  [IF interface]
+
+  -f           Clears the routing tables of all gateway entries.  If this is
+               used in conjunction with one of the commands, the tables are
+               cleared prior to running the command.
+
+  -p           When used with the ADD command, makes a route persistent across
+               boots of the system. By default, routes are not preserved
+               when the system is restarted. Ignored for all other commands,
+               which always affect the appropriate persistent routes.
+
+  -4           Force using IPv4.
+
+  -6           Force using IPv6.
+
+  command      One of these:
+                 PRINT     Prints  a route
+                 ADD       Adds    a route
+                 DELETE    Deletes a route
+                 CHANGE    Modifies an existing route
+  destination  Specifies the host.
+  MASK         Specifies that the next parameter is the 'netmask' value.
+  netmask      Specifies a subnet mask value for this route entry.
+               If not specified, it defaults to 255.255.255.255.
+  gateway      Specifies gateway.
+  interface    the interface number for the specified route.
+  METRIC       specifies the metric, ie. cost for the destination.
+
+All symbolic names used for destination are looked up in the network database
+file NETWORKS. The symbolic names for gateway are looked up in the host name
+database file HOSTS.
+
+If the command is PRINT or DELETE. Destination or gateway can be a wildcard,
+(wildcard is specified as a star '*'), or the gateway argument may be omitted.
+
+If Dest contains a * or ?, it is treated as a shell pattern, and only
+matching destination routes are printed. The '*' matches any string,
+and '?' matches any one char. Examples: 157.*.1, 157.*, 127.*, *224*.
+
+Pattern match is only allowed in PRINT command.
+Diagnostic Notes:
+    Invalid MASK generates an error, that is when (DEST & MASK) != DEST.
+    Example> route ADD 157.0.0.0 MASK 155.0.0.0 157.55.80.1 IF 1
+             The route addition failed: The specified mask parameter is invalid. (Destination & Mask) != Destination.
+
+Examples:
+
+    > route PRINT
+    > route PRINT -4
+    > route PRINT -6
+    > route PRINT 157*          .... Only prints those matching 157*
+
+    > route ADD 157.0.0.0 MASK 255.0.0.0  157.55.80.1 METRIC 3 IF 2
+             destination^      ^mask      ^gateway     metric^    ^
+                                                         Interface^
+      If IF is not given, it tries to find the best interface for a given
+      gateway.
+    > route ADD 3ffe::/32 3ffe::1
+
+    > route CHANGE 157.0.0.0 MASK 255.0.0.0 157.55.80.5 METRIC 2 IF 2
+
+      CHANGE is used to modify gateway and/or metric only.
+
+    > route DELETE 157.0.0.0
+    > route DELETE 3ffe::/32
+
+C:\Users\Patryk\Desktop\RenataAI>    route_manager.set_route(route, route_type="test")
+'route_manager.set_route' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    # po set_route current_index powinien być 0
+'#' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    assert route_manager.current_index == 0, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"After set_route, current_index should be 0, got {route_manager.current_index}"
+'f"After set_route, current_index should be 0, got {route_manager.current_index}"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    ev_jump = {
+'ev_jump' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "event": "FSDJump",
+'"event":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "StarSystem": route[0],
+'"StarSystem":' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    }
+'}' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    handler.handle_event(json.dumps(ev_jump), gui_ref=None)
+'handler.handle_event' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    msgs = ctx.drain_queue()
+'msgs' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    # FSDJump powinien przesunąć current_index na 1 (advance_route)
+'#' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    assert route_manager.current_index == 1, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "After FSDJump from first system, RouteManager.current_index should be 1, "
+'"After FSDJump from first system, RouteManager.current_index should be 1, "' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got {route_manager.current_index}"
+'f"got {route_manager.current_index}"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    joined = " | ".join(str(m) for m in msgs)
+'joined' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    assert "[ROUTE]" in joined or "[AUTO-SCHOWEK]" in joined, (
+'assert' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        "Expected some route/auto-schowek related logs after FSDJump, "
+System nie może odnaleźć określonej ścieżki.
+
+C:\Users\Patryk\Desktop\RenataAI>        f"got: {joined}"
+Nazwa pliku, nazwa katalogu lub składnia etykiety woluminu jest niepoprawna.
+
+C:\Users\Patryk\Desktop\RenataAI>    )
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI># --- RUNNER ------------------------------------------------------------------
+'#' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>TestFunc = Callable[[TestContext], None]
+'TestFunc' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>TestSpec = Tuple[str, TestFunc]
+'TestSpec' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>def run_all_tests() -> int:
+'def' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ctx = TestContext()
+'ctx' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    _ensure_voice_disabled()
+'_ensure_voice_disabled' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    tests: List[TestSpec] = [
+'tests:' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        ("test_journal_location_and_fsdjump_app_state", test_journal_location_and_fsdjump_app_state),
+'"test_journal_location_and_fsdjump_app_state"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        ("test_journal_docked_updates_station", test_journal_docked_updates_station),
+'"test_journal_docked_updates_station"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        ("test_debouncer_basic", test_debouncer_basic),
+'"test_debouncer_basic"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        ("test_journal_sequence_no_crash", test_journal_sequence_no_crash),
+'"test_journal_sequence_no_crash"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        ("test_route_manager_autoschowek_integration", test_route_manager_autoschowek_integration),
+'"test_route_manager_autoschowek_integration"' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    ]
+']' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    print("=== RenataAI Journal / AppState / Debouncer Tests (T2) ===")
+Unable to initialize device PRN
+
+C:\Users\Patryk\Desktop\RenataAI>    print(f"Root dir: {ROOT_DIR}")
+Unable to initialize device PRN
+
+C:\Users\Patryk\Desktop\RenataAI>    print("----------------------------------------------------------")
+Unable to initialize device PRN
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    passed = 0
+'passed' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    failed = 0
+'failed' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    for name, func in tests:
+name was unexpected at this time.
+C:\Users\Patryk\Desktop\RenataAI>        print(f"> Running {name} ...", end=" ")
+Unable to initialize device PRN
+
+C:\Users\Patryk\Desktop\RenataAI>        try:
+'try:' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            func(ctx)
+'func' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>        except AssertionError as e:
+'except' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            failed += 1
+'failed' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            print("[FAIL]")
+Unable to initialize device PRN
+
+C:\Users\Patryk\Desktop\RenataAI>            print(f"    AssertionError: {e}")
+Unable to initialize device PRN
+
+C:\Users\Patryk\Desktop\RenataAI>        except Exception:
+'except' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            failed += 1
+'failed' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            print("[FAIL]")
+Unable to initialize device PRN
+
+C:\Users\Patryk\Desktop\RenataAI>            tb = traceback.format_exc()
+'tb' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            for line in tb.splitlines():
+line was unexpected at this time.
+
+C:\Users\Patryk\Desktop\RenataAI>                print(f"    {line}")
+Unable to initialize device PRN
+
+C:\Users\Patryk\Desktop\RenataAI>        else:
+'else:' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            passed += 1
+'passed' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>            print("[OK]")
+Unable to initialize device PRN
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    print("----------------------------------------------------------")
+Unable to initialize device PRN
+
+C:\Users\Patryk\Desktop\RenataAI>    print(f"Summary: {passed} passed, {failed} failed")
+Unable to initialize device PRN
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>    return 1 if failed else 0
+'return' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>
+C:\Users\Patryk\Desktop\RenataAI>if __name__ == "__main__":
+The syntax of the command is incorrect.
+C:\Users\Patryk\Desktop\RenataAI>    exit_code = run_all_tests()
+'exit_code' is not recognized as an internal or external command,
+operable program or batch file.
+
+C:\Users\Patryk\Desktop\RenataAI>    sys.exit(exit_code)
+'sys.exit' is not recognized as an internal or external command,
+operable program or batch file.

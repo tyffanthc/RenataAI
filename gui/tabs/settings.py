@@ -1,0 +1,728 @@
+# gui/tabs/settings.py
+
+import tkinter as tk
+from tkinter import ttk, filedialog
+from typing import Optional, Callable, Dict, Any
+import os
+import config
+
+
+class SettingsTab(ttk.Frame):
+    """
+    Okno Konfiguracji w stylu kokpitu, podzielone na zakładki:
+    - Ogólne
+    - Asystenci
+    - Eksploracja
+    - Handel
+    - Inżynier
+    """
+
+    def __init__(
+        self,
+        parent: tk.Widget,
+        controller: Optional[object] = None,
+        *,
+        get_config: Optional[Callable[[], Dict[str, Any]]] = None,
+        save_config: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ) -> None:
+        """
+        :param parent: kontener (w naszym przypadku okno SettingsWindow)
+        :param controller: główny obiekt aplikacji (app) z metodą is_science_data_available()
+        :param get_config: callback zwracający dict z konfiguracją
+        :param save_config: callback przyjmujący dict do zapisania
+        """
+        super().__init__(parent)
+
+        self.controller = controller
+        self._get_config = get_config
+        self._save_config = save_config
+
+        self._create_vars()
+        self._build_ui()
+        self._load_initial_values()
+
+    # ------------------------------------------------------------------ #
+    # Zmienne stanu (tk.Variable) – czysto wizualne
+    # ------------------------------------------------------------------ #
+
+    def _create_vars(self) -> None:
+        # język / wygląd
+        self.var_language = tk.StringVar(value="pl")
+        self.var_theme = tk.StringVar(value="dark")  # backend ma "dark" jako domyślne
+        self.var_use_system_theme = tk.BooleanVar(value=True)
+
+        # logi
+        self.var_log_path = tk.StringVar(value="")
+        self.var_auto_detect_logs = tk.BooleanVar(value=True)
+
+        # SPANSH – nadal frontend only
+        self.var_spansh_timeout = tk.StringVar(value="20")
+        self.var_spansh_retries = tk.StringVar(value="3")
+
+        # GŁOS / dźwięk – mapujemy to na voice_enabled
+        self.var_enable_sounds = tk.BooleanVar(value=True)
+        self.var_confirm_exit = tk.BooleanVar(value=True)
+
+        # --- Asystenci / alerty – te mapujemy na klucze JSON --- #
+        self.var_read_landing_pad = tk.BooleanVar(value=True)          # landing_pad_speech
+        self.var_auto_clipboard = tk.BooleanVar(value=True)            # auto_clipboard
+
+        self.var_route_progress_messages = tk.BooleanVar(value=True)   # route_progress_speech
+        self.var_low_fuel_warning = tk.BooleanVar(value=True)          # fuel_warning
+
+        self.var_fss_assistant = tk.BooleanVar(value=True)             # fss_assistant
+        self.var_high_value_planet_alerts = tk.BooleanVar(value=True)  # high_value_planets
+        self.var_dss_bio3_assistant = tk.BooleanVar(value=True)        # bio_assistant
+
+        self.var_trade_jackpot_alerts = tk.BooleanVar(value=True)      # trade_jackpot_speech
+        self.var_smuggler_alert = tk.BooleanVar(value=False)           # smuggler_alert
+        self.var_mining_accountant = tk.BooleanVar(value=False)        # tylko frontend na razie
+
+        self.var_bounty_hunter = tk.BooleanVar(value=False)            # frontend
+        self.var_preflight_limpets = tk.BooleanVar(value=True)         # frontend
+        self.var_high_g_warning = tk.BooleanVar(value=True)            # high_g_warning
+
+        self.var_fdff_notifications = tk.BooleanVar(value=True)        # frontend (na razie)
+
+        # Czytanie systemu po skoku (Exit Summary / info o systemie) – frontend / future
+        self.var_read_system_after_jump = tk.BooleanVar(value=True)
+
+        # Status naukowy – StringVar do sekcji Eksploracja
+        self.science_status_var = tk.StringVar(value="")
+
+    # ------------------------------------------------------------------ #
+    # UI – zakładki
+    # ------------------------------------------------------------------ #
+
+    def _build_ui(self) -> None:
+        # Notebook z zakładkami
+        self.nb = ttk.Notebook(self)
+        self.nb.pack(fill="both", expand=True)
+
+        # Zakładki
+        self._tab_general = ttk.Frame(self.nb)
+        self._tab_assistants = ttk.Frame(self.nb)
+        self._tab_exploration = ttk.Frame(self.nb)
+        self._tab_trade = ttk.Frame(self.nb)
+        self._tab_engineer = ttk.Frame(self.nb)
+
+        self.nb.add(self._tab_general, text="Ogólne")
+        self.nb.add(self._tab_assistants, text="Asystenci")
+        self.nb.add(self._tab_exploration, text="Eksploracja")
+        self.nb.add(self._tab_trade, text="Handel")
+        self.nb.add(self._tab_engineer, text="Inżynier")
+
+        # Budowa zawartości zakładek
+        self._build_tab_general()
+        self._build_tab_assistants()
+        self._build_tab_exploration()
+        self._build_tab_trade()
+        self._build_tab_engineer()
+
+    # ------------------------------------------------------------------ #
+    #   Zakładka: OGÓLNE
+    # ------------------------------------------------------------------ #
+
+    def _build_tab_general(self) -> None:
+        parent = self._tab_general
+        parent.columnconfigure(0, weight=1)
+
+        # Sekcja: OGÓLNE
+        lf_general = ttk.LabelFrame(parent, text=" Ogólne ")
+        lf_general.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="nsew")
+
+        for col in range(3):
+            lf_general.columnconfigure(col, weight=1)
+
+        ttk.Label(lf_general, text="Język interfejsu:").grid(
+            row=0, column=0, padx=8, pady=6, sticky="w"
+        )
+        lang_combo = ttk.Combobox(
+            lf_general,
+            textvariable=self.var_language,
+            values=("pl", "en"),
+            state="readonly",
+            width=10,
+        )
+        lang_combo.grid(row=0, column=1, padx=8, pady=6, sticky="w")
+
+        ttk.Checkbutton(
+            lf_general,
+            text="Pytaj o potwierdzenie przed zamknięciem Renaty",
+            variable=self.var_confirm_exit,
+        ).grid(row=1, column=0, columnspan=3, padx=8, pady=(0, 6), sticky="w")
+
+        ttk.Checkbutton(
+            lf_general,
+            text="Włącz dźwięki / komunikaty głosowe",
+            variable=self.var_enable_sounds,
+        ).grid(row=2, column=0, columnspan=3, padx=8, pady=(0, 8), sticky="w")
+
+        # Sekcja: ŚCIEŻKI / LOGI
+        lf_paths = ttk.LabelFrame(parent, text=" Elite Dangerous – logi ")
+        lf_paths.grid(row=1, column=0, padx=12, pady=6, sticky="nsew")
+
+        for col in range(3):
+            lf_paths.columnconfigure(col, weight=1)
+
+        ttk.Checkbutton(
+            lf_paths,
+            text="Automatycznie wykryj folder logów Elite Dangerous (przyszłość)",
+            variable=self.var_auto_detect_logs,
+        ).grid(row=0, column=0, columnspan=3, padx=8, pady=(6, 4), sticky="w")
+
+        ttk.Label(lf_paths, text="Folder logów:").grid(
+            row=1, column=0, padx=8, pady=6, sticky="w"
+        )
+        entry_logs = ttk.Entry(lf_paths, textvariable=self.var_log_path)
+        entry_logs.grid(row=1, column=1, padx=8, pady=6, sticky="ew")
+
+        btn_browse = ttk.Button(
+            lf_paths,
+            text="Przeglądaj…",
+            command=self._on_browse_logs,
+        )
+        btn_browse.grid(row=1, column=2, padx=8, pady=6, sticky="e")
+
+        # Sekcja: WYGLĄD
+        lf_appearance = ttk.LabelFrame(parent, text=" Wygląd interfejsu ")
+        lf_appearance.grid(row=2, column=0, padx=12, pady=6, sticky="nsew")
+
+        for col in range(3):
+            lf_appearance.columnconfigure(col, weight=1)
+
+        ttk.Checkbutton(
+            lf_appearance,
+            text="Użyj systemowego motywu okien",
+            variable=self.var_use_system_theme,
+        ).grid(row=0, column=0, columnspan=3, padx=8, pady=(6, 4), sticky="w")
+
+        ttk.Label(lf_appearance, text="Motyw Renaty (kokpit):").grid(
+            row=1, column=0, padx=8, pady=6, sticky="w"
+        )
+        theme_combo = ttk.Combobox(
+            lf_appearance,
+            textvariable=self.var_theme,
+            values=(
+                "dark",        # domyślny – spójny z backendem
+                "ed_orange",
+                "ed_blue",
+                "dark_minimal",
+            ),
+            state="readonly",
+            width=18,
+        )
+        theme_combo.grid(row=1, column=1, padx=8, pady=6, sticky="w")
+
+        ttk.Label(
+            lf_appearance,
+            text="Zmiana motywu może wymagać ponownego uruchomienia Renaty.",
+            foreground="#888888",
+        ).grid(row=2, column=0, columnspan=3, padx=8, pady=(0, 8), sticky="w")
+
+        # Sekcja: SPANSH / SIEĆ
+        lf_spansh = ttk.LabelFrame(parent, text=" SPANSH / Połączenie ")
+        lf_spansh.grid(row=3, column=0, padx=12, pady=(6, 12), sticky="nsew")
+
+        for col in range(4):
+            lf_spansh.columnconfigure(col, weight=1)
+
+        ttk.Label(lf_spansh, text="Timeout żądania (s):").grid(
+            row=0, column=0, padx=8, pady=6, sticky="w"
+        )
+        entry_timeout = ttk.Entry(lf_spansh, textvariable=self.var_spansh_timeout, width=6)
+        entry_timeout.grid(row=0, column=1, padx=8, pady=6, sticky="w")
+
+        ttk.Label(lf_spansh, text="Liczba ponowień:").grid(
+            row=0, column=2, padx=8, pady=6, sticky="w"
+        )
+        entry_retries = ttk.Entry(lf_spansh, textvariable=self.var_spansh_retries, width=6)
+        entry_retries.grid(row=0, column=3, padx=8, pady=6, sticky="w")
+
+        ttk.Label(
+            lf_spansh,
+            text="Ustawienia te są tylko wizualne – backend sam zdecyduje, co z nimi zrobić.",
+            foreground="#888888",
+        ).grid(row=1, column=0, columnspan=4, padx=8, pady=(0, 8), sticky="w")
+
+        # Dół zakładki – przyciski
+        btn_bar = ttk.Frame(parent)
+        btn_bar.grid(row=4, column=0, padx=12, pady=(0, 12), sticky="e")
+        btn_bar.columnconfigure(0, weight=1)
+        btn_bar.columnconfigure(1, weight=0)
+
+        btn_reset = ttk.Button(btn_bar, text="Przywróć domyślne", command=self._on_reset)
+        btn_reset.grid(row=0, column=0, padx=6, pady=4, sticky="e")
+
+        btn_save = ttk.Button(btn_bar, text="Zapisz ustawienia", command=self._on_save)
+        btn_save.grid(row=0, column=1, padx=6, pady=4, sticky="e")
+
+    # ------------------------------------------------------------------ #
+    #   Zakładka: ASYSTENCI
+    # ------------------------------------------------------------------ #
+
+    def _build_tab_assistants(self) -> None:
+        parent = self._tab_assistants
+        parent.columnconfigure(0, weight=1)
+
+        # Komunikaty dokowania i stacji
+        lf_docking = ttk.LabelFrame(parent, text=" Komunikaty dokowania i stacji ")
+        lf_docking.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="nsew")
+        lf_docking.columnconfigure(0, weight=1)
+        lf_docking.columnconfigure(1, weight=1)
+
+        ttk.Checkbutton(
+            lf_docking,
+            text="Czytaj numer lądowiska",
+            variable=self.var_read_landing_pad,
+        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_docking,
+            text="Auto-schowek",
+            variable=self.var_auto_clipboard,
+        ).grid(row=0, column=1, padx=8, pady=4, sticky="w")
+
+        # Nawigacja i trasy
+        lf_navigation = ttk.LabelFrame(parent, text=" Nawigacja i trasy ")
+        lf_navigation.grid(row=1, column=0, padx=12, pady=6, sticky="nsew")
+        lf_navigation.columnconfigure(0, weight=1)
+        lf_navigation.columnconfigure(1, weight=1)
+
+        ttk.Checkbutton(
+            lf_navigation,
+            text="Komunikaty o postępie trasy",
+            variable=self.var_route_progress_messages,
+        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_navigation,
+            text="High-G Warning",
+            variable=self.var_high_g_warning,
+        ).grid(row=0, column=1, padx=8, pady=4, sticky="w")
+
+        # Paliwo i bezpieczeństwo
+        lf_fuel_safety = ttk.LabelFrame(parent, text=" Paliwo i bezpieczeństwo ")
+        lf_fuel_safety.grid(row=2, column=0, padx=12, pady=(6, 12), sticky="nsew")
+        lf_fuel_safety.columnconfigure(0, weight=1)
+        lf_fuel_safety.columnconfigure(1, weight=1)
+        lf_fuel_safety.columnconfigure(2, weight=1)
+
+        ttk.Checkbutton(
+            lf_fuel_safety,
+            text="Ostrzeżenie o niskim paliwie",
+            variable=self.var_low_fuel_warning,
+        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_fuel_safety,
+            text="Pre-flight limpets",
+            variable=self.var_preflight_limpets,
+        ).grid(row=0, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_fuel_safety,
+            text="Smuggler alert – nielegalny towar",
+            variable=self.var_smuggler_alert,
+        ).grid(row=0, column=2, padx=8, pady=4, sticky="w")
+
+    # ------------------------------------------------------------------ #
+    #   Zakładka: EKSPLORACJA
+    # ------------------------------------------------------------------ #
+
+    def _build_tab_exploration(self) -> None:
+        parent = self._tab_exploration
+        parent.columnconfigure(0, weight=1)
+
+        lf_exploration = ttk.LabelFrame(parent, text=" Eksploracja (FSS / DSS / biologia) ")
+        lf_exploration.grid(row=0, column=0, padx=12, pady=(12, 12), sticky="nsew")
+
+        lf_exploration.columnconfigure(0, weight=1)
+        lf_exploration.columnconfigure(1, weight=1)
+        lf_exploration.columnconfigure(2, weight=1)
+
+        ttk.Checkbutton(
+            lf_exploration,
+            text="Asystent FSS (postęp skanowania %)",
+            variable=self.var_fss_assistant,
+        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_exploration,
+            text="Alerty wysokowartościowych planet (ELW/WW/HMC)",
+            variable=self.var_high_value_planet_alerts,
+        ).grid(row=0, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_exploration,
+            text="Asystent DSS (biologia 3+ sygnały)",
+            variable=self.var_dss_bio3_assistant,
+        ).grid(row=0, column=2, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_exploration,
+            text="First Discovery / Footfall – komunikaty",
+            variable=self.var_fdff_notifications,
+        ).grid(row=1, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_exploration,
+            text="Czytaj informacje o systemie po każdym skoku",
+            variable=self.var_read_system_after_jump,
+        ).grid(row=1, column=1, padx=8, pady=4, sticky="w")
+
+        # Opisy + status
+        self.lbl_exploration_desc = ttk.Label(
+            lf_exploration,
+            text="Opcje eksploracyjne wymagają wygenerowania danych arkuszy naukowych.",
+            wraplength=520,
+            justify="left",
+        )
+        self.lbl_exploration_desc.grid(
+            row=2, column=0, columnspan=3, padx=8, pady=(2, 2), sticky="w"
+        )
+
+        self.science_status_label = ttk.Label(
+            lf_exploration,
+            textvariable=self.science_status_var,
+            wraplength=520,
+            justify="left",
+        )
+        self.science_status_label.grid(
+            row=3, column=0, columnspan=3, padx=8, pady=(0, 4), sticky="w"
+        )
+
+        self.lbl_exploration_excel_missing = tk.Label(
+            lf_exploration,
+            text="",
+            fg="red",
+            anchor="w",
+            justify="left",
+        )
+        self.lbl_exploration_excel_missing.grid(
+            row=4, column=0, columnspan=3, padx=8, pady=(0, 4), sticky="w"
+        )
+
+        # Przycisk: Generuj arkusze naukowe
+        self.btn_generate_science = ttk.Button(
+            lf_exploration,
+            text="Generuj arkusze naukowe",
+            command=self._on_generate_science_excel,
+        )
+        self.btn_generate_science.grid(
+            row=5, column=0, columnspan=3, padx=8, pady=(4, 6), sticky="w"
+        )
+
+        # Początkowy status danych naukowych (na podstawie app/controller)
+        initial_loaded = False
+        if self.controller and hasattr(self.controller, "is_science_data_available"):
+            try:
+                initial_loaded = bool(self.controller.is_science_data_available())
+            except Exception:
+                initial_loaded = False
+        self.update_science_status(initial_loaded)
+        self._update_exploration_excel_hint()
+
+    # ------------------------------------------------------------------ #
+    #   Zakładka: HANDEL
+    # ------------------------------------------------------------------ #
+
+    def _build_tab_trade(self) -> None:
+        parent = self._tab_trade
+        parent.columnconfigure(0, weight=1)
+
+        lf_trade = ttk.LabelFrame(parent, text=" Handel (Makler) ")
+        lf_trade.grid(row=0, column=0, padx=12, pady=(12, 12), sticky="nsew")
+
+        lf_trade.columnconfigure(0, weight=1)
+        lf_trade.columnconfigure(1, weight=1)
+        lf_trade.columnconfigure(2, weight=1)
+
+        ttk.Checkbutton(
+            lf_trade,
+            text="Makler PRO – alerty jackpotów",
+            variable=self.var_trade_jackpot_alerts,
+        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_trade,
+            text="Mining Accountant",
+            variable=self.var_mining_accountant,
+        ).grid(row=0, column=1, padx=8, pady=4, sticky="w")
+
+    # ------------------------------------------------------------------ #
+    #   Zakładka: INŻYNIER
+    # ------------------------------------------------------------------ #
+
+    def _build_tab_engineer(self) -> None:
+        parent = self._tab_engineer
+        parent.columnconfigure(0, weight=1)
+
+        lf_engineer_combat = ttk.LabelFrame(parent, text=" Inżynier pokładowy / bojowe ")
+        lf_engineer_combat.grid(row=0, column=0, padx=12, pady=(12, 12), sticky="nsew")
+
+        lf_engineer_combat.columnconfigure(0, weight=1)
+
+        ttk.Checkbutton(
+            lf_engineer_combat,
+            text="Bounty Hunter",
+            variable=self.var_bounty_hunter,
+        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+
+    # ------------------------------------------------------------------ #
+    # Ładowanie / zapisywanie – połączone z backendowym configiem
+    # ------------------------------------------------------------------ #
+
+    def _load_initial_values(self) -> None:
+        """Jeśli podano get_config, załaduj wartości startowe z JSON-a."""
+        if self._get_config is None:
+            return
+
+        cfg = self._get_config() or {}
+
+        # klucze z DEFAULT_SETTINGS
+        self.var_language.set(cfg.get("language", self.var_language.get()))
+        self.var_theme.set(cfg.get("theme", self.var_theme.get()))
+
+        # główny TTS / głos
+        self.var_enable_sounds.set(cfg.get("voice_enabled", self.var_enable_sounds.get()))
+
+        # logi
+        self.var_log_path.set(cfg.get("log_dir", self.var_log_path.get()))
+        # auto_detect_logs nadal tylko frontendowe – jak jest w JSON, to wczytamy:
+        self.var_auto_detect_logs.set(cfg.get("auto_detect_logs", self.var_auto_detect_logs.get()))
+
+        # SPANSH – opcjonalne / frontend
+        self.var_spansh_timeout.set(str(cfg.get("spansh_timeout", self.var_spansh_timeout.get())))
+        self.var_spansh_retries.set(str(cfg.get("spansh_retries", self.var_spansh_retries.get())))
+
+        self.var_use_system_theme.set(cfg.get("use_system_theme", self.var_use_system_theme.get()))
+        self.var_confirm_exit.set(cfg.get("confirm_exit", self.var_confirm_exit.get()))
+
+        # Asystenci – mapowanie na klucze JSON
+        self.var_read_landing_pad.set(
+            cfg.get("landing_pad_speech", self.var_read_landing_pad.get())
+        )
+        self.var_auto_clipboard.set(
+            cfg.get("auto_clipboard", self.var_auto_clipboard.get())
+        )
+        self.var_route_progress_messages.set(
+            cfg.get("route_progress_speech", self.var_route_progress_messages.get())
+        )
+        self.var_low_fuel_warning.set(
+            cfg.get("fuel_warning", self.var_low_fuel_warning.get())
+        )
+        self.var_high_g_warning.set(
+            cfg.get("high_g_warning", self.var_high_g_warning.get())
+        )
+
+        self.var_fss_assistant.set(
+            cfg.get("fss_assistant", self.var_fss_assistant.get())
+        )
+        self.var_high_value_planet_alerts.set(
+            cfg.get("high_value_planets", self.var_high_value_planet_alerts.get())
+        )
+        self.var_dss_bio3_assistant.set(
+            cfg.get("bio_assistant", self.var_dss_bio3_assistant.get())
+        )
+
+        self.var_trade_jackpot_alerts.set(
+            cfg.get("trade_jackpot_speech", self.var_trade_jackpot_alerts.get())
+        )
+        self.var_smuggler_alert.set(
+            cfg.get("smuggler_alert", self.var_smuggler_alert.get())
+        )
+
+        # pozostałe – czysto frontendowe / future
+        self.var_mining_accountant.set(
+            cfg.get("mining_accountant", self.var_mining_accountant.get())
+        )
+        self.var_bounty_hunter.set(
+            cfg.get("bounty_hunter", self.var_bounty_hunter.get())
+        )
+        self.var_preflight_limpets.set(
+            cfg.get("preflight_limpets", self.var_preflight_limpets.get())
+        )
+        self.var_fdff_notifications.set(
+            cfg.get("fdff_notifications", self.var_fdff_notifications.get())
+        )
+        self.var_read_system_after_jump.set(
+            cfg.get("read_system_after_jump", self.var_read_system_after_jump.get())
+        )
+
+    def _collect_config(self) -> Dict[str, Any]:
+        """
+        Zbiera aktualny stan pól do słownika.
+        Klucze istotne dla backendu:
+            log_dir,
+            language, theme,
+            voice_enabled,
+            landing_pad_speech, auto_clipboard,
+            route_progress_speech, fuel_warning, high_g_warning,
+            fss_assistant, high_value_planets, bio_assistant,
+            trade_jackpot_speech, smuggler_alert.
+        Reszta może być traktowana jako rozszerzenie.
+        """
+        cfg: Dict[str, Any] = {
+            # klucze główne (uzgodnione z backendem)
+            "log_dir": self.var_log_path.get().strip(),
+            "language": self.var_language.get(),
+            "theme": self.var_theme.get(),
+
+            "voice_enabled": self.var_enable_sounds.get(),
+
+            "landing_pad_speech": self.var_read_landing_pad.get(),
+            "auto_clipboard": self.var_auto_clipboard.get(),
+            "route_progress_speech": self.var_route_progress_messages.get(),
+            "fuel_warning": self.var_low_fuel_warning.get(),
+            "high_g_warning": self.var_high_g_warning.get(),
+
+            "fss_assistant": self.var_fss_assistant.get(),
+            "high_value_planets": self.var_high_value_planet_alerts.get(),
+            "bio_assistant": self.var_dss_bio3_assistant.get(),
+
+            "trade_jackpot_speech": self.var_trade_jackpot_alerts.get(),
+            "smuggler_alert": self.var_smuggler_alert.get(),
+
+            # dodatkowe / frontend only (ale możemy też trzymać w JSON)
+            "use_system_theme": self.var_use_system_theme.get(),
+            "auto_detect_logs": self.var_auto_detect_logs.get(),
+            "spansh_timeout": self.var_spansh_timeout.get(),
+            "spansh_retries": self.var_spansh_retries.get(),
+            "confirm_exit": self.var_confirm_exit.get(),
+
+            "mining_accountant": self.var_mining_accountant.get(),
+            "bounty_hunter": self.var_bounty_hunter.get(),
+            "preflight_limpets": self.var_preflight_limpets.get(),
+            "fdff_notifications": self.var_fdff_notifications.get(),
+            "read_system_after_jump": self.var_read_system_after_jump.get(),
+        }
+        return cfg
+
+    def _update_exploration_excel_hint(self) -> None:
+        """
+        Sprawdza, czy plik renata_science_data.xlsx istnieje i aktualizuje
+        czerwony komunikat pod sekcją Eksploracja.
+        """
+        excel_path = getattr(config, "SCIENCE_EXCEL_PATH", "renata_science_data.xlsx")
+
+        try:
+            has_file = os.path.exists(excel_path)
+        except Exception:
+            has_file = False
+
+        if has_file:
+            # Brak komunikatu, jeśli plik istnieje
+            self.lbl_exploration_excel_missing.config(text="")
+        else:
+            self.lbl_exploration_excel_missing.config(
+                text="Brak pliku renata_science_data.xlsx – wygeneruj go w menu."
+            )
+
+    def update_science_status(self, loaded: bool) -> None:
+        """
+        Aktualizuje status danych naukowych w sekcji Eksploracja.
+
+        Wywoływane przy starcie oraz po wygenerowaniu arkuszy:
+            settings_tab.update_science_status(app.is_science_data_available())
+        """
+        if loaded:
+            self.science_status_var.set("Dane naukowe załadowane poprawnie.")
+            self.science_status_label.configure(foreground="green")
+        else:
+            self.science_status_var.set("Dane naukowe NIE są dostępne – wygeneruj arkusze.")
+            self.science_status_label.configure(foreground="red")
+
+        # Przy każdej zmianie statusu odświeżamy też informację o pliku Excela
+        self._update_exploration_excel_hint()
+
+    # ------------------------------------------------------------------ #
+    # Akcje przycisków
+    # ------------------------------------------------------------------ #
+
+    def _on_browse_logs(self) -> None:
+        """
+        Otwiera dialog wyboru folderu z logami Elite Dangerous.
+        Jeśli użytkownik coś wybierze, aktualizuje pole i zmienną.
+        """
+        path = filedialog.askdirectory(
+            title="Wybierz folder z Journalami Elite Dangerous"
+        )
+        if path:
+            self.var_log_path.set(path)
+
+    def _on_generate_science_excel(self) -> None:
+        """
+        Handler przycisku 'Generuj arkusze naukowe'.
+
+        Nie generuje nic sam – tylko deleguje do logiki:
+        controller.on_generate_science_excel()
+        """
+        if not self.controller:
+            return
+
+        handler = getattr(self.controller, "on_generate_science_excel", None)
+        if not callable(handler):
+            return
+
+        try:
+            handler()
+        except Exception:
+            # UI nie panikuje – logika może zalogować błąd gdzie indziej.
+            pass
+
+    def _on_reset(self) -> None:
+        """Przywrócenie domyślnych wartości UI."""
+        # język / wygląd
+        self.var_language.set("pl")
+        self.var_theme.set("dark")
+        self.var_use_system_theme.set(True)
+
+        # domyślny log_dir z backendu (jeśli jest)
+        try:
+            default_log_dir = config.get("log_dir", "")
+        except Exception:
+            default_log_dir = ""
+        self.var_log_path.set(default_log_dir)
+        self.var_auto_detect_logs.set(True)
+
+        self.var_spansh_timeout.set("20")
+        self.var_spansh_retries.set("3")
+
+        self.var_enable_sounds.set(True)
+        self.var_confirm_exit.set(True)
+
+        # Asystenci – domyślnie włączone jak w DEFAULT_SETTINGS
+        self.var_read_landing_pad.set(True)
+        self.var_auto_clipboard.set(True)
+
+        self.var_route_progress_messages.set(True)
+        self.var_low_fuel_warning.set(True)
+        self.var_fss_assistant.set(True)
+        self.var_high_value_planet_alerts.set(True)
+        self.var_dss_bio3_assistant.set(True)
+        self.var_fdff_notifications.set(True)
+
+        self.var_trade_jackpot_alerts.set(True)
+        self.var_smuggler_alert.set(True)
+        self.var_mining_accountant.set(False)
+
+        self.var_bounty_hunter.set(False)
+        self.var_preflight_limpets.set(True)
+        self.var_high_g_warning.set(True)
+
+        self.var_read_system_after_jump.set(True)
+
+        # Reset statusu naukowego do stanu „brak danych”
+        self.update_science_status(False)
+
+    def _on_save(self) -> None:
+        """
+        Zbiera wartości z UI i, jeśli podano save_config, przekazuje je dalej.
+        Backend (SettingsWindow + ConfigManager) zapisuje to do user_settings.json.
+        """
+        if self._save_config is None:
+            return
+
+        cfg = self._collect_config()
+        self._save_config(cfg)
