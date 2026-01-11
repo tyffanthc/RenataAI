@@ -62,6 +62,7 @@ class RenataApp:
         # Główne elementy
         style.configure("TFrame", background=C_BG)
         style.configure("TLabel", background=C_BG, foreground=C_FG, font=("Eurostile", 10))
+        style.configure("TEntry", background=C_ACC, fieldbackground=C_ACC, foreground="#ffffff")
         
         # Przyciski
         style.configure("TButton", background=C_ACC, foreground=C_FG, borderwidth=1, focuscolor=C_BG)
