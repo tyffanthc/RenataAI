@@ -60,6 +60,9 @@ class NeutronTab(ttk.Frame):
 
         ttk.Button(f_btn, text="Wyznacz trasę", command=self.run_neutron).pack(side="left", padx=4)
         ttk.Button(f_btn, text="Wyczyść", command=self.clear).pack(side="left", padx=4)
+        self.lbl_status = ttk.Label(self, text="Gotowy", font=("Arial", 10, "bold"))
+        self.lbl_status.pack(pady=(4, 2))
+
 
         # Lista wyników
         self.lst = common.stworz_liste_trasy(self, title="Neutron Route")
