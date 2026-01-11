@@ -8,6 +8,7 @@ from logic import utils
 from gui import common
 from gui.common_autocomplete import AutocompleteController
 from app.route_manager import route_manager
+from app.state import app_state
 
 
 class NeutronTab(ttk.Frame):
@@ -79,7 +80,9 @@ class NeutronTab(ttk.Frame):
     def run_neutron(self):
         self.clear()
 
-        s = self.var_start.get().strip() or config.STATE.get("sys", "Nieznany")
+        s = self.var_start.get().strip()
+        if not s:
+            s = (getattr(app_state, "current_system", "") or "").strip() or "Nieznany"
         cel = self.var_cel.get().strip()
         rng = self.var_range.get()
         eff = self.var_eff.get()

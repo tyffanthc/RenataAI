@@ -7,6 +7,7 @@ from logic import utils, riches
 from gui import common
 from gui.common_autocomplete import AutocompleteController
 from app.route_manager import route_manager
+from app.state import app_state
 
 
 class RichesTab(ttk.Frame):
@@ -111,7 +112,9 @@ class RichesTab(ttk.Frame):
     def run_rtr(self):
         self.clear_rtr()
 
-        start_sys = self.var_start.get().strip() or config.STATE.get("sys", "Nieznany")
+        start_sys = self.var_start.get().strip()
+        if not start_sys:
+            start_sys = (getattr(app_state, "current_system", "") or "").strip() or "Nieznany"
         cel = self.var_cel.get().strip()
         jump_range = self.var_range.get()
         radius = self.var_radius.get()
