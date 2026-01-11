@@ -465,6 +465,13 @@ class SpanshClient:
                 spansh_error(f"{mode.upper()}: wyjątek przy pobieraniu wyników ({e}).", gui_ref, context=mode)
                 return None
 
+            if r.status_code == 202:
+
+                time.sleep(poll_seconds)
+
+                continue
+
+
             if r.status_code != 200:
                 spansh_error(f"{mode.upper()}: HTTP {r.status_code} przy pobieraniu wyników.", gui_ref, context=mode)
                 return None
