@@ -53,10 +53,10 @@ def oblicz_spansh(
         return []
 
     systems = client.neutron_route(
-        start_system=start,
-        target_system=cel,
-        jump_range=zasieg,
-        efficiency=eff,
+        start=start,
+        cel=cel,
+        zasieg=zasieg,
+        eff=eff,
         gui_ref=gui_ref,
     )
 
