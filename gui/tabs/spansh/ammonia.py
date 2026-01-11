@@ -7,6 +7,7 @@ from logic import utils, ammonia
 from gui import common
 from gui.common_autocomplete import AutocompleteController
 from app.route_manager import route_manager
+from app.state import app_state
 
 
 class AmmoniaTab(ttk.Frame):
@@ -103,7 +104,9 @@ class AmmoniaTab(ttk.Frame):
     def run_amm(self):
         self.clear_amm()
 
-        start_sys = self.e_start.get().strip() or config.STATE.get("sys", "Nieznany")
+        start_sys = self.e_start.get().strip()
+        if not start_sys:
+            start_sys = (getattr(app_state, "current_system", "") or "").strip() or "Nieznany"
         cel = self.e_cel.get().strip()
         jump_range = self.var_range.get()
         radius = self.e_radius.get()

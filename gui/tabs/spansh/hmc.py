@@ -8,6 +8,7 @@ from logic import hmc_route
 from gui import common
 from gui.common_autocomplete import AutocompleteController
 from app.route_manager import route_manager
+from app.state import app_state
 
 
 class HMCTab(ttk.Frame):
@@ -103,7 +104,9 @@ class HMCTab(ttk.Frame):
     def run(self):
         self.clear()
 
-        start_sys = self.e_start.get().strip() or config.STATE.get("sys", "Nieznany")
+        start_sys = self.e_start.get().strip()
+        if not start_sys:
+            start_sys = (getattr(app_state, "current_system", "") or "").strip() or "Nieznany"
         cel = self.e_cel.get().strip()
         rng = self.var_range.get()
         rad = self.e_radius.get()
