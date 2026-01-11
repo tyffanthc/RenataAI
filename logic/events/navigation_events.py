@@ -67,6 +67,18 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
     """
     typ = ev.get("event")
 
+    # D3c: inicjalizacja docked/station z eventu Location (jeśli dostępne)
+    if typ == "Location":
+        try:
+            docked = bool(ev.get("Docked"))
+        except Exception:
+            docked = False
+        app_state.set_docked(docked)
+        if docked:
+            st = ev.get("StationName")
+            if st:
+                app_state.set_station(st)
+
     sysname = (
         ev.get("StarSystem")
         or ev.get("SystemName")
