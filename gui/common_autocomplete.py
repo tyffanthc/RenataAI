@@ -12,7 +12,7 @@ class AutocompleteController:
 
         self.sug_list = tk.Listbox(
             self.root, width=30, height=6,
-            bg="#ffffff", relief="solid", borderwidth=1
+            bg="#1f2833", relief="solid", borderwidth=1
         )
         self.sug_list.bind("<ButtonRelease-1>", self._on_list_click)
         self.sug_list.bind("<Return>", self._on_list_return)
