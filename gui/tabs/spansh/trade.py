@@ -193,16 +193,19 @@ class TradeTab(ttk.Frame):
         try:
             sysname = (getattr(self.app_state, "current_system", "") or "").strip()
             staname = (getattr(self.app_state, "current_station", "") or "").strip()
+            is_docked = bool(getattr(self.app_state, "is_docked", False))
         except Exception:
             sysname = ""
             staname = ""
+            is_docked = False
 
         # Traktujemy 'Unknown' / 'Nieznany' jak brak realnej lokalizacji
         if sysname in ("Unknown", "Nieznany"):
             sysname = ""
 
-        self.var_start_system.set(sysname)
-        if staname:
+        if not (self.var_start_system.get() or "").strip() and sysname:
+            self.var_start_system.set(sysname)
+        if is_docked and not (self.var_start_station.get() or "").strip() and staname:
             self.var_start_station.set(staname)
 
         print(f"[TRADE] refresh_from_app_state: {sysname!r} / {staname!r}")
@@ -276,14 +279,10 @@ class TradeTab(ttk.Frame):
         # Fallback do aktualnej lokalizacji z app_state, jeśli pola są puste
         if not start_system:
             start_system = (getattr(self.app_state, "current_system", "") or "").strip()
-        if not start_station:
+        if not start_station and bool(getattr(self.app_state, "is_docked", False)):
             start_station = (getattr(self.app_state, "current_station", "") or "").strip()
 
         # Ostateczny fallback do config.STATE (zgodność wsteczna)
-        if not start_system:
-            start_system = (config.STATE.get("sys", "") or "").strip()
-        if not start_station:
-            start_station = (config.STATE.get("station", "") or "").strip()
 
         if not start_system:
             utils.MSG_QUEUE.put(
