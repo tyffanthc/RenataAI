@@ -72,7 +72,7 @@ class NeutronTab(ttk.Frame):
 
     def clear(self):
         self.lst.delete(0, tk.END)
-        utils.MSG_QUEUE.put(("status_neutron", ("Wyczyszczono", "grey")))
+        utils.MSG_QUEUE.put(("status_neu", ("Wyczyszczono", "grey")))
         config.STATE["trasa"] = []
         config.STATE["copied_idx"] = None
         config.STATE["copied_sys"] = None
@@ -108,8 +108,8 @@ class NeutronTab(ttk.Frame):
                     config.STATE["copied_sys"] = tr[nxt]
 
                 common.wypelnij_liste(self.lst, opis, copied_index=nxt)
-                utils.MSG_QUEUE.put(("status_neutron", (f"Znaleziono {len(tr)}", "green")))
+                utils.MSG_QUEUE.put(("status_neu", (f"Znaleziono {len(tr)}", "green")))
             else:
-                utils.MSG_QUEUE.put(("status_neutron", ("Brak wyników", "red")))
+                utils.MSG_QUEUE.put(("status_neu", ("Brak wyników", "red")))
         except Exception as e:  # żeby nie uwalić GUI przy wyjątku w wątku
-            utils.MSG_QUEUE.put(("status_neutron", (f"Błąd: {e}", "red")))
+            utils.MSG_QUEUE.put(("status_neu", (f"Błąd: {e}", "red")))
