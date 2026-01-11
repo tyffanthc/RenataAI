@@ -65,7 +65,11 @@ class TradeTab(ttk.Frame):
         self.e_system.pack(side="left", padx=(0, 10))
 
         # Autocomplete dla systemu
-        self.ac_source = AutocompleteController(self.root, self.e_system)
+        self.ac_source = AutocompleteController(
+            self.root,
+            self.e_system,
+            suggest_func=self._suggest_system,
+        )
 
         f_sta = ttk.Frame(fr)
         f_sta.pack(fill="x", pady=4)
@@ -237,6 +241,18 @@ class TradeTab(ttk.Frame):
             return spansh_client.stations_for_system(raw, q)
         except Exception as e:
             print(f"[Spansh] Station autocomplete exception ({raw!r}, {q!r}): {e}")
+            return []
+
+    def _suggest_system(self, tekst: str):
+        """Funkcja podpowiedzi systemów dla AutocompleteController."""
+        q = (tekst or "").strip()
+        if not q:
+            return []
+
+        try:
+            return spansh_client.systems_suggest(q)
+        except Exception as e:
+            print(f"[Spansh] System autocomplete exception ({q!r}): {e}")
             return []
 
     def hide_suggestions(self):
