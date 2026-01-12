@@ -11,6 +11,25 @@ def _dbg(msg):
         print(f"[ACDBG] {msg}")
 
 
+def _hide_all_autocomplete_listboxes(root):
+    if root is None:
+        return 0
+    count = 0
+    try:
+        children = root.winfo_children()
+    except tk.TclError:
+        return 0
+    for widget in children:
+        try:
+            if isinstance(widget, tk.Listbox) and getattr(widget, "_renata_autocomplete", False):
+                widget.place_forget()
+                widget.delete(0, tk.END)
+                count += 1
+        except tk.TclError:
+            continue
+    return count
+
+
 class AutocompleteController:
     _instances = []
     _ac_listboxes = weakref.WeakSet()
@@ -28,6 +47,7 @@ class AutocompleteController:
             bg="#1f2833", relief="solid", borderwidth=1
         )
         self.sug_list._renata_ac = True
+        self.sug_list._renata_autocomplete = True
         AutocompleteController._ac_listboxes.add(self.sug_list)
         self.sug_list.bind("<ButtonRelease-1>", self._on_list_click)
         self.sug_list.bind("<Return>", self._on_list_return)
@@ -43,35 +63,7 @@ class AutocompleteController:
 
     @classmethod
     def hide_all(cls, reason=""):
-        roots = []
-        for inst in list(cls._instances):
-            roots.append(inst.root)
-        if tk._default_root is not None:
-            roots.append(tk._default_root)
-        seen = set()
-
-        def sweep(widget):
-            if widget in seen:
-                return
-            seen.add(widget)
-            try:
-                if isinstance(widget, tk.Listbox) and getattr(widget, "_renata_ac", False):
-                    widget.place_forget()
-                    widget.delete(0, tk.END)
-            except tk.TclError:
-                return
-            try:
-                for child in widget.winfo_children():
-                    sweep(child)
-            except tk.TclError:
-                return
-
-        for root in roots:
-            try:
-                if root is not None and root.winfo_exists():
-                    sweep(root)
-            except tk.TclError:
-                continue
+        root = cls._instances[0].root if cls._instances else tk._default_root
         for lb in list(cls._ac_listboxes):
             try:
                 if lb.winfo_exists():
@@ -81,6 +73,7 @@ class AutocompleteController:
                 continue
         for inst in list(cls._instances):
             inst.hide(reason=reason)
+        _hide_all_autocomplete_listboxes(root)
 
     def hide(self, reason=""):
         self._req_gen += 1
@@ -93,6 +86,7 @@ class AutocompleteController:
             f"focus={repr(self.root.focus_get())}"
         )
         self.sug_list.place_forget()
+        _hide_all_autocomplete_listboxes(self.root)
 
     def _on_type(self, e):
         if e.keysym in ["Up", "Down", "Return", "Enter", "Left", "Right"]:
@@ -222,6 +216,7 @@ class AutocompleteController:
     def _on_tab_changed(self, _e):
         _dbg(f"{self._ac_id} tab_changed")
         AutocompleteController.hide_all(reason="tab_changed")
+        _hide_all_autocomplete_listboxes(self.root)
 
     def _on_global_click(self, e):
         if isinstance(e.widget, tk.Listbox) and getattr(e.widget, "_renata_ac", False):
@@ -257,6 +252,6 @@ class AutocompleteController:
         self.entry.delete(0, tk.END)
         self.entry.insert(0, t)
         _dbg(f"{self._ac_id} choose val={repr((t or '')[:30])} hide=True")
-        AutocompleteController.hide_all(reason="choose")
+        self.hide(reason="choose")
         self.entry.focus_set()
         self.entry.icursor(tk.END)
