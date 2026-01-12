@@ -4,12 +4,14 @@ from logic import utils
 
 
 class AutocompleteController:
+    _instances = []
     def __init__(self, root_window, entry_widget, min_chars=3, suggest_func=None):
         self.root = root_window
         self.entry = entry_widget
         self.min_chars = min_chars
         self.suggest_func = suggest_func
         self._req_gen = 0
+        AutocompleteController._instances.append(self)
 
         self.sug_list = tk.Listbox(
             self.root, width=30, height=6,
@@ -25,6 +27,12 @@ class AutocompleteController:
         self.entry.bind("<FocusOut>", self._on_focus_out)
         self.entry.bind("<Unmap>", self._on_unmap)
         self.root.bind_all("<ButtonRelease-1>", self._on_global_click, add="+")
+        self.root.bind_all("<<NotebookTabChanged>>", self._on_tab_changed, add="+")
+
+    @classmethod
+    def hide_all(cls):
+        for inst in list(cls._instances):
+            inst.hide()
 
     def hide(self):
         self._req_gen += 1
@@ -78,6 +86,8 @@ class AutocompleteController:
         if str(self.root.focus_get()) not in (str(self.entry), str(self.sug_list)):
             self.hide()
             return
+
+        AutocompleteController.hide_all()
 
         # UWAGA: nie blokujemy już wyświetlania na podstawie focus_get()
         # (wcześniej mogło to powodować, że lista była pusta, gdy fokus
@@ -141,6 +151,9 @@ class AutocompleteController:
         self.hide()
 
     def _on_unmap(self, _e):
+        self.hide()
+
+    def _on_tab_changed(self, _e):
         self.hide()
 
     def _on_global_click(self, e):
