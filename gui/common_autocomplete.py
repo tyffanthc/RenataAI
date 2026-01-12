@@ -21,6 +21,7 @@ class AutocompleteController:
         self.entry.bind("<Down>", self._on_arrow_down)
         self.entry.bind("<Up>", self._on_arrow_up)
         self.entry.bind("<Return>", self._on_enter_key)
+        self.entry.bind("<FocusOut>", self._on_focus_out)
 
     def hide(self):
         self.sug_list.place_forget()
@@ -94,6 +95,14 @@ class AutocompleteController:
     def _on_list_return(self, e):
         if self.sug_list.curselection():
             self._choose(self.sug_list.curselection()[0])
+
+    def _on_focus_out(self, _e):
+        self.root.after(1, self._maybe_hide_on_focus_out)
+
+    def _maybe_hide_on_focus_out(self):
+        if str(self.root.focus_get()) == str(self.sug_list):
+            return
+        self.hide()
 
     def _choose(self, idx):
         t = self.sug_list.get(idx)
