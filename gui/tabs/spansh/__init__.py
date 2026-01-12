@@ -58,3 +58,4 @@ class SpanshTab(ttk.Frame):
         for t in [self.tab_neutron, self.tab_riches, self.tab_ammonia,
                   self.tab_elw, self.tab_hmc, self.tab_exo]:
             t.hide_suggestions()
+        self.tab_trade.hide_suggestions()
