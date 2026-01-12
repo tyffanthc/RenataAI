@@ -114,6 +114,9 @@ class AutocompleteController:
         return "break"
 
     def _on_list_click(self, e):
+        if not self.entry.winfo_viewable():
+            self.hide()
+            return
         idx = self.sug_list.nearest(e.y)
         if idx is not None:
             self.sug_list.selection_clear(0, tk.END)
@@ -141,7 +144,11 @@ class AutocompleteController:
         self.hide()
 
     def _on_global_click(self, e):
-        if str(e.widget) in (str(self.entry), str(self.sug_list)):
+        if str(e.widget) == str(self.sug_list):
+            if not self.entry.winfo_viewable():
+                self.hide()
+            return
+        if str(e.widget) == str(self.entry):
             return
         self.hide()
 
