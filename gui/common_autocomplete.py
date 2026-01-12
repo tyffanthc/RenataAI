@@ -22,6 +22,7 @@ class AutocompleteController:
         self.entry.bind("<Up>", self._on_arrow_up)
         self.entry.bind("<Return>", self._on_enter_key)
         self.entry.bind("<FocusOut>", self._on_focus_out)
+        self.root.bind_all("<Button-1>", self._on_global_click, add="+")
 
     def hide(self):
         self.sug_list.place_forget()
@@ -101,6 +102,11 @@ class AutocompleteController:
 
     def _maybe_hide_on_focus_out(self):
         if str(self.root.focus_get()) == str(self.sug_list):
+            return
+        self.hide()
+
+    def _on_global_click(self, e):
+        if str(e.widget) in (str(self.entry), str(self.sug_list)):
             return
         self.hide()
 

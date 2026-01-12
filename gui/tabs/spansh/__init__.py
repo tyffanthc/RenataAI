@@ -17,6 +17,7 @@ class SpanshTab(ttk.Frame):
 
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=1, padx=5, pady=5)
+        self.nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
         self.tab_neutron = NeutronTab(self.nb, self.root)
         self.nb.add(self.tab_neutron, text="Neutron Plotter")
@@ -53,6 +54,9 @@ class SpanshTab(ttk.Frame):
         for t in [self.tab_neutron, self.tab_riches, self.tab_ammonia,
                   self.tab_elw, self.tab_hmc, self.tab_exo]:
             t.var_start.set(text)
+
+    def _on_tab_changed(self, _event):
+        self.hide_suggestions()
 
     def hide_suggestions(self):
         for t in [self.tab_neutron, self.tab_riches, self.tab_ammonia,
