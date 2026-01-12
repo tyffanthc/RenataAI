@@ -22,7 +22,7 @@ class AutocompleteController:
         self.entry.bind("<Up>", self._on_arrow_up)
         self.entry.bind("<Return>", self._on_enter_key)
         self.entry.bind("<FocusOut>", self._on_focus_out)
-        self.root.bind_all("<Button-1>", self._on_global_click, add="+")
+        self.root.bind_all("<ButtonRelease-1>", self._on_global_click, add="+")
 
     def hide(self):
         self.sug_list.place_forget()
@@ -90,12 +90,20 @@ class AutocompleteController:
         return "break"
 
     def _on_list_click(self, e):
-        if self.sug_list.curselection():
-            self._choose(self.sug_list.curselection()[0])
+        idx = self.sug_list.nearest(e.y)
+        if idx is not None:
+            self.sug_list.selection_clear(0, tk.END)
+            self.sug_list.selection_set(idx)
+            self.sug_list.activate(idx)
+            self._choose(idx)
 
     def _on_list_return(self, e):
         if self.sug_list.curselection():
             self._choose(self.sug_list.curselection()[0])
+            return
+        idx = self.sug_list.index("active")
+        if idx is not None:
+            self._choose(idx)
 
     def _on_focus_out(self, _e):
         self.root.after(1, self._maybe_hide_on_focus_out)
