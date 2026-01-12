@@ -9,6 +9,7 @@ class AutocompleteController:
         self.entry = entry_widget
         self.min_chars = min_chars
         self.suggest_func = suggest_func
+        self._req_gen = 0
 
         self.sug_list = tk.Listbox(
             self.root, width=30, height=6,
@@ -25,6 +26,7 @@ class AutocompleteController:
         self.root.bind_all("<ButtonRelease-1>", self._on_global_click, add="+")
 
     def hide(self):
+        self._req_gen += 1
         self.sug_list.place_forget()
 
     def _on_type(self, e):
@@ -32,16 +34,31 @@ class AutocompleteController:
             return
         t = self.entry.get()
         if len(t) >= self.min_chars:
-            threading.Thread(target=self._th_suggest, args=(t,), daemon=True).start()
+            self._req_gen += 1
+            req_gen = self._req_gen
+            query = t
+            threading.Thread(
+                target=self._th_suggest,
+                args=(t, req_gen, query),
+                daemon=True,
+            ).start()
         else:
             self.hide()
 
-    def _th_suggest(self, t):
+    def _th_suggest(self, t, req_gen, query):
         if self.suggest_func is not None:
             s = self.suggest_func(t)
         else:
             s = utils.pobierz_sugestie(t)
-        self.root.after(0, lambda: self._show_list(s))
+
+        def apply():
+            if req_gen != self._req_gen:
+                return
+            if (self.entry.get() or "").strip() != query:
+                return
+            self._show_list(s)
+
+        self.root.after(0, apply)
 
     def _show_list(self, items):
         # brak wyników -> chowamy listę
@@ -53,6 +70,10 @@ class AutocompleteController:
         # nie ma sensu pokazywać listy
         if not self.entry.winfo_ismapped():
             self.hide()
+            return
+        if not self.entry.winfo_viewable():
+            return
+        if str(self.root.focus_get()) not in (str(self.entry), str(self.sug_list)):
             return
 
         # UWAGA: nie blokujemy już wyświetlania na podstawie focus_get()
