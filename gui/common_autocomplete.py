@@ -43,6 +43,35 @@ class AutocompleteController:
 
     @classmethod
     def hide_all(cls, reason=""):
+        roots = []
+        for inst in list(cls._instances):
+            roots.append(inst.root)
+        if tk._default_root is not None:
+            roots.append(tk._default_root)
+        seen = set()
+
+        def sweep(widget):
+            if widget in seen:
+                return
+            seen.add(widget)
+            try:
+                if isinstance(widget, tk.Listbox) and getattr(widget, "_renata_ac", False):
+                    widget.place_forget()
+                    widget.delete(0, tk.END)
+            except tk.TclError:
+                return
+            try:
+                for child in widget.winfo_children():
+                    sweep(child)
+            except tk.TclError:
+                return
+
+        for root in roots:
+            try:
+                if root is not None and root.winfo_exists():
+                    sweep(root)
+            except tk.TclError:
+                continue
         for lb in list(cls._ac_listboxes):
             try:
                 if lb.winfo_exists():
