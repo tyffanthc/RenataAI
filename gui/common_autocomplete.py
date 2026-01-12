@@ -23,6 +23,7 @@ class AutocompleteController:
         self.entry.bind("<Up>", self._on_arrow_up)
         self.entry.bind("<Return>", self._on_enter_key)
         self.entry.bind("<FocusOut>", self._on_focus_out)
+        self.entry.bind("<Unmap>", self._on_unmap)
         self.root.bind_all("<ButtonRelease-1>", self._on_global_click, add="+")
 
     def hide(self):
@@ -72,8 +73,10 @@ class AutocompleteController:
             self.hide()
             return
         if not self.entry.winfo_viewable():
+            self.hide()
             return
         if str(self.root.focus_get()) not in (str(self.entry), str(self.sug_list)):
+            self.hide()
             return
 
         # UWAGA: nie blokujemy już wyświetlania na podstawie focus_get()
@@ -132,6 +135,9 @@ class AutocompleteController:
     def _maybe_hide_on_focus_out(self):
         if str(self.root.focus_get()) == str(self.sug_list):
             return
+        self.hide()
+
+    def _on_unmap(self, _e):
         self.hide()
 
     def _on_global_click(self, e):
