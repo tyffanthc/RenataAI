@@ -117,6 +117,7 @@ class RenataApp:
         # =========================
         self.main_nb = ttk.Notebook(self.root)
         self.main_nb.pack(fill="both", expand=1)
+        self.main_nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
         # --- Pulpit ---
         self.tab_pulpit = pulpit.PulpitTab(
@@ -211,6 +212,10 @@ class RenataApp:
     # ------------------------------------------------------------------ #
     #   Helpery do obsługi menu / nawigacji
     # ------------------------------------------------------------------ #
+
+    def _on_tab_changed(self, _event):
+        if hasattr(self.tab_spansh, "hide_suggestions"):
+            self.tab_spansh.hide_suggestions()
 
     def _switch_tab(self, tab_key: str):
         tab = self._tab_map.get(tab_key)
