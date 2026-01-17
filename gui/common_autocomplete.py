@@ -163,13 +163,10 @@ class AutocompleteController:
         _dbg(f"HIDE reason={reason} owner={hex(id(self))} active={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None} mapped={self.sug_list.winfo_ismapped()}")
         self._req_gen += 1
         if USE_SINGLETON_LISTBOX:
-            if AutocompleteController._active_owner is None:
-                return
-            if AutocompleteController._active_owner is not self:
-                return
             if AutocompleteController._shared_listbox is not None:
                 AutocompleteController._shared_listbox.place_forget()
-            AutocompleteController._active_owner = None
+            if AutocompleteController._active_owner is self:
+                AutocompleteController._active_owner = None
             return
         self.sug_list.place_forget()
 
