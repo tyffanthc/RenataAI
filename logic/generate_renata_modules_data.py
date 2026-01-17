@@ -2,17 +2,24 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Dict, Iterable, List
+import gzip
+from typing import Any, Dict, Iterable, List, Sequence
 
 import requests
 
 OUTPUT_FILE = "renata_modules_data.json"
-SOURCE_URL = "https://raw.githubusercontent.com/EDCD/coriolis-data/master/dist/modules.json"
+SOURCE_URLS: Sequence[str] = (
+    "https://raw.githubusercontent.com/EDCD/coriolis-data/master/dist/modules.json",
+    "https://raw.githubusercontent.com/EDCD/coriolis-data/master/dist/modules.json.gz",
+)
 
 
 def _fetch_json(url: str) -> Any:
     resp = requests.get(url, timeout=15)
     resp.raise_for_status()
+    if url.endswith(".gz"):
+        raw = gzip.decompress(resp.content)
+        return json.loads(raw.decode("utf-8"))
     return resp.json()
 
 
@@ -85,21 +92,30 @@ def _build_dataset(data: Any) -> Dict[str, Any]:
     return data_out
 
 
-def generate_modules_data(path: str = OUTPUT_FILE) -> str | None:
+def generate_modules_data(
+    path: str = OUTPUT_FILE,
+    source_urls: Sequence[str] | None = None,
+) -> str | None:
     """
     Generuje plik JSON z danymi FSD + booster.
     Zwraca:
         None - OK
         str  - blad (komunikat)
     """
-    try:
-        raw = _fetch_json(SOURCE_URL)
-        data = _build_dataset(raw)
-        if not data.get("complete"):
-            return "[MODULES_DATA] Brak kompletnych danych (FSD/booster)."
+    urls = list(source_urls or SOURCE_URLS)
+    errors: List[str] = []
+    for url in urls:
+        try:
+            raw = _fetch_json(url)
+            data = _build_dataset(raw)
+            if not data.get("complete"):
+                return "[MODULES_DATA] Brak kompletnych danych (FSD/booster)."
 
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        return None
-    except Exception as e:
-        return f"[MODULES_DATA] Błąd generowania: {e}"
+            data["source"] = url
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            return None
+        except Exception as e:
+            errors.append(f"{url}: {e}")
+
+    return "[MODULES_DATA] Błąd generowania: " + " | ".join(errors)

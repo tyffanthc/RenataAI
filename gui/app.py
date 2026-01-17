@@ -720,7 +720,8 @@ class RenataApp:
             error = None
             try:
                 error = generate_modules_data(
-                    config.get("modules_data_path", "renata_modules_data.json")
+                    config.get("modules_data_path", "renata_modules_data.json"),
+                    config.get("modules_data_sources", None),
                 )
             except Exception as e:
                 error = str(e)
