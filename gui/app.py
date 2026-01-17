@@ -205,7 +205,7 @@ class RenataApp:
         # =========================
         # BINDY I PĘTLA KOLEJKI
         # =========================
-        self.root.bind("<Button-1>", self.check_focus)
+        self.root.bind("<ButtonRelease-1>", self.check_focus, add="+")
         self.root.bind("<Configure>", self.on_window_move)
         self.root.after(100, self.check_queue)
 
@@ -305,10 +305,25 @@ class RenataApp:
     # ------------------------------------------------------------------ #
 
     def check_focus(self, e):
-        if hasattr(self.tab_spansh, 'hide_suggestions'):
+        if not hasattr(self.tab_spansh, 'hide_suggestions'):
+            return
+        w = None
+        try:
+            w = self.root.winfo_containing(e.x_root, e.y_root)
+        except Exception:
             w = e.widget
-            if "listbox" not in str(w).lower() and "entry" not in str(w).lower():
-                self.tab_spansh.hide_suggestions()
+        print("[APPDBG] click widget=", w, "class=", w.winfo_class() if w is not None else None)
+        try:
+            from gui.common_autocomplete import AutocompleteController
+            active_owner = AutocompleteController._active_owner
+        except Exception:
+            active_owner = None
+        is_listbox = isinstance(w, tk.Listbox) or getattr(w, "_renata_autocomplete", False)
+        is_entry = isinstance(w, (tk.Entry, ttk.Entry))
+        if is_listbox or (active_owner is not None and is_entry and w == active_owner.entry):
+            print("[APPDBG] ignore_autocomplete_click")
+            return
+        self.root.after_idle(self.tab_spansh.hide_suggestions)
 
     def on_window_move(self, event):
         if hasattr(self.tab_spansh, 'hide_suggestions'):
@@ -431,3 +446,4 @@ class RenataApp:
                 done()
 
         threading.Thread(target=worker, daemon=True).start()
+
