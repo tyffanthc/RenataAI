@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional
 import requests
 import config
 
+from logic.cache_store import CacheStore
+
 from logic.utils.notify import powiedz, DEBOUNCER
 from logic.request_dedup import make_request_key, run_deduped
 
@@ -72,6 +74,7 @@ class SpanshClient:
         self.default_timeout: float = 20.0
         self.default_retries: int = 3
         self.default_poll_interval: float = 2.0
+        self.cache = CacheStore(namespace="spansh", provider="spansh")
         self._reload_config()
 
     # ------------------------------------------------------------------ public
@@ -277,11 +280,31 @@ class SpanshClient:
         url = f"{self.base_url}{path}"
         headers = self._headers(referer=referer)
 
-        dedup_key = make_request_key(
+        def _normalize(value: Any) -> Any:
+            if isinstance(value, float):
+                return round(value, 4)
+            if isinstance(value, dict):
+                return {k: _normalize(value[k]) for k in sorted(value.keys())}
+            if isinstance(value, list):
+                return [_normalize(v) for v in value]
+            if isinstance(value, str):
+                return value.strip()
+            return value
+
+        norm_payload = _normalize(payload)
+        cache_key = make_request_key(
             "spansh",
             path,
-            {"mode": mode, "payload": payload},
+            {"mode": mode, "payload": norm_payload},
         )
+
+        ttl_seconds = 7 * 24 * 3600
+        if mode == "trade":
+            ttl_seconds = 6 * 3600
+
+        hit, cached, _meta = self.cache.get(cache_key)
+        if hit:
+            return cached
 
         # --- Job request ------------------------------------------------------
         # SPANSH oczekuje form-data (application/x-www-form-urlencoded),
@@ -362,9 +385,19 @@ class SpanshClient:
             return js
 
         try:
-            return run_deduped(dedup_key, _do_request)
+            result = run_deduped(cache_key, _do_request)
         except Exception:
             return None
+
+        if result is not None:
+            self.cache.set(
+                cache_key,
+                result,
+                ttl_seconds,
+                meta={"provider": "spansh", "endpoint": path, "mode": mode},
+            )
+
+        return result
 
     def neutron_route(
         self,
