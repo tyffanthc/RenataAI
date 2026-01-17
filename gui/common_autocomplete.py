@@ -2,6 +2,23 @@ import tkinter as tk
 import threading
 from logic import utils
 
+def _hide_all_autocomplete_listboxes(root):
+    if root is None:
+        return 0
+    count = 0
+    try:
+        children = root.winfo_children()
+    except tk.TclError:
+        return 0
+    for widget in children:
+        try:
+            if isinstance(widget, tk.Listbox) and getattr(widget, "_renata_autocomplete", False):
+                widget.place_forget()
+                widget.delete(0, tk.END)
+                count += 1
+        except tk.TclError:
+            continue
+    return count
 
 class AutocompleteController:
     _instances = []
@@ -17,6 +34,7 @@ class AutocompleteController:
             self.root, width=30, height=6,
             bg="#1f2833", relief="solid", borderwidth=1
         )
+        self.sug_list._renata_autocomplete = True
         self.sug_list.bind("<ButtonRelease-1>", self._on_list_click)
         self.sug_list.bind("<Return>", self._on_list_return)
 
@@ -155,6 +173,7 @@ class AutocompleteController:
 
     def _on_tab_changed(self, _e):
         self.hide()
+        _hide_all_autocomplete_listboxes(self.root)
 
     def _on_global_click(self, e):
         if str(e.widget) == str(self.sug_list):
@@ -164,6 +183,7 @@ class AutocompleteController:
         if str(e.widget) == str(self.entry):
             return
         self.hide()
+        _hide_all_autocomplete_listboxes(self.root)
 
     def _choose(self, idx):
         t = self.sug_list.get(idx)
