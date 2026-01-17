@@ -98,6 +98,8 @@ class AutocompleteController:
         _dbg(f"HIDE reason={reason} owner={hex(id(self))} active={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None} mapped={self.sug_list.winfo_ismapped()}")
         self._req_gen += 1
         if USE_SINGLETON_LISTBOX:
+            if AutocompleteController._active_owner is None:
+                return
             if AutocompleteController._active_owner is not self:
                 return
             if AutocompleteController._shared_listbox is not None:
@@ -249,7 +251,11 @@ class AutocompleteController:
 
     def _on_global_click(self, e):
         is_list = str(e.widget) == str(self.sug_list) or getattr(e.widget, "_renata_autocomplete", False)
-        is_entry = str(e.widget) == str(self.entry)
+        if USE_SINGLETON_LISTBOX:
+            owner = AutocompleteController._active_owner
+            is_entry = owner is not None and e.widget == owner.entry
+        else:
+            is_entry = str(e.widget) == str(self.entry)
         _dbg(
             "GLOBAL_CLICK widget=" + repr(e.widget) +
             f" is_list={is_list} is_entry={is_entry} active={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None} mapped={self.sug_list.winfo_ismapped()}"
