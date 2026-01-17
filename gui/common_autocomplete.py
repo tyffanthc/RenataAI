@@ -35,6 +35,7 @@ class AutocompleteController:
     _shared_listbox = None
     _active_owner = None
     _entry_map = WeakKeyDictionary()
+    _shared_binds_installed = False
     def __init__(self, root_window, entry_widget, min_chars=3, suggest_func=None):
         self.root = root_window
         self.entry = entry_widget
@@ -50,10 +51,28 @@ class AutocompleteController:
                     bg="#1f2833", relief="solid", borderwidth=1
                 )
                 AutocompleteController._shared_listbox._renata_autocomplete = True
-                AutocompleteController._shared_listbox.bind("<ButtonRelease-1>", AutocompleteController._on_shared_list_click)
-                AutocompleteController._shared_listbox.bind("<Button-1>", AutocompleteController._on_shared_list_event, add="+")
-                AutocompleteController._shared_listbox.bind("<ButtonRelease-1>", AutocompleteController._on_shared_list_event, add="+")
-                AutocompleteController._shared_listbox.bind("<Return>", AutocompleteController._on_shared_list_return)
+            if not AutocompleteController._shared_binds_installed:
+                AutocompleteController._shared_listbox.bind(
+                    "<ButtonRelease-1>",
+                    AutocompleteController._on_shared_list_click,
+                    add="+"
+                )
+                AutocompleteController._shared_listbox.bind(
+                    "<Return>",
+                    AutocompleteController._on_shared_list_enter,
+                    add="+"
+                )
+                AutocompleteController._shared_listbox.bind(
+                    "<Button-1>",
+                    AutocompleteController._on_shared_list_event,
+                    add="+"
+                )
+                AutocompleteController._shared_listbox.bind(
+                    "<ButtonRelease-1>",
+                    AutocompleteController._on_shared_list_event,
+                    add="+"
+                )
+                AutocompleteController._shared_binds_installed = True
             self.sug_list = AutocompleteController._shared_listbox
         else:
             self.sug_list = tk.Listbox(
@@ -90,8 +109,17 @@ class AutocompleteController:
     @classmethod
     def _on_shared_list_click(cls, e):
         owner = cls._active_owner
-        if owner is not None:
-            owner._on_list_click(e)
+        if owner is None:
+            cls._hide_shared_listbox()
+            return "break"
+        listbox = cls._shared_listbox
+        if listbox is None:
+            return "break"
+        idx = listbox.nearest(e.y)
+        if idx is None or idx < 0:
+            return "break"
+        owner._choose(idx)
+        return "break"
 
     @classmethod
     def _on_shared_list_event(cls, e):
@@ -101,10 +129,23 @@ class AutocompleteController:
         )
 
     @classmethod
-    def _on_shared_list_return(cls, e):
+    def _on_shared_list_enter(cls, e):
         owner = cls._active_owner
-        if owner is not None:
-            owner._on_list_return(e)
+        if owner is None:
+            cls._hide_shared_listbox()
+            return "break"
+        listbox = cls._shared_listbox
+        if listbox is None:
+            return "break"
+        idx = listbox.index("active")
+        if idx is None:
+            size = listbox.size()
+            if size == 1:
+                idx = 0
+        if idx is None or idx < 0:
+            return "break"
+        owner._choose(idx)
+        return "break"
 
     def hide(self, reason=""):
         _dbg(f"HIDE reason={reason} owner={hex(id(self))} active={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None} mapped={self.sug_list.winfo_ismapped()}")
