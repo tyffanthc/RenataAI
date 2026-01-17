@@ -109,6 +109,12 @@ class AutocompleteController:
     @classmethod
     def _on_shared_list_click(cls, e):
         owner = cls._active_owner
+        if owner is None:
+            try:
+                focus_widget = e.widget.focus_get()
+            except tk.TclError:
+                focus_widget = None
+            owner = cls._entry_map.get(focus_widget)
         _dbg(
             f"SHARED_CLICK start widget={repr(e.widget)} "
             f"y={e.y} nearest={cls._shared_listbox.nearest(e.y) if cls._shared_listbox is not None else None} "
