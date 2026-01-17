@@ -180,6 +180,9 @@ class AutocompleteController:
         if self._programmatic_change:
             _dbg("TYPE ignored programmatic_change=True")
             return
+        if time.monotonic() < self._suppress_show_until:
+            _dbg("TYPE ignored suppress_show_until active")
+            return
         if e.keysym in ["Up", "Down", "Return", "Enter", "Left", "Right"]:
             return
         t = self.entry.get()
@@ -203,12 +206,15 @@ class AutocompleteController:
 
         def apply():
             if req_gen != self._req_gen:
-                _dbg(f"APPLY ignored stale gen={req_gen} active={self._req_gen}")
+                _dbg(f"RESULT ignored stale gen={req_gen} active={self._req_gen}")
                 return
-            if (self.entry.get() or "").strip() != query:
+            if self._programmatic_change:
+                _dbg("RESULT ignored programmatic_change=True")
                 return
             if time.monotonic() < self._suppress_show_until:
-                _dbg("APPLY ignored suppress_show_until active")
+                _dbg("RESULT ignored suppress_show_until active")
+                return
+            if (self.entry.get() or "").strip() != query:
                 return
             self._show_list(s)
 
@@ -396,14 +402,19 @@ class AutocompleteController:
         if chosen is None or chosen < 0:
             return
         self._programmatic_change = True
-        self._suppress_show_until = time.monotonic() + 0.25
-        _dbg("CHOOSE start programmatic_change=True suppress_show_until set")
+        self._suppress_show_until = time.monotonic() + 0.6
+        self._req_gen += 1
+        _dbg(
+            "CHOOSE start "
+            f"req_gen={self._req_gen} "
+            f"suppress_until={self._suppress_show_until:.6f}"
+        )
         t = self.sug_list.get(chosen)
         self.entry.delete(0, tk.END)
         self.entry.insert(0, t)
-        self.hide(reason="choose")
         self.entry.focus_set()
         self.entry.icursor(tk.END)
+        self.entry.after_idle(lambda: self.hide(reason="choose"))
         self.entry.after_idle(self._resume_programmatic_change)
 
     def _resume_programmatic_change(self):
