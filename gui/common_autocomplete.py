@@ -51,6 +51,8 @@ class AutocompleteController:
                 )
                 AutocompleteController._shared_listbox._renata_autocomplete = True
                 AutocompleteController._shared_listbox.bind("<ButtonRelease-1>", AutocompleteController._on_shared_list_click)
+                AutocompleteController._shared_listbox.bind("<Button-1>", AutocompleteController._on_shared_list_event, add="+")
+                AutocompleteController._shared_listbox.bind("<ButtonRelease-1>", AutocompleteController._on_shared_list_event, add="+")
                 AutocompleteController._shared_listbox.bind("<Return>", AutocompleteController._on_shared_list_return)
             self.sug_list = AutocompleteController._shared_listbox
         else:
@@ -90,6 +92,13 @@ class AutocompleteController:
         owner = cls._active_owner
         if owner is not None:
             owner._on_list_click(e)
+
+    @classmethod
+    def _on_shared_list_event(cls, e):
+        _dbg(
+            f"LISTBOX_EVENT type={e.type} y={e.y} x={e.x} "
+            f"size={cls._shared_listbox.size() if cls._shared_listbox is not None else None}"
+        )
 
     @classmethod
     def _on_shared_list_return(cls, e):
@@ -182,6 +191,16 @@ class AutocompleteController:
 
         self.sug_list.place(x=x, y=y, width=w)
         self.sug_list.lift()
+        _dbg(
+            "LISTBOX_GEOM "
+            f"ismapped={self.sug_list.winfo_ismapped()} "
+            f"viewable={self.sug_list.winfo_viewable()} "
+            f"rootx={self.sug_list.winfo_rootx()} "
+            f"rooty={self.sug_list.winfo_rooty()} "
+            f"width={self.sug_list.winfo_width()} "
+            f"height={self.sug_list.winfo_height()} "
+            f"active_owner={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None}"
+        )
 
     def _on_arrow_down(self, e):
         if self.sug_list.winfo_ismapped() and str(self.root.focus_get()) == str(self.entry):
@@ -258,6 +277,19 @@ class AutocompleteController:
             or getattr(e.widget, "_renata_autocomplete", False)
         )
         is_entry = e.widget in AutocompleteController._entry_map
+        x_root = getattr(e, "x_root", None)
+        y_root = getattr(e, "y_root", None)
+        hit_widget = None
+        try:
+            if x_root is not None and y_root is not None:
+                hit_widget = self.root.winfo_containing(x_root, y_root)
+        except tk.TclError:
+            hit_widget = None
+        _dbg(f"HITTEST x_root={x_root} y_root={y_root} widget={repr(e.widget)}")
+        _dbg(
+            f"HITTEST under_cursor={repr(hit_widget)} "
+            f"class={hit_widget.winfo_class() if hit_widget is not None else None}"
+        )
         print(f"[ACDBG] GLOBAL_CLICK_ENTRY widget={repr(e.widget)} is_entry={is_entry}")
         _dbg(
             "GLOBAL_CLICK widget=" + repr(e.widget) +
