@@ -115,6 +115,8 @@ class AutocompleteController:
             except tk.TclError:
                 focus_widget = None
             owner = cls._entry_map.get(focus_widget)
+            if owner is not None:
+                cls._active_owner = owner
         _dbg(
             f"SHARED_CLICK start widget={repr(e.widget)} "
             f"y={e.y} nearest={cls._shared_listbox.nearest(e.y) if cls._shared_listbox is not None else None} "
@@ -131,6 +133,7 @@ class AutocompleteController:
         if idx is None or idx < 0:
             return "break"
         owner._choose(idx)
+        cls._hide_shared_listbox()
         return "break"
 
     @classmethod
