@@ -329,6 +329,8 @@ class AutocompleteController:
         _hide_all_autocomplete_listboxes(self.root)
 
     def _on_global_click(self, e):
+        if USE_SINGLETON_LISTBOX and AutocompleteController._active_owner not in (None, self):
+            return
         is_list = (
             e.widget is AutocompleteController._shared_listbox
             or getattr(e.widget, "_renata_autocomplete", False)
