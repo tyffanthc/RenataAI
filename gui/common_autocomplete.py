@@ -2,9 +2,10 @@ import tkinter as tk
 import threading
 import time
 from weakref import WeakKeyDictionary
+import config
 from logic import utils
 
-AUTOCOMPLETE_DEBUG = True
+AUTOCOMPLETE_DEBUG = bool(config.get("debug_autocomplete", False))
 
 def _dbg(msg):
     if AUTOCOMPLETE_DEBUG:
@@ -38,12 +39,15 @@ class AutocompleteController:
     _last_owner = None
     _entry_map = WeakKeyDictionary()
     _shared_binds_installed = False
+    _global_binds_installed = False
+    _global_bind_root = None
     def __init__(self, root_window, entry_widget, min_chars=3, suggest_func=None):
         self.root = root_window
         self.entry = entry_widget
         self.min_chars = min_chars
         self.suggest_func = suggest_func
         self._req_gen = 0
+        self._focus_epoch = 0
         self._programmatic_change = False
         self._suppress_show_until = 0.0
         self._last_chosen_value = None
@@ -92,10 +96,21 @@ class AutocompleteController:
         self.entry.bind("<Down>", self._on_arrow_down)
         self.entry.bind("<Up>", self._on_arrow_up)
         self.entry.bind("<Return>", self._on_enter_key)
+        self.entry.bind("<Tab>", self._on_tab_key)
+        self.entry.bind("<Escape>", self._on_escape_key)
+        self.entry.bind("<FocusIn>", self._on_focus_in)
         self.entry.bind("<FocusOut>", self._on_focus_out)
         self.entry.bind("<Unmap>", self._on_unmap)
-        self.root.bind_all("<ButtonRelease-1>", self._on_global_click, add="+")
-        self.root.bind_all("<<NotebookTabChanged>>", self._on_tab_changed, add="+")
+        AutocompleteController._install_global_binds(self.root)
+
+    @classmethod
+    def _install_global_binds(cls, root):
+        if cls._global_binds_installed and cls._global_bind_root is root:
+            return
+        root.bind_all("<ButtonRelease-1>", cls._on_global_click, add="+")
+        root.bind_all("<<NotebookTabChanged>>", cls._on_tab_changed, add="+")
+        cls._global_binds_installed = True
+        cls._global_bind_root = root
 
     @classmethod
     def hide_all(cls):
@@ -109,6 +124,7 @@ class AutocompleteController:
     def _hide_shared_listbox(cls):
         if cls._shared_listbox is not None:
             cls._shared_listbox.place_forget()
+            cls._shared_listbox.delete(0, tk.END)
         cls._active_owner = None
         cls._last_owner = None
 
@@ -180,6 +196,7 @@ class AutocompleteController:
         if USE_SINGLETON_LISTBOX:
             if AutocompleteController._shared_listbox is not None:
                 AutocompleteController._shared_listbox.place_forget()
+                AutocompleteController._shared_listbox.delete(0, tk.END)
             if AutocompleteController._active_owner is self:
                 AutocompleteController._active_owner = None
             return
@@ -192,7 +209,7 @@ class AutocompleteController:
         if time.monotonic() < self._suppress_show_until:
             _dbg("TYPE ignored suppress_show_until active")
             return
-        if e.keysym in ["Up", "Down", "Return", "Enter", "Left", "Right"]:
+        if e.keysym in ["Up", "Down", "Return", "Enter", "Left", "Right", "Tab", "Escape"]:
             return
         t = self.entry.get()
         if self._last_chosen_value is not None and t != self._last_chosen_value:
@@ -201,15 +218,16 @@ class AutocompleteController:
             self._req_gen += 1
             req_gen = self._req_gen
             query = t
+            focus_epoch = self._focus_epoch
             threading.Thread(
                 target=self._th_suggest,
-                args=(t, req_gen, query),
+                args=(t, req_gen, query, focus_epoch),
                 daemon=True,
             ).start()
         else:
             self.hide()
 
-    def _th_suggest(self, t, req_gen, query):
+    def _th_suggest(self, t, req_gen, query, focus_epoch):
         if self.suggest_func is not None:
             s = self.suggest_func(t)
         else:
@@ -218,6 +236,9 @@ class AutocompleteController:
         def apply():
             if req_gen != self._req_gen:
                 _dbg(f"RESULT ignored stale gen={req_gen} active={self._req_gen}")
+                return
+            if focus_epoch != self._focus_epoch:
+                _dbg("RESULT ignored focus_epoch changed")
                 return
             if self._programmatic_change:
                 _dbg("RESULT ignored programmatic_change=True")
@@ -294,23 +315,66 @@ class AutocompleteController:
         )
 
     def _on_arrow_down(self, e):
-        if self.sug_list.winfo_ismapped() and str(self.root.focus_get()) == str(self.entry):
-            self.sug_list.focus_set()
-            self.sug_list.selection_clear(0, tk.END)
-            self.sug_list.selection_set(0)
-            self.sug_list.activate(0)
+        if not self.sug_list.winfo_ismapped():
+            return
+        size = self.sug_list.size()
+        if size <= 0:
             return "break"
+        cur = self.sug_list.curselection()
+        idx = cur[0] + 1 if cur else 0
+        if idx >= size:
+            idx = size - 1
+        self.sug_list.selection_clear(0, tk.END)
+        self.sug_list.selection_set(idx)
+        self.sug_list.activate(idx)
+        return "break"
 
     def _on_arrow_up(self, e):
+        if not self.sug_list.winfo_ismapped():
+            return
+        size = self.sug_list.size()
+        if size <= 0:
+            return "break"
+        cur = self.sug_list.curselection()
+        idx = cur[0] - 1 if cur else size - 1
+        if idx < 0:
+            idx = 0
+        self.sug_list.selection_clear(0, tk.END)
+        self.sug_list.selection_set(idx)
+        self.sug_list.activate(idx)
         return "break"
 
     def _on_enter_key(self, e):
         if str(self.root.focus_get()) != str(self.entry):
             return
         if self.sug_list.winfo_ismapped():
-            idx = self.sug_list.curselection()[0] if self.sug_list.curselection() else 0
-            self._choose(idx)
-        return "break"
+            _dbg("ENTER choose")
+            self._choose(None)
+            return "break"
+        return
+
+    def _on_tab_key(self, e):
+        if str(self.root.focus_get()) != str(self.entry):
+            return
+        if self.sug_list.winfo_ismapped():
+            _dbg("TAB choose")
+            self._choose(None)
+            try:
+                self.entry.tk_focusNext().focus_set()
+            except Exception:
+                pass
+            return "break"
+        return
+
+    def _on_escape_key(self, e):
+        if self.sug_list.winfo_ismapped():
+            _dbg("ESC hide")
+            self.hide(reason="esc")
+            return "break"
+        return
+
+    def _on_focus_in(self, _e):
+        pass
 
     def _on_list_click(self, e):
         _dbg(
@@ -345,25 +409,29 @@ class AutocompleteController:
             self._choose(idx)
 
     def _on_focus_out(self, _e):
+        self._focus_epoch += 1
         self.root.after(1, self._maybe_hide_on_focus_out)
 
     def _maybe_hide_on_focus_out(self):
         if str(self.root.focus_get()) == str(self.sug_list):
             return
-        self.hide()
+        self.hide(reason="focus_out")
 
     def _on_unmap(self, _e):
-        self.hide()
+        self.hide(reason="unmap")
 
-    def _on_tab_changed(self, _e):
+    @classmethod
+    def _on_tab_changed(cls, _e):
         if USE_SINGLETON_LISTBOX:
             AutocompleteController._hide_shared_listbox()
             return
-        self.hide()
-        _hide_all_autocomplete_listboxes(self.root)
+        AutocompleteController.hide_all()
+        if cls._global_bind_root is not None:
+            _hide_all_autocomplete_listboxes(cls._global_bind_root)
 
-    def _on_global_click(self, e):
-        if USE_SINGLETON_LISTBOX and AutocompleteController._active_owner not in (None, self):
+    @classmethod
+    def _on_global_click(cls, e):
+        if cls._global_bind_root is None:
             return
         is_list = (
             e.widget is AutocompleteController._shared_listbox
@@ -375,7 +443,7 @@ class AutocompleteController:
         hit_widget = None
         try:
             if x_root is not None and y_root is not None:
-                hit_widget = self.root.winfo_containing(x_root, y_root)
+                hit_widget = cls._global_bind_root.winfo_containing(x_root, y_root)
         except tk.TclError:
             hit_widget = None
         _dbg(f"HITTEST x_root={x_root} y_root={y_root} widget={repr(e.widget)}")
@@ -383,10 +451,9 @@ class AutocompleteController:
             f"HITTEST under_cursor={repr(hit_widget)} "
             f"class={hit_widget.winfo_class() if hit_widget is not None else None}"
         )
-        print(f"[ACDBG] GLOBAL_CLICK_ENTRY widget={repr(e.widget)} is_entry={is_entry}")
         _dbg(
             "GLOBAL_CLICK widget=" + repr(e.widget) +
-            f" is_list={is_list} is_entry={is_entry} active={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None} mapped={self.sug_list.winfo_ismapped()}"
+            f" is_list={is_list} is_entry={is_entry} active={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None}"
         )
         if is_list:
             _dbg("GLOBAL_CLICK action=ignore_listbox")
@@ -395,12 +462,14 @@ class AutocompleteController:
             _dbg("GLOBAL_CLICK action=ignore_entry")
             return
         if USE_SINGLETON_LISTBOX:
-            self.root.after_idle(AutocompleteController._hide_shared_listbox)
+            if cls._global_bind_root is not None:
+                cls._global_bind_root.after_idle(AutocompleteController._hide_shared_listbox)
             _dbg("GLOBAL_CLICK action=hide_shared")
         else:
-            self.root.after_idle(self.hide, "global_click_outside")
+            if cls._global_bind_root is not None:
+                cls._global_bind_root.after_idle(AutocompleteController.hide_all)
+                _hide_all_autocomplete_listboxes(cls._global_bind_root)
             _dbg("GLOBAL_CLICK action=hide")
-            _hide_all_autocomplete_listboxes(self.root)
 
     def _choose(self, idx):
         chosen = None
