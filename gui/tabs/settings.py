@@ -36,6 +36,7 @@ class SettingsTab(ttk.Frame):
         self.controller = controller
         self._get_config = get_config
         self._save_config = save_config
+        self._jackpot_dialog = None
 
         self._create_vars()
         self._build_ui()
@@ -129,6 +130,19 @@ class SettingsTab(ttk.Frame):
         self._build_tab_trade()
         self._build_tab_engineer()
         self._build_tab_advanced()
+        self.nb.select(self._tab_general)
+
+    def _add_save_bar(self, parent, row: int) -> None:
+        btn_bar = ttk.Frame(parent)
+        btn_bar.grid(row=row, column=0, padx=12, pady=(0, 12), sticky="e")
+        btn_bar.columnconfigure(0, weight=1)
+        btn_bar.columnconfigure(1, weight=0)
+
+        btn_reset = ttk.Button(btn_bar, text="Przywróć domyślne", command=self._on_reset)
+        btn_reset.grid(row=0, column=0, padx=6, pady=4, sticky="e")
+
+        btn_save = ttk.Button(btn_bar, text="Zapisz ustawienia", command=self._on_save)
+        btn_save.grid(row=0, column=1, padx=6, pady=4, sticky="e")
 
     # ------------------------------------------------------------------ #
     #   Zakładka: OGÓLNE
@@ -218,7 +232,13 @@ class SettingsTab(ttk.Frame):
             lf_paths,
             text="Ścieżka do Journal logs używana przez backend.",
             foreground="#888888",
-        ).grid(row=2, column=0, columnspan=3, padx=8, pady=(0, 8), sticky="w")
+        ).grid(row=2, column=0, columnspan=3, padx=8, pady=(0, 4), sticky="w")
+
+        ttk.Label(
+            lf_paths,
+            text="Renata spróbuje wykryć folder journali automatycznie (w przyszłości).",
+            foreground="#888888",
+        ).grid(row=3, column=0, columnspan=3, padx=8, pady=(0, 8), sticky="w")
 
         # Sekcja: WYGLĄD
         lf_appearance = ttk.LabelFrame(parent, text=" Wygląd interfejsu ")
@@ -282,21 +302,12 @@ class SettingsTab(ttk.Frame):
 
         ttk.Label(
             lf_spansh,
-            text="Wpływa na timeout i retry zapytań do SPANSH.",
+            text="Dotyczy zapytań do SPANSH oraz pollingu 202.",
             foreground="#888888",
         ).grid(row=1, column=0, columnspan=4, padx=8, pady=(0, 8), sticky="w")
 
         # Dół zakładki – przyciski
-        btn_bar = ttk.Frame(parent)
-        btn_bar.grid(row=5, column=0, padx=12, pady=(0, 12), sticky="e")
-        btn_bar.columnconfigure(0, weight=1)
-        btn_bar.columnconfigure(1, weight=0)
-
-        btn_reset = ttk.Button(btn_bar, text="Przywróć domyślne", command=self._on_reset)
-        btn_reset.grid(row=0, column=0, padx=6, pady=4, sticky="e")
-
-        btn_save = ttk.Button(btn_bar, text="Zapisz ustawienia", command=self._on_save)
-        btn_save.grid(row=0, column=1, padx=6, pady=4, sticky="e")
+        self._add_save_bar(parent, row=5)
 
     # ------------------------------------------------------------------ #
     #   Zakładka: ASYSTENCI
@@ -386,6 +397,8 @@ class SettingsTab(ttk.Frame):
             text="Bezpieczeństwo lotu i ostrzeżenia krytyczne.",
             foreground="#888888",
         ).grid(row=1, column=0, columnspan=3, padx=8, pady=(0, 6), sticky="w")
+
+        self._add_save_bar(parent, row=3)
 
     # ------------------------------------------------------------------ #
     #   Zakładka: EKSPLORACJA
@@ -488,6 +501,8 @@ class SettingsTab(ttk.Frame):
         self.update_science_status(initial_loaded)
         self._update_exploration_excel_hint()
 
+        self._add_save_bar(parent, row=1)
+
     # ------------------------------------------------------------------ #
     #   Zakładka: HANDEL
     # ------------------------------------------------------------------ #
@@ -529,10 +544,28 @@ class SettingsTab(ttk.Frame):
             foreground="#888888",
         ).grid(row=1, column=0, columnspan=3, padx=8, pady=(0, 6), sticky="w")
 
+        self._add_save_bar(parent, row=1)
+
     def _edit_jackpot_thresholds(self) -> None:
+        existing = getattr(self, "_jackpot_dialog", None)
+        try:
+            if existing is not None and existing.winfo_exists():
+                existing.lift()
+                existing.focus_force()
+                return
+        except Exception:
+            self._jackpot_dialog = None
+
         dialog = tk.Toplevel(self)
+        self._jackpot_dialog = dialog
         dialog.title("Progi jackpotów")
         dialog.resizable(False, False)
+        dialog.transient(self.winfo_toplevel())
+        try:
+            dialog.attributes("-topmost", True)
+        except Exception:
+            pass
+        dialog.grab_set()
 
         entries: Dict[str, tk.Entry] = {}
         row = 0
@@ -543,6 +576,16 @@ class SettingsTab(ttk.Frame):
             ent.grid(row=row, column=1, padx=8, pady=4, sticky="w")
             entries[key] = ent
             row += 1
+
+        def _on_close():
+            try:
+                dialog.grab_release()
+            except Exception:
+                pass
+            try:
+                dialog.destroy()
+            finally:
+                self._jackpot_dialog = None
 
         def on_save():
             updated: Dict[str, int] = {}
@@ -557,12 +600,15 @@ class SettingsTab(ttk.Frame):
                     return
                 updated[k] = val
             self.jackpot_thresholds = updated
-            dialog.destroy()
+            _on_close()
 
         btn_row = ttk.Frame(dialog)
         btn_row.grid(row=row, column=0, columnspan=2, pady=(6, 8), sticky="e")
-        ttk.Button(btn_row, text="Anuluj", command=dialog.destroy).grid(row=0, column=0, padx=6)
+        ttk.Button(btn_row, text="Anuluj", command=_on_close).grid(row=0, column=0, padx=6)
         ttk.Button(btn_row, text="Zapisz", command=on_save).grid(row=0, column=1, padx=6)
+
+        dialog.protocol("WM_DELETE_WINDOW", _on_close)
+        dialog.focus_force()
 
     # ------------------------------------------------------------------ #
     #   Zakładka: INŻYNIER
@@ -588,6 +634,8 @@ class SettingsTab(ttk.Frame):
             if isinstance(child, ttk.Checkbutton):
                 child.state(["disabled"])
                 child.configure(text=f"{child.cget('text')} (wkrótce)")
+
+        self._add_save_bar(parent, row=1)
 
     def _on_use_system_theme(self) -> None:
         if not hasattr(self, "_theme_combo"):
@@ -632,6 +680,8 @@ class SettingsTab(ttk.Frame):
             text="Włącza dodatkowe logi w konsoli i pulpicie.",
             foreground="#888888",
         ).grid(row=3, column=0, padx=8, pady=(2, 8), sticky="w")
+
+        self._add_save_bar(parent, row=1)
 
     # ------------------------------------------------------------------ #
     # Ładowanie / zapisywanie – połączone z backendowym configiem
