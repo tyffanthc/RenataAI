@@ -95,7 +95,7 @@ class AutocompleteController:
             owner._on_list_return(e)
 
     def hide(self, reason=""):
-        _dbg("HIDE reason={reason} owner={hex(id(self))} active={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None} mapped={self.sug_list.winfo_ismapped()}")
+        _dbg(f"HIDE reason={reason} owner={hex(id(self))} active={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None} mapped={self.sug_list.winfo_ismapped()}")
         self._req_gen += 1
         if USE_SINGLETON_LISTBOX:
             if AutocompleteController._active_owner is not self:
@@ -138,7 +138,7 @@ class AutocompleteController:
         self.root.after(0, apply)
 
     def _show_list(self, items):
-        _dbg("SHOW size={len(items)} mapped_before={self.sug_list.winfo_ismapped()} owner={hex(id(self))}")
+        _dbg(f"SHOW size={len(items)} mapped_before={self.sug_list.winfo_ismapped()} owner={hex(id(self))}")
         # brak wynik+-w -> chowamy list|T
         if not items:
             self.hide()
@@ -200,7 +200,7 @@ class AutocompleteController:
     def _on_list_click(self, e):
         _dbg(
             "LIST_CLICK start widget=" + repr(e.widget) +
-            f" y={e.y} nearest={self.sug_list.nearest(e.y)} size={self.sug_list.size()} active={self.sug_list.index(\"active\")} cur={self.sug_list.curselection()}"
+            f" y={e.y} nearest={self.sug_list.nearest(e.y)} size={self.sug_list.size()} active={self.sug_list.index('active')} cur={self.sug_list.curselection()}"
         )
         if not self.entry.winfo_viewable():
             self.hide(reason="list_click_entry_hidden")
@@ -218,7 +218,7 @@ class AutocompleteController:
         if self.sug_list.curselection():
             self._choose(self.sug_list.curselection()[0])
             return
-        idx = self.sug_list.index("active")
+        idx = self.sug_list.index('active')
         if idx is None:
             size = self.sug_list.size()
             if size == 1:
@@ -248,31 +248,23 @@ class AutocompleteController:
         _hide_all_autocomplete_listboxes(self.root)
 
     def _on_global_click(self, e):
-        is_list = str(e.widget) == str(self.sug_list)
+        is_list = str(e.widget) == str(self.sug_list) or getattr(e.widget, "_renata_autocomplete", False)
         is_entry = str(e.widget) == str(self.entry)
         _dbg(
             "GLOBAL_CLICK widget=" + repr(e.widget) +
             f" is_list={is_list} is_entry={is_entry} active={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None} mapped={self.sug_list.winfo_ismapped()}"
         )
         if is_list:
-            if not self.entry.winfo_viewable():
-                if USE_SINGLETON_LISTBOX:
-                    AutocompleteController._hide_shared_listbox()
-                    _dbg("GLOBAL_CLICK action=hide_shared")
-                else:
-                    self.hide(reason="global_click_list_entry_hidden")
-                    _dbg("GLOBAL_CLICK action=hide")
-            else:
-                _dbg("GLOBAL_CLICK action=ignore")
+            _dbg("GLOBAL_CLICK action=ignore_listbox")
             return
         if is_entry:
             _dbg("GLOBAL_CLICK action=ignore")
             return
         if USE_SINGLETON_LISTBOX:
-            AutocompleteController._hide_shared_listbox()
+            self.root.after_idle(AutocompleteController._hide_shared_listbox)
             _dbg("GLOBAL_CLICK action=hide_shared")
         else:
-            self.hide(reason="global_click_outside")
+            self.root.after_idle(self.hide, "global_click_outside")
             _dbg("GLOBAL_CLICK action=hide")
             _hide_all_autocomplete_listboxes(self.root)
 
@@ -283,7 +275,7 @@ class AutocompleteController:
         elif idx is not None:
             chosen = idx
         else:
-            chosen = self.sug_list.index("active")
+            chosen = self.sug_list.index('active')
             if chosen is None:
                 size = self.sug_list.size()
                 if size == 1:
