@@ -113,7 +113,7 @@ class NeutronTab(ttk.Frame):
                     opis.append(self._format_jump_row(sys_name, detail))
 
                 common.handle_route_ready_autoclipboard(self, tr, status_target="neu")
-                common.wypelnij_liste(self.lst, opis)
+                common.wypelnij_liste(self.lst, opis, numerate=False)
                 common.emit_status(
                     "OK",
                     "ROUTE_FOUND",

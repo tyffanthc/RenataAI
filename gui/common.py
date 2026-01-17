@@ -36,6 +36,7 @@ STATUS_TEXTS = {
     "CACHE_CORRUPT": "Cache uszkodzony.",
     "DEDUP_HIT": "Dedup hit",
     "DEDUP_WAIT": "Dedup wait",
+    "AUTO_CLIPBOARD_OFF": "Auto-schowek wyłączony.",
 }
 
 
@@ -75,7 +76,14 @@ def stworz_liste_trasy(parent, title="Plan Lotu"):
     return lb
 
 
-def wypelnij_liste(lb, dane, copied_index=None, autoselect=True, autoscroll=True):
+def wypelnij_liste(
+    lb,
+    dane,
+    copied_index=None,
+    autoselect=True,
+    autoscroll=True,
+    numerate=True,
+):
     """
     Wypełnia listę z numeracją.
     Jeśli copied_index jest podany (albo zapisany w config.STATE),
@@ -94,7 +102,10 @@ def wypelnij_liste(lb, dane, copied_index=None, autoselect=True, autoscroll=True
 
     for i, it in enumerate(dane):
         suffix = "  [SKOPIOWANO]" if copied_index == i else ""
-        lb.insert(tk.END, f"{i+1}. {it}{suffix}")
+        if numerate:
+            lb.insert(tk.END, f"{i+1}. {it}{suffix}")
+        else:
+            lb.insert(tk.END, f"{it}{suffix}")
 
     # --- jeżeli mamy skopiowany index, stylujemy i ustawiamy focus
     if copied_index is not None and 0 <= copied_index < len(dane):
@@ -210,6 +221,12 @@ def handle_route_ready_autoclipboard(owner, route, *, status_target, debounce_se
     set_last_route_data(route, text, sig)
 
     if not config.get("auto_clipboard"):
+        emit_status(
+            "INFO",
+            "AUTO_CLIPBOARD_OFF",
+            source=f"spansh.{status_target}",
+            notify_overlay=False,
+        )
         return
 
     last_sig = getattr(owner, "_last_copied_route_sig", None)
