@@ -42,6 +42,14 @@ class SettingsTab(ttk.Frame):
         self._build_ui()
         self._load_initial_values()
 
+    def update_modules_status(self, loaded: bool) -> None:
+        if loaded:
+            self.modules_status_var.set("Dane modulow zaladowane poprawnie.")
+            self.modules_status_label.configure(foreground="green")
+        else:
+            self.modules_status_var.set("Brak danych modulow - wygeneruj plik.")
+            self.modules_status_label.configure(foreground="red")
+
     # ------------------------------------------------------------------ #
     # Zmienne stanu (tk.Variable) – czysto wizualne
     # ------------------------------------------------------------------ #
@@ -100,6 +108,7 @@ class SettingsTab(ttk.Frame):
 
         # Status naukowy – StringVar do sekcji Eksploracja
         self.science_status_var = tk.StringVar(value="")
+        self.modules_status_var = tk.StringVar(value="")
 
     # ------------------------------------------------------------------ #
     # UI – zakładki
@@ -485,6 +494,16 @@ class SettingsTab(ttk.Frame):
             row=3, column=0, columnspan=3, padx=8, pady=(0, 4), sticky="w"
         )
 
+        self.modules_status_label = ttk.Label(
+            lf_exploration,
+            textvariable=self.modules_status_var,
+            wraplength=520,
+            justify="left",
+        )
+        self.modules_status_label.grid(
+            row=4, column=0, columnspan=3, padx=8, pady=(0, 4), sticky="w"
+        )
+
         self.lbl_exploration_excel_missing = tk.Label(
             lf_exploration,
             text="",
@@ -493,18 +512,28 @@ class SettingsTab(ttk.Frame):
             justify="left",
         )
         self.lbl_exploration_excel_missing.grid(
-            row=4, column=0, columnspan=3, padx=8, pady=(0, 4), sticky="w"
+            row=5, column=0, columnspan=3, padx=8, pady=(0, 4), sticky="w"
         )
 
-        # Przycisk: Generuj arkusze naukowe
+        # Przyciski: generatory danych
+        btn_row = ttk.Frame(lf_exploration)
+        btn_row.grid(row=6, column=0, columnspan=3, padx=8, pady=(4, 6), sticky="w")
+
         self.btn_generate_science = ttk.Button(
-            lf_exploration,
+            btn_row,
             text="Generuj arkusze naukowe",
             command=self._on_generate_science_excel,
         )
-        self.btn_generate_science.grid(
-            row=5, column=0, columnspan=3, padx=8, pady=(4, 6), sticky="w"
+        self.btn_generate_science.pack(side="left", padx=(0, 8))
+
+        self.btn_generate_modules = ttk.Button(
+            btn_row,
+            text="Generuj dane modułów",
+            command=self._on_generate_modules_data,
         )
+        self.btn_generate_modules.pack(side="left")
+        if not config.get("modules_data_autogen_enabled", True):
+            self.btn_generate_modules.state(["disabled"])
 
         # Początkowy status danych naukowych (na podstawie app/controller)
         initial_loaded = False
@@ -514,6 +543,13 @@ class SettingsTab(ttk.Frame):
             except Exception:
                 initial_loaded = False
         self.update_science_status(initial_loaded)
+        if self.controller and hasattr(self.controller, "is_modules_data_available"):
+            try:
+                self.update_modules_status(bool(self.controller.is_modules_data_available()))
+            except Exception:
+                self.update_modules_status(False)
+        else:
+            self.update_modules_status(False)
         self._update_exploration_excel_hint()
 
         self._add_save_bar(parent, row=1)
@@ -972,6 +1008,22 @@ class SettingsTab(ttk.Frame):
             handler()
         except Exception:
             # UI nie panikuje – logika może zalogować błąd gdzie indziej.
+            pass
+
+    def _on_generate_modules_data(self) -> None:
+        """
+        Handler przycisku 'Generuj dane modułów'.
+        """
+        if not self.controller:
+            return
+
+        handler = getattr(self.controller, "on_generate_modules_data", None)
+        if not callable(handler):
+            return
+
+        try:
+            handler()
+        except Exception:
             pass
 
     def _on_reset(self) -> None:

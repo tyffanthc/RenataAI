@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, scrolledtext
+import config
 
 
 class PulpitTab(ttk.Frame):
@@ -10,12 +11,13 @@ class PulpitTab(ttk.Frame):
     - przycisk do generowania danych naukowych (Exobiology + Cartography)
     """
 
-    def __init__(self, parent, *, on_generate_science_excel=None, app_state=None, route_manager=None):
+    def __init__(self, parent, *, on_generate_science_excel=None, on_generate_modules_data=None, app_state=None, route_manager=None):
         super().__init__(parent)
         self.pack(fill="both", expand=True)
 
         # callback do generowania Excela
         self._on_generate_science_excel = on_generate_science_excel
+        self._on_generate_modules_data = on_generate_modules_data
         self._app_state = app_state
         self._route_manager = route_manager
 
@@ -87,12 +89,21 @@ class PulpitTab(ttk.Frame):
             font=("Arial", 9, "bold")
         ).pack(side="left")
 
-        btn_generate = ttk.Button(
+        btn_generate_science = ttk.Button(
             btn_frame,
             text="Generuj arkusze naukowe",
             command=self._on_click_generate_science,
         )
-        btn_generate.pack(side="right")
+        btn_generate_science.pack(side="right")
+
+        btn_generate_modules = ttk.Button(
+            btn_frame,
+            text="Generuj dane modułów",
+            command=self._on_click_generate_modules,
+        )
+        btn_generate_modules.pack(side="right", padx=(0, 8))
+        if not config.get("modules_data_autogen_enabled", True):
+            btn_generate_modules.state(["disabled"])
 
         # LOG
         log_frame = ttk.Frame(self)
@@ -207,6 +218,15 @@ class PulpitTab(ttk.Frame):
                 self.log(f"[SCIENCE_DATA] Błąd przy uruchamianiu generatora: {e}")
         else:
             self.log("[SCIENCE_DATA] Brak podpiętego callbacku on_generate_science_excel.")
+
+    def _on_click_generate_modules(self):
+        if self._on_generate_modules_data is not None:
+            try:
+                self._on_generate_modules_data()
+            except Exception as e:
+                self.log(f"[MODULES_DATA] Błąd przy uruchamianiu generatora: {e}")
+        else:
+            self.log("[MODULES_DATA] Brak podpiętego callbacku on_generate_modules_data.")
 
     # ------------------------------------------------------------
     # LOG

@@ -51,6 +51,10 @@ class AppState:
         # --- GUI wstrzyknie tu panel eksploracji (EPIC 5) ---
         self.exploration_panel = None
 
+        # --- Dane modułów (JR-2) ---
+        self.modules_data_loaded = False
+        self.modules_data = None
+
         # --- Pozostałe dane gry / nawigacji ---
         self.route = config.STATE.get("trasa", [])
         self.route_index = config.STATE.get("idx", 0)

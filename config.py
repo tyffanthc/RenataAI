@@ -79,6 +79,12 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "fdff_notifications": True,
     "read_system_after_jump": True,
 
+    # MODULES DATA (JR-2)
+    "modules_data_enabled": True,
+    "modules_data_path": "renata_modules_data.json",
+    "modules_data_autogen_enabled": True,
+    "modules_data_debug": False,
+
     # SHIP STATE (JR)
     "ship_state_enabled": True,
     "ship_state_use_status_json": True,

@@ -10,10 +10,12 @@ from gui.tabs.settings_window import SettingsWindow
 from gui.tabs.logbook import LogbookTab
 import webbrowser
 from logic.generate_renata_science_data import generate_science_excel
+from logic.generate_renata_modules_data import generate_modules_data
 from app.state import app_state
 from app.route_manager import route_manager
 import threading
 from logic.science_data import load_science_data
+from logic.modules_data import load_modules_data
 
 
 class RenataApp:
@@ -126,6 +128,7 @@ class RenataApp:
         self.tab_pulpit = pulpit.PulpitTab(
             self.main_nb,
             on_generate_science_excel=self.on_generate_science_excel,
+            on_generate_modules_data=self.on_generate_modules_data,
             app_state=app_state,
             route_manager=route_manager,
         )
@@ -204,9 +207,12 @@ class RenataApp:
         self.exobio_df = None
         self.carto_df = None
         self.science_data_loaded: bool = False
+        self.modules_data_loaded: bool = False
+        self.modules_data = None
 
         # próba wczytania danych przy starcie
         self._try_load_science_data()
+        self._try_load_modules_data()
 
         # =========================
         # BINDY I PĘTLA KOLEJKI
@@ -299,12 +305,61 @@ class RenataApp:
                     self.settings_tab.update_science_status(self.science_data_loaded)
                 except Exception:
                     pass
+            if hasattr(self.settings_tab, "update_modules_status"):
+                try:
+                    self.settings_tab.update_modules_status(self.modules_data_loaded)
+                except Exception:
+                    pass
+
+    def _try_load_modules_data(self) -> None:
+        """
+        Próbuje wczytać dane modułów z pliku JSON.
+        """
+        if not config.get("modules_data_enabled", True):
+            self.modules_data = None
+            self.modules_data_loaded = False
+            if getattr(self, "settings_tab", None) is not None:
+                if hasattr(self.settings_tab, "update_modules_status"):
+                    try:
+                        self.settings_tab.update_modules_status(self.modules_data_loaded)
+                    except Exception:
+                        pass
+            return
+        try:
+            path = config.get("modules_data_path", "renata_modules_data.json")
+        except Exception:
+            path = "renata_modules_data.json"
+
+        try:
+            self.modules_data = load_modules_data(path)
+            self.modules_data_loaded = True
+            self.show_status("Dane modułów załadowane poprawnie.")
+        except Exception:
+            self.modules_data = None
+            self.modules_data_loaded = False
+            self.show_status("Brak danych modułów — wygeneruj plik.")
+
+        try:
+            app_state.modules_data = self.modules_data
+            app_state.modules_data_loaded = self.modules_data_loaded
+        except Exception:
+            pass
+
+        if getattr(self, "settings_tab", None) is not None:
+            if hasattr(self.settings_tab, "update_modules_status"):
+                try:
+                    self.settings_tab.update_modules_status(self.modules_data_loaded)
+                except Exception:
+                    pass
 
     def is_science_data_available(self) -> bool:
         """
         Zwraca True, jeśli arkusze naukowe zostały poprawnie wczytane.
         """
         return bool(self.science_data_loaded)
+
+    def is_modules_data_available(self) -> bool:
+        return bool(self.modules_data_loaded)
 
     # ------------------------------------------------------------------ #
     #   Reszta Twojego kodu bez zmian
@@ -645,6 +700,38 @@ class RenataApp:
                     self.show_status(f"Błąd generowania danych naukowych: {error}")
 
             # wykonujemy done() w głównym wątku Tkintera
+            try:
+                self.root.after(0, done)
+            except Exception:
+                done()
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_generate_modules_data(self):
+        """
+        Wywo‘'ywane z GUI: generuje renata_modules_data.json i od‘>wie‘•a status.
+        """
+        if not config.get("modules_data_autogen_enabled", True):
+            self.show_status("Generator danych modułów jest wyłączony w ustawieniach.")
+            return
+        self.show_status("GenerujŽt dane modu‘'Æˆw (FSD + booster)...")
+
+        def worker():
+            error = None
+            try:
+                error = generate_modules_data(
+                    config.get("modules_data_path", "renata_modules_data.json")
+                )
+            except Exception as e:
+                error = str(e)
+
+            def done():
+                self._try_load_modules_data()
+                if error is None:
+                    self.show_status("Plik renata_modules_data.json wygenerowany poprawnie.")
+                else:
+                    self.show_status(f"B‘'Žd generowania danych modu‘'Æˆw: {error}")
+
             try:
                 self.root.after(0, done)
             except Exception:
