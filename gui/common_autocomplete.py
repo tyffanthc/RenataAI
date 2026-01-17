@@ -46,6 +46,7 @@ class AutocompleteController:
         self._req_gen = 0
         self._programmatic_change = False
         self._suppress_show_until = 0.0
+        self._last_chosen_value = None
         AutocompleteController._instances.append(self)
         AutocompleteController._entry_map[self.entry] = self
         if USE_SINGLETON_LISTBOX:
@@ -192,6 +193,8 @@ class AutocompleteController:
         if e.keysym in ["Up", "Down", "Return", "Enter", "Left", "Right"]:
             return
         t = self.entry.get()
+        if self._last_chosen_value is not None and t != self._last_chosen_value:
+            self._last_chosen_value = None
         if len(t) >= self.min_chars:
             self._req_gen += 1
             req_gen = self._req_gen
@@ -221,6 +224,9 @@ class AutocompleteController:
                 _dbg("RESULT ignored suppress_show_until active")
                 return
             if (self.entry.get() or "").strip() != query:
+                return
+            if self._last_chosen_value is not None and query == self._last_chosen_value:
+                _dbg("RESULT ignored last_chosen_value")
                 return
             self._show_list(s)
 
@@ -417,6 +423,7 @@ class AutocompleteController:
             f"suppress_until={self._suppress_show_until:.6f}"
         )
         t = self.sug_list.get(chosen)
+        self._last_chosen_value = t
         self.entry.delete(0, tk.END)
         self.entry.insert(0, t)
         self.entry.focus_set()
