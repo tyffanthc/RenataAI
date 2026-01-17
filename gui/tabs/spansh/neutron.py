@@ -105,7 +105,7 @@ class NeutronTab(ttk.Frame):
 
             if tr:
                 route_manager.set_route(tr, "neutron")
-                header = "System                          Dist(LY)  Rem(LY)  Neut  Jmp"
+                header = f"{'System':<30} {'Dist(LY)':>9} {'Rem(LY)':>9} {'Neut':>5} {'Jmp':>4}"
                 opis = [header]
                 for sys_name, detail in zip_longest(tr, details, fillvalue={}):
                     if not sys_name:
@@ -141,6 +141,8 @@ class NeutronTab(ttk.Frame):
     def _format_jump_row(self, system_name, detail):
         def _fmt_num(value):
             try:
+                if isinstance(value, str):
+                    value = value.replace(",", "").strip()
                 num = float(value)
             except Exception:
                 return "-"
@@ -166,4 +168,4 @@ class NeutronTab(ttk.Frame):
         jumps = detail.get("jumps")
         jumps_txt = "-" if jumps is None else str(jumps)
 
-        return f"{name[:30]:<30} {distance:>8} {remaining:>8} {neutron_flag:>5} {jumps_txt:>4}"
+        return f"{name[:30]:<30} {distance:>9} {remaining:>9} {neutron_flag:>5} {jumps_txt:>4}"

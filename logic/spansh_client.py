@@ -448,6 +448,11 @@ class SpanshClient:
         def _pick(entry: dict[str, Any], keys: list[str]) -> Any:
             for key in keys:
                 val = entry.get(key)
+                if isinstance(val, dict):
+                    for nested_key in ("value", "distance", "remaining", "ly"):
+                        nested_val = val.get(nested_key)
+                        if nested_val is not None and nested_val != "":
+                            return nested_val
                 if val is not None and val != "":
                     return val
             return None
@@ -464,8 +469,10 @@ class SpanshClient:
                             entry,
                             [
                                 "distance",
+                                "dist",
                                 "distance_ly",
                                 "distance_to_next",
+                                "distance_to_next_ly",
                                 "distance_to_arrival",
                                 "distance_to_next_jump",
                                 "distance_to_next_system",
@@ -478,7 +485,9 @@ class SpanshClient:
                                 "remaining_distance",
                                 "remaining_ly",
                                 "remaining_distance_ly",
+                                "remaining_to_destination_ly",
                                 "remaining_to_destination",
+                                "distance_left",
                                 "distance_remaining",
                             ],
                         ),

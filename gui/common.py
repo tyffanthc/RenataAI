@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 import time
+import threading
 import config
 from logic import utils
 from logic.route_clipboard import (
@@ -220,55 +221,65 @@ def handle_route_ready_autoclipboard(owner, route, *, status_target, debounce_se
     sig = compute_route_signature(route)
     set_last_route_data(route, text, sig)
 
-    if not config.get("auto_clipboard"):
-        emit_status(
-            "INFO",
-            "AUTO_CLIPBOARD_OFF",
-            source=f"spansh.{status_target}",
-            notify_overlay=False,
-        )
-        return
+    def _do_copy():
+        if not config.get("auto_clipboard"):
+            emit_status(
+                "INFO",
+                "AUTO_CLIPBOARD_OFF",
+                source=f"spansh.{status_target}",
+                notify_overlay=False,
+            )
+            return
 
-    last_sig = getattr(owner, "_last_copied_route_sig", None)
-    if sig and last_sig == sig:
-        utils.MSG_QUEUE.put(("log", "[AUTO-SCHOWEK] Cache: route clipboard hit/skip"))
-        return
+        last_sig = getattr(owner, "_last_copied_route_sig", None)
+        if sig and last_sig == sig:
+            utils.MSG_QUEUE.put(("log", "[AUTO-SCHOWEK] Cache: route clipboard hit/skip"))
+            return
 
-    if not text:
-        _maybe_toast(
-            owner,
-            status_target,
-            "WARN",
-            "ROUTE_EMPTY",
-            STATUS_TEXTS["CLIPBOARD_FAIL"],
-            debounce_sec,
-            source=f"spansh.{status_target}",
-        )
-        return
+        if not text:
+            _maybe_toast(
+                owner,
+                status_target,
+                "WARN",
+                "ROUTE_EMPTY",
+                STATUS_TEXTS["CLIPBOARD_FAIL"],
+                debounce_sec,
+                source=f"spansh.{status_target}",
+            )
+            return
 
-    result = try_copy_to_clipboard(text)
-    if result.get("ok"):
-        if sig:
-            setattr(owner, "_last_copied_route_sig", sig)
-        _maybe_toast(
-            owner,
-            status_target,
-            "OK",
-            "ROUTE_COPIED",
-            STATUS_TEXTS["ROUTE_COPIED"],
-            debounce_sec,
-            source=f"spansh.{status_target}",
-        )
-    else:
-        _maybe_toast(
-            owner,
-            status_target,
-            "WARN",
-            "CLIPBOARD_FAIL",
-            STATUS_TEXTS["CLIPBOARD_FAIL"],
-            debounce_sec,
-            source=f"spansh.{status_target}",
-        )
-        err = result.get("error")
-        if err:
-            utils.MSG_QUEUE.put(("log", f"[AUTO-SCHOWEK] Clipboard error: {err}"))
+        result = try_copy_to_clipboard(text)
+        if result.get("ok"):
+            if sig:
+                setattr(owner, "_last_copied_route_sig", sig)
+            _maybe_toast(
+                owner,
+                status_target,
+                "OK",
+                "ROUTE_COPIED",
+                STATUS_TEXTS["ROUTE_COPIED"],
+                debounce_sec,
+                source=f"spansh.{status_target}",
+            )
+        else:
+            _maybe_toast(
+                owner,
+                status_target,
+                "WARN",
+                "CLIPBOARD_FAIL",
+                STATUS_TEXTS["CLIPBOARD_FAIL"],
+                debounce_sec,
+                source=f"spansh.{status_target}",
+            )
+            err = result.get("error")
+            if err:
+                utils.MSG_QUEUE.put(("log", f"[AUTO-SCHOWEK] Clipboard error: {err}"))
+
+    if threading.current_thread() is not threading.main_thread():
+        try:
+            owner.after(0, _do_copy)
+            return
+        except Exception:
+            pass
+
+    _do_copy()

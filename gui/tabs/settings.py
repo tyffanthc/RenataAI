@@ -1,7 +1,7 @@
 # gui/tabs/settings.py
 
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, messagebox
 from typing import Optional, Callable, Dict, Any
 import os
 import config
@@ -78,6 +78,9 @@ class SettingsTab(ttk.Frame):
         self.var_smuggler_alert = tk.BooleanVar(value=False)           # smuggler_alert
         self.var_mining_accountant = tk.BooleanVar(value=False)        # tylko frontend na razie
 
+        # Progi Maklera (dict)
+        self.jackpot_thresholds: Dict[str, int] = config.DEFAULT_JACKPOT_THRESHOLDS.copy()
+
         self.var_bounty_hunter = tk.BooleanVar(value=False)            # frontend
         self.var_preflight_limpets = tk.BooleanVar(value=True)         # frontend
         self.var_high_g_warning = tk.BooleanVar(value=True)            # high_g_warning
@@ -86,6 +89,11 @@ class SettingsTab(ttk.Frame):
 
         # Czytanie systemu po skoku (Exit Summary / info o systemie) – frontend / future
         self.var_read_system_after_jump = tk.BooleanVar(value=True)
+
+        # Debug / advanced
+        self.var_debug_autocomplete = tk.BooleanVar(value=False)
+        self.var_debug_cache = tk.BooleanVar(value=False)
+        self.var_debug_dedup = tk.BooleanVar(value=False)
 
         # Status naukowy – StringVar do sekcji Eksploracja
         self.science_status_var = tk.StringVar(value="")
@@ -105,12 +113,14 @@ class SettingsTab(ttk.Frame):
         self._tab_exploration = ttk.Frame(self.nb)
         self._tab_trade = ttk.Frame(self.nb)
         self._tab_engineer = ttk.Frame(self.nb)
+        self._tab_advanced = ttk.Frame(self.nb)
 
         self.nb.add(self._tab_general, text="Ogólne")
         self.nb.add(self._tab_assistants, text="Asystenci")
         self.nb.add(self._tab_exploration, text="Eksploracja")
         self.nb.add(self._tab_trade, text="Handel")
         self.nb.add(self._tab_engineer, text="Inżynier")
+        self.nb.add(self._tab_advanced, text="Zaawansowane")
 
         # Budowa zawartości zakładek
         self._build_tab_general()
@@ -118,6 +128,7 @@ class SettingsTab(ttk.Frame):
         self._build_tab_exploration()
         self._build_tab_trade()
         self._build_tab_engineer()
+        self._build_tab_advanced()
 
     # ------------------------------------------------------------------ #
     #   Zakładka: OGÓLNE
@@ -127,8 +138,8 @@ class SettingsTab(ttk.Frame):
         parent = self._tab_general
         parent.columnconfigure(0, weight=1)
 
-        # Sekcja: OGÓLNE
-        lf_general = ttk.LabelFrame(parent, text=" Ogólne ")
+        # Sekcja: INTERFEJS
+        lf_general = ttk.LabelFrame(parent, text=" Interfejs ")
         lf_general.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="nsew")
 
         for col in range(3):
@@ -148,28 +159,47 @@ class SettingsTab(ttk.Frame):
 
         ttk.Checkbutton(
             lf_general,
-            text="Pytaj o potwierdzenie przed zamknięciem Renaty",
-            variable=self.var_confirm_exit,
-        ).grid(row=1, column=0, columnspan=3, padx=8, pady=(0, 6), sticky="w")
-
-        ttk.Checkbutton(
-            lf_general,
             text="Włącz dźwięki / komunikaty głosowe",
             variable=self.var_enable_sounds,
+        ).grid(row=1, column=0, columnspan=3, padx=8, pady=(0, 6), sticky="w")
+
+        ttk.Label(
+            lf_general,
+            text="Ustawienia języka i motywu interfejsu.",
+            foreground="#888888",
         ).grid(row=2, column=0, columnspan=3, padx=8, pady=(0, 8), sticky="w")
+
+        # Sekcja: ZAMKNIĘCIE / ZACHOWANIE
+        lf_behavior = ttk.LabelFrame(parent, text=" Zamknięcie / zachowanie aplikacji ")
+        lf_behavior.grid(row=1, column=0, padx=12, pady=6, sticky="nsew")
+        lf_behavior.columnconfigure(0, weight=1)
+
+        ttk.Checkbutton(
+            lf_behavior,
+            text="Pytaj o potwierdzenie przed zamknięciem Renaty",
+            variable=self.var_confirm_exit,
+        ).grid(row=0, column=0, padx=8, pady=(6, 6), sticky="w")
+
+        ttk.Label(
+            lf_behavior,
+            text="Ułatwia uniknięcie przypadkowego zamknięcia.",
+            foreground="#888888",
+        ).grid(row=1, column=0, padx=8, pady=(0, 8), sticky="w")
 
         # Sekcja: ŚCIEŻKI / LOGI
         lf_paths = ttk.LabelFrame(parent, text=" Elite Dangerous – logi ")
-        lf_paths.grid(row=1, column=0, padx=12, pady=6, sticky="nsew")
+        lf_paths.grid(row=2, column=0, padx=12, pady=6, sticky="nsew")
 
         for col in range(3):
             lf_paths.columnconfigure(col, weight=1)
 
-        ttk.Checkbutton(
+        chk_auto_logs = ttk.Checkbutton(
             lf_paths,
-            text="Automatycznie wykryj folder logów Elite Dangerous (przyszłość)",
+            text="Automatycznie wykryj folder logów Elite Dangerous (wkrótce)",
             variable=self.var_auto_detect_logs,
-        ).grid(row=0, column=0, columnspan=3, padx=8, pady=(6, 4), sticky="w")
+        )
+        chk_auto_logs.state(["disabled"])
+        chk_auto_logs.grid(row=0, column=0, columnspan=3, padx=8, pady=(6, 4), sticky="w")
 
         ttk.Label(lf_paths, text="Folder logów:").grid(
             row=1, column=0, padx=8, pady=6, sticky="w"
@@ -184,18 +214,26 @@ class SettingsTab(ttk.Frame):
         )
         btn_browse.grid(row=1, column=2, padx=8, pady=6, sticky="e")
 
+        ttk.Label(
+            lf_paths,
+            text="Ścieżka do Journal logs używana przez backend.",
+            foreground="#888888",
+        ).grid(row=2, column=0, columnspan=3, padx=8, pady=(0, 8), sticky="w")
+
         # Sekcja: WYGLĄD
         lf_appearance = ttk.LabelFrame(parent, text=" Wygląd interfejsu ")
-        lf_appearance.grid(row=2, column=0, padx=12, pady=6, sticky="nsew")
+        lf_appearance.grid(row=3, column=0, padx=12, pady=6, sticky="nsew")
 
         for col in range(3):
             lf_appearance.columnconfigure(col, weight=1)
 
-        ttk.Checkbutton(
+        chk_use_system_theme = ttk.Checkbutton(
             lf_appearance,
             text="Użyj systemowego motywu okien",
             variable=self.var_use_system_theme,
-        ).grid(row=0, column=0, columnspan=3, padx=8, pady=(6, 4), sticky="w")
+            command=self._on_use_system_theme,
+        )
+        chk_use_system_theme.grid(row=0, column=0, columnspan=3, padx=8, pady=(6, 4), sticky="w")
 
         ttk.Label(lf_appearance, text="Motyw Renaty (kokpit):").grid(
             row=1, column=0, padx=8, pady=6, sticky="w"
@@ -213,6 +251,7 @@ class SettingsTab(ttk.Frame):
             width=18,
         )
         theme_combo.grid(row=1, column=1, padx=8, pady=6, sticky="w")
+        self._theme_combo = theme_combo
 
         ttk.Label(
             lf_appearance,
@@ -220,9 +259,11 @@ class SettingsTab(ttk.Frame):
             foreground="#888888",
         ).grid(row=2, column=0, columnspan=3, padx=8, pady=(0, 8), sticky="w")
 
+        self._on_use_system_theme()
+
         # Sekcja: SPANSH / SIEĆ
         lf_spansh = ttk.LabelFrame(parent, text=" SPANSH / Połączenie ")
-        lf_spansh.grid(row=3, column=0, padx=12, pady=(6, 12), sticky="nsew")
+        lf_spansh.grid(row=4, column=0, padx=12, pady=(6, 12), sticky="nsew")
 
         for col in range(4):
             lf_spansh.columnconfigure(col, weight=1)
@@ -241,13 +282,13 @@ class SettingsTab(ttk.Frame):
 
         ttk.Label(
             lf_spansh,
-            text="Ustawienia te są tylko wizualne – backend sam zdecyduje, co z nimi zrobić.",
+            text="Wpływa na timeout i retry zapytań do SPANSH.",
             foreground="#888888",
         ).grid(row=1, column=0, columnspan=4, padx=8, pady=(0, 8), sticky="w")
 
         # Dół zakładki – przyciski
         btn_bar = ttk.Frame(parent)
-        btn_bar.grid(row=4, column=0, padx=12, pady=(0, 12), sticky="e")
+        btn_bar.grid(row=5, column=0, padx=12, pady=(0, 12), sticky="e")
         btn_bar.columnconfigure(0, weight=1)
         btn_bar.columnconfigure(1, weight=0)
 
@@ -283,6 +324,18 @@ class SettingsTab(ttk.Frame):
             variable=self.var_auto_clipboard,
         ).grid(row=0, column=1, padx=8, pady=4, sticky="w")
 
+        ttk.Checkbutton(
+            lf_docking,
+            text="Smuggler alert – nielegalny towar",
+            variable=self.var_smuggler_alert,
+        ).grid(row=1, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Label(
+            lf_docking,
+            text="Ułatwia dokowanie i szybkie kopiowanie celów.",
+            foreground="#888888",
+        ).grid(row=2, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="w")
+
         # Nawigacja i trasy
         lf_navigation = ttk.LabelFrame(parent, text=" Nawigacja i trasy ")
         lf_navigation.grid(row=1, column=0, padx=12, pady=6, sticky="nsew")
@@ -295,11 +348,11 @@ class SettingsTab(ttk.Frame):
             variable=self.var_route_progress_messages,
         ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
 
-        ttk.Checkbutton(
+        ttk.Label(
             lf_navigation,
-            text="High-G Warning",
-            variable=self.var_high_g_warning,
-        ).grid(row=0, column=1, padx=8, pady=4, sticky="w")
+            text="Komunikaty o trasie i postępie lotu.",
+            foreground="#888888",
+        ).grid(row=1, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="w")
 
         # Paliwo i bezpieczeństwo
         lf_fuel_safety = ttk.LabelFrame(parent, text=" Paliwo i bezpieczeństwo ")
@@ -314,17 +367,25 @@ class SettingsTab(ttk.Frame):
             variable=self.var_low_fuel_warning,
         ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
 
-        ttk.Checkbutton(
+        chk_preflight = ttk.Checkbutton(
             lf_fuel_safety,
-            text="Pre-flight limpets",
+            text="Pre-flight limpets (wkrótce)",
             variable=self.var_preflight_limpets,
-        ).grid(row=0, column=1, padx=8, pady=4, sticky="w")
+        )
+        chk_preflight.state(["disabled"])
+        chk_preflight.grid(row=0, column=1, padx=8, pady=4, sticky="w")
 
         ttk.Checkbutton(
             lf_fuel_safety,
-            text="Smuggler alert – nielegalny towar",
-            variable=self.var_smuggler_alert,
+            text="High-G Warning",
+            variable=self.var_high_g_warning,
         ).grid(row=0, column=2, padx=8, pady=4, sticky="w")
+
+        ttk.Label(
+            lf_fuel_safety,
+            text="Bezpieczeństwo lotu i ostrzeżenia krytyczne.",
+            foreground="#888888",
+        ).grid(row=1, column=0, columnspan=3, padx=8, pady=(0, 6), sticky="w")
 
     # ------------------------------------------------------------------ #
     #   Zakładka: EKSPLORACJA
@@ -359,17 +420,21 @@ class SettingsTab(ttk.Frame):
             variable=self.var_dss_bio3_assistant,
         ).grid(row=0, column=2, padx=8, pady=4, sticky="w")
 
-        ttk.Checkbutton(
+        chk_fdff = ttk.Checkbutton(
             lf_exploration,
-            text="First Discovery / Footfall – komunikaty",
+            text="First Discovery / Footfall – komunikaty (wkrótce)",
             variable=self.var_fdff_notifications,
-        ).grid(row=1, column=0, padx=8, pady=4, sticky="w")
+        )
+        chk_fdff.state(["disabled"])
+        chk_fdff.grid(row=1, column=0, padx=8, pady=4, sticky="w")
 
-        ttk.Checkbutton(
+        chk_read_sys = ttk.Checkbutton(
             lf_exploration,
-            text="Czytaj informacje o systemie po każdym skoku",
+            text="Czytaj informacje o systemie po każdym skoku (wkrótce)",
             variable=self.var_read_system_after_jump,
-        ).grid(row=1, column=1, padx=8, pady=4, sticky="w")
+        )
+        chk_read_sys.state(["disabled"])
+        chk_read_sys.grid(row=1, column=1, padx=8, pady=4, sticky="w")
 
         # Opisy + status
         self.lbl_exploration_desc = ttk.Label(
@@ -444,11 +509,60 @@ class SettingsTab(ttk.Frame):
             variable=self.var_trade_jackpot_alerts,
         ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
 
-        ttk.Checkbutton(
+        ttk.Button(
             lf_trade,
-            text="Mining Accountant",
-            variable=self.var_mining_accountant,
+            text="Edytuj progi…",
+            command=self._edit_jackpot_thresholds,
         ).grid(row=0, column=1, padx=8, pady=4, sticky="w")
+
+        chk_mining = ttk.Checkbutton(
+            lf_trade,
+            text="Mining Accountant (wkrótce)",
+            variable=self.var_mining_accountant,
+        )
+        chk_mining.state(["disabled"])
+        chk_mining.grid(row=0, column=2, padx=8, pady=4, sticky="w")
+
+        ttk.Label(
+            lf_trade,
+            text="Progi jackpotów wpływają na alerty w handlu.",
+            foreground="#888888",
+        ).grid(row=1, column=0, columnspan=3, padx=8, pady=(0, 6), sticky="w")
+
+    def _edit_jackpot_thresholds(self) -> None:
+        dialog = tk.Toplevel(self)
+        dialog.title("Progi jackpotów")
+        dialog.resizable(False, False)
+
+        entries: Dict[str, tk.Entry] = {}
+        row = 0
+        for key in sorted(config.DEFAULT_JACKPOT_THRESHOLDS.keys()):
+            ttk.Label(dialog, text=key).grid(row=row, column=0, padx=8, pady=4, sticky="w")
+            ent = ttk.Entry(dialog, width=10)
+            ent.insert(0, str(self.jackpot_thresholds.get(key, 0)))
+            ent.grid(row=row, column=1, padx=8, pady=4, sticky="w")
+            entries[key] = ent
+            row += 1
+
+        def on_save():
+            updated: Dict[str, int] = {}
+            for k, ent in entries.items():
+                try:
+                    val = int(ent.get().strip())
+                except Exception:
+                    messagebox.showwarning("Błąd", f"Niepoprawna wartość dla: {k}")
+                    return
+                if val < 0:
+                    messagebox.showwarning("Błąd", f"Wartość nie może być ujemna: {k}")
+                    return
+                updated[k] = val
+            self.jackpot_thresholds = updated
+            dialog.destroy()
+
+        btn_row = ttk.Frame(dialog)
+        btn_row.grid(row=row, column=0, columnspan=2, pady=(6, 8), sticky="e")
+        ttk.Button(btn_row, text="Anuluj", command=dialog.destroy).grid(row=0, column=0, padx=6)
+        ttk.Button(btn_row, text="Zapisz", command=on_save).grid(row=0, column=1, padx=6)
 
     # ------------------------------------------------------------------ #
     #   Zakładka: INŻYNIER
@@ -468,6 +582,56 @@ class SettingsTab(ttk.Frame):
             text="Bounty Hunter",
             variable=self.var_bounty_hunter,
         ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+
+        # future -> disabled
+        for child in lf_engineer_combat.winfo_children():
+            if isinstance(child, ttk.Checkbutton):
+                child.state(["disabled"])
+                child.configure(text=f"{child.cget('text')} (wkrótce)")
+
+    def _on_use_system_theme(self) -> None:
+        if not hasattr(self, "_theme_combo"):
+            return
+        if self.var_use_system_theme.get():
+            self._theme_combo.state(["disabled"])
+        else:
+            self._theme_combo.state(["readonly"])
+
+    # ------------------------------------------------------------------ #
+    #   Zakładka: ZAAWANSOWANE
+    # ------------------------------------------------------------------ #
+
+    def _build_tab_advanced(self) -> None:
+        parent = self._tab_advanced
+        parent.columnconfigure(0, weight=1)
+
+        lf_debug = ttk.LabelFrame(parent, text=" Debug ")
+        lf_debug.grid(row=0, column=0, padx=12, pady=(12, 12), sticky="nsew")
+        lf_debug.columnconfigure(0, weight=1)
+
+        ttk.Checkbutton(
+            lf_debug,
+            text="Debug: autocomplete",
+            variable=self.var_debug_autocomplete,
+        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_debug,
+            text="Debug: cache",
+            variable=self.var_debug_cache,
+        ).grid(row=1, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_debug,
+            text="Debug: dedup",
+            variable=self.var_debug_dedup,
+        ).grid(row=2, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Label(
+            lf_debug,
+            text="Włącza dodatkowe logi w konsoli i pulpicie.",
+            foreground="#888888",
+        ).grid(row=3, column=0, padx=8, pady=(2, 8), sticky="w")
 
     # ------------------------------------------------------------------ #
     # Ładowanie / zapisywanie – połączone z backendowym configiem
@@ -550,6 +714,41 @@ class SettingsTab(ttk.Frame):
             cfg.get("read_system_after_jump", self.var_read_system_after_jump.get())
         )
 
+        # progi Maklera
+        thresholds = cfg.get("jackpot_thresholds", self.jackpot_thresholds)
+        if isinstance(thresholds, dict):
+            merged = config.DEFAULT_JACKPOT_THRESHOLDS.copy()
+            for key, value in thresholds.items():
+                try:
+                    merged[key] = int(value)
+                except Exception:
+                    continue
+            self.jackpot_thresholds = merged
+
+        # debug
+        self.var_debug_autocomplete.set(
+            cfg.get("debug_autocomplete", self.var_debug_autocomplete.get())
+        )
+        self.var_debug_cache.set(
+            cfg.get("debug_cache", self.var_debug_cache.get())
+        )
+        self.var_debug_dedup.set(
+            cfg.get("debug_dedup", self.var_debug_dedup.get())
+        )
+
+        self._on_use_system_theme()
+
+    def _parse_int_range(self, raw: str, *, default: int, min_val: int, max_val: int) -> int:
+        try:
+            val = int(str(raw).strip())
+        except Exception:
+            return default
+        if val < min_val:
+            return min_val
+        if val > max_val:
+            return max_val
+        return val
+
     def _collect_config(self) -> Dict[str, Any]:
         """
         Zbiera aktualny stan pól do słownika.
@@ -563,11 +762,26 @@ class SettingsTab(ttk.Frame):
             trade_jackpot_speech, smuggler_alert.
         Reszta może być traktowana jako rozszerzenie.
         """
+        spansh_timeout = self._parse_int_range(
+            self.var_spansh_timeout.get(),
+            default=int(config.get("spansh_timeout", 20)),
+            min_val=5,
+            max_val=120,
+        )
+        spansh_retries = self._parse_int_range(
+            self.var_spansh_retries.get(),
+            default=int(config.get("spansh_retries", 3)),
+            min_val=0,
+            max_val=10,
+        )
+        self.var_spansh_timeout.set(str(spansh_timeout))
+        self.var_spansh_retries.set(str(spansh_retries))
+
         cfg: Dict[str, Any] = {
             # klucze główne (uzgodnione z backendem)
             "log_dir": self.var_log_path.get().strip(),
-            "language": self.var_language.get(),
-            "theme": self.var_theme.get(),
+            "language": self.var_language.get() if self.var_language.get() in ("pl", "en") else "pl",
+            "theme": self.var_theme.get() if self.var_theme.get() in ("dark", "ed_orange", "ed_blue", "dark_minimal") else "dark",
 
             "voice_enabled": self.var_enable_sounds.get(),
 
@@ -587,8 +801,8 @@ class SettingsTab(ttk.Frame):
             # dodatkowe / frontend only (ale możemy też trzymać w JSON)
             "use_system_theme": self.var_use_system_theme.get(),
             "auto_detect_logs": self.var_auto_detect_logs.get(),
-            "spansh_timeout": self.var_spansh_timeout.get(),
-            "spansh_retries": self.var_spansh_retries.get(),
+            "spansh_timeout": spansh_timeout,
+            "spansh_retries": spansh_retries,
             "confirm_exit": self.var_confirm_exit.get(),
 
             "mining_accountant": self.var_mining_accountant.get(),
@@ -596,6 +810,12 @@ class SettingsTab(ttk.Frame):
             "preflight_limpets": self.var_preflight_limpets.get(),
             "fdff_notifications": self.var_fdff_notifications.get(),
             "read_system_after_jump": self.var_read_system_after_jump.get(),
+
+            "jackpot_thresholds": self.jackpot_thresholds,
+
+            "debug_autocomplete": self.var_debug_autocomplete.get(),
+            "debug_cache": self.var_debug_cache.get(),
+            "debug_dedup": self.var_debug_dedup.get(),
         }
         return cfg
 
@@ -706,6 +926,7 @@ class SettingsTab(ttk.Frame):
         self.var_trade_jackpot_alerts.set(True)
         self.var_smuggler_alert.set(True)
         self.var_mining_accountant.set(False)
+        self.jackpot_thresholds = config.DEFAULT_JACKPOT_THRESHOLDS.copy()
 
         self.var_bounty_hunter.set(False)
         self.var_preflight_limpets.set(True)
@@ -713,8 +934,13 @@ class SettingsTab(ttk.Frame):
 
         self.var_read_system_after_jump.set(True)
 
+        self.var_debug_autocomplete.set(False)
+        self.var_debug_cache.set(False)
+        self.var_debug_dedup.set(False)
+
         # Reset statusu naukowego do stanu „brak danych”
         self.update_science_status(False)
+        self._on_use_system_theme()
 
     def _on_save(self) -> None:
         """

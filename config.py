@@ -53,6 +53,15 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # SCHOWEK / AUTO-COPY
     "auto_clipboard": True,           # auto-schowek (route)
 
+    # SPANSH / SIEĆ
+    "spansh_timeout": 20,
+    "spansh_retries": 3,
+
+    # UI / zachowanie
+    "use_system_theme": True,
+    "confirm_exit": True,
+    "auto_detect_logs": True,
+
     # OSTRZEŻENIA I ASYSTENCI
     "fuel_warning": True,             # niski poziom paliwa
     "high_g_warning": True,           # wysokie g planety (future)
@@ -61,6 +70,18 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "bio_assistant": True,            # 3+ sygnały biologiczne
     "trade_jackpot_speech": True,     # Makler PRO (jackpoty)
     "smuggler_alert": True,           # nielegalny ładunek
+
+    # FUTURE / front-end
+    "mining_accountant": False,
+    "bounty_hunter": False,
+    "preflight_limpets": True,
+    "fdff_notifications": True,
+    "read_system_after_jump": True,
+
+    # DEBUG
+    "debug_autocomplete": False,
+    "debug_cache": False,
+    "debug_dedup": False,
 
     # PROGI DLA MAKLERA PRO (backend only – ale też lecą do JSONa)
     "jackpot_thresholds": DEFAULT_JACKPOT_THRESHOLDS,
