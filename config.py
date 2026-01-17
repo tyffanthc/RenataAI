@@ -99,6 +99,11 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "ship_state_use_cargo_json": True,
     "ship_state_debug": False,
 
+    # FIT RESOLVER (JR-3)
+    "fit_resolver_enabled": True,
+    "fit_resolver_debug": False,
+    "fit_resolver_fail_on_missing": False,
+
     # DEBUG
     "debug_autocomplete": False,
     "debug_cache": False,

@@ -80,6 +80,8 @@ class EventHandler:
                     from app.state import app_state
                     app_state.ship_state.update_from_loadout(ev)
                 except Exception:
+                    if config.get("fit_resolver_fail_on_missing", False):
+                        raise
                     pass
 
         # FSS

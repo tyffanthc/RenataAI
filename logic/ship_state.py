@@ -17,6 +17,25 @@ class ShipState:
     fuel_main_t: Optional[float] = None
     fuel_reservoir_t: Optional[float] = None
     modules: List[Dict[str, Any]] = field(default_factory=list)
+    fsd: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "present": False,
+            "class": None,
+            "rating": None,
+            "item": "",
+            "engineering": None,
+            "experimental": None,
+        }
+    )
+    fsd_booster: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "present": False,
+            "class": None,
+            "bonus_ly": 0.0,
+            "item": "",
+        }
+    )
+    fit_ready_for_jr: bool = False
 
     last_update_ts: Optional[float] = None
     last_update_by: Dict[str, float] = field(default_factory=dict)
@@ -39,6 +58,9 @@ class ShipState:
             "cargo_mass_t": self.cargo_mass_t,
             "fuel_main_t": self.fuel_main_t,
             "fuel_reservoir_t": self.fuel_reservoir_t,
+            "fsd": self.fsd,
+            "fsd_booster": self.fsd_booster,
+            "fit_ready_for_jr": self.fit_ready_for_jr,
             "completeness": self.get_completeness(),
             "ts": self.last_update_ts,
         }
@@ -80,6 +102,27 @@ class ShipState:
         if isinstance(modules, list) and modules != self.modules:
             self.modules = modules
             changed = True
+
+        if config.get("fit_resolver_enabled", True):
+            try:
+                from logic.fit_resolver import resolve_fit_from_loadout
+                from app.state import app_state
+
+                modules_data = getattr(app_state, "modules_data", None)
+                fit = resolve_fit_from_loadout(self.modules, modules_data)
+                if fit.get("fsd") != self.fsd:
+                    self.fsd = fit.get("fsd") or self.fsd
+                    changed = True
+                if fit.get("fsd_booster") != self.fsd_booster:
+                    self.fsd_booster = fit.get("fsd_booster") or self.fsd_booster
+                    changed = True
+                if fit.get("fit_ready_for_jr") != self.fit_ready_for_jr:
+                    self.fit_ready_for_jr = bool(fit.get("fit_ready_for_jr"))
+                    changed = True
+            except Exception:
+                if config.get("fit_resolver_fail_on_missing", False):
+                    raise
+                pass
 
         if changed:
             self._mark_updated(source)
