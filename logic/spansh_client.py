@@ -366,7 +366,7 @@ class SpanshClient:
         except Exception:
             return None
 
-    def neutron_route((
+    def neutron_route(
         self,
         start: str,
         cel: str,
