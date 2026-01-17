@@ -95,6 +95,7 @@ class SettingsTab(ttk.Frame):
         self.var_debug_autocomplete = tk.BooleanVar(value=False)
         self.var_debug_cache = tk.BooleanVar(value=False)
         self.var_debug_dedup = tk.BooleanVar(value=False)
+        self.var_debug_ship_state = tk.BooleanVar(value=False)
 
         # Status naukowy – StringVar do sekcji Eksploracja
         self.science_status_var = tk.StringVar(value="")
@@ -675,11 +676,17 @@ class SettingsTab(ttk.Frame):
             variable=self.var_debug_dedup,
         ).grid(row=2, column=0, padx=8, pady=4, sticky="w")
 
+        ttk.Checkbutton(
+            lf_debug,
+            text="Debug: ShipState",
+            variable=self.var_debug_ship_state,
+        ).grid(row=3, column=0, padx=8, pady=4, sticky="w")
+
         ttk.Label(
             lf_debug,
             text="Włącza dodatkowe logi w konsoli i pulpicie.",
             foreground="#888888",
-        ).grid(row=3, column=0, padx=8, pady=(2, 8), sticky="w")
+        ).grid(row=4, column=0, padx=8, pady=(2, 8), sticky="w")
 
         self._add_save_bar(parent, row=1)
 
@@ -785,6 +792,9 @@ class SettingsTab(ttk.Frame):
         self.var_debug_dedup.set(
             cfg.get("debug_dedup", self.var_debug_dedup.get())
         )
+        self.var_debug_ship_state.set(
+            cfg.get("ship_state_debug", self.var_debug_ship_state.get())
+        )
 
         self._on_use_system_theme()
 
@@ -866,6 +876,7 @@ class SettingsTab(ttk.Frame):
             "debug_autocomplete": self.var_debug_autocomplete.get(),
             "debug_cache": self.var_debug_cache.get(),
             "debug_dedup": self.var_debug_dedup.get(),
+            "ship_state_debug": self.var_debug_ship_state.get(),
         }
         return cfg
 
@@ -987,6 +998,7 @@ class SettingsTab(ttk.Frame):
         self.var_debug_autocomplete.set(False)
         self.var_debug_cache.set(False)
         self.var_debug_dedup.set(False)
+        self.var_debug_ship_state.set(False)
 
         # Reset statusu naukowego do stanu „brak danych”
         self.update_science_status(False)

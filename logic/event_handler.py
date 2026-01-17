@@ -22,6 +22,21 @@ class EventHandler:
             fuel_events.handle_status_update(status_data, gui_ref)
         except Exception:
             pass
+        if config.get("ship_state_enabled") and config.get("ship_state_use_status_json"):
+            try:
+                from app.state import app_state
+                app_state.ship_state.update_from_status_json(status_data)
+            except Exception:
+                pass
+
+    def on_cargo_update(self, cargo_data: dict, gui_ref=None) -> None:
+        if not (config.get("ship_state_enabled") and config.get("ship_state_use_cargo_json")):
+            return
+        try:
+            from app.state import app_state
+            app_state.ship_state.update_from_cargo_json(cargo_data)
+        except Exception:
+            pass
 
     def on_market_update(self, market_data: dict, gui_ref=None) -> None:
         try:
@@ -57,6 +72,15 @@ class EventHandler:
         # AUTO-SCHOWEK
         if typ == "FSDJump":
             navigation_events.handle_fsd_jump_autoschowek(ev, gui_ref)
+
+        # SHIP STATE (Loadout)
+        if typ == "Loadout":
+            if config.get("ship_state_enabled"):
+                try:
+                    from app.state import app_state
+                    app_state.ship_state.update_from_loadout(ev)
+                except Exception:
+                    pass
 
         # FSS
         if typ == "FSSDiscoveryScan":

@@ -7,7 +7,7 @@ from logic.utils import powiedz
 from app.state import app_state
 import config
 
-from app.status_watchers import StatusWatcher, MarketWatcher
+from app.status_watchers import StatusWatcher, MarketWatcher, CargoWatcher
 
 
 class MainLoop:
@@ -24,6 +24,9 @@ class MainLoop:
             handler, gui_ref, app_state, config
         )
         self.market_watcher = MarketWatcher(
+            handler, gui_ref, app_state, config
+        )
+        self.cargo_watcher = CargoWatcher(
             handler, gui_ref, app_state, config
         )
 
@@ -68,6 +71,15 @@ class MainLoop:
             return
 
         for line in reversed(lines):
+            if '"event":"Loadout"' in line:
+                try:
+                    handler.handle_event(line, self.gui_ref)
+                    powiedz("Bootstrap: ustawiono statek z Loadout.", self.gui_ref)
+                except Exception as e:
+                    self._log_error(f"Bootstrap loadout error: {e}")
+                break
+
+        for line in reversed(lines):
             if (
                 '"event":"Location"' in line
                 or '"event":"FSDJump"' in line
@@ -110,6 +122,7 @@ class MainLoop:
                     # *** NOWE POLLOWANIE WATCHERÓW ***
                     self.status_watcher.poll()
                     self.market_watcher.poll()
+                    self.cargo_watcher.poll()
 
         except FileNotFoundError:
             self._log_error("Tail: Journal został usunięty – szukam nowego pliku.")

@@ -3,7 +3,7 @@ import time
 import json
 
 from logic.utils import MSG_QUEUE, powiedz
-from logic.events.files import status_path, market_path
+from logic.events.files import status_path, market_path, cargo_path
 
 
 class BaseWatcher:
@@ -111,5 +111,31 @@ class MarketWatcher(BaseWatcher):
 
         try:
             self._handler.on_market_update(data, self._gui_ref)
+        except Exception:
+            pass
+
+
+class CargoWatcher(BaseWatcher):
+    def __init__(self, handler, gui_ref, app_state, config):
+        super().__init__(
+            path=cargo_path(),
+            handler=handler,
+            gui_ref=gui_ref,
+            app_state=app_state,
+            config=config,
+            poll_interval=config.get("status_poll_interval", 0.5),
+            label="CARGO"
+        )
+
+    def poll(self):
+        if not self._should_poll():
+            return
+
+        data = self._load_json_safely()
+        if data is None:
+            return
+
+        try:
+            self._handler.on_cargo_update(data, self._gui_ref)
         except Exception:
             pass

@@ -23,3 +23,10 @@ def market_path() -> str:
     Ścieżka do Market.json w katalogu journala.
     """
     return os.path.join(get_log_dir(), "Market.json")
+
+
+def cargo_path() -> str:
+    """
+    Ścieżka do Cargo.json w katalogu journala.
+    """
+    return os.path.join(get_log_dir(), "Cargo.json")

@@ -78,6 +78,12 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "fdff_notifications": True,
     "read_system_after_jump": True,
 
+    # SHIP STATE (JR)
+    "ship_state_enabled": True,
+    "ship_state_use_status_json": True,
+    "ship_state_use_cargo_json": True,
+    "ship_state_debug": False,
+
     # DEBUG
     "debug_autocomplete": False,
     "debug_cache": False,

@@ -7,6 +7,7 @@ from logic.config import RenataConfig
 from logic.science_data import load_science_data
 from logic.system_value_engine import SystemValueEngine
 from logic.exit_summary import ExitSummaryGenerator  
+from logic.ship_state import ShipState
 
 
 class AppState:
@@ -40,6 +41,9 @@ class AppState:
 
         # --- Exit Summary Generator (EPIC 2–4) ---
         self.exit_summary = ExitSummaryGenerator(self.system_value_engine)
+
+        # --- Ship state (JR-1) ---
+        self.ship_state = ShipState()
 
         # --- Ostatnie wygenerowane summary (EPIC 5) ---
         self.last_exit_summary_text = None
