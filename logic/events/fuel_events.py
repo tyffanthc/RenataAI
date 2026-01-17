@@ -68,9 +68,16 @@ def handle_status_update(status: dict, gui_ref=None):
         except Exception:
             pass
 
-    # Stałe progowe – jak w oryginalnym EventHandlerze
-    MIN_FUEL_PERCENT = 12.0
-    RESET_FUEL_PERCENT = 30.0
+    # Stałe progowe — konfigurowalne w ustawieniach
+    try:
+        threshold = float(config.get("fuel_warning_threshold_pct", 15))
+    except Exception:
+        threshold = 15.0
+    if threshold not in (15.0, 25.0, 50.0):
+        threshold = 15.0
+
+    MIN_FUEL_PERCENT = threshold
+    RESET_FUEL_PERCENT = max(30.0, threshold + 10.0)
 
     low_fuel = low_fuel_flag
     if fuel_percent is not None and fuel_percent < MIN_FUEL_PERCENT:

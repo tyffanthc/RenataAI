@@ -70,6 +70,7 @@ class SettingsTab(ttk.Frame):
 
         self.var_route_progress_messages = tk.BooleanVar(value=True)   # route_progress_speech
         self.var_low_fuel_warning = tk.BooleanVar(value=True)          # fuel_warning
+        self.var_low_fuel_threshold = tk.StringVar(value="15")         # fuel_warning_threshold_pct
 
         self.var_fss_assistant = tk.BooleanVar(value=True)             # fss_assistant
         self.var_high_value_planet_alerts = tk.BooleanVar(value=True)  # high_value_planets
@@ -372,6 +373,7 @@ class SettingsTab(ttk.Frame):
         lf_fuel_safety.columnconfigure(0, weight=1)
         lf_fuel_safety.columnconfigure(1, weight=1)
         lf_fuel_safety.columnconfigure(2, weight=1)
+        lf_fuel_safety.columnconfigure(3, weight=1)
 
         ttk.Checkbutton(
             lf_fuel_safety,
@@ -379,25 +381,37 @@ class SettingsTab(ttk.Frame):
             variable=self.var_low_fuel_warning,
         ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
 
+        ttk.Label(lf_fuel_safety, text="Próg rezerwy:").grid(
+            row=1, column=0, padx=8, pady=4, sticky="w"
+        )
+        combo_fuel_threshold = ttk.Combobox(
+            lf_fuel_safety,
+            textvariable=self.var_low_fuel_threshold,
+            values=("15", "25", "50"),
+            state="readonly",
+            width=6,
+        )
+        combo_fuel_threshold.grid(row=1, column=1, padx=8, pady=4, sticky="w")
+
         chk_preflight = ttk.Checkbutton(
             lf_fuel_safety,
             text="Pre-flight limpets (wkrótce)",
             variable=self.var_preflight_limpets,
         )
         chk_preflight.state(["disabled"])
-        chk_preflight.grid(row=0, column=1, padx=8, pady=4, sticky="w")
+        chk_preflight.grid(row=0, column=2, padx=8, pady=4, sticky="w")
 
         ttk.Checkbutton(
             lf_fuel_safety,
             text="High-G Warning",
             variable=self.var_high_g_warning,
-        ).grid(row=0, column=2, padx=8, pady=4, sticky="w")
+        ).grid(row=0, column=3, padx=8, pady=4, sticky="w")
 
         ttk.Label(
             lf_fuel_safety,
             text="Bezpieczeństwo lotu i ostrzeżenia krytyczne.",
             foreground="#888888",
-        ).grid(row=1, column=0, columnspan=3, padx=8, pady=(0, 6), sticky="w")
+        ).grid(row=2, column=0, columnspan=4, padx=8, pady=(0, 6), sticky="w")
 
         self._add_save_bar(parent, row=3)
 
@@ -733,6 +747,9 @@ class SettingsTab(ttk.Frame):
         self.var_low_fuel_warning.set(
             cfg.get("fuel_warning", self.var_low_fuel_warning.get())
         )
+        self.var_low_fuel_threshold.set(
+            str(cfg.get("fuel_warning_threshold_pct", self.var_low_fuel_threshold.get()))
+        )
         self.var_high_g_warning.set(
             cfg.get("high_g_warning", self.var_high_g_warning.get())
         )
@@ -849,6 +866,11 @@ class SettingsTab(ttk.Frame):
             "auto_clipboard": self.var_auto_clipboard.get(),
             "route_progress_speech": self.var_route_progress_messages.get(),
             "fuel_warning": self.var_low_fuel_warning.get(),
+            "fuel_warning_threshold_pct": int(
+                self.var_low_fuel_threshold.get()
+                if self.var_low_fuel_threshold.get() in ("15", "25", "50")
+                else 15
+            ),
             "high_g_warning": self.var_high_g_warning.get(),
 
             "fss_assistant": self.var_fss_assistant.get(),
@@ -979,6 +1001,7 @@ class SettingsTab(ttk.Frame):
 
         self.var_route_progress_messages.set(True)
         self.var_low_fuel_warning.set(True)
+        self.var_low_fuel_threshold.set("15")
         self.var_fss_assistant.set(True)
         self.var_high_value_planet_alerts.set(True)
         self.var_dss_bio3_assistant.set(True)
