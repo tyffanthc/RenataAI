@@ -331,8 +331,12 @@ class RenataApp:
         try:
             from gui.common_autocomplete import AutocompleteController
             shared_listbox = AutocompleteController._shared_listbox
+            active_owner = AutocompleteController._active_owner
         except Exception:
             shared_listbox = None
+            active_owner = None
+        if active_owner is not None:
+            return
         if shared_listbox is not None:
             try:
                 if shared_listbox.winfo_ismapped():
