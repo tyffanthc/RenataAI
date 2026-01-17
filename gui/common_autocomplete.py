@@ -1,6 +1,7 @@
 import tkinter as tk
 import threading
 import time
+import traceback
 from weakref import WeakKeyDictionary
 from logic import utils
 
@@ -9,6 +10,11 @@ AUTOCOMPLETE_DEBUG = True
 def _dbg(msg):
     if AUTOCOMPLETE_DEBUG:
         print(f"[ACDBG] {msg}")
+
+def _dbg_stack(tag):
+    if AUTOCOMPLETE_DEBUG:
+        stack = "".join(traceback.format_stack(limit=6))
+        print(f"[ACDBG] STACK {tag}\n{stack}")
 
 
 USE_SINGLETON_LISTBOX = True
@@ -111,6 +117,7 @@ class AutocompleteController:
             cls._shared_listbox.place_forget()
         cls._active_owner = None
         cls._last_owner = None
+        _dbg_stack("hide_shared_listbox")
 
     @classmethod
     def _on_shared_list_click(cls, e):
@@ -176,6 +183,7 @@ class AutocompleteController:
 
     def hide(self, reason=""):
         _dbg(f"HIDE reason={reason} owner={hex(id(self))} active={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None} mapped={self.sug_list.winfo_ismapped()}")
+        _dbg_stack(f"hide reason={reason}")
         self._req_gen += 1
         if USE_SINGLETON_LISTBOX:
             if AutocompleteController._shared_listbox is not None:
