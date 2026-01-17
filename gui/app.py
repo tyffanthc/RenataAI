@@ -377,6 +377,10 @@ class RenataApp:
                 elif msg_type == "select_amm":
                     common.podswietl_cel(self.tab_spansh.tab_ammonia.lst_amm, content)
 
+                elif msg_type == "status_trade":
+                    txt, col = content
+                    self.tab_spansh.tab_trade.lbl_status.config(text=txt, foreground=col)
+
                 elif msg_type == "start_label":
                     self.tab_spansh.update_start_label(content)
 

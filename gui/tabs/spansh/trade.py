@@ -1,8 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
 import threading
-import pyperclip
-import config
 from logic import trade
 from logic import utils
 from logic.spansh_client import client as spansh_client
@@ -375,16 +373,8 @@ class TradeTab(ttk.Frame):
             if tr:
                 route_manager.set_route(tr, "trade")
                 opis = list(tr)
-
-                nxt = None
-                # UWAGA: obsługa AUTO-CLIPBOARD (COPY) zostaje bez zmian – etap D4
-                if config.get("auto_clipboard") and len(tr) > 0:
-                    nxt = 0
-                    pyperclip.copy(tr[nxt])
-                    config.STATE["copied_idx"] = nxt
-                    config.STATE["copied_sys"] = tr[nxt]
-
-                common.wypelnij_liste(self.lst_trade, opis, copied_index=nxt)
+                common.handle_route_ready_autoclipboard(self, tr, status_target="trade")
+                common.wypelnij_liste(self.lst_trade, opis)
                 utils.MSG_QUEUE.put(
                     ("status_trade", (f"Znaleziono {len(tr)} propozycji.", "green")),
                 )

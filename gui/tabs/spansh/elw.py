@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
 import threading
-import pyperclip
 import config
 from logic import utils
 from logic import elw_route
@@ -126,15 +125,8 @@ class ELWTab(ttk.Frame):
             route_manager.set_route(tr, "elw")
             opis = [f"{sys} ({len(det.get(sys, []))} ciał)" for sys in tr]
 
-            nxt = None
-            if config.get("auto_clipboard") and len(tr) > 0:
-                nxt = 1 if len(tr) > 1 and tr[0].lower() == s.lower() else 0
-                pyperclip.copy(tr[nxt])
-
-                config.STATE["copied_idx"] = nxt
-                config.STATE["copied_sys"] = tr[nxt]
-
-            common.wypelnij_liste(self.lst, opis, copied_index=nxt)
+            common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
+            common.wypelnij_liste(self.lst, opis)
             utils.MSG_QUEUE.put(("status_rtr", (f"Znaleziono {len(tr)}", "green")))
         else:
             utils.MSG_QUEUE.put(("status_rtr", ("Brak wyników", "red")))

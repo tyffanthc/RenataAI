@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
 import threading
-import pyperclip
 import config
 from logic import neutron
 from logic import utils
@@ -102,15 +101,8 @@ class NeutronTab(ttk.Frame):
                 route_manager.set_route(tr, "neutron")
                 opis = [f"{sys}" for sys in tr]
 
-                nxt = None
-                if config.get("auto_clipboard") and len(tr) > 0:
-                    nxt = 1 if len(tr) > 1 and tr[0].lower() == s.lower() else 0
-                    pyperclip.copy(tr[nxt])
-
-                    config.STATE["copied_idx"] = nxt
-                    config.STATE["copied_sys"] = tr[nxt]
-
-                common.wypelnij_liste(self.lst, opis, copied_index=nxt)
+                common.handle_route_ready_autoclipboard(self, tr, status_target="neu")
+                common.wypelnij_liste(self.lst, opis)
                 utils.MSG_QUEUE.put(("status_neu", (f"Znaleziono {len(tr)}", "green")))
             else:
                 utils.MSG_QUEUE.put(("status_neu", ("Brak wyników", "red")))
