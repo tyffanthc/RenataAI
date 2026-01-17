@@ -1,5 +1,6 @@
 import tkinter as tk
 import threading
+import time
 from weakref import WeakKeyDictionary
 from logic import utils
 
@@ -42,6 +43,8 @@ class AutocompleteController:
         self.min_chars = min_chars
         self.suggest_func = suggest_func
         self._req_gen = 0
+        self._programmatic_change = False
+        self._suppress_show_until = 0.0
         AutocompleteController._instances.append(self)
         AutocompleteController._entry_map[self.entry] = self
         if USE_SINGLETON_LISTBOX:
@@ -174,6 +177,9 @@ class AutocompleteController:
         self.sug_list.place_forget()
 
     def _on_type(self, e):
+        if self._programmatic_change:
+            _dbg("TYPE ignored programmatic_change=True")
+            return
         if e.keysym in ["Up", "Down", "Return", "Enter", "Left", "Right"]:
             return
         t = self.entry.get()
@@ -197,8 +203,12 @@ class AutocompleteController:
 
         def apply():
             if req_gen != self._req_gen:
+                _dbg(f"APPLY ignored stale gen={req_gen} active={self._req_gen}")
                 return
             if (self.entry.get() or "").strip() != query:
+                return
+            if time.monotonic() < self._suppress_show_until:
+                _dbg("APPLY ignored suppress_show_until active")
                 return
             self._show_list(s)
 
@@ -385,9 +395,17 @@ class AutocompleteController:
                     chosen = 0
         if chosen is None or chosen < 0:
             return
+        self._programmatic_change = True
+        self._suppress_show_until = time.monotonic() + 0.25
+        _dbg("CHOOSE start programmatic_change=True suppress_show_until set")
         t = self.sug_list.get(chosen)
         self.entry.delete(0, tk.END)
         self.entry.insert(0, t)
         self.hide(reason="choose")
         self.entry.focus_set()
         self.entry.icursor(tk.END)
+        self.entry.after_idle(self._resume_programmatic_change)
+
+    def _resume_programmatic_change(self):
+        self._programmatic_change = False
+        _dbg("CHOOSE end programmatic_change=False")
