@@ -53,7 +53,7 @@ class AutocompleteController:
                 AutocompleteController._shared_listbox._renata_autocomplete = True
             if not AutocompleteController._shared_binds_installed:
                 AutocompleteController._shared_listbox.bind(
-                    "<ButtonPress-1>",
+                    "<Button-1>",
                     AutocompleteController._on_shared_list_click,
                     add="+"
                 )
@@ -80,7 +80,7 @@ class AutocompleteController:
                 bg="#1f2833", relief="solid", borderwidth=1
             )
             self.sug_list._renata_autocomplete = True
-            self.sug_list.bind("<ButtonPress-1>", self._on_list_click)
+            self.sug_list.bind("<Button-1>", self._on_list_click, add="+")
             self.sug_list.bind("<Return>", self._on_list_return)
 
         self.entry.bind("<KeyRelease>", self._on_type)
@@ -109,6 +109,12 @@ class AutocompleteController:
     @classmethod
     def _on_shared_list_click(cls, e):
         owner = cls._active_owner
+        _dbg(
+            f"SHARED_CLICK start widget={repr(e.widget)} "
+            f"y={e.y} nearest={cls._shared_listbox.nearest(e.y) if cls._shared_listbox is not None else None} "
+            f"size={cls._shared_listbox.size() if cls._shared_listbox is not None else None} "
+            f"active_owner={hex(id(owner)) if owner else None}"
+        )
         if owner is None:
             cls._hide_shared_listbox()
             return "break"
@@ -241,6 +247,13 @@ class AutocompleteController:
             f"width={self.sug_list.winfo_width()} "
             f"height={self.sug_list.winfo_height()} "
             f"active_owner={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None}"
+        )
+        _dbg(
+            "LISTBOX_BINDS "
+            f"button1={self.sug_list.bind('<Button-1>')} "
+            f"button1_release={self.sug_list.bind('<ButtonRelease-1>')} "
+            f"button1_double={self.sug_list.bind('<Double-Button-1>')} "
+            f"bindtags={self.sug_list.bindtags()}"
         )
 
     def _on_arrow_down(self, e):
