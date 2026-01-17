@@ -1,5 +1,6 @@
 import tkinter as tk
 import threading
+from weakref import WeakKeyDictionary
 from logic import utils
 
 AUTOCOMPLETE_DEBUG = True
@@ -33,6 +34,7 @@ class AutocompleteController:
     _instances = []
     _shared_listbox = None
     _active_owner = None
+    _entry_map = WeakKeyDictionary()
     def __init__(self, root_window, entry_widget, min_chars=3, suggest_func=None):
         self.root = root_window
         self.entry = entry_widget
@@ -40,6 +42,7 @@ class AutocompleteController:
         self.suggest_func = suggest_func
         self._req_gen = 0
         AutocompleteController._instances.append(self)
+        AutocompleteController._entry_map[self.entry] = self
         if USE_SINGLETON_LISTBOX:
             if AutocompleteController._shared_listbox is None:
                 AutocompleteController._shared_listbox = tk.Listbox(
@@ -250,12 +253,12 @@ class AutocompleteController:
         _hide_all_autocomplete_listboxes(self.root)
 
     def _on_global_click(self, e):
-        is_list = str(e.widget) == str(self.sug_list) or getattr(e.widget, "_renata_autocomplete", False)
-        if USE_SINGLETON_LISTBOX:
-            owner = AutocompleteController._active_owner
-            is_entry = owner is not None and e.widget == owner.entry
-        else:
-            is_entry = str(e.widget) == str(self.entry)
+        is_list = (
+            e.widget is AutocompleteController._shared_listbox
+            or getattr(e.widget, "_renata_autocomplete", False)
+        )
+        is_entry = e.widget in AutocompleteController._entry_map
+        print(f"[ACDBG] GLOBAL_CLICK_ENTRY widget={repr(e.widget)} is_entry={is_entry}")
         _dbg(
             "GLOBAL_CLICK widget=" + repr(e.widget) +
             f" is_list={is_list} is_entry={is_entry} active={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None} mapped={self.sug_list.winfo_ismapped()}"
@@ -264,7 +267,7 @@ class AutocompleteController:
             _dbg("GLOBAL_CLICK action=ignore_listbox")
             return
         if is_entry:
-            _dbg("GLOBAL_CLICK action=ignore")
+            _dbg("GLOBAL_CLICK action=ignore_entry")
             return
         if USE_SINGLETON_LISTBOX:
             self.root.after_idle(AutocompleteController._hide_shared_listbox)
