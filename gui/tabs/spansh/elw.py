@@ -127,7 +127,7 @@ class ELWTab(ttk.Frame):
             opis = [f"{sys} ({len(det.get(sys, []))} ciał)" for sys in tr]
 
             nxt = None
-            if config.SETTINGS.get("COPY") and len(tr) > 0:
+            if config.get("auto_clipboard") and len(tr) > 0:
                 nxt = 1 if len(tr) > 1 and tr[0].lower() == s.lower() else 0
                 pyperclip.copy(tr[nxt])
 
@@ -144,3 +144,4 @@ class ELWTab(ttk.Frame):
         self.lbl_status.config(text="Wyczyszczono", foreground="grey")
         config.STATE["rtr_data"] = {}
         config.STATE["trasa"] = []
+

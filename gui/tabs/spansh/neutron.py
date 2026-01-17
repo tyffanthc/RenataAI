@@ -103,7 +103,7 @@ class NeutronTab(ttk.Frame):
                 opis = [f"{sys}" for sys in tr]
 
                 nxt = None
-                if config.SETTINGS.get("COPY") and len(tr) > 0:
+                if config.get("auto_clipboard") and len(tr) > 0:
                     nxt = 1 if len(tr) > 1 and tr[0].lower() == s.lower() else 0
                     pyperclip.copy(tr[nxt])
 
@@ -116,3 +116,4 @@ class NeutronTab(ttk.Frame):
                 utils.MSG_QUEUE.put(("status_neu", ("Brak wyników", "red")))
         except Exception as e:  # żeby nie uwalić GUI przy wyjątku w wątku
             utils.MSG_QUEUE.put(("status_neu", (f"Błąd: {e}", "red")))
+

@@ -378,7 +378,7 @@ class TradeTab(ttk.Frame):
 
                 nxt = None
                 # UWAGA: obsługa AUTO-CLIPBOARD (COPY) zostaje bez zmian – etap D4
-                if config.SETTINGS.get("COPY") and len(tr) > 0:
+                if config.get("auto_clipboard") and len(tr) > 0:
                     nxt = 0
                     pyperclip.copy(tr[nxt])
                     config.STATE["copied_idx"] = nxt
@@ -395,3 +395,4 @@ class TradeTab(ttk.Frame):
 
         except Exception as e:
             utils.MSG_QUEUE.put(("status_trade", (f"Błąd: {e}", "red")))
+

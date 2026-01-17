@@ -172,7 +172,7 @@ class RichesTab(ttk.Frame):
             opis = [f"{sys} ({len(det.get(sys, []))} ciał)" for sys in tr]
 
             nxt = None
-            if config.SETTINGS.get("COPY") and len(tr) > 0:
+            if config.get("auto_clipboard") and len(tr) > 0:
                 nxt = 1 if len(tr) > 1 and tr[0].lower() == s.lower() else 0
                 pyperclip.copy(tr[nxt])
                 config.STATE["copied_idx"] = nxt
@@ -182,3 +182,4 @@ class RichesTab(ttk.Frame):
             utils.MSG_QUEUE.put(("status_rtr", (f"Znaleziono {len(tr)}", "green")))
         else:
             utils.MSG_QUEUE.put(("status_rtr", ("Brak wyników", "red")))
+
