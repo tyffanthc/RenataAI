@@ -35,6 +35,7 @@ class AutocompleteController:
     _instances = []
     _shared_listbox = None
     _active_owner = None
+    _last_owner = None
     _entry_map = WeakKeyDictionary()
     _shared_binds_installed = False
     def __init__(self, root_window, entry_widget, min_chars=3, suggest_func=None):
@@ -108,6 +109,7 @@ class AutocompleteController:
         if cls._shared_listbox is not None:
             cls._shared_listbox.place_forget()
         cls._active_owner = None
+        cls._last_owner = None
 
     @classmethod
     def _on_shared_list_click(cls, e):
@@ -120,6 +122,8 @@ class AutocompleteController:
             owner = cls._entry_map.get(focus_widget)
             if owner is not None:
                 cls._active_owner = owner
+        if owner is None:
+            owner = cls._last_owner
         _dbg(
             f"SHARED_CLICK start widget={repr(e.widget)} "
             f"y={e.y} nearest={cls._shared_listbox.nearest(e.y) if cls._shared_listbox is not None else None} "
@@ -152,6 +156,8 @@ class AutocompleteController:
         if owner is None:
             cls._hide_shared_listbox()
             return "break"
+        if owner is None:
+            owner = cls._last_owner
         listbox = cls._shared_listbox
         if listbox is None:
             return "break"
@@ -241,6 +247,7 @@ class AutocompleteController:
 
         if USE_SINGLETON_LISTBOX:
             AutocompleteController._active_owner = self
+            AutocompleteController._last_owner = self
             if AutocompleteController._shared_listbox is not None:
                 AutocompleteController._shared_listbox.place_forget()
         else:
