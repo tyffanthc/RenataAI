@@ -84,10 +84,14 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "modules_data_path": "renata_modules_data.json",
     "modules_data_autogen_enabled": True,
     "modules_data_debug": False,
-    "modules_data_sources": [
-        "https://raw.githubusercontent.com/EDCD/coriolis-data/master/dist/modules.json",
-        "https://raw.githubusercontent.com/EDCD/coriolis-data/master/dist/modules.json.gz",
-    ],
+    "modules_data_sources": {
+        "fsd_url": "https://raw.githubusercontent.com/EDCD/coriolis-data/master/modules/standard/frame_shift_drive.json",
+        "booster_url": "https://raw.githubusercontent.com/EDCD/coriolis-data/master/modules/internal/guardian_fsd_booster.json",
+        "fallback_urls": [
+            "https://raw.githubusercontent.com/EDCD/coriolis-data/master/dist/modules.json",
+            "https://raw.githubusercontent.com/EDCD/coriolis-data/master/dist/modules.json.gz",
+        ],
+    },
 
     # SHIP STATE (JR)
     "ship_state_enabled": True,
