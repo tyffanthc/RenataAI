@@ -11,7 +11,7 @@ Po D3:
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any, List, Tuple, Dict
 
 from logic.spansh_client import client, spansh_error
 from logic.utils import powiedz
@@ -71,3 +71,52 @@ def oblicz_spansh(
         return []
 
     return systems
+
+
+def oblicz_spansh_with_details(
+    start: str,
+    cel: str,
+    zasieg: float,
+    eff: float,
+    gui_ref: Any | None = None,
+) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """
+    API dla zakładki Neutron Plotter z dodatkowymi metadanymi skoków.
+
+    Zwraca:
+        (lista_systemów, lista_szczegółów)
+    """
+    start = (start or "").strip()
+    cel = (cel or "").strip()
+
+    powiedz(
+        f"API: Trasa neutronowa {start} -> {cel} (Eff: {eff}%).",
+        gui_ref,
+    )
+
+    if not start or not cel:
+        spansh_error(
+            "NEUTRON: brak systemu startowego lub docelowego.",
+            gui_ref,
+            context="neutron",
+        )
+        return [], []
+
+    systems, details = client.neutron_route(
+        start=start,
+        cel=cel,
+        zasieg=zasieg,
+        eff=eff,
+        gui_ref=gui_ref,
+        return_details=True,
+    )
+
+    if not systems:
+        spansh_error(
+            "NEUTRON: SPANSH nie zwrócił żadnej trasy.",
+            gui_ref,
+            context="neutron",
+        )
+        return [], []
+
+    return systems, details

@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 import threading
+from itertools import zip_longest
 import config
 from logic import neutron
 from logic import utils
@@ -100,11 +101,16 @@ class NeutronTab(ttk.Frame):
 
     def _th(self, s, cel, rng, eff):
         try:
-            tr = neutron.oblicz_spansh(s, cel, rng, eff, self.root)
+            tr, details = neutron.oblicz_spansh_with_details(s, cel, rng, eff, self.root)
 
             if tr:
                 route_manager.set_route(tr, "neutron")
-                opis = [f"{sys}" for sys in tr]
+                header = "System                          Dist(LY)  Rem(LY)  Neutron  Jumps"
+                opis = [header]
+                for sys_name, detail in zip_longest(tr, details, fillvalue={}):
+                    if not sys_name:
+                        continue
+                    opis.append(self._format_jump_row(sys_name, detail))
 
                 common.handle_route_ready_autoclipboard(self, tr, status_target="neu")
                 common.wypelnij_liste(self.lst, opis)
@@ -132,3 +138,28 @@ class NeutronTab(ttk.Frame):
                 ui_target="neu",
             )
 
+    def _format_jump_row(self, system_name, detail):
+        def _fmt_num(value):
+            try:
+                num = float(value)
+            except Exception:
+                return ""
+            return f"{num:.2f}"
+
+        def _fmt_neutron(value):
+            if value is True:
+                return "Yes"
+            if value is False:
+                return "No"
+            if isinstance(value, str):
+                return "Yes" if value.strip().lower() in ("yes", "true", "1") else ""
+            return ""
+
+        name = (system_name or "").strip()
+        distance = _fmt_num(detail.get("distance"))
+        remaining = _fmt_num(detail.get("remaining"))
+        neutron_flag = _fmt_neutron(detail.get("neutron"))
+        jumps = detail.get("jumps")
+        jumps_txt = "" if jumps is None else str(jumps)
+
+        return f"{name[:30]:<30} {distance:>8} {remaining:>8} {neutron_flag:>7} {jumps_txt:>5}"

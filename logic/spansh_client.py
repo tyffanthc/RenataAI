@@ -360,7 +360,9 @@ class SpanshClient:
         zasieg: float,
         eff: float,
         gui_ref: Any | None = None,
-    ) -> List[str]:
+        *,
+        return_details: bool = False,
+    ) -> List[str] | tuple[List[str], List[dict[str, Any]]]:
         """
         Wersja dedykowana dla Neutron Plottera.
 
@@ -389,7 +391,7 @@ class SpanshClient:
             gui_ref=gui_ref,
         )
         if not result:
-            return []
+            return ([], []) if return_details else []
 
         # Spansh dla plottera zwykle zwraca result.system_jumps: [...]
         if isinstance(result, dict):
@@ -398,14 +400,34 @@ class SpanshClient:
             jumps = result
 
         systems: List[str] = []
+        details: List[dict[str, Any]] = []
         for entry in jumps or []:
             if isinstance(entry, dict):
-                name = entry.get("system")
+                name = entry.get("system") or entry.get("name")
+                details.append(
+                    {
+                        "system": name,
+                        "distance": entry.get("distance"),
+                        "remaining": (
+                            entry.get("remaining")
+                            or entry.get("remaining_distance")
+                            or entry.get("remaining_ly")
+                        ),
+                        "neutron": (
+                            entry.get("neutron")
+                            or entry.get("is_neutron")
+                            or entry.get("neutron_star")
+                        ),
+                        "jumps": entry.get("jumps") or entry.get("jump_count"),
+                    }
+                )
             else:
                 name = str(entry)
             if name:
                 systems.append(str(name))
 
+        if return_details:
+            return systems, details
         return systems
 
     # ----------------------------------------------------------------- helpers
