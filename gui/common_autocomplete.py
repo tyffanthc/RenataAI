@@ -2,6 +2,13 @@ import tkinter as tk
 import threading
 from logic import utils
 
+AUTOCOMPLETE_DEBUG = True
+
+def _dbg(msg):
+    if AUTOCOMPLETE_DEBUG:
+        print(f"[ACDBG] {msg}")
+
+
 USE_SINGLETON_LISTBOX = True
 
 def _hide_all_autocomplete_listboxes(root):
@@ -88,6 +95,7 @@ class AutocompleteController:
             owner._on_list_return(e)
 
     def hide(self, reason=""):
+        _dbg("HIDE reason={reason} owner={hex(id(self))} active={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None} mapped={self.sug_list.winfo_ismapped()}")
         self._req_gen += 1
         if USE_SINGLETON_LISTBOX:
             if AutocompleteController._active_owner is not self:
@@ -130,13 +138,14 @@ class AutocompleteController:
         self.root.after(0, apply)
 
     def _show_list(self, items):
-        # brak wynik+-w -> chowamy list¶÷
+        _dbg("SHOW size={len(items)} mapped_before={self.sug_list.winfo_ismapped()} owner={hex(id(self))}")
+        # brak wynik+-w -> chowamy list|T
         if not items:
             self.hide()
             return
 
-        # je+çli entry zosta+Èo ju+- fizycznie ukryte (np. zamkni¶÷te okno dialogowe),
-        # nie ma sensu pokazywa¶Á listy
+        # je+?li entry zosta+,o ju+- fizycznie ukryte (np. zamkni|Tte okno dialogowe),
+        # nie ma sensu pokazywa|? listy
         if not self.entry.winfo_ismapped():
             self.hide()
             return
@@ -154,9 +163,9 @@ class AutocompleteController:
         else:
             AutocompleteController.hide_all()
 
-        # UWAGA: nie blokujemy ju+- wy+çwietlania na podstawie focus_get()
-        # (wcze+çniej mog+Èo to powodowa¶Á, +-e lista by+Èa pusta, gdy fokus
-        # na chwil¶÷ uciek+È zanim wr+-ci+Èa odpowied+¶ z API)
+        # UWAGA: nie blokujemy ju+- wy+?wietlania na podstawie focus_get()
+        # (wcze+?niej mog+,o to powodowa|?, +-e lista by+,a pusta, gdy fokus
+        # na chwil|T uciek+, zanim wr+-ci+,a odpowied+| z API)
 
         self.sug_list.delete(0, tk.END)
         for x in items:
@@ -189,8 +198,12 @@ class AutocompleteController:
         return "break"
 
     def _on_list_click(self, e):
+        _dbg(
+            "LIST_CLICK start widget=" + repr(e.widget) +
+            f" y={e.y} nearest={self.sug_list.nearest(e.y)} size={self.sug_list.size()} active={self.sug_list.index(\"active\")} cur={self.sug_list.curselection()}"
+        )
         if not self.entry.winfo_viewable():
-            self.hide()
+            self.hide(reason="list_click_entry_hidden")
             return
         idx = self.sug_list.nearest(e.y)
         if idx is None or idx < 0:
@@ -199,6 +212,7 @@ class AutocompleteController:
         self.sug_list.selection_set(idx)
         self.sug_list.activate(idx)
         self._choose(idx)
+        _dbg("LIST_CLICK end hide_called=True")
 
     def _on_list_return(self, e):
         if self.sug_list.curselection():
@@ -214,6 +228,53 @@ class AutocompleteController:
             self.sug_list.selection_set(idx)
             self.sug_list.activate(idx)
             self._choose(idx)
+
+    def _on_focus_out(self, _e):
+        self.root.after(1, self._maybe_hide_on_focus_out)
+
+    def _maybe_hide_on_focus_out(self):
+        if str(self.root.focus_get()) == str(self.sug_list):
+            return
+        self.hide()
+
+    def _on_unmap(self, _e):
+        self.hide()
+
+    def _on_tab_changed(self, _e):
+        if USE_SINGLETON_LISTBOX:
+            AutocompleteController._hide_shared_listbox()
+            return
+        self.hide()
+        _hide_all_autocomplete_listboxes(self.root)
+
+    def _on_global_click(self, e):
+        is_list = str(e.widget) == str(self.sug_list)
+        is_entry = str(e.widget) == str(self.entry)
+        _dbg(
+            "GLOBAL_CLICK widget=" + repr(e.widget) +
+            f" is_list={is_list} is_entry={is_entry} active={hex(id(AutocompleteController._active_owner)) if AutocompleteController._active_owner else None} mapped={self.sug_list.winfo_ismapped()}"
+        )
+        if is_list:
+            if not self.entry.winfo_viewable():
+                if USE_SINGLETON_LISTBOX:
+                    AutocompleteController._hide_shared_listbox()
+                    _dbg("GLOBAL_CLICK action=hide_shared")
+                else:
+                    self.hide(reason="global_click_list_entry_hidden")
+                    _dbg("GLOBAL_CLICK action=hide")
+            else:
+                _dbg("GLOBAL_CLICK action=ignore")
+            return
+        if is_entry:
+            _dbg("GLOBAL_CLICK action=ignore")
+            return
+        if USE_SINGLETON_LISTBOX:
+            AutocompleteController._hide_shared_listbox()
+            _dbg("GLOBAL_CLICK action=hide_shared")
+        else:
+            self.hide(reason="global_click_outside")
+            _dbg("GLOBAL_CLICK action=hide")
+            _hide_all_autocomplete_listboxes(self.root)
 
     def _choose(self, idx):
         chosen = None
