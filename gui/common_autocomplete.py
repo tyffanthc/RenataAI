@@ -87,7 +87,7 @@ class AutocompleteController:
         if owner is not None:
             owner._on_list_return(e)
 
-    def hide(self):
+    def hide(self, reason=""):
         self._req_gen += 1
         if USE_SINGLETON_LISTBOX:
             if AutocompleteController._active_owner is not self:
@@ -193,58 +193,45 @@ class AutocompleteController:
             self.hide()
             return
         idx = self.sug_list.nearest(e.y)
-        if idx is not None:
-            self.sug_list.selection_clear(0, tk.END)
-            self.sug_list.selection_set(idx)
-            self.sug_list.activate(idx)
-            self._choose(idx)
+        if idx is None or idx < 0:
+            return
+        self.sug_list.selection_clear(0, tk.END)
+        self.sug_list.selection_set(idx)
+        self.sug_list.activate(idx)
+        self._choose(idx)
 
     def _on_list_return(self, e):
         if self.sug_list.curselection():
             self._choose(self.sug_list.curselection()[0])
             return
         idx = self.sug_list.index("active")
+        if idx is None:
+            size = self.sug_list.size()
+            if size == 1:
+                idx = 0
         if idx is not None:
+            self.sug_list.selection_clear(0, tk.END)
+            self.sug_list.selection_set(idx)
+            self.sug_list.activate(idx)
             self._choose(idx)
 
-    def _on_focus_out(self, _e):
-        self.root.after(1, self._maybe_hide_on_focus_out)
-
-    def _maybe_hide_on_focus_out(self):
-        if str(self.root.focus_get()) == str(self.sug_list):
-            return
-        self.hide()
-
-    def _on_unmap(self, _e):
-        self.hide()
-
-    def _on_tab_changed(self, _e):
-        if USE_SINGLETON_LISTBOX:
-            AutocompleteController._hide_shared_listbox()
-            return
-        self.hide()
-        _hide_all_autocomplete_listboxes(self.root)
-
-    def _on_global_click(self, e):
-        if str(e.widget) == str(self.sug_list):
-            if not self.entry.winfo_viewable():
-                if USE_SINGLETON_LISTBOX:
-                    AutocompleteController._hide_shared_listbox()
-                else:
-                    self.hide()
-            return
-        if str(e.widget) == str(self.entry):
-            return
-        if USE_SINGLETON_LISTBOX:
-            AutocompleteController._hide_shared_listbox()
-        else:
-            self.hide()
-            _hide_all_autocomplete_listboxes(self.root)
-
     def _choose(self, idx):
-        t = self.sug_list.get(idx)
+        chosen = None
+        if self.sug_list.curselection():
+            chosen = self.sug_list.curselection()[0]
+        elif idx is not None:
+            chosen = idx
+        else:
+            chosen = self.sug_list.index("active")
+            if chosen is None:
+                size = self.sug_list.size()
+                if size == 1:
+                    chosen = 0
+        if chosen is None or chosen < 0:
+            return
+        t = self.sug_list.get(chosen)
         self.entry.delete(0, tk.END)
         self.entry.insert(0, t)
-        self.hide()
+        self.hide(reason="choose")
         self.entry.focus_set()
         self.entry.icursor(tk.END)
