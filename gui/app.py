@@ -326,8 +326,20 @@ class RenataApp:
         self.root.after_idle(self.tab_spansh.hide_suggestions)
 
     def on_window_move(self, event):
-        if hasattr(self.tab_spansh, 'hide_suggestions'):
-            self.tab_spansh.hide_suggestions()
+        if not hasattr(self.tab_spansh, 'hide_suggestions'):
+            return
+        try:
+            from gui.common_autocomplete import AutocompleteController
+            shared_listbox = AutocompleteController._shared_listbox
+        except Exception:
+            shared_listbox = None
+        if shared_listbox is not None:
+            try:
+                if shared_listbox.winfo_ismapped():
+                    return
+            except tk.TclError:
+                pass
+        self.root.after_idle(self.tab_spansh.hide_suggestions)
 
     def check_queue(self):
         try:
