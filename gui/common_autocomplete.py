@@ -142,6 +142,8 @@ class AutocompleteController:
             return "break"
         owner._choose(idx)
         cls._hide_shared_listbox()
+        if cls._shared_listbox is not None:
+            cls._shared_listbox.after_idle(cls._shared_listbox.place_forget)
         return "break"
 
     @classmethod
@@ -428,7 +430,8 @@ class AutocompleteController:
         self.entry.insert(0, t)
         self.entry.focus_set()
         self.entry.icursor(tk.END)
-        self.entry.after_idle(lambda: self.hide(reason="choose"))
+        self.hide(reason="choose")
+        self.entry.after_idle(lambda: self.hide(reason="choose_idle"))
         self.entry.after_idle(self._resume_programmatic_change)
 
     def _resume_programmatic_change(self):
