@@ -30,6 +30,10 @@ STATUS_TEXTS = {
     "TRADE_INPUT_MISSING": "Podaj system startowy.",
     "TRADE_STATION_REQUIRED": "Wybierz stację startową — SPANSH Trade wymaga system+station.",
     "TRADE_ERROR": "Błąd trade.",
+    "CACHE_HIT": "Cache hit",
+    "CACHE_MISS": "Cache miss",
+    "CACHE_WRITE_FAIL": "Nie udało się zapisać cache.",
+    "CACHE_CORRUPT": "Cache uszkodzony.",
 }
 
 
@@ -162,6 +166,7 @@ def emit_status(
     source: str | None = None,
     sticky: bool = False,
     ui_target: str | None = None,
+    notify_overlay: bool = True,
 ) -> dict:
     if text is None:
         text = STATUS_TEXTS.get(code, code)
@@ -173,7 +178,8 @@ def emit_status(
         "source": source,
         "sticky": bool(sticky),
     }
-    utils.MSG_QUEUE.put(("status_event", event))
+    if notify_overlay:
+        utils.MSG_QUEUE.put(("status_event", event))
     utils.MSG_QUEUE.put(("log", f"[{level}] {code}: {text}"))
     if ui_target:
         color = _level_color(level)
