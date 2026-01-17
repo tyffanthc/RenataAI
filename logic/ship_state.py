@@ -31,6 +31,19 @@ class ShipState:
         self.last_update_ts = now
         self.last_update_by[source] = now
 
+    def _emit_update(self) -> None:
+        payload = {
+            "ship_id": self.ship_id,
+            "ship_type": self.ship_type,
+            "unladen_mass_t": self.unladen_mass_t,
+            "cargo_mass_t": self.cargo_mass_t,
+            "fuel_main_t": self.fuel_main_t,
+            "fuel_reservoir_t": self.fuel_reservoir_t,
+            "completeness": self.get_completeness(),
+            "ts": self.last_update_ts,
+        }
+        MSG_QUEUE.put(("ship_state", payload))
+
     def update_from_loadout(self, event: Dict[str, Any], source: str = "journal") -> None:
         if not event:
             return
@@ -74,6 +87,7 @@ class ShipState:
                 f"Loadout: ship_id={self.ship_id}, ship_type={self.ship_type}, "
                 f"unladen={self.unladen_mass_t}"
             )
+            self._emit_update()
 
     def update_from_status_json(self, data: Dict[str, Any], source: str = "status_json") -> None:
         if not data:
@@ -109,6 +123,7 @@ class ShipState:
             self._log_debug(
                 f"Fuel: main={self.fuel_main_t}, reservoir={self.fuel_reservoir_t}"
             )
+            self._emit_update()
 
     def update_from_cargo_json(self, data: Dict[str, Any], source: str = "cargo_json") -> None:
         if not data:
@@ -154,6 +169,7 @@ class ShipState:
             self.cargo_mass_t = cargo_mass
             self._mark_updated(source)
             self._log_debug(f"Cargo: mass={self.cargo_mass_t}")
+            self._emit_update()
 
     def get_completeness(self) -> Dict[str, bool]:
         return {

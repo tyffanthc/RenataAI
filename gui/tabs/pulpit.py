@@ -65,6 +65,18 @@ class PulpitTab(ttk.Frame):
         self.lbl_status_route = ttk.Label(status_frame, text="Trasa: -")
         self.lbl_status_route.pack(side="left", padx=(0, 15))
 
+        self.lbl_status_ship = ttk.Label(status_frame, text="Statek: -")
+        self.lbl_status_ship.pack(side="left", padx=(0, 15))
+
+        self.lbl_status_mass = ttk.Label(status_frame, text="Masa: - t")
+        self.lbl_status_mass.pack(side="left", padx=(0, 15))
+
+        self.lbl_status_cargo = ttk.Label(status_frame, text="Cargo: - t")
+        self.lbl_status_cargo.pack(side="left", padx=(0, 15))
+
+        self.lbl_status_fuel = ttk.Label(status_frame, text="Paliwo: -/- t")
+        self.lbl_status_fuel.pack(side="left", padx=(0, 15))
+
         # PRZYCISKI / AKCJE
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill="x", padx=5, pady=5)
@@ -134,6 +146,52 @@ class PulpitTab(ttk.Frame):
                 pass
 
         self.lbl_status_route.config(text=f"Trasa: {route_text}")
+
+        # Statek / paliwo / cargo
+        if self._app_state is not None and hasattr(self._app_state, "ship_state"):
+            try:
+                ship_state = self._app_state.ship_state
+                payload = {
+                    "ship_id": ship_state.ship_id,
+                    "ship_type": ship_state.ship_type,
+                    "unladen_mass_t": ship_state.unladen_mass_t,
+                    "cargo_mass_t": ship_state.cargo_mass_t,
+                    "fuel_main_t": ship_state.fuel_main_t,
+                    "fuel_reservoir_t": ship_state.fuel_reservoir_t,
+                }
+                self.update_ship_state(payload)
+            except Exception:
+                pass
+
+    def update_ship_state(self, data: dict) -> None:
+        ship_type = data.get("ship_type") or "-"
+        ship_id = data.get("ship_id")
+        if ship_id is not None:
+            ship_text = f"{ship_type} (#{ship_id})"
+        else:
+            ship_text = f"{ship_type}"
+        self.lbl_status_ship.config(text=f"Statek: {ship_text}")
+
+        unladen = data.get("unladen_mass_t")
+        if unladen is None:
+            self.lbl_status_mass.config(text="Masa: - t")
+        else:
+            self.lbl_status_mass.config(text=f"Masa: {unladen:.1f} t")
+
+        cargo = data.get("cargo_mass_t")
+        if cargo is None:
+            self.lbl_status_cargo.config(text="Cargo: - t")
+        else:
+            self.lbl_status_cargo.config(text=f"Cargo: {cargo:.1f} t")
+
+        fuel_main = data.get("fuel_main_t")
+        fuel_res = data.get("fuel_reservoir_t")
+        if fuel_main is None and fuel_res is None:
+            self.lbl_status_fuel.config(text="Paliwo: -/- t")
+        else:
+            fm = "-" if fuel_main is None else f"{fuel_main:.2f}"
+            fr = "-" if fuel_res is None else f"{fuel_res:.2f}"
+            self.lbl_status_fuel.config(text=f"Paliwo: {fm}/{fr} t")
 
     # ------------------------------------------------------------
     # AKCJE

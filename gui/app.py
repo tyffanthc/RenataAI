@@ -390,6 +390,12 @@ class RenataApp:
                 elif msg_type == "status_event":
                     self._overlay_set_status(content)
 
+                elif msg_type == "ship_state":
+                    try:
+                        self.tab_pulpit.update_ship_state(content)
+                    except Exception:
+                        pass
+
                 elif msg_type == "start_label":
                     self.tab_spansh.update_start_label(content)
 
