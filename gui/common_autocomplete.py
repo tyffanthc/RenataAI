@@ -53,7 +53,7 @@ class AutocompleteController:
                 AutocompleteController._shared_listbox._renata_autocomplete = True
             if not AutocompleteController._shared_binds_installed:
                 AutocompleteController._shared_listbox.bind(
-                    "<ButtonRelease-1>",
+                    "<ButtonPress-1>",
                     AutocompleteController._on_shared_list_click,
                     add="+"
                 )
@@ -80,7 +80,7 @@ class AutocompleteController:
                 bg="#1f2833", relief="solid", borderwidth=1
             )
             self.sug_list._renata_autocomplete = True
-            self.sug_list.bind("<ButtonRelease-1>", self._on_list_click)
+            self.sug_list.bind("<ButtonPress-1>", self._on_list_click)
             self.sug_list.bind("<Return>", self._on_list_return)
 
         self.entry.bind("<KeyRelease>", self._on_type)
