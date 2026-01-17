@@ -14,6 +14,12 @@ from logic.route_clipboard import (
 COPIED_BG = "#CFE8FF"   # jasny niebieski, subtelny
 COPIED_FG = "#000000"
 
+_LAST_ROUTE_TEXT = ""
+_LAST_ROUTE_SIG = None
+_LAST_ROUTE_SYSTEMS: list[str] = []
+_LAST_STATUS = {"level": None, "message": ""}
+_LAST_OVERLAY_TS = 0.0
+
 
 def stworz_liste_trasy(parent, title="Plan Lotu"):
     """
@@ -86,6 +92,56 @@ def wypelnij_liste(lb, dane, copied_index=None, autoselect=True, autoscroll=True
                 pass
 
 
+def _extract_route_systems(route):
+    if not route:
+        return []
+    if isinstance(route, (list, tuple)):
+        return [str(x).strip() for x in route if str(x).strip()]
+    if isinstance(route, dict):
+        for key in ("route", "systems", "path", "system_list", "points"):
+            items = route.get(key)
+            if isinstance(items, (list, tuple)):
+                return [str(x).strip() for x in items if str(x).strip()]
+        name = route.get("system") or route.get("name")
+        if name:
+            return [str(name).strip()]
+    if isinstance(route, str):
+        return [route.strip()] if route.strip() else []
+    return []
+
+
+def set_last_route_data(route, text, sig):
+    global _LAST_ROUTE_TEXT, _LAST_ROUTE_SIG, _LAST_ROUTE_SYSTEMS
+    if text is not None:
+        _LAST_ROUTE_TEXT = text
+    if sig is not None:
+        _LAST_ROUTE_SIG = sig
+    _LAST_ROUTE_SYSTEMS = _extract_route_systems(route)
+
+
+def get_last_route_text():
+    return _LAST_ROUTE_TEXT or ""
+
+
+def get_last_route_sig():
+    return _LAST_ROUTE_SIG
+
+
+def get_last_route_systems():
+    return list(_LAST_ROUTE_SYSTEMS)
+
+
+def _emit_overlay_status(level, message):
+    global _LAST_OVERLAY_TS
+    now = time.monotonic()
+    if now - _LAST_OVERLAY_TS < 1.0:
+        return
+    _LAST_OVERLAY_TS = now
+    _LAST_STATUS["level"] = level
+    _LAST_STATUS["message"] = message
+    utils.MSG_QUEUE.put(("overlay_status", (level, message)))
+
+
 def _maybe_toast(owner, status_target, msg, color, debounce_sec):
     now = time.monotonic()
     last_ts = getattr(owner, "_last_clipboard_toast_ts", 0.0) or 0.0
@@ -96,16 +152,18 @@ def _maybe_toast(owner, status_target, msg, color, debounce_sec):
 
 
 def handle_route_ready_autoclipboard(owner, route, *, status_target, debounce_sec=1.5):
+    text = format_route_for_clipboard(route)
+    sig = compute_route_signature(route)
+    set_last_route_data(route, text, sig)
+
     if not config.get("auto_clipboard"):
         return
 
-    sig = compute_route_signature(route)
     last_sig = getattr(owner, "_last_copied_route_sig", None)
     if sig and last_sig == sig:
         utils.MSG_QUEUE.put(("log", "[AUTO-SCHOWEK] Cache: route clipboard hit/skip"))
         return
 
-    text = format_route_for_clipboard(route)
     if not text:
         _maybe_toast(
             owner,
@@ -114,6 +172,7 @@ def handle_route_ready_autoclipboard(owner, route, *, status_target, debounce_se
             "orange",
             debounce_sec,
         )
+        _emit_overlay_status("warn", "Nie mogę skopiować — skopiuj ręcznie")
         return
 
     result = try_copy_to_clipboard(text)
@@ -127,6 +186,7 @@ def handle_route_ready_autoclipboard(owner, route, *, status_target, debounce_se
             "green",
             debounce_sec,
         )
+        _emit_overlay_status("ok", "Skopiowano trasę")
     else:
         _maybe_toast(
             owner,
@@ -135,6 +195,7 @@ def handle_route_ready_autoclipboard(owner, route, *, status_target, debounce_se
             "orange",
             debounce_sec,
         )
+        _emit_overlay_status("warn", "Nie mogę skopiować — skopiuj ręcznie")
         err = result.get("error")
         if err:
             utils.MSG_QUEUE.put(("log", f"[AUTO-SCHOWEK] Clipboard error: {err}"))

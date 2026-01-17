@@ -31,6 +31,9 @@ class RenataApp:
         C_FG = "#ff7100"       # Elite Orange (Tekst)
         C_SEC = "#c5c6c7"      # Szary (Tekst pomocniczy)
         C_ACC = "#1f2833"      # Ciemnoszary (Belki, tła inputów)
+        self._overlay_bg = C_ACC
+        self._overlay_fg = C_FG
+        self._overlay_sec = C_SEC
 
         # 2. Konfiguracja Głównego Okna
         self.root.configure(bg=C_BG)
@@ -191,6 +194,9 @@ class RenataApp:
             },
         )
         self.root.config(menu=self.menu_bar)
+
+        # --- OVERLAY / QUICK-VIEW ---
+        self._init_overlay()
 
         # =========================
         # DANE NAUKOWE (S2-LOGIC-01)
@@ -381,6 +387,10 @@ class RenataApp:
                     txt, col = content
                     self.tab_spansh.tab_trade.lbl_status.config(text=txt, foreground=col)
 
+                elif msg_type == "overlay_status":
+                    level, msg = content
+                    self._overlay_set_status(level, msg)
+
                 elif msg_type == "start_label":
                     self.tab_spansh.update_start_label(content)
 
@@ -404,6 +414,152 @@ class RenataApp:
             self.tab_pulpit.log(msg)
         except Exception:
             print(msg)
+
+    # ------------------------------------------------------------------ #
+    #   Overlay / quick-view
+    # ------------------------------------------------------------------ #
+
+    def _init_overlay(self):
+        self._overlay_hide_after_id = None
+        self._overlay_visible = False
+
+        self.overlay_frame = tk.Frame(
+            self.root,
+            bg=self._overlay_bg,
+            bd=1,
+            relief="solid",
+        )
+
+        self.overlay_status_label = tk.Label(
+            self.overlay_frame,
+            text="",
+            bg=self._overlay_bg,
+            fg=self._overlay_fg,
+            font=("Arial", 9, "bold"),
+        )
+        self.overlay_status_label.pack(anchor="w", padx=8, pady=(6, 2))
+
+        self.overlay_next_label = tk.Label(
+            self.overlay_frame,
+            text="Next: -",
+            bg=self._overlay_bg,
+            fg=self._overlay_sec,
+            font=("Arial", 9),
+        )
+        self.overlay_next_label.pack(anchor="w", padx=8, pady=(0, 6))
+
+        btn_row = tk.Frame(self.overlay_frame, bg=self._overlay_bg)
+        btn_row.pack(fill="x", padx=6, pady=(0, 6))
+
+        self.overlay_btn_copy = tk.Button(
+            btn_row,
+            text="Kopiuj",
+            command=self._overlay_copy,
+            bg=self._overlay_bg,
+            fg=self._overlay_fg,
+            relief="flat",
+        )
+        self.overlay_btn_copy.pack(side="left", padx=2)
+
+        self.overlay_btn_details = tk.Button(
+            btn_row,
+            text="Pokaż szczegóły",
+            command=self._overlay_show_details,
+            bg=self._overlay_bg,
+            fg=self._overlay_sec,
+            relief="flat",
+        )
+        self.overlay_btn_details.pack(side="left", padx=2)
+
+        self.overlay_btn_hide = tk.Button(
+            btn_row,
+            text="Ukryj",
+            command=self._overlay_hide,
+            bg=self._overlay_bg,
+            fg=self._overlay_sec,
+            relief="flat",
+        )
+        self.overlay_btn_hide.pack(side="right", padx=2)
+
+        self._overlay_hide()
+
+    def _overlay_set_status(self, level, msg):
+        if not msg:
+            return
+        color = self._overlay_fg
+        if level == "warn":
+            color = "orange"
+        elif level == "error":
+            color = "red"
+        self.overlay_status_label.config(text=msg, fg=color)
+        self._overlay_update_next()
+        self._overlay_show_for(4.0)
+
+    def _overlay_update_next(self):
+        systems = common.get_last_route_systems()
+        current = (getattr(app_state, "current_system", "") or "").strip()
+        next_text = "Next: -"
+        if systems:
+            idx = -1
+            if current:
+                for i, name in enumerate(systems):
+                    if name.casefold() == current.casefold():
+                        idx = i
+                        break
+            if idx >= 0 and idx + 1 < len(systems):
+                next_text = f"Next: {systems[idx + 1]}"
+            else:
+                next_text = f"Next: {systems[0]}"
+        else:
+            text = common.get_last_route_text()
+            if text.startswith("Route: "):
+                first_line = text.splitlines()[0].strip()
+                next_text = first_line
+        self.overlay_next_label.config(text=next_text)
+
+        has_text = bool(common.get_last_route_text())
+        state = tk.NORMAL if has_text else tk.DISABLED
+        self.overlay_btn_copy.config(state=state)
+
+    def _overlay_show_for(self, seconds):
+        if not self._overlay_visible:
+            self.overlay_frame.place(relx=1.0, rely=1.0, x=-12, y=-12, anchor="se")
+            self._overlay_visible = True
+        if self._overlay_hide_after_id is not None:
+            try:
+                self.root.after_cancel(self._overlay_hide_after_id)
+            except Exception:
+                pass
+        self._overlay_hide_after_id = self.root.after(
+            int(seconds * 1000), self._overlay_hide
+        )
+
+    def _overlay_hide(self):
+        if self._overlay_hide_after_id is not None:
+            try:
+                self.root.after_cancel(self._overlay_hide_after_id)
+            except Exception:
+                pass
+            self._overlay_hide_after_id = None
+        self.overlay_frame.place_forget()
+        self._overlay_visible = False
+
+    def _overlay_copy(self):
+        text = common.get_last_route_text()
+        if not text:
+            self._overlay_set_status("warn", "Nie mogę skopiować — skopiuj ręcznie")
+            return
+        result = common.try_copy_to_clipboard(text)
+        if result.get("ok"):
+            self._overlay_set_status("ok", "Skopiowano trasę")
+        else:
+            self._overlay_set_status("warn", "Nie mogę skopiować — skopiuj ręcznie")
+
+    def _overlay_show_details(self):
+        try:
+            self.root.focus_force()
+        except Exception:
+            pass
 
     def on_toggle_always_on_top(self, is_on: bool):
         try:
