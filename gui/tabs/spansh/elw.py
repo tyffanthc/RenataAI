@@ -127,9 +127,21 @@ class ELWTab(ttk.Frame):
 
             common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
             common.wypelnij_liste(self.lst, opis)
-            utils.MSG_QUEUE.put(("status_rtr", (f"Znaleziono {len(tr)}", "green")))
+            common.emit_status(
+                "OK",
+                "ROUTE_FOUND",
+                text=f"Znaleziono {len(tr)}",
+                source="spansh.elw",
+                ui_target="rtr",
+            )
         else:
-            utils.MSG_QUEUE.put(("status_rtr", ("Brak wyników", "red")))
+            common.emit_status(
+            "ERROR",
+            "ROUTE_EMPTY",
+            text="Brak wyników",
+            source="spansh.elw",
+            ui_target="rtr",
+        )
 
     def clear(self):
         self.lst.delete(0, tk.END)

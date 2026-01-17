@@ -74,7 +74,12 @@ class NeutronTab(ttk.Frame):
 
     def clear(self):
         self.lst.delete(0, tk.END)
-        utils.MSG_QUEUE.put(("status_neu", ("Wyczyszczono", "grey")))
+        common.emit_status(
+            "INFO",
+            "ROUTE_CLEARED",
+            source="spansh.neutron",
+            ui_target="neu",
+        )
         config.STATE["trasa"] = []
         config.STATE["copied_idx"] = None
         config.STATE["copied_sys"] = None
@@ -103,9 +108,27 @@ class NeutronTab(ttk.Frame):
 
                 common.handle_route_ready_autoclipboard(self, tr, status_target="neu")
                 common.wypelnij_liste(self.lst, opis)
-                utils.MSG_QUEUE.put(("status_neu", (f"Znaleziono {len(tr)}", "green")))
+                common.emit_status(
+                    "OK",
+                    "ROUTE_FOUND",
+                    text=f"Znaleziono {len(tr)}",
+                    source="spansh.neutron",
+                    ui_target="neu",
+                )
             else:
-                utils.MSG_QUEUE.put(("status_neu", ("Brak wyników", "red")))
+                common.emit_status(
+                    "ERROR",
+                    "ROUTE_EMPTY",
+                    text="Brak wyników",
+                    source="spansh.neutron",
+                    ui_target="neu",
+                )
         except Exception as e:  # żeby nie uwalić GUI przy wyjątku w wątku
-            utils.MSG_QUEUE.put(("status_neu", (f"Błąd: {e}", "red")))
+            common.emit_status(
+                "ERROR",
+                "ROUTE_ERROR",
+                text=f"Błąd: {e}",
+                source="spansh.neutron",
+                ui_target="neu",
+            )
 

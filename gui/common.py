@@ -17,8 +17,31 @@ COPIED_FG = "#000000"
 _LAST_ROUTE_TEXT = ""
 _LAST_ROUTE_SIG = None
 _LAST_ROUTE_SYSTEMS: list[str] = []
-_LAST_STATUS = {"level": None, "message": ""}
-_LAST_OVERLAY_TS = 0.0
+
+STATUS_TEXTS = {
+    "ROUTE_COPIED": "Skopiowano trasę",
+    "CLIPBOARD_FAIL": "Nie mogę skopiować — skopiuj ręcznie",
+    "ROUTE_EMPTY": "Brak wyników.",
+    "ROUTE_FOUND": "Znaleziono trasę.",
+    "ROUTE_CLEARED": "Wyczyszczono.",
+    "ROUTE_ERROR": "Błąd trasy.",
+    "TRADE_FOUND": "Znaleziono propozycje.",
+    "TRADE_NO_RESULTS": "Brak wyników lub błąd API.",
+    "TRADE_INPUT_MISSING": "Podaj system startowy.",
+    "TRADE_STATION_REQUIRED": "Wybierz stację startową — SPANSH Trade wymaga system+station.",
+    "TRADE_ERROR": "Błąd trade.",
+}
+
+
+def _level_color(level: str) -> str:
+    colors = {
+        "OK": "green",
+        "INFO": "grey",
+        "WARN": "orange",
+        "ERROR": "red",
+        "BUSY": "grey",
+    }
+    return colors.get(level, "grey")
 
 
 def stworz_liste_trasy(parent, title="Plan Lotu"):
@@ -131,24 +154,46 @@ def get_last_route_systems():
     return list(_LAST_ROUTE_SYSTEMS)
 
 
-def _emit_overlay_status(level, message):
-    global _LAST_OVERLAY_TS
-    now = time.monotonic()
-    if now - _LAST_OVERLAY_TS < 1.0:
-        return
-    _LAST_OVERLAY_TS = now
-    _LAST_STATUS["level"] = level
-    _LAST_STATUS["message"] = message
-    utils.MSG_QUEUE.put(("overlay_status", (level, message)))
+def emit_status(
+    level: str,
+    code: str,
+    text: str | None = None,
+    *,
+    source: str | None = None,
+    sticky: bool = False,
+    ui_target: str | None = None,
+) -> dict:
+    if text is None:
+        text = STATUS_TEXTS.get(code, code)
+    event = {
+        "level": level,
+        "code": code,
+        "text": text,
+        "ts": time.time(),
+        "source": source,
+        "sticky": bool(sticky),
+    }
+    utils.MSG_QUEUE.put(("status_event", event))
+    utils.MSG_QUEUE.put(("log", f"[{level}] {code}: {text}"))
+    if ui_target:
+        color = _level_color(level)
+        utils.MSG_QUEUE.put((f"status_{ui_target}", (text, color)))
+    return event
 
 
-def _maybe_toast(owner, status_target, msg, color, debounce_sec):
+def _maybe_toast(owner, status_target, level, code, text, debounce_sec, source=None):
     now = time.monotonic()
     last_ts = getattr(owner, "_last_clipboard_toast_ts", 0.0) or 0.0
     if now - last_ts < debounce_sec:
         return
     setattr(owner, "_last_clipboard_toast_ts", now)
-    utils.MSG_QUEUE.put((f"status_{status_target}", (msg, color)))
+    emit_status(
+        level,
+        code,
+        text,
+        source=source,
+        ui_target=status_target,
+    )
 
 
 def handle_route_ready_autoclipboard(owner, route, *, status_target, debounce_sec=1.5):
@@ -168,11 +213,12 @@ def handle_route_ready_autoclipboard(owner, route, *, status_target, debounce_se
         _maybe_toast(
             owner,
             status_target,
-            "Nie mogę skopiować do schowka — skopiuj ręcznie",
-            "orange",
+            "WARN",
+            "ROUTE_EMPTY",
+            STATUS_TEXTS["CLIPBOARD_FAIL"],
             debounce_sec,
+            source=f"spansh.{status_target}",
         )
-        _emit_overlay_status("warn", "Nie mogę skopiować — skopiuj ręcznie")
         return
 
     result = try_copy_to_clipboard(text)
@@ -182,20 +228,22 @@ def handle_route_ready_autoclipboard(owner, route, *, status_target, debounce_se
         _maybe_toast(
             owner,
             status_target,
-            "Trasa skopiowana do schowka",
-            "green",
+            "OK",
+            "ROUTE_COPIED",
+            STATUS_TEXTS["ROUTE_COPIED"],
             debounce_sec,
+            source=f"spansh.{status_target}",
         )
-        _emit_overlay_status("ok", "Skopiowano trasę")
     else:
         _maybe_toast(
             owner,
             status_target,
-            "Nie mogę skopiować do schowka — skopiuj ręcznie",
-            "orange",
+            "WARN",
+            "CLIPBOARD_FAIL",
+            STATUS_TEXTS["CLIPBOARD_FAIL"],
             debounce_sec,
+            source=f"spansh.{status_target}",
         )
-        _emit_overlay_status("warn", "Nie mogę skopiować — skopiuj ręcznie")
         err = result.get("error")
         if err:
             utils.MSG_QUEUE.put(("log", f"[AUTO-SCHOWEK] Clipboard error: {err}"))

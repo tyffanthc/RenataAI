@@ -105,7 +105,12 @@ class RichesTab(ttk.Frame):
 
     def clear_rtr(self):
         self.lst_rtr.delete(0, tk.END)
-        utils.MSG_QUEUE.put(("status_rtr", ("Wyczyszczono", "grey")))
+        common.emit_status(
+            "INFO",
+            "ROUTE_CLEARED",
+            source="spansh.riches",
+            ui_target="rtr",
+        )
 
     def run_rtr(self):
         self.clear_rtr()
@@ -171,7 +176,19 @@ class RichesTab(ttk.Frame):
 
             common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
             common.wypelnij_liste(self.lst_rtr, opis)
-            utils.MSG_QUEUE.put(("status_rtr", (f"Znaleziono {len(tr)}", "green")))
+            common.emit_status(
+                "OK",
+                "ROUTE_FOUND",
+                text=f"Znaleziono {len(tr)}",
+                source="spansh.riches",
+                ui_target="rtr",
+            )
         else:
-            utils.MSG_QUEUE.put(("status_rtr", ("Brak wyników", "red")))
+            common.emit_status(
+            "ERROR",
+            "ROUTE_EMPTY",
+            text="Brak wyników",
+            source="spansh.riches",
+            ui_target="rtr",
+        )
 

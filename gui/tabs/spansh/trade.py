@@ -287,8 +287,11 @@ class TradeTab(ttk.Frame):
         # Ostateczny fallback do config.STATE (zgodność wsteczna)
 
         if not start_system:
-            utils.MSG_QUEUE.put(
-                ("status_trade", ("Podaj system startowy.", "red")),
+            common.emit_status(
+                "ERROR",
+                "TRADE_INPUT_MISSING",
+                source="spansh.trade",
+                ui_target="trade",
             )
             return
 
@@ -299,14 +302,11 @@ class TradeTab(ttk.Frame):
         if not start_station:
             sep_raw = start_system or ""
             if "/" not in sep_raw and "," not in sep_raw:
-                utils.MSG_QUEUE.put(
-                    (
-                        "status_trade",
-                        (
-                            "Wybierz stację startową — SPANSH Trade wymaga system+station.",
-                            "red",
-                        ),
-                    )
+                common.emit_status(
+                    "ERROR",
+                    "TRADE_STATION_REQUIRED",
+                    source="spansh.trade",
+                    ui_target="trade",
                 )
                 return
 
@@ -375,14 +375,27 @@ class TradeTab(ttk.Frame):
                 opis = list(tr)
                 common.handle_route_ready_autoclipboard(self, tr, status_target="trade")
                 common.wypelnij_liste(self.lst_trade, opis)
-                utils.MSG_QUEUE.put(
-                    ("status_trade", (f"Znaleziono {len(tr)} propozycji.", "green")),
+                common.emit_status(
+                    "OK",
+                    "TRADE_FOUND",
+                    text=f"Znaleziono {len(tr)} propozycji.",
+                    source="spansh.trade",
+                    ui_target="trade",
                 )
             else:
-                utils.MSG_QUEUE.put(
-                    ("status_trade", ("Brak wyników lub błąd API.", "red")),
+                common.emit_status(
+                    "ERROR",
+                    "TRADE_NO_RESULTS",
+                    source="spansh.trade",
+                    ui_target="trade",
                 )
 
         except Exception as e:
-            utils.MSG_QUEUE.put(("status_trade", (f"Błąd: {e}", "red")))
+            common.emit_status(
+                "ERROR",
+                "TRADE_ERROR",
+                text=f"Błąd: {e}",
+                source="spansh.trade",
+                ui_target="trade",
+            )
 

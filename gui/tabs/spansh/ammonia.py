@@ -126,13 +126,30 @@ class AmmoniaTab(ttk.Frame):
 
             common.handle_route_ready_autoclipboard(self, tr, status_target="amm")
             common.wypelnij_liste(self.lst_amm, opis)
-            utils.MSG_QUEUE.put(("status_amm", (f"Znaleziono {len(tr)}", "green")))
+            common.emit_status(
+                "OK",
+                "ROUTE_FOUND",
+                text=f"Znaleziono {len(tr)}",
+                source="spansh.ammonia",
+                ui_target="amm",
+            )
         else:
-            utils.MSG_QUEUE.put(("status_amm", ("Brak wyników", "red")))
+            common.emit_status(
+            "ERROR",
+            "ROUTE_EMPTY",
+            text="Brak wyników",
+            source="spansh.ammonia",
+            ui_target="amm",
+        )
 
     def clear_amm(self):
         self.lst_amm.delete(0, tk.END)
-        utils.MSG_QUEUE.put(("status_amm", ("Wyczyszczono", "grey")))
+        common.emit_status(
+            "INFO",
+            "ROUTE_CLEARED",
+            source="spansh.ammonia",
+            ui_target="amm",
+        )
         config.STATE["rtr_data"] = {}
         config.STATE["trasa"] = []
 

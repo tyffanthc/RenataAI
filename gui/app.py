@@ -387,9 +387,8 @@ class RenataApp:
                     txt, col = content
                     self.tab_spansh.tab_trade.lbl_status.config(text=txt, foreground=col)
 
-                elif msg_type == "overlay_status":
-                    level, msg = content
-                    self._overlay_set_status(level, msg)
+                elif msg_type == "status_event":
+                    self._overlay_set_status(content)
 
                 elif msg_type == "start_label":
                     self.tab_spansh.update_start_label(content)
@@ -483,17 +482,27 @@ class RenataApp:
 
         self._overlay_hide()
 
-    def _overlay_set_status(self, level, msg):
+    def _overlay_set_status(self, event):
+        if not event:
+            return
+        level = event.get("level")
+        code = event.get("code")
+        msg = event.get("text") or ""
+        sticky = bool(event.get("sticky"))
         if not msg:
             return
         color = self._overlay_fg
-        if level == "warn":
+        if level == "WARN":
             color = "orange"
-        elif level == "error":
+        elif level == "ERROR":
             color = "red"
-        self.overlay_status_label.config(text=msg, fg=color)
+        label = f"{level} {code}: {msg}" if level and code else msg
+        self.overlay_status_label.config(text=label, fg=color)
         self._overlay_update_next()
-        self._overlay_show_for(4.0)
+        if sticky:
+            self._overlay_show_for(None)
+        else:
+            self._overlay_show_for(4.0)
 
     def _overlay_update_next(self):
         systems = common.get_last_route_systems()
@@ -530,9 +539,11 @@ class RenataApp:
                 self.root.after_cancel(self._overlay_hide_after_id)
             except Exception:
                 pass
-        self._overlay_hide_after_id = self.root.after(
-            int(seconds * 1000), self._overlay_hide
-        )
+        self._overlay_hide_after_id = None
+        if seconds is not None:
+            self._overlay_hide_after_id = self.root.after(
+                int(seconds * 1000), self._overlay_hide
+            )
 
     def _overlay_hide(self):
         if self._overlay_hide_after_id is not None:
@@ -547,13 +558,25 @@ class RenataApp:
     def _overlay_copy(self):
         text = common.get_last_route_text()
         if not text:
-            self._overlay_set_status("warn", "Nie mogę skopiować — skopiuj ręcznie")
+            common.emit_status(
+                "WARN",
+                "CLIPBOARD_FAIL",
+                source="overlay",
+            )
             return
         result = common.try_copy_to_clipboard(text)
         if result.get("ok"):
-            self._overlay_set_status("ok", "Skopiowano trasę")
+            common.emit_status(
+                "OK",
+                "ROUTE_COPIED",
+                source="overlay",
+            )
         else:
-            self._overlay_set_status("warn", "Nie mogę skopiować — skopiuj ręcznie")
+            common.emit_status(
+                "WARN",
+                "CLIPBOARD_FAIL",
+                source="overlay",
+            )
 
     def _overlay_show_details(self):
         try:
