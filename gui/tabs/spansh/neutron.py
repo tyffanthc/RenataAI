@@ -105,7 +105,7 @@ class NeutronTab(ttk.Frame):
 
             if tr:
                 route_manager.set_route(tr, "neutron")
-                header = "System                          Dist(LY)  Rem(LY)  Neutron  Jumps"
+                header = "System                          Dist(LY)  Rem(LY)  Neut  Jmp"
                 opis = [header]
                 for sys_name, detail in zip_longest(tr, details, fillvalue={}):
                     if not sys_name:
@@ -143,23 +143,27 @@ class NeutronTab(ttk.Frame):
             try:
                 num = float(value)
             except Exception:
-                return ""
+                return "-"
             return f"{num:.2f}"
 
         def _fmt_neutron(value):
             if value is True:
-                return "Yes"
+                return "YES"
             if value is False:
-                return "No"
+                return "NO"
             if isinstance(value, str):
-                return "Yes" if value.strip().lower() in ("yes", "true", "1") else ""
-            return ""
+                val = value.strip().lower()
+                if val in ("yes", "true", "1"):
+                    return "YES"
+                if val in ("no", "false", "0"):
+                    return "NO"
+            return "-"
 
         name = (system_name or "").strip()
         distance = _fmt_num(detail.get("distance"))
         remaining = _fmt_num(detail.get("remaining"))
         neutron_flag = _fmt_neutron(detail.get("neutron"))
         jumps = detail.get("jumps")
-        jumps_txt = "" if jumps is None else str(jumps)
+        jumps_txt = "-" if jumps is None else str(jumps)
 
-        return f"{name[:30]:<30} {distance:>8} {remaining:>8} {neutron_flag:>7} {jumps_txt:>5}"
+        return f"{name[:30]:<30} {distance:>8} {remaining:>8} {neutron_flag:>5} {jumps_txt:>4}"

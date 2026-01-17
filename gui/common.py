@@ -34,6 +34,8 @@ STATUS_TEXTS = {
     "CACHE_MISS": "Cache miss",
     "CACHE_WRITE_FAIL": "Nie udało się zapisać cache.",
     "CACHE_CORRUPT": "Cache uszkodzony.",
+    "DEDUP_HIT": "Dedup hit",
+    "DEDUP_WAIT": "Dedup wait",
 }
 
 

@@ -17,6 +17,7 @@ import requests
 import config
 
 from logic.utils.notify import powiedz, DEBOUNCER
+from logic.request_dedup import make_request_key, run_deduped
 
 
 # --- Nagłówki HTTP używane do wszystkich zapytań SPANSH ---------------------
@@ -264,12 +265,6 @@ class SpanshClient:
         """
         self._reload_config()
 
-        # Anti-spam dla tras – jeśli ktoś spamuje przyciskiem,
-        # nie odpalamy wielu jobów naraz.
-        if not DEBOUNCER.is_allowed("spansh_route", cooldown_sec=1.0, context=mode):
-            spansh_error("Odczekaj chwilę przed kolejnym zapytaniem SPANSH.", gui_ref, context=mode)
-            return None
-
         poll_seconds = poll_seconds or self.default_poll_interval
         polls = polls or 60
 
@@ -282,78 +277,96 @@ class SpanshClient:
         url = f"{self.base_url}{path}"
         headers = self._headers(referer=referer)
 
+        dedup_key = make_request_key(
+            "spansh",
+            path,
+            {"mode": mode, "payload": payload},
+        )
+
         # --- Job request ------------------------------------------------------
         # SPANSH oczekuje form-data (application/x-www-form-urlencoded),
         # a nie JSON. Dodatkowo niektóre pola (np. body_types) mogą
-        # występować wielokrotnie – wtedy payload trzymamy jako listę.
+        # występować wielokrotnie — wtedy payload trzymamy jako listę.
 
-        data: List[tuple[str, Any]] = []
-        for key, value in payload.items():
-            if isinstance(value, list):
-                for item in value:
-                    data.append((key, item))
-            else:
-                data.append((key, value))
+        def _do_request() -> Optional[Any]:
+            # Anti-spam dla tras — jeżeli ktoś spamuje przyciskiem,
+            # nie odpalamy wielu jobów naraz.
+            if not DEBOUNCER.is_allowed("spansh_route", cooldown_sec=1.0, context=mode):
+                spansh_error("Odczekaj chwilę przed kolejnym zapytaniem SPANSH.", gui_ref, context=mode)
+                return None
 
-        try:
-            r = requests.post(
-                url,
-                data=data,
-                headers=headers,
-                timeout=self.default_timeout,
-            )
-        except Exception as e:  # noqa: BLE001
-            spansh_error(
-                f"{mode.upper()}: wyjątek HTTP przy wysyłaniu joba ({e})",
-                gui_ref,
-                context=mode,
-            )
-            return None
+            data: List[tuple[str, Any]] = []
+            for key, value in payload.items():
+                if isinstance(value, list):
+                    for item in value:
+                        data.append((key, item))
+                else:
+                    data.append((key, value))
 
-        if r.status_code not in (200, 202):
-            # prosty debug do loga konsoli – widzimy treść błędu z SPANSH
             try:
-                print(f"[Spansh] {mode} HTTP {r.status_code} body: {r.text}")
-            except Exception:
-                pass
+                r = requests.post(
+                    url,
+                    data=data,
+                    headers=headers,
+                    timeout=self.default_timeout,
+                )
+            except Exception as e:  # noqa: BLE001
+                spansh_error(
+                    f"{mode.upper()}: wyjątek HTTP przy wysyłaniu joba ({e})",
+                    gui_ref,
+                    context=mode,
+                )
+                return None
 
-            spansh_error(
-                f"{mode.upper()}: HTTP {r.status_code} przy wysyłaniu joba.",
-                gui_ref,
-                context=mode,
-            )
-            return None
+            if r.status_code not in (200, 202):
+                # prosty debug do loga konsoli — widzimy treść błędu z SPANSH
+                try:
+                    print(f"[Spansh] {mode} HTTP {r.status_code} body: {r.text}")
+                except Exception:
+                    pass
+
+                spansh_error(
+                    f"{mode.upper()}: HTTP {r.status_code} przy wysyłaniu joba.",
+                    gui_ref,
+                    context=mode,
+                )
+                return None
+
+            try:
+                job = r.json().get("job")
+            except Exception as e:  # noqa: BLE001
+                spansh_error(
+                    f"{mode.upper()}: niepoprawny JSON przy tworzeniu joba ({e}).",
+                    gui_ref,
+                    context=mode,
+                )
+                return None
+
+            if not job:
+                spansh_error(
+                    f"{mode.upper()}: brak job ID w odpowiedzi.",
+                    gui_ref,
+                    context=mode,
+                )
+                return None
+
+            # --- Polling ---------------------------------------------------------
+
+            js = self._poll_results(job, mode=mode, gui_ref=gui_ref, poll_seconds=poll_seconds, polls=polls)
+            if js is None:
+                return None
+
+            # Standard: w JSON-ie jest pole "result"
+            if isinstance(js, dict):
+                return js.get("result", [])
+            return js
 
         try:
-            job = r.json().get("job")
-        except Exception as e:  # noqa: BLE001
-            spansh_error(
-                f"{mode.upper()}: niepoprawny JSON przy tworzeniu joba ({e}).",
-                gui_ref,
-                context=mode,
-            )
+            return run_deduped(dedup_key, _do_request)
+        except Exception:
             return None
 
-        if not job:
-            spansh_error(
-                f"{mode.upper()}: brak job ID w odpowiedzi.",
-                gui_ref,
-                context=mode,
-            )
-            return None
-
-        # --- Polling ---------------------------------------------------------
-
-        js = self._poll_results(job, mode=mode, gui_ref=gui_ref, poll_seconds=poll_seconds, polls=polls)
-        if js is None:
-            return None
-
-        # Standard: w JSON-ie jest pole "result"
-        if isinstance(js, dict):
-            return js.get("result", [])
-        return js
-
-    def neutron_route(
+    def neutron_route((
         self,
         start: str,
         cel: str,
@@ -399,26 +412,60 @@ class SpanshClient:
         else:
             jumps = result
 
+        def _pick(entry: dict[str, Any], keys: list[str]) -> Any:
+            for key in keys:
+                val = entry.get(key)
+                if val is not None and val != "":
+                    return val
+            return None
+
         systems: List[str] = []
         details: List[dict[str, Any]] = []
         for entry in jumps or []:
             if isinstance(entry, dict):
-                name = entry.get("system") or entry.get("name")
+                name = _pick(entry, ["system", "name", "system_name"])
                 details.append(
                     {
                         "system": name,
-                        "distance": entry.get("distance"),
-                        "remaining": (
-                            entry.get("remaining")
-                            or entry.get("remaining_distance")
-                            or entry.get("remaining_ly")
+                        "distance": _pick(
+                            entry,
+                            [
+                                "distance",
+                                "distance_ly",
+                                "distance_to_next",
+                                "distance_to_arrival",
+                                "distance_to_next_jump",
+                                "distance_to_next_system",
+                            ],
                         ),
-                        "neutron": (
-                            entry.get("neutron")
-                            or entry.get("is_neutron")
-                            or entry.get("neutron_star")
+                        "remaining": _pick(
+                            entry,
+                            [
+                                "remaining",
+                                "remaining_distance",
+                                "remaining_ly",
+                                "remaining_distance_ly",
+                                "remaining_to_destination",
+                                "distance_remaining",
+                            ],
                         ),
-                        "jumps": entry.get("jumps") or entry.get("jump_count"),
+                        "neutron": _pick(
+                            entry,
+                            [
+                                "neutron",
+                                "is_neutron",
+                                "neutron_star",
+                                "neutron_jump",
+                            ],
+                        ),
+                        "jumps": _pick(
+                            entry,
+                            [
+                                "jumps",
+                                "jump_count",
+                                "jumps_remaining",
+                            ],
+                        ),
                     }
                 )
             else:
