@@ -20,7 +20,7 @@ class NeutronTab(ttk.Frame):
         self.var_start = tk.StringVar()
         self.var_cel = tk.StringVar()
         self.var_range = tk.DoubleVar(value=50.0)
-        self.var_eff = tk.DoubleVar(value=0.6)
+        self.var_eff = tk.DoubleVar(value=60.0)
 
         self._build_ui()
         self._range_user_overridden = False

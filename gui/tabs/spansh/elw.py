@@ -53,9 +53,6 @@ class ELWTab(ttk.Frame):
 
         ttk.Label(f_rng, text="Range:", width=10).pack(side="left")
         ttk.Entry(f_rng, textvariable=self.var_range, width=7).pack(side="left", padx=(0, 12))
-        ttk.Scale(
-            f_rng, from_=10, to=100, variable=self.var_range, orient="horizontal"
-        ).pack(side="left", fill="x", expand=True, padx=5)
 
         f_rm = ttk.Frame(fr)
         f_rm.pack(fill="x", padx=5, pady=2)
@@ -75,9 +72,6 @@ class ELWTab(ttk.Frame):
 
         ttk.Label(f_dist, text="Max DTA (ls):", width=10).pack(side="left")
         ttk.Entry(f_dist, textvariable=self.var_max_dist, width=7).pack(side="left", padx=5)
-        ttk.Scale(
-            f_dist, from_=100, to=10000, variable=self.var_max_dist, orient="horizontal"
-        ).pack(side="left", fill="x", expand=True, padx=5)
 
         f_chk = ttk.Frame(fr)
         f_chk.pack(fill="x", padx=5, pady=2)

@@ -57,9 +57,6 @@ class RichesTab(ttk.Frame):
 
         ttk.Label(f_rng, text="Range:", width=10).pack(side="left")
         ttk.Entry(f_rng, textvariable=self.var_range, width=7).pack(side="left", padx=(0, 12))
-        ttk.Scale(
-            f_rng, from_=10, to=100, variable=self.var_range, orient="horizontal"
-        ).pack(side="left", fill="x", expand=True, padx=5)
 
         # Radius + Max Sys
         f_rm = ttk.Frame(fr)
