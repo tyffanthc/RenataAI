@@ -79,12 +79,14 @@ class NeutronTab(ttk.Frame):
         ttk.Label(f_sc, text="Via:", width=4).pack(side="left")
         self.e_via = ttk.Entry(f_sc, textvariable=self.var_via, width=18)
         self.e_via.pack(side="left", padx=(0, 6))
+        self.e_via.bind("<Return>", self._add_via_event)
+        self.e_via.bind("<KP_Enter>", self._add_via_event)
         ttk.Button(f_sc, text="Add", command=self._add_via).pack(side="left")
 
         f_via = ttk.Frame(fr)
         f_via.pack(fill="x", pady=4)
         if self._via_compact:
-            self.via_canvas = tk.Canvas(f_via, height=60, highlightthickness=0)
+            self.via_canvas = tk.Canvas(f_via, height=48, highlightthickness=0)
             self.via_scroll = ttk.Scrollbar(
                 f_via,
                 orient="vertical",
@@ -110,13 +112,15 @@ class NeutronTab(ttk.Frame):
 
         # Przyciski
         f_btn = ttk.Frame(fr)
-        f_btn.pack(pady=6)
+        f_btn.pack(pady=(6, 2))
 
         ttk.Button(f_btn, text="Wyznacz trasę", command=self.run_neutron).pack(side="left", padx=4)
         ttk.Button(f_btn, text="Wyczyść", command=self.clear).pack(side="left", padx=4)
         ttk.Button(f_btn, text="Reverse", command=self._reverse_route).pack(side="left", padx=4)
-        self.lbl_status = ttk.Label(self, text="Gotowy", font=("Arial", 10, "bold"))
-        self.lbl_status.pack(pady=(4, 2))
+        f_status = ttk.Frame(fr)
+        f_status.pack(pady=(2, 2))
+        self.lbl_status = ttk.Label(f_status, text="Gotowy", font=("Arial", 10, "bold"))
+        self.lbl_status.pack()
 
 
         # Lista wyników
@@ -320,6 +324,9 @@ class NeutronTab(ttk.Frame):
         else:
             self.lst_via.insert(tk.END, value)
         self.var_via.set("")
+
+    def _add_via_event(self, _event) -> None:
+        self._add_via()
 
     def _remove_via(self) -> None:
         if self._via_compact:
