@@ -75,7 +75,7 @@ class RichesTab(ttk.Frame):
         ttk.Label(f_dm, text="Max Dist (ls):", width=12).pack(side="left")
         ttk.Entry(f_dm, textvariable=self.var_max_dist, width=7).pack(side="left", padx=(0, 12))
 
-        ttk.Label(f_dm, text="Min scans:", width=10).pack(side="left")
+        ttk.Label(f_dm, text="Min value (Cr):", width=12).pack(side="left")
         ttk.Entry(f_dm, textvariable=self.var_min_scan, width=7).pack(side="left")
 
         # Checkboxy
