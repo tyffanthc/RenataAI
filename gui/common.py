@@ -398,6 +398,8 @@ def register_active_route_list(
 
 
 def _update_active_route_list_mark(route_index: int | None) -> None:
+    global _ACTIVE_ROUTE_LIST_DATA
+    global _ACTIVE_ROUTE_TABLE_SCHEMA, _ACTIVE_ROUTE_TABLE_ROWS
     if _ACTIVE_ROUTE_LISTBOX is None or not _ACTIVE_ROUTE_LIST_DATA:
         return
     if route_index is None:
