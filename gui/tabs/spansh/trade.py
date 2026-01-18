@@ -127,7 +127,17 @@ class TradeTab(ttk.Frame):
         )
 
         ttk.Label(f_dta, text="Max age [dni]:", width=12).pack(side="left")
-        ttk.Entry(f_dta, textvariable=self.var_max_age, width=8).pack(side="left")
+        self.e_max_age = ttk.Entry(f_dta, textvariable=self.var_max_age, width=8)
+        self.e_max_age.pack(side="left")
+        try:
+            self.e_max_age.state(["disabled"])
+        except Exception:
+            pass
+        ttk.Label(
+            f_dta,
+            text="(API nie wspiera)",
+            foreground="#888888",
+        ).pack(side="left", padx=(6, 0))
 
         # --- Flagowe checkboxy -------------------------------------------------
         f_flags1 = ttk.Frame(fr)

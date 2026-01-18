@@ -61,7 +61,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
 
     # SPANSH / SIEĆ
     "spansh_timeout": 20,
-    "spansh_retries": 3,
+    "spansh_retries": 3,\r\n    "features.spansh.debug_payload": False,
 
     # UI / zachowanie
     "use_system_theme": True,

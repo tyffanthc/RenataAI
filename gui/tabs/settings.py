@@ -110,7 +110,8 @@ class SettingsTab(ttk.Frame):
         self.var_debug_cache = tk.BooleanVar(value=False)
         self.var_debug_dedup = tk.BooleanVar(value=False)
         self.var_debug_ship_state = tk.BooleanVar(value=False)
-        self.var_debug_next_hop.set(False)
+        self.var_debug_next_hop = tk.BooleanVar(value=False)
+        self.var_debug_spansh_payload = tk.BooleanVar(value=False)
 
         # Tables (Spansh)
         self.var_tables_spansh_schema_enabled = tk.BooleanVar(value=True)
@@ -322,6 +323,7 @@ class SettingsTab(ttk.Frame):
         # Sekcja: SPANSH / SIEĆ
         lf_spansh = ttk.LabelFrame(parent, text=" SPANSH / Połączenie ")
         lf_spansh.grid(row=4, column=0, padx=12, pady=(6, 12), sticky="nsew")
+
 
         for col in range(4):
             lf_spansh.columnconfigure(col, weight=1)
@@ -1040,27 +1042,33 @@ class SettingsTab(ttk.Frame):
 
         ttk.Checkbutton(
             lf_debug,
+            text="Debug: Spansh payload",
+            variable=self.var_debug_spansh_payload,
+        ).grid(row=5, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_debug,
             text="Debug: Jump Range Engine",
             variable=self.var_jump_range_engine_debug,
-        ).grid(row=5, column=0, padx=8, pady=4, sticky="w")
+        ).grid(row=6, column=0, padx=8, pady=4, sticky="w")
 
         ttk.Checkbutton(
             lf_debug,
             text="Debug: Fit Resolver",
             variable=self.var_fit_resolver_debug,
-        ).grid(row=6, column=0, padx=8, pady=4, sticky="w")
+        ).grid(row=7, column=0, padx=8, pady=4, sticky="w")
 
         ttk.Checkbutton(
             lf_debug,
             text="Debug: JR Validate",
             variable=self.var_jump_range_validate_debug,
-        ).grid(row=7, column=0, padx=8, pady=4, sticky="w")
+        ).grid(row=8, column=0, padx=8, pady=4, sticky="w")
 
         ttk.Label(
             lf_debug,
-            text="Włącza dodatkowe logi w konsoli i pulpicie.",
+            text="Wlacza dodatkowe logi w konsoli i pulpicie.",
             foreground="#888888",
-        ).grid(row=8, column=0, padx=8, pady=(2, 8), sticky="w")
+        ).grid(row=9, column=0, padx=8, pady=(2, 8), sticky="w")
 
         self._add_save_bar(parent, row=3)
 
@@ -1186,7 +1194,7 @@ class SettingsTab(ttk.Frame):
                     continue
             self.jackpot_thresholds = merged
 
-                # debug
+        # debug
         self.var_debug_autocomplete.set(
             cfg.get("debug_autocomplete", self.var_debug_autocomplete.get())
         )
@@ -1201,6 +1209,12 @@ class SettingsTab(ttk.Frame):
         )
         self.var_debug_next_hop.set(
             cfg.get("debug_next_hop", self.var_debug_next_hop.get())
+        )
+        self.var_debug_spansh_payload.set(
+            cfg.get(
+                "features.spansh.debug_payload",
+                self.var_debug_spansh_payload.get(),
+            )
         )
 
         # Tables (Spansh)
@@ -1416,6 +1430,7 @@ class SettingsTab(ttk.Frame):
             "debug_dedup": self.var_debug_dedup.get(),
             "ship_state_debug": self.var_debug_ship_state.get(),
             "debug_next_hop": self.var_debug_next_hop.get(),
+            "features.spansh.debug_payload": self.var_debug_spansh_payload.get(),
 
             "features.tables.spansh_schema_enabled": self.var_tables_spansh_schema_enabled.get(),
             "features.tables.normalized_rows_enabled": self.var_tables_normalized_rows_enabled.get(),
@@ -1580,6 +1595,7 @@ class SettingsTab(ttk.Frame):
         self.var_debug_dedup.set(False)
         self.var_debug_ship_state.set(False)
         self.var_debug_next_hop.set(False)
+        self.var_debug_spansh_payload.set(False)
         self.var_jump_range_engine_debug.set(False)
         self.var_fit_resolver_debug.set(False)
         self.var_jump_range_validate_debug.set(False)

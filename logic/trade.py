@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from logic.utils import powiedz
+import config
+from logic.utils import powiedz, MSG_QUEUE
 from logic.spansh_client import client, spansh_error
 from logic.rows_normalizer import normalize_trade_rows
 
@@ -154,6 +155,8 @@ def oblicz_trade(
             max_age=max_age,
             flags=flags,
         )
+        if config.get("features.spansh.debug_payload", False):
+            MSG_QUEUE.put(("log", f"[SPANSH TRADE PAYLOAD] {payload}"))
 
         result = client.route(
             mode="trade",
