@@ -12,6 +12,7 @@ import os
 import sys
 import traceback
 import queue
+import re
 from typing import Callable, List, Tuple
 
 # --- ŚCIEŻKI / IMPORTY --------------------------------------------------------
@@ -35,6 +36,11 @@ from logic.events import exploration_bio_events as bio_events  # type: ignore
 from logic.events import exploration_misc_events as misc_events  # type: ignore
 from logic import ammonia as ammonia_logic  # type: ignore
 from logic import exomastery as exomastery_logic  # type: ignore
+from logic import riches as riches_logic  # type: ignore
+from logic import elw_route as elw_logic  # type: ignore
+from logic import hmc_route as hmc_logic  # type: ignore
+from logic import trade as trade_logic  # type: ignore
+from logic import spansh_client as spansh_client_logic  # type: ignore
 
 
 # --- POMOCNICZY KONTEKST TESTÓW ----------------------------------------------
@@ -381,6 +387,159 @@ def test_exomastery_payload_snapshot(_ctx: TestContext) -> None:
     assert payload.get("avoid_thargoids") is False, "avoid_thargoids should map to avoid flag"
 
 
+def test_riches_payload_snapshot(_ctx: TestContext) -> None:
+    payload = riches_logic._build_payload(  # type: ignore[attr-defined]
+        start="Sol",
+        cel="Colonia",
+        jump_range=42.5,
+        radius=50,
+        max_sys=25,
+        max_dist=5000,
+        min_scan=250000,
+        loop=True,
+        use_map=True,
+        avoid_tharg=False,
+    )
+
+    assert payload.get("min_value") == 250000, "min_value should map to min_scan"
+    assert payload.get("use_mapping_value") is True, "use_mapping_value should map to use_map"
+    assert payload.get("avoid_thargoids") is False, "avoid_thargoids should map to avoid_tharg"
+
+
+def test_elw_payload_snapshot(_ctx: TestContext) -> None:
+    payload = elw_logic._build_payload(  # type: ignore[attr-defined]
+        start="Sol",
+        cel="Colonia",
+        jump_range=42.5,
+        radius=50,
+        max_sys=25,
+        max_dist=5000,
+        min_scan=250000,
+        loop=True,
+        avoid_tharg=False,
+    )
+
+    assert payload.get("body_types") == "Earth-like world", "body_types should be ELW"
+    assert payload.get("min_value") == 250000, "min_value should map to min_scan"
+    assert payload.get("avoid_thargoids") is False, "avoid_thargoids should map to avoid_tharg"
+
+
+def test_hmc_payload_snapshot(_ctx: TestContext) -> None:
+    payload = hmc_logic._build_payload(  # type: ignore[attr-defined]
+        start="Sol",
+        cel="Colonia",
+        jump_range=42.5,
+        radius=50,
+        max_sys=25,
+        max_dist=5000,
+        min_scan=250000,
+        loop=True,
+        avoid_tharg=False,
+    )
+
+    assert payload.get("body_types") == [
+        "Rocky body",
+        "High metal content world",
+    ], "body_types should include Rocky + HMC"
+    assert payload.get("min_value") == 250000, "min_value should map to min_scan"
+    assert payload.get("avoid_thargoids") is False, "avoid_thargoids should map to avoid_tharg"
+
+
+def test_trade_payload_snapshot(_ctx: TestContext) -> None:
+    payload = trade_logic._build_payload_trade(  # type: ignore[attr-defined]
+        system="Sol",
+        station="Jameson Memorial",
+        capital=1_000_000,
+        max_hop=25.5,
+        cargo=256,
+        max_hops=10,
+        max_dta=1000,
+        max_age=5,
+        flags={
+            "large_pad": True,
+            "planetary": False,
+            "player_owned": True,
+            "restricted": False,
+            "prohibited": True,
+            "avoid_loops": True,
+            "allow_permits": False,
+        },
+    )
+
+    assert payload.get("system") == "Sol", "system should map to payload"
+    assert payload.get("station") == "Jameson Memorial", "station should map to payload"
+    assert payload.get("requires_large_pad") == 1, "requires_large_pad should map to large_pad"
+    assert payload.get("allow_prohibited") == 1, "allow_prohibited should map to prohibited"
+    assert payload.get("unique") == 1, "unique should map to avoid_loops"
+
+
+def test_neutron_payload_snapshot(_ctx: TestContext) -> None:
+    class DummyClient(spansh_client_logic.SpanshClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.last_payload = None
+
+        def route(self, mode, payload, referer=None, gui_ref=None):  # type: ignore[override]
+            self.last_payload = payload
+            return {}
+
+    dummy = DummyClient()
+    dummy.neutron_route("Sol", "Colonia", 42.5, 60.0)
+
+    assert dummy.last_payload is not None, "neutron payload should be captured"
+    assert dummy.last_payload.get("from") == "Sol", "neutron payload should map from"
+    assert dummy.last_payload.get("to") == "Colonia", "neutron payload should map to"
+    assert dummy.last_payload.get("range") == "42.5", "neutron range should be string"
+    assert dummy.last_payload.get("efficiency") == "60.0", "neutron efficiency should be string"
+
+
+def test_start_system_fallback_source(_ctx: TestContext) -> None:
+    files = [
+        "gui/tabs/spansh/ammonia.py",
+        "gui/tabs/spansh/riches.py",
+        "gui/tabs/spansh/elw.py",
+        "gui/tabs/spansh/hmc.py",
+        "gui/tabs/spansh/exomastery.py",
+        "gui/tabs/spansh/neutron.py",
+        "gui/tabs/spansh/trade.py",
+    ]
+    pattern = re.compile(
+        r"if\s+not\s+[\w_]+\s*:\s*\n\s*[\w_]+\s*=.*current_system",
+        re.IGNORECASE,
+    )
+    for rel_path in files:
+        path = os.path.join(ROOT_DIR, rel_path)
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        assert "current_system" in content, f"Missing current_system fallback in {rel_path}"
+        assert pattern.search(content), f"Missing start fallback block in {rel_path}"
+
+
+def test_resolve_planner_jump_range_auto(_ctx: TestContext) -> None:
+    cfg = config.config._settings
+    original = {
+        "planner_auto_use_ship_jump_range": cfg.get("planner_auto_use_ship_jump_range"),
+        "planner_allow_manual_range_override": cfg.get("planner_allow_manual_range_override"),
+        "planner_fallback_range_ly": cfg.get("planner_fallback_range_ly"),
+    }
+
+    try:
+        cfg["planner_auto_use_ship_jump_range"] = True
+        cfg["planner_allow_manual_range_override"] = True
+        cfg["planner_fallback_range_ly"] = 33.3
+
+        app_state.ship_state.jump_range_current_ly = 55.5
+        val = spansh_client_logic.resolve_planner_jump_range(None, context="test")
+        assert abs(val - 55.5) < 0.0001, "auto range should use ship JR"
+
+        app_state.ship_state.jump_range_current_ly = None
+        val = spansh_client_logic.resolve_planner_jump_range(None, context="test")
+        assert abs(val - 33.3) < 0.0001, "fallback range should be used when JR missing"
+    finally:
+        for key, value in original.items():
+            cfg[key] = value
+
+
 # --- TESTY: FIRST FOOTFALL ---------------------------------------------------
 
 
@@ -460,6 +619,13 @@ def run_all_tests() -> int:
         ("test_table_schemas_basic", test_table_schemas_basic),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
+        ("test_riches_payload_snapshot", test_riches_payload_snapshot),
+        ("test_elw_payload_snapshot", test_elw_payload_snapshot),
+        ("test_hmc_payload_snapshot", test_hmc_payload_snapshot),
+        ("test_trade_payload_snapshot", test_trade_payload_snapshot),
+        ("test_neutron_payload_snapshot", test_neutron_payload_snapshot),
+        ("test_start_system_fallback_source", test_start_system_fallback_source),
+        ("test_resolve_planner_jump_range_auto", test_resolve_planner_jump_range_auto),
     ]
 
     print("=== RenataAI Backend Smoke Tests (T1) ===")
