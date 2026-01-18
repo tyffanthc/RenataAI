@@ -178,8 +178,9 @@ class AmmoniaTab(ttk.Frame):
             route_manager.set_route(tr, "ammonia")
             opis = [f"{sys} ({len(det.get(sys, []))} ciał)" for sys in tr]
 
-            common.handle_route_ready_autoclipboard(self, tr, status_target="amm")
+            common.register_active_route_list(self.lst_amm, opis)
             common.wypelnij_liste(self.lst_amm, opis)
+            common.handle_route_ready_autoclipboard(self, tr, status_target="amm")
             common.emit_status(
                 "OK",
                 "ROUTE_FOUND",

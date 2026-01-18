@@ -27,6 +27,10 @@ _ACTIVE_ROUTE_CURRENT_SYSTEM: str | None = None
 _ACTIVE_ROUTE_LAST_COPIED_SYSTEM: str | None = None
 _ACTIVE_ROUTE_LAST_PROGRESS_AT: float | None = None
 _ACTIVE_ROUTE_SOURCE: str | None = None
+_ACTIVE_ROUTE_LISTBOX = None
+_ACTIVE_ROUTE_LIST_DATA: list[str] = []
+_ACTIVE_ROUTE_LIST_NUMERATE = True
+_ACTIVE_ROUTE_LIST_OFFSET = 0
 
 STATUS_TEXTS = {
     "NEXT_HOP_COPIED": "Skopiowano nastepny system.",
@@ -221,6 +225,38 @@ def get_active_route_next_system() -> str | None:
     return _ACTIVE_ROUTE_SYSTEMS_RAW[_ACTIVE_ROUTE_INDEX]
 
 
+def register_active_route_list(listbox, data, *, numerate: bool = True, offset: int = 0) -> None:
+    global _ACTIVE_ROUTE_LISTBOX, _ACTIVE_ROUTE_LIST_DATA
+    global _ACTIVE_ROUTE_LIST_NUMERATE, _ACTIVE_ROUTE_LIST_OFFSET
+    _ACTIVE_ROUTE_LISTBOX = listbox
+    _ACTIVE_ROUTE_LIST_DATA = list(data) if data else []
+    _ACTIVE_ROUTE_LIST_NUMERATE = bool(numerate)
+    try:
+        _ACTIVE_ROUTE_LIST_OFFSET = int(offset)
+    except Exception:
+        _ACTIVE_ROUTE_LIST_OFFSET = 0
+    config.STATE["copied_idx"] = None
+
+
+def _update_active_route_list_mark(route_index: int | None) -> None:
+    if _ACTIVE_ROUTE_LISTBOX is None or not _ACTIVE_ROUTE_LIST_DATA:
+        return
+    if route_index is None:
+        config.STATE["copied_idx"] = None
+        return
+    list_index = route_index + _ACTIVE_ROUTE_LIST_OFFSET
+    config.STATE["copied_idx"] = list_index
+    try:
+        wypelnij_liste(
+            _ACTIVE_ROUTE_LISTBOX,
+            _ACTIVE_ROUTE_LIST_DATA,
+            copied_index=list_index,
+            numerate=_ACTIVE_ROUTE_LIST_NUMERATE,
+        )
+    except Exception:
+        pass
+
+
 def _emit_next_hop_status(level: str, code: str, text: str, *, source: str | None) -> None:
     if not utils.DEBOUNCER.is_allowed(code, cooldown_sec=2.0, context=source or ""):
         return
@@ -250,6 +286,7 @@ def _copy_next_hop_at_index(
             _ACTIVE_ROUTE_INDEX = next_index + 1
         else:
             _ACTIVE_ROUTE_INDEX = next_index
+        _update_active_route_list_mark(next_index)
         _emit_next_hop_status(
             "OK",
             "NEXT_HOP_COPIED",
@@ -431,7 +468,27 @@ def handle_route_ready_autoclipboard(
                 notify_overlay=False,
             )
             return
-        _copy_next_hop_at_index(0, source=f"spansh.{status_target}", advance_index=False)
+        next_index = 0
+        try:
+            from app.state import app_state  # type: ignore
+
+            current_system = getattr(app_state, "current_system", None)
+        except Exception:
+            current_system = None
+
+        if current_system:
+            current_norm = normalize_system_name(current_system)
+            if current_norm in _ACTIVE_ROUTE_SYSTEMS:
+                pos = _ACTIVE_ROUTE_SYSTEMS.index(current_norm)
+                next_index = pos + 1
+
+        if next_index >= len(_ACTIVE_ROUTE_SYSTEMS_RAW):
+            _ACTIVE_ROUTE_INDEX = len(_ACTIVE_ROUTE_SYSTEMS_RAW)
+            _emit_next_hop_status("OK", "ROUTE_COMPLETE", STATUS_TEXTS["ROUTE_COMPLETE"], source=source)
+            return
+
+        _ACTIVE_ROUTE_INDEX = next_index
+        _copy_next_hop_at_index(next_index, source=f"spansh.{status_target}", advance_index=False)
         return
 
     def _do_copy():

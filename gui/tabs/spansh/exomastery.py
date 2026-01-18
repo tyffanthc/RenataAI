@@ -187,8 +187,9 @@ class ExomasteryTab(ttk.Frame):
         if tr:
             opis = [f"{sys} ({len(det.get(sys, []))} ciał)" for sys in tr]
 
-            common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
+            common.register_active_route_list(self.lst, opis)
             common.wypelnij_liste(self.lst, opis)
+            common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
             common.emit_status(
                 "OK",
                 "ROUTE_FOUND",

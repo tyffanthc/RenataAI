@@ -229,8 +229,9 @@ class RichesTab(ttk.Frame):
             route_manager.set_route(tr, "riches")
             opis = [f"{sys} ({len(det.get(sys, []))} ciał)" for sys in tr]
 
-            common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
+            common.register_active_route_list(self.lst_rtr, opis)
             common.wypelnij_liste(self.lst_rtr, opis)
+            common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
             common.emit_status(
                 "OK",
                 "ROUTE_FOUND",

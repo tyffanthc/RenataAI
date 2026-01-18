@@ -428,8 +428,9 @@ class TradeTab(ttk.Frame):
             if tr:
                 route_manager.set_route(tr, "trade")
                 opis = list(tr)
-                common.handle_route_ready_autoclipboard(self, tr, status_target="trade")
+                common.register_active_route_list(self.lst_trade, opis)
                 common.wypelnij_liste(self.lst_trade, opis)
+                common.handle_route_ready_autoclipboard(self, tr, status_target="trade")
                 common.emit_status(
                     "OK",
                     "TRADE_FOUND",
