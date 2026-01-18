@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Tuple
 
 from logic.spansh_client import client, spansh_error, resolve_planner_jump_range
 from logic.utils import powiedz
+from logic.rows_normalizer import normalize_body_rows
 
 
 def _build_payload(
@@ -65,80 +66,28 @@ def _build_payload(
     return {k: v for k, v in payload.items() if v is not None}
 
 
-def _parse_riches_result(result: Any) -> Tuple[List[str], Dict[str, List[str]]]:
+def _parse_riches_result(result: Any) -> Tuple[List[str], List[dict]]:
     """
     Parser wyniku R2R.
 
-    Wejście:
-        result – JSON z SPANSH (dict albo lista).
+    Wejscie:
+        result - JSON z SPANSH (dict albo lista).
 
-    Wyjście:
-        route   – lista nazw systemów (dla config.STATE["trasa"])
-        details – dict: {system_name: [linie opisu do GUI]}
+    Wyjscie:
+        route   - lista nazw systemow (dla config.STATE["trasa"])
+        rows    - lista wierszy do tabeli
     """
-    route: List[str] = []
-    details: Dict[str, List[str]] = {}
-
-    if not result:
-        return route, details
-
-    # Spansh najczęściej zwraca dict z kluczem "route" / "systems"
-    if isinstance(result, dict):
-        segments = (
-            result.get("route")
-            or result.get("systems")
-            or result.get("result")
-            or []
-        )
-    else:
-        segments = result
-
-    for seg in segments or []:
-        if isinstance(seg, dict):
-            system_name = (
-                seg.get("system")
-                or seg.get("name")
-                or seg.get("star_system")
-            )
-            bodies_raw = seg.get("bodies") or seg.get("planets") or []
-        else:
-            system_name = str(seg)
-            bodies_raw = []
-
-        if not system_name:
-            continue
-
-        route.append(system_name)
-
-        lines: List[str] = []
-        if not bodies_raw:
-            details[system_name] = lines
-            continue
-
-        for body in bodies_raw:
-            if not isinstance(body, dict):
-                lines.append(str(body))
-                continue
-
-            body_name = body.get("name") or body.get("body") or "???"
-            body_type = body.get("type") or body.get("subtype") or ""
-            est_value = body.get("value") or body.get("estimated_value")
-
-            line = body_name
-            if body_type:
-                line += f" ({body_type})"
-            if est_value is not None:
-                try:
-                    val_int = int(est_value)
-                    line += f" ~{val_int:,} Cr".replace(",", " ")
-                except (ValueError, TypeError):
-                    line += f" ~{est_value} Cr"
-
-            lines.append(line)
-
-        details[system_name] = lines
-
-    return route, details
+    return normalize_body_rows(
+        result,
+        system_keys=("system", "name", "star_system"),
+        bodies_keys=("bodies", "planets"),
+        body_name_keys=("name", "body", "body_name"),
+        subtype_keys=("subtype", "type"),
+        distance_keys=("distance", "distance_ls", "distance_to_arrival", "distance_to_arrival_ls"),
+        scan_value_keys=("value", "estimated_value", "scan_value", "estimated_scan_value"),
+        map_value_keys=("mapping_value", "mapped_value", "estimated_mapping_value"),
+        jumps_keys=("jumps", "jump_count", "jumps_remaining"),
+    )
 
 
 def oblicz_rtr(
@@ -153,7 +102,7 @@ def oblicz_rtr(
     use_map: bool,
     avoid_tharg: bool,
     gui_ref: Any | None = None,
-) -> Tuple[List[str], Dict[str, List[str]]]:
+) -> Tuple[List[str], List[dict]]:
     """
     Główna funkcja API dla zakładki RICHES.
 
@@ -172,7 +121,7 @@ def oblicz_rtr(
 
     if not start:
         spansh_error("RICHES: brak systemu startowego.", gui_ref, context="riches")
-        return [], {}
+        return [], []
 
     jump_range = resolve_planner_jump_range(jump_range, gui_ref=gui_ref, context="riches")
 
@@ -196,12 +145,12 @@ def oblicz_rtr(
         gui_ref=gui_ref,
     )
 
-    route, details = _parse_riches_result(result)
-    if not route:
+    route, rows = _parse_riches_result(result)
+    if not route and not rows:
         spansh_error(
             "RICHES: SPANSH nie zwrócił wyników.",
             gui_ref,
             context="riches",
         )
 
-    return route, details
+    return route, rows

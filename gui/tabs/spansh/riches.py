@@ -208,7 +208,7 @@ class RichesTab(ttk.Frame):
         use_map,
         avoid_tharg,
     ):
-        tr, det = riches.oblicz_rtr(
+        tr, rows = riches.oblicz_rtr(
             s,
             cel,
             jump_range,
@@ -224,10 +224,31 @@ class RichesTab(ttk.Frame):
 
         if tr:
             route_manager.set_route(tr, "riches")
-            opis = [f"{sys} ({len(det.get(sys, []))} ciał)" for sys in tr]
-
-            common.register_active_route_list(self.lst_rtr, opis)
-            common.wypelnij_liste(self.lst_rtr, opis)
+            if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
+                opis = common.render_table_lines("riches", rows)
+                common.register_active_route_list(
+                    self.lst_rtr,
+                    opis,
+                    numerate=False,
+                    offset=1,
+                    schema_id="riches",
+                    rows=rows,
+                )
+                common.wypelnij_liste(
+                    self.lst_rtr,
+                    opis,
+                    numerate=False,
+                    show_copied_suffix=False,
+                )
+            else:
+                counts = {}
+                for row in rows:
+                    sys_name = row.get("system_name")
+                    if sys_name:
+                        counts[sys_name] = counts.get(sys_name, 0) + 1
+                opis = [f"{sys} ({counts.get(sys, 0)} cial)" for sys in tr]
+                common.register_active_route_list(self.lst_rtr, opis)
+                common.wypelnij_liste(self.lst_rtr, opis)
             common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
             common.emit_status(
                 "OK",

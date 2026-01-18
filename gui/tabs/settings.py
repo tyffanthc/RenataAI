@@ -105,14 +105,22 @@ class SettingsTab(ttk.Frame):
         # Czytanie systemu po skoku (Exit Summary / info o systemie) – frontend / future
         self.var_read_system_after_jump = tk.BooleanVar(value=True)
 
-        # Debug / advanced
+        # debug
         self.var_debug_autocomplete = tk.BooleanVar(value=False)
         self.var_debug_cache = tk.BooleanVar(value=False)
         self.var_debug_dedup = tk.BooleanVar(value=False)
         self.var_debug_ship_state = tk.BooleanVar(value=False)
-        self.var_debug_next_hop = tk.BooleanVar(value=False)
+        self.var_debug_next_hop.set(False)
 
-        # Statek i zasięg skoku (JR)
+        # Tables (Spansh)
+        self.var_tables_spansh_schema_enabled = tk.BooleanVar(value=True)
+        self.var_tables_normalized_rows_enabled = tk.BooleanVar(value=True)
+        self.var_tables_schema_renderer_enabled = tk.BooleanVar(value=True)
+        self.var_tables_column_picker_enabled = tk.BooleanVar(value=True)
+        self.var_tables_ui_badges_enabled = tk.BooleanVar(value=True)
+        self.tables_visible_columns: Dict[str, list] = {}
+
+        # Statek i zasieg skoku (JR)
         self.var_jump_range_engine_enabled = tk.BooleanVar(value=True)
         self.var_planner_auto_use_ship_jump_range = tk.BooleanVar(value=True)
         self.var_planner_allow_manual_range_override = tk.BooleanVar(value=True)
@@ -772,6 +780,117 @@ class SettingsTab(ttk.Frame):
     # ------------------------------------------------------------------ #
     #   Zakładka: INŻYNIER
     # ------------------------------------------------------------------ #
+    def _open_tables_columns_dialog(self) -> None:
+        if not self.var_tables_column_picker_enabled.get():
+            return
+        try:
+            from gui import table_schemas
+        except Exception:
+            messagebox.showerror("Tables", "Brak schematow tabel.")
+            return
+
+        schema_ids = table_schemas.list_schema_ids()
+        if not schema_ids:
+            messagebox.showinfo("Tables", "Brak zdefiniowanych schematow.")
+            return
+
+        dialog = tk.Toplevel(self)
+        dialog.title("Spansh table columns")
+        dialog.geometry("520x520")
+
+        top = ttk.Frame(dialog)
+        top.pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(top, text="Schema:").pack(side="left")
+        schema_var = tk.StringVar(value=schema_ids[0])
+        schema_combo = ttk.Combobox(
+            top,
+            textvariable=schema_var,
+            values=schema_ids,
+            state="readonly",
+            width=18,
+        )
+        schema_combo.pack(side="left", padx=8)
+
+        use_default_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            top,
+            text="Use Spansh default",
+            variable=use_default_var,
+        ).pack(side="left", padx=8)
+
+        cols_frame = ttk.Frame(dialog)
+        cols_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        col_vars: dict[str, tk.BooleanVar] = {}
+
+        def _build_columns(schema_id: str) -> None:
+            for child in cols_frame.winfo_children():
+                child.destroy()
+            col_vars.clear()
+
+            schema = table_schemas.get_schema(schema_id)
+            if schema is None:
+                return
+
+            default_cols = [c.key for c in schema.columns if c.default_visible]
+            custom_cols = (self.tables_visible_columns or {}).get(schema_id)
+            use_default = not isinstance(custom_cols, list) or not custom_cols
+            use_default_var.set(use_default)
+            visible_cols = default_cols if use_default else custom_cols
+
+            for idx, col in enumerate(schema.columns):
+                var = tk.BooleanVar(value=col.key in visible_cols)
+                cb = ttk.Checkbutton(cols_frame, text=col.label, variable=var)
+                cb.grid(row=idx // 2, column=idx % 2, sticky="w", padx=6, pady=2)
+                col_vars[col.key] = var
+
+            if use_default:
+                for child in cols_frame.winfo_children():
+                    if isinstance(child, ttk.Checkbutton):
+                        child.state(["disabled"])
+            else:
+                for child in cols_frame.winfo_children():
+                    if isinstance(child, ttk.Checkbutton):
+                        child.state(["!disabled"])
+
+        def _on_toggle_default(*_args) -> None:
+            _build_columns(schema_var.get())
+
+        def _on_schema_change(*_args) -> None:
+            _build_columns(schema_var.get())
+
+        use_default_var.trace_add("write", _on_toggle_default)
+        schema_var.trace_add("write", _on_schema_change)
+        _build_columns(schema_var.get())
+
+        def _on_save() -> None:
+            schema_id = schema_var.get()
+            schema = table_schemas.get_schema(schema_id)
+            if schema is None:
+                dialog.destroy()
+                return
+
+            if use_default_var.get():
+                if schema_id in self.tables_visible_columns:
+                    self.tables_visible_columns.pop(schema_id, None)
+                dialog.destroy()
+                return
+
+            selected = [k for k, v in col_vars.items() if v.get()]
+            if len(selected) < 2:
+                selected = [c.key for c in schema.columns if c.default_visible]
+
+            self.tables_visible_columns[schema_id] = selected
+            dialog.destroy()
+
+        btns = ttk.Frame(dialog)
+        btns.pack(fill="x", padx=10, pady=10)
+        ttk.Button(btns, text="Cancel", command=dialog.destroy).pack(side="right")
+        ttk.Button(btns, text="Save", command=_on_save).pack(side="right", padx=6)
+
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.focus_force()
 
     def _build_tab_engineer(self) -> None:
         parent = self._tab_engineer
@@ -845,9 +964,48 @@ class SettingsTab(ttk.Frame):
             text="Opcje techniczne JR dla bardziej precyzyjnych obliczen.",
             foreground="#888888",
         ).grid(row=3, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="w")
+        lf_tables = ttk.LabelFrame(parent, text=" Tables (Spansh) ")
+        lf_tables.grid(row=1, column=0, padx=12, pady=(6, 6), sticky="nsew")
+        lf_tables.columnconfigure(0, weight=1)
+        lf_tables.columnconfigure(1, weight=1)
 
+        ttk.Checkbutton(
+            lf_tables,
+            text="Spansh schemas enabled",
+            variable=self.var_tables_spansh_schema_enabled,
+        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_tables,
+            text="Normalized rows enabled",
+            variable=self.var_tables_normalized_rows_enabled,
+        ).grid(row=1, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_tables,
+            text="Schema renderer enabled",
+            variable=self.var_tables_schema_renderer_enabled,
+        ).grid(row=2, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_tables,
+            text="Column picker enabled",
+            variable=self.var_tables_column_picker_enabled,
+        ).grid(row=0, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_tables,
+            text="UI badges enabled",
+            variable=self.var_tables_ui_badges_enabled,
+        ).grid(row=1, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Button(
+            lf_tables,
+            text="Configure columns...",
+            command=self._open_tables_columns_dialog,
+        ).grid(row=2, column=1, padx=8, pady=4, sticky="w")
         lf_debug = ttk.LabelFrame(parent, text=" Debug ")
-        lf_debug.grid(row=1, column=0, padx=12, pady=(6, 12), sticky="nsew")
+        lf_debug.grid(row=2, column=0, padx=12, pady=(6, 12), sticky="nsew")
         lf_debug.columnconfigure(0, weight=1)
 
         ttk.Checkbutton(
@@ -904,7 +1062,7 @@ class SettingsTab(ttk.Frame):
             foreground="#888888",
         ).grid(row=8, column=0, padx=8, pady=(2, 8), sticky="w")
 
-        self._add_save_bar(parent, row=2)
+        self._add_save_bar(parent, row=3)
 
     # ------------------------------------------------------------------ #
     # Ładowanie / zapisywanie – połączone z backendowym configiem
@@ -1028,7 +1186,7 @@ class SettingsTab(ttk.Frame):
                     continue
             self.jackpot_thresholds = merged
 
-        # debug
+                # debug
         self.var_debug_autocomplete.set(
             cfg.get("debug_autocomplete", self.var_debug_autocomplete.get())
         )
@@ -1045,7 +1203,41 @@ class SettingsTab(ttk.Frame):
             cfg.get("debug_next_hop", self.var_debug_next_hop.get())
         )
 
-        # Statek i zasięg skoku (JR)
+        # Tables (Spansh)
+        self.var_tables_spansh_schema_enabled.set(
+            cfg.get(
+                "features.tables.spansh_schema_enabled",
+                self.var_tables_spansh_schema_enabled.get(),
+            )
+        )
+        self.var_tables_normalized_rows_enabled.set(
+            cfg.get(
+                "features.tables.normalized_rows_enabled",
+                self.var_tables_normalized_rows_enabled.get(),
+            )
+        )
+        self.var_tables_schema_renderer_enabled.set(
+            cfg.get(
+                "features.tables.schema_renderer_enabled",
+                self.var_tables_schema_renderer_enabled.get(),
+            )
+        )
+        self.var_tables_column_picker_enabled.set(
+            cfg.get(
+                "features.tables.column_picker_enabled",
+                self.var_tables_column_picker_enabled.get(),
+            )
+        )
+        self.var_tables_ui_badges_enabled.set(
+            cfg.get(
+                "features.tables.ui_badges_enabled",
+                self.var_tables_ui_badges_enabled.get(),
+            )
+        )
+        visible_cols = cfg.get("tables_visible_columns", {})
+        self.tables_visible_columns = visible_cols if isinstance(visible_cols, dict) else {}
+
+        # Statek i zasieg skoku (JR)
         self.var_jump_range_engine_enabled.set(
             cfg.get("jump_range_engine_enabled", self.var_jump_range_engine_enabled.get())
         )
@@ -1225,6 +1417,13 @@ class SettingsTab(ttk.Frame):
             "ship_state_debug": self.var_debug_ship_state.get(),
             "debug_next_hop": self.var_debug_next_hop.get(),
 
+            "features.tables.spansh_schema_enabled": self.var_tables_spansh_schema_enabled.get(),
+            "features.tables.normalized_rows_enabled": self.var_tables_normalized_rows_enabled.get(),
+            "features.tables.schema_renderer_enabled": self.var_tables_schema_renderer_enabled.get(),
+            "features.tables.column_picker_enabled": self.var_tables_column_picker_enabled.get(),
+            "features.tables.ui_badges_enabled": self.var_tables_ui_badges_enabled.get(),
+            "tables_visible_columns": self.tables_visible_columns,
+
             "jump_range_engine_enabled": self.var_jump_range_engine_enabled.get(),
             "planner_auto_use_ship_jump_range": self.var_planner_auto_use_ship_jump_range.get(),
             "planner_allow_manual_range_override": self.var_planner_allow_manual_range_override.get(),
@@ -1384,6 +1583,13 @@ class SettingsTab(ttk.Frame):
         self.var_jump_range_engine_debug.set(False)
         self.var_fit_resolver_debug.set(False)
         self.var_jump_range_validate_debug.set(False)
+
+        self.var_tables_spansh_schema_enabled.set(True)
+        self.var_tables_normalized_rows_enabled.set(True)
+        self.var_tables_schema_renderer_enabled.set(True)
+        self.var_tables_column_picker_enabled.set(True)
+        self.var_tables_ui_badges_enabled.set(True)
+        self.tables_visible_columns = {}
 
         self.var_jump_range_engine_enabled.set(True)
         self.var_planner_auto_use_ship_jump_range.set(True)

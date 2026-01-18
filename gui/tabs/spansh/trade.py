@@ -412,7 +412,7 @@ class TradeTab(ttk.Frame):
         Wątek roboczy: wywołuje logikę trade.oblicz_trade i wypełnia listę.
         """
         try:
-            tr = trade.oblicz_trade(
+            tr, rows = trade.oblicz_trade(
                 start_system,
                 start_station,
                 capital,
@@ -425,16 +425,33 @@ class TradeTab(ttk.Frame):
                 self.root,
             )
 
-            if tr:
+            if rows:
                 route_manager.set_route(tr, "trade")
-                opis = list(tr)
-                common.register_active_route_list(self.lst_trade, opis)
-                common.wypelnij_liste(self.lst_trade, opis)
+                if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
+                    opis = common.render_table_lines("trade", rows)
+                    common.register_active_route_list(
+                        self.lst_trade,
+                        opis,
+                        numerate=False,
+                        offset=1,
+                        schema_id="trade",
+                        rows=rows,
+                    )
+                    common.wypelnij_liste(
+                        self.lst_trade,
+                        opis,
+                        numerate=False,
+                        show_copied_suffix=False,
+                    )
+                else:
+                    opis = [f"{row.get('from_system', '')} -> {row.get('to_system', '')}" for row in rows]
+                    common.register_active_route_list(self.lst_trade, opis)
+                    common.wypelnij_liste(self.lst_trade, opis)
                 common.handle_route_ready_autoclipboard(self, tr, status_target="trade")
                 common.emit_status(
                     "OK",
                     "TRADE_FOUND",
-                    text=f"Znaleziono {len(tr)} propozycji.",
+                    text=f"Znaleziono {len(rows)} propozycji.",
                     source="spansh.trade",
                     ui_target="trade",
                 )

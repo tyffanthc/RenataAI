@@ -31,6 +31,9 @@ _ACTIVE_ROUTE_LISTBOX = None
 _ACTIVE_ROUTE_LIST_DATA: list[str] = []
 _ACTIVE_ROUTE_LIST_NUMERATE = True
 _ACTIVE_ROUTE_LIST_OFFSET = 0
+_ACTIVE_ROUTE_TABLE_SCHEMA: str | None = None
+_ACTIVE_ROUTE_TABLE_ROWS: list[dict] = []
+_ACTIVE_ROUTE_TABLE_VISIBLE: list[str] | None = None
 
 STATUS_TEXTS = {
     "NEXT_HOP_COPIED": "Skopiowano nastepny system.",
@@ -109,6 +112,7 @@ def wypelnij_liste(
     autoselect=True,
     autoscroll=True,
     numerate=True,
+    show_copied_suffix=True,
 ):
     """
     Wypełnia listę z numeracją.
@@ -127,7 +131,7 @@ def wypelnij_liste(
         copied_index = config.STATE.get("copied_idx", None)
 
     for i, it in enumerate(dane):
-        suffix = "  [SKOPIOWANO]" if copied_index == i else ""
+        suffix = "  [SKOPIOWANO]" if show_copied_suffix and copied_index == i else ""
         if numerate:
             lb.insert(tk.END, f"{i+1}. {it}{suffix}")
         else:
@@ -185,6 +189,136 @@ def normalize_system_name(name) -> str:
     return text.casefold()
 
 
+def _format_bool(value) -> str:
+    if value is True:
+        return "Y"
+    if value is False:
+        return ""
+    return ""
+
+
+def _format_number(value, fmt: str) -> str:
+    try:
+        num = float(value)
+    except Exception:
+        return "-"
+    if fmt == "int":
+        return str(int(round(num)))
+    if fmt == "percent":
+        return f"{num:.0f}%"
+    if fmt == "ly":
+        return f"{num:.2f}"
+    if fmt == "ls":
+        return f"{num:.0f}"
+    if fmt == "cr":
+        try:
+            return f"{int(round(num)):,}".replace(",", " ")
+        except Exception:
+            return str(num)
+    return str(num)
+
+
+def format_value(value, fmt: str) -> str:
+    if fmt == "bool":
+        return _format_bool(value)
+    if fmt in ("int", "float", "percent", "ly", "ls", "cr"):
+        return _format_number(value, fmt)
+    if value is None:
+        return "-"
+    return str(value)
+
+
+def _get_value_by_key(row: dict, key: str):
+    if not key:
+        return None
+    if "." not in key:
+        return row.get(key)
+    cur = row
+    for part in key.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _align_text(text: str, width: int | None, align: str) -> str:
+    if width is None:
+        return text
+    if len(text) > width:
+        text = text[:width]
+    if align == "right":
+        return text.rjust(width)
+    if align == "center":
+        return text.center(width)
+    return text.ljust(width)
+
+
+def _get_visible_columns(schema_id: str) -> list[str]:
+    try:
+        from gui import table_schemas
+    except Exception:
+        return []
+    schema = table_schemas.get_schema(schema_id)
+    if schema is None:
+        return []
+    visible_cfg = config.get("tables_visible_columns", {})
+    visible = []
+    if isinstance(visible_cfg, dict):
+        visible = visible_cfg.get(schema_id) or []
+    if not isinstance(visible, list) or not visible:
+        visible = [col.key for col in schema.columns if col.default_visible]
+    if len(visible) < 2:
+        visible = [col.key for col in schema.columns[:2]]
+    return visible
+
+
+def render_table_lines(schema_id: str, rows: list[dict]) -> list[str]:
+    if not config.get("features.tables.spansh_schema_enabled", True):
+        return []
+    if not config.get("features.tables.schema_renderer_enabled", True):
+        return []
+    try:
+        from gui import table_schemas
+    except Exception:
+        return []
+    schema = table_schemas.get_schema(schema_id)
+    if schema is None:
+        return []
+
+    visible_cols = _get_visible_columns(schema_id)
+    columns = [col for col in schema.columns if col.key in visible_cols]
+    if not columns:
+        return []
+
+    header = "  ".join(
+        _align_text(col.label, col.width, col.align) for col in columns
+    )
+    lines = [header]
+
+    badges_enabled = bool(config.get("features.tables.ui_badges_enabled", True))
+    for row in rows:
+        meta = row.get("_meta", {}) if isinstance(row, dict) else {}
+        badges = meta.get("badges", []) if isinstance(meta, dict) else []
+        suffix = " [SKOPIOWANO]" if badges_enabled and "COPIED" in badges else ""
+        primary_key = None
+        for key in ("system_name", "body_name", "name"):
+            if key in [col.key for col in columns]:
+                primary_key = key
+                break
+
+        parts = []
+        for col in columns:
+            value = _get_value_by_key(row, col.value_path or col.key)
+            text = format_value(value, col.fmt)
+            if suffix and col.key == primary_key:
+                text = f"{text}{suffix}"
+                suffix = ""
+            parts.append(_align_text(text, col.width, col.align))
+        lines.append("  ".join(parts))
+
+    return lines
+
+
 def _set_active_route_data(route, text, sig, source: str | None) -> None:
     global _ACTIVE_ROUTE_SYSTEMS, _ACTIVE_ROUTE_SYSTEMS_RAW
     global _ACTIVE_ROUTE_SIG, _ACTIVE_ROUTE_TEXT, _ACTIVE_ROUTE_INDEX
@@ -225,16 +359,41 @@ def get_active_route_next_system() -> str | None:
     return _ACTIVE_ROUTE_SYSTEMS_RAW[_ACTIVE_ROUTE_INDEX]
 
 
-def register_active_route_list(listbox, data, *, numerate: bool = True, offset: int = 0) -> None:
+def register_active_route_list(
+    listbox,
+    data,
+    *,
+    numerate: bool = True,
+    offset: int = 0,
+    schema_id: str | None = None,
+    rows: list[dict] | None = None,
+) -> None:
     global _ACTIVE_ROUTE_LISTBOX, _ACTIVE_ROUTE_LIST_DATA
     global _ACTIVE_ROUTE_LIST_NUMERATE, _ACTIVE_ROUTE_LIST_OFFSET
+    global _ACTIVE_ROUTE_TABLE_SCHEMA, _ACTIVE_ROUTE_TABLE_ROWS, _ACTIVE_ROUTE_TABLE_VISIBLE
     _ACTIVE_ROUTE_LISTBOX = listbox
-    _ACTIVE_ROUTE_LIST_DATA = list(data) if data else []
-    _ACTIVE_ROUTE_LIST_NUMERATE = bool(numerate)
-    try:
-        _ACTIVE_ROUTE_LIST_OFFSET = int(offset)
-    except Exception:
-        _ACTIVE_ROUTE_LIST_OFFSET = 0
+    if (
+        schema_id
+        and rows is not None
+        and config.get("features.tables.spansh_schema_enabled", True)
+        and config.get("features.tables.schema_renderer_enabled", True)
+    ):
+        _ACTIVE_ROUTE_TABLE_SCHEMA = schema_id
+        _ACTIVE_ROUTE_TABLE_ROWS = list(rows)
+        _ACTIVE_ROUTE_TABLE_VISIBLE = _get_visible_columns(schema_id)
+        _ACTIVE_ROUTE_LIST_DATA = render_table_lines(schema_id, _ACTIVE_ROUTE_TABLE_ROWS)
+        _ACTIVE_ROUTE_LIST_NUMERATE = False
+        _ACTIVE_ROUTE_LIST_OFFSET = 1
+    else:
+        _ACTIVE_ROUTE_TABLE_SCHEMA = None
+        _ACTIVE_ROUTE_TABLE_ROWS = []
+        _ACTIVE_ROUTE_TABLE_VISIBLE = None
+        _ACTIVE_ROUTE_LIST_DATA = list(data) if data else []
+        _ACTIVE_ROUTE_LIST_NUMERATE = bool(numerate)
+        try:
+            _ACTIVE_ROUTE_LIST_OFFSET = int(offset)
+        except Exception:
+            _ACTIVE_ROUTE_LIST_OFFSET = 0
     config.STATE["copied_idx"] = None
 
 
@@ -244,6 +403,29 @@ def _update_active_route_list_mark(route_index: int | None) -> None:
     if route_index is None:
         config.STATE["copied_idx"] = None
         return
+    if _ACTIVE_ROUTE_TABLE_SCHEMA and _ACTIVE_ROUTE_TABLE_ROWS:
+        for row in _ACTIVE_ROUTE_TABLE_ROWS:
+            meta = row.get("_meta")
+            if isinstance(meta, dict):
+                meta.pop("badges", None)
+        if 0 <= route_index < len(_ACTIVE_ROUTE_TABLE_ROWS):
+            meta = _ACTIVE_ROUTE_TABLE_ROWS[route_index].setdefault("_meta", {})
+            if isinstance(meta, dict):
+                meta["badges"] = ["COPIED"]
+        _ACTIVE_ROUTE_LIST_DATA = render_table_lines(
+            _ACTIVE_ROUTE_TABLE_SCHEMA, _ACTIVE_ROUTE_TABLE_ROWS
+        )
+        try:
+            wypelnij_liste(
+                _ACTIVE_ROUTE_LISTBOX,
+                _ACTIVE_ROUTE_LIST_DATA,
+                copied_index=None,
+                numerate=False,
+                show_copied_suffix=False,
+            )
+        except Exception:
+            pass
+        return
     list_index = route_index + _ACTIVE_ROUTE_LIST_OFFSET
     config.STATE["copied_idx"] = list_index
     try:
@@ -252,6 +434,7 @@ def _update_active_route_list_mark(route_index: int | None) -> None:
             _ACTIVE_ROUTE_LIST_DATA,
             copied_index=list_index,
             numerate=_ACTIVE_ROUTE_LIST_NUMERATE,
+            show_copied_suffix=True,
         )
     except Exception:
         pass

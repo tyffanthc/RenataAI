@@ -382,6 +382,24 @@ def test_first_footfall_basic(ctx: TestContext) -> None:
     )
 
 
+
+def test_table_schemas_basic(_ctx: TestContext) -> None:
+    try:
+        from gui import table_schemas
+    except Exception as exc:
+        raise AssertionError(f"Failed to import table_schemas: {exc}")
+
+    schemas = table_schemas.SCHEMAS
+    assert schemas, "No table schemas defined"
+
+    for schema_id, schema in schemas.items():
+        assert schema.columns, f"Schema {schema_id} has no columns"
+        keys = [col.key for col in schema.columns]
+        labels = [col.label for col in schema.columns]
+        assert all(k for k in keys), f"Schema {schema_id} has empty column key"
+        assert all(l for l in labels), f"Schema {schema_id} has empty column label"
+        assert len(set(keys)) == len(keys), f"Schema {schema_id} has duplicate column keys"
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -399,6 +417,7 @@ def run_all_tests() -> int:
         ("test_fss_progress_basic", test_fss_progress_basic),
         ("test_bio_signals_basic", test_bio_signals_basic),
         ("test_first_footfall_basic", test_first_footfall_basic),
+        ("test_table_schemas_basic", test_table_schemas_basic),
     ]
 
     print("=== RenataAI Backend Smoke Tests (T1) ===")

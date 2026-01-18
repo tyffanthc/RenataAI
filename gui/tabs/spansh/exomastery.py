@@ -174,15 +174,37 @@ class ExomasteryTab(ttk.Frame):
         return fallback
 
     def _th(self, s, cel, rng, rad, mx, max_dist, min_lm, loop, avoid):
-        tr, det = exomastery.oblicz_exomastery(
+        tr, rows = exomastery.oblicz_exomastery(
             s, cel, rng, rad, mx, max_dist, min_lm, loop, avoid
         )
 
         if tr:
-            opis = [f"{sys} ({len(det.get(sys, []))} ciał)" for sys in tr]
-
-            common.register_active_route_list(self.lst, opis)
-            common.wypelnij_liste(self.lst, opis)
+            route_manager.set_route(tr, "exomastery")
+            if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
+                opis = common.render_table_lines("exomastery", rows)
+                common.register_active_route_list(
+                    self.lst,
+                    opis,
+                    numerate=False,
+                    offset=1,
+                    schema_id="exomastery",
+                    rows=rows,
+                )
+                common.wypelnij_liste(
+                    self.lst,
+                    opis,
+                    numerate=False,
+                    show_copied_suffix=False,
+                )
+            else:
+                counts = {}
+                for row in rows:
+                    sys_name = row.get("system_name")
+                    if sys_name:
+                        counts[sys_name] = counts.get(sys_name, 0) + 1
+                opis = [f"{sys} ({counts.get(sys, 0)} cial)" for sys in tr]
+                common.register_active_route_list(self.lst, opis)
+                common.wypelnij_liste(self.lst, opis)
             common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
             common.emit_status(
                 "OK",

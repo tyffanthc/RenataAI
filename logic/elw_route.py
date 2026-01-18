@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Tuple
 
 from logic.spansh_client import client, spansh_error, resolve_planner_jump_range
 from logic.utils import powiedz
+from logic.rows_normalizer import normalize_body_rows
 
 
 def _build_payload(
@@ -49,69 +50,21 @@ def _build_payload(
     return {k: v for k, v in payload.items() if v is not None}
 
 
-def _parse_elw_result(result: Any) -> Tuple[List[str], Dict[str, List[str]]]:
+def _parse_elw_result(result: Any) -> Tuple[List[str], List[dict]]:
     """
-    Parser wyniku Earth-like Worlds.
+    Parser wyniku ELW.
     """
-    route: List[str] = []
-    details: Dict[str, List[str]] = {}
-
-    if not result:
-        return route, details
-
-    if isinstance(result, dict):
-        segments = (
-            result.get("route")
-            or result.get("systems")
-            or result.get("result")
-            or []
-        )
-    else:
-        segments = result
-
-    for seg in segments or []:
-        if isinstance(seg, dict):
-            system_name = (
-                seg.get("system")
-                or seg.get("name")
-                or seg.get("star_system")
-            )
-            bodies_raw = seg.get("bodies") or seg.get("planets") or []
-        else:
-            system_name = str(seg)
-            bodies_raw = []
-
-        if not system_name:
-            continue
-
-        route.append(system_name)
-
-        lines: List[str] = []
-        if not bodies_raw:
-            details[system_name] = lines
-            continue
-
-        for body in bodies_raw:
-            if not isinstance(body, dict):
-                lines.append(str(body))
-                continue
-
-            body_name = body.get("name") or body.get("body") or "???"
-            est_value = body.get("value") or body.get("estimated_value")
-
-            line = body_name
-            if est_value is not None:
-                try:
-                    val_int = int(est_value)
-                    line += f" ~{val_int:,} Cr".replace(",", " ")
-                except (ValueError, TypeError):
-                    line += f" ~{est_value} Cr"
-
-            lines.append(line)
-
-        details[system_name] = lines
-
-    return route, details
+    return normalize_body_rows(
+        result,
+        system_keys=("system", "name", "star_system"),
+        bodies_keys=("bodies", "planets"),
+        body_name_keys=("name", "body", "body_name"),
+        subtype_keys=("subtype", "type"),
+        distance_keys=("distance", "distance_ls", "distance_to_arrival", "distance_to_arrival_ls"),
+        scan_value_keys=("value", "estimated_value", "scan_value", "estimated_scan_value"),
+        map_value_keys=("mapping_value", "mapped_value", "estimated_mapping_value"),
+        jumps_keys=("jumps", "jump_count", "jumps_remaining"),
+    )
 
 
 def oblicz_elw(
@@ -124,7 +77,7 @@ def oblicz_elw(
     loop: bool,
     avoid_tharg: bool,
     gui_ref: Any | None = None,
-) -> Tuple[List[str], Dict[str, List[str]]]:
+) -> Tuple[List[str], List[dict]]:
     """
     API dla zakładki Earth-like Worlds.
 
@@ -144,7 +97,7 @@ def oblicz_elw(
 
     if not start:
         spansh_error("ELW: brak systemu startowego.", gui_ref, context="elw")
-        return [], {}
+        return [], []
 
     jump_range = resolve_planner_jump_range(jump_range, gui_ref=gui_ref, context="elw")
 
@@ -167,12 +120,12 @@ def oblicz_elw(
         gui_ref=gui_ref,
     )
 
-    route, details = _parse_elw_result(result)
-    if not route:
+    route, rows = _parse_elw_result(result)
+    if not route and not rows:
         spansh_error(
             "ELW: SPANSH nie zwrócił wyników.",
             gui_ref,
             context="elw",
         )
 
-    return route, details
+    return route, rows

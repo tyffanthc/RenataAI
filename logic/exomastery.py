@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Tuple
 
 from logic.spansh_client import client, spansh_error, resolve_planner_jump_range
 from logic.utils import powiedz
+from logic.rows_normalizer import normalize_body_rows
 
 
 def _build_payload(
@@ -51,85 +52,25 @@ def _build_payload(
     return {k: v for k, v in payload.items() if v is not None}
 
 
-def _parse_exomastery_result(result: Any) -> Tuple[List[str], Dict[str, List[str]]]:
+def _parse_exomastery_result(result: Any) -> Tuple[List[str], List[dict]]:
     """
     Parser wyniku Exomastery.
 
     Zwraca:
-        route   – lista systemów
-        details – dict: {system: [linie opisu bio]}
+        route   - lista systemow
+        rows    - lista wierszy do tabeli
     """
-    route: List[str] = []
-    details: Dict[str, List[str]] = {}
-
-    if not result:
-        return route, details
-
-    if isinstance(result, dict):
-        segments = (
-            result.get("route")
-            or result.get("systems")
-            or result.get("result")
-            or []
-        )
-    else:
-        segments = result
-
-    for seg in segments or []:
-        if isinstance(seg, dict):
-            system_name = (
-                seg.get("system")
-                or seg.get("name")
-                or seg.get("star_system")
-            )
-            bio_raw = seg.get("landmarks") or seg.get("bio") or []
-        else:
-            system_name = str(seg)
-            bio_raw = []
-
-        if not system_name:
-            continue
-
-        route.append(system_name)
-
-        lines: List[str] = []
-        if not bio_raw:
-            details[system_name] = lines
-            continue
-
-        for landmark in bio_raw:
-            if not isinstance(landmark, dict):
-                lines.append(str(landmark))
-                continue
-
-            body_name = (
-                landmark.get("body")
-                or landmark.get("name")
-                or landmark.get("body_name")
-                or "???"
-            )
-            species = landmark.get("species") or landmark.get("type") or ""
-            value = (
-                landmark.get("value")
-                or landmark.get("estimated_value")
-                or landmark.get("scan_value")
-            )
-
-            line = body_name
-            if species:
-                line += f" ({species})"
-            if value is not None:
-                try:
-                    val_int = int(value)
-                    line += f" ~{val_int:,} Cr".replace(",", " ")
-                except (ValueError, TypeError):
-                    line += f" ~{value} Cr"
-
-            lines.append(line)
-
-        details[system_name] = lines
-
-    return route, details
+    return normalize_body_rows(
+        result,
+        system_keys=("system", "name", "star_system"),
+        bodies_keys=("landmarks", "bio"),
+        body_name_keys=("body", "name", "body_name"),
+        subtype_keys=("species", "type"),
+        distance_keys=("distance", "distance_ls", "distance_to_arrival", "distance_to_arrival_ls"),
+        scan_value_keys=("value", "estimated_value", "scan_value"),
+        map_value_keys=("mapping_value", "mapped_value", "estimated_mapping_value"),
+        jumps_keys=("jumps", "jump_count", "jumps_remaining"),
+    )
 
 
 def oblicz_exomastery(
@@ -143,7 +84,7 @@ def oblicz_exomastery(
     loop: bool,
     avoid_tharg: bool,
     gui_ref: Any | None = None,
-) -> Tuple[List[str], Dict[str, List[str]]]:
+) -> Tuple[List[str], List[dict]]:
     """
     API dla zakładki Exomastery.
     """
@@ -161,7 +102,7 @@ def oblicz_exomastery(
             gui_ref,
             context="exomastery",
         )
-        return [], {}
+        return [], []
 
     jump_range = resolve_planner_jump_range(
         jump_range, gui_ref=gui_ref, context="exomastery"
@@ -186,12 +127,12 @@ def oblicz_exomastery(
         gui_ref=gui_ref,
     )
 
-    route, details = _parse_exomastery_result(result)
-    if not route:
+    route, rows = _parse_exomastery_result(result)
+    if not route and not rows:
         spansh_error(
             "EXO: SPANSH nie zwrócił wyników.",
             gui_ref,
             context="exomastery",
         )
 
-    return route, details
+    return route, rows

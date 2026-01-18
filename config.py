@@ -134,6 +134,14 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "ui_jump_range_show_limit": True,
     "ui_jump_range_debug_details": False,
 
+    # TABLES (Spansh schemas)
+    "features.tables.spansh_schema_enabled": True,
+    "features.tables.normalized_rows_enabled": True,
+    "features.tables.schema_renderer_enabled": True,
+    "features.tables.column_picker_enabled": True,
+    "features.tables.ui_badges_enabled": True,
+    "tables_visible_columns": {},
+
     # DEBUG
     "debug_autocomplete": False,
     "debug_cache": False,

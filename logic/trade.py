@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 
 from logic.utils import powiedz
 from logic.spansh_client import client, spansh_error
+from logic.rows_normalizer import normalize_trade_rows
 
 
 def _build_payload_trade(
@@ -81,52 +82,40 @@ def oblicz_trade(
     max_age: int,
     flags: Dict[str, Any],
     gui_ref: Any | None = None,
-) -> List[str]:
+) -> tuple[list[str], list[dict]]:
     """
     Logika Trade Plannera oparta o SPANSH /api/trade/route.
 
     Parametry (z GUI):
-        start_system – system startowy (pole „System”; może zawierać też stację
-                       w formacie 'System / Stacja' lub 'System, Stacja')
-        start_station – stacja startowa (osobne pole w GUI; jeśli puste, spróbujemy
-                        wyciągnąć stację ze start_system)
-        capital      – kapitał [Cr]
-        max_hop      – max hop distance [LY]
-        cargo        – ładowność [t]
-        max_hops     – max liczba skoków
-        max_dta      – max distance to arrival [ls]
-        max_age      – max wiek danych [dni] (obecnie nieużywany w payloadzie)
-        flags        – słownik z checkboxów:
-                       large_pad, planetary, player_owned,
-                       restricted, prohibited, avoid_loops, allow_permits
+        start_system - system startowy
+        start_station - stacja startowa
+        capital      - kapital [Cr]
+        max_hop      - max hop distance [LY]
+        cargo        - ladownosc [t]
+        max_hops     - max liczba skokow
+        max_dta      - max distance to arrival [ls]
+        max_age      - max wiek danych [dni]
+        flags        - slownik z checkboxow
 
     Zwraca:
-        list[str] – linie tekstu do wyświetlenia w GUI (lista tras/propozycji).
+        (route, rows) - trasa + wiersze tabeli.
     """
     try:
         system = (start_system or "").strip()
         station = (start_station or "").strip()
 
-        # 1) Jeśli użytkownik wpisał wszystko w jedno pole (jak na stronie Spansh),
-        #    czyli np. "Col 285 Sector CS-Z c14-12 / Solanas Palace"
-        #    lub "Col 285 Sector CS-Z c14-12, Solanas Palace",
-        #    a pole "Stacja" jest puste – rozbij to tutaj.
         if system and not station:
             raw = system
             parts: list[str] = []
 
             if "/" in raw:
-                # priorytet: dokładnie ten format, który pokazuje Spansh
                 parts = [p.strip() for p in raw.split("/", 1)]
             elif "," in raw:
-                # fallback: stary format z Renaty "System, Stacja"
                 parts = [p.strip() for p in raw.split(",", 1)]
 
             if parts:
-                # Pierwsza część to system
                 if parts[0]:
                     system = parts[0]
-                # Druga (jeśli jest) to stacja
                 if len(parts) > 1 and parts[1]:
                     station = parts[1]
 
@@ -136,20 +125,20 @@ def oblicz_trade(
                 gui_ref,
                 context="trade",
             )
-            return []
+            return [], []
 
         if not station:
             spansh_error(
-                "TRADE: wybierz stację startową — SPANSH Trade wymaga system+station.",
+                "TRADE: wybierz stacje startowa - SPANSH Trade wymaga system+station.",
                 gui_ref,
                 context="trade",
             )
-            return []
+            return [], []
 
         powiedz(
             (
-                f"API TRADE: {system} / {station}, kapitał={capital} Cr, "
-                f"hop={max_hop} LY, ładowność={cargo} t, max hops={max_hops}"
+                f"API TRADE: {system} / {station}, kapital={capital} Cr, "
+                f"hop={max_hop} LY, ladownosc={cargo} t, max hops={max_hops}"
             ),
             gui_ref,
         )
@@ -174,79 +163,20 @@ def oblicz_trade(
         )
 
         if not result:
-            # komunikat o błędzie już poszedł z warstwy klienta
-            return []
+            return [], []
 
-        # --- Parsowanie wyniku ------------------------------------------------
-        lines: List[str] = []
+        route, rows = normalize_trade_rows(result)
 
-        # typowo SPANSH dla trade może zwracać listę „legs”/„hops”
-        core = result
-        if isinstance(result, dict):
-            core = (
-                result.get("result")
-                or result.get("routes")
-                or result.get("legs")
-                or result.get("hops")
-                or result
-            )
-
-        if isinstance(core, list):
-            for idx, leg in enumerate(core, start=1):
-                if isinstance(leg, dict):
-                    frm = (
-                        leg.get("from_system")
-                        or leg.get("from")
-                        or leg.get("source_system")
-                        or ""
-                    )
-                    to = (
-                        leg.get("to_system")
-                        or leg.get("to")
-                        or leg.get("destination_system")
-                        or ""
-                    )
-                    commodity = leg.get("commodity") or leg.get("item") or ""
-                    profit = (
-                        leg.get("profit")
-                        or leg.get("estimated_profit")
-                        or leg.get("profit_per_tonne")
-                    )
-
-                    base = f"{idx}. {frm} -> {to}" if frm or to else f"{idx}."
-                    if commodity:
-                        base += f" ({commodity}"
-                        if profit is not None:
-                            try:
-                                p_int = int(profit)
-                                base += f", +{p_int:,} Cr".replace(",", " ")
-                            except (ValueError, TypeError):
-                                base += f", +{profit} Cr"
-                        base += ")"
-                    elif profit is not None:
-                        try:
-                            p_int = int(profit)
-                            base += f" (+{p_int:,} Cr)".replace(",", " ")
-                        except (ValueError, TypeError):
-                            base += f" (+{profit} Cr)"
-
-                    lines.append(base)
-                else:
-                    lines.append(f"{idx}. {leg}")
-        else:
-            # fallback – pojedynczy obiekt / cokolwiek
-            lines.append(str(core))
-
-        if not lines:
+        if not rows:
             spansh_error(
-                "TRADE: SPANSH nie zwrócił żadnych propozycji.",
+                "TRADE: SPANSH nie zwrocil zadnych propozycji.",
                 gui_ref,
                 context="trade",
             )
-            return []
+            return [], []
 
-        return lines
+        return route, rows
 
     except Exception as e:  # noqa: BLE001
         powiedz(f"TRADE error: {e}", gui_ref)
-        return []
+        return [], []

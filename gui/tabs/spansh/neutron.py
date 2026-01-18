@@ -4,6 +4,7 @@ import threading
 from itertools import zip_longest
 import config
 from logic import neutron
+from logic.rows_normalizer import normalize_neutron_rows
 from logic import utils
 from gui import common
 from gui.common_autocomplete import AutocompleteController
@@ -160,15 +161,33 @@ class NeutronTab(ttk.Frame):
 
             if tr:
                 route_manager.set_route(tr, "neutron")
-                header = f"{'System':<30} {'Dist(LY)':>9} {'Rem(LY)':>9} {'Neut':>5} {'Jmp':>4}"
-                opis = [header]
-                for sys_name, detail in zip_longest(tr, details, fillvalue={}):
-                    if not sys_name:
-                        continue
-                    opis.append(self._format_jump_row(sys_name, detail))
+                if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
+                    rows = normalize_neutron_rows(details)
+                    opis = common.render_table_lines("neutron", rows)
+                    common.register_active_route_list(
+                        self.lst,
+                        opis,
+                        numerate=False,
+                        offset=1,
+                        schema_id="neutron",
+                        rows=rows,
+                    )
+                    common.wypelnij_liste(
+                        self.lst,
+                        opis,
+                        numerate=False,
+                        show_copied_suffix=False,
+                    )
+                else:
+                    header = "{:<30} {:>9} {:>9} {:>5} {:>4}".format("System", "Dist(LY)", "Rem(LY)", "Neut", "Jmp")
+                    opis = [header]
+                    for sys_name, detail in zip_longest(tr, details, fillvalue={}):
+                        if not sys_name:
+                            continue
+                        opis.append(self._format_jump_row(sys_name, detail))
 
-                common.register_active_route_list(self.lst, opis, numerate=False, offset=1)
-                common.wypelnij_liste(self.lst, opis, numerate=False)
+                    common.register_active_route_list(self.lst, opis, numerate=False, offset=1)
+                    common.wypelnij_liste(self.lst, opis, numerate=False)
                 common.handle_route_ready_autoclipboard(self, tr, status_target="neu")
                 common.emit_status(
                     "OK",
