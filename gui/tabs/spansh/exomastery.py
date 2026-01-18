@@ -77,7 +77,7 @@ class ExomasteryTab(ttk.Frame):
         f_lm = ttk.Frame(fr)
         f_lm.pack(fill="x", padx=5, pady=2)
 
-        ttk.Label(f_lm, text="Min landmarks:", width=12).pack(side="left")
+        ttk.Label(f_lm, text="Minimum Landmark Value (CR):", width=26).pack(side="left")
         ttk.Entry(f_lm, textvariable=self.var_min_landmark, width=7).pack(side="left", padx=5)
 
         f_chk = ttk.Frame(fr)

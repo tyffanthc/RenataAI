@@ -61,7 +61,12 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
 
     # SPANSH / SIEĆ
     "spansh_timeout": 20,
-    "spansh_retries": 3,    "features.spansh.debug_payload": False,
+    "spansh_retries": 3,
+    "features.spansh.debug_payload": False,
+    "features.spansh.form_urlencoded_enabled": True,
+    "features.spansh.neutron_via_enabled": True,
+    "features.spansh.neutron_overcharge_enabled": True,
+    "features.spansh.trade_market_age_enabled": True,
 
     # UI / zachowanie
     "use_system_theme": True,

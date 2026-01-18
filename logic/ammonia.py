@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from logic.spansh_client import client, spansh_error, resolve_planner_jump_range
+from logic import spansh_payloads
 from logic.utils import powiedz
 from logic.rows_normalizer import normalize_body_rows
 
@@ -79,7 +80,6 @@ def oblicz_ammonia(
     radius: float,
     max_sys: int,
     max_dist: int,
-    min_scan: int,
     loop: bool,
     avoid_tharg: bool,
     gui_ref: Any | None = None,
@@ -105,14 +105,14 @@ def oblicz_ammonia(
 
     jump_range = resolve_planner_jump_range(jump_range, gui_ref=gui_ref, context="ammonia")
 
-    payload = _build_payload(
+    payload = spansh_payloads.build_ammonia_payload(
         start=start,
         cel=cel,
         jump_range=jump_range,
         radius=radius,
         max_sys=max_sys,
         max_dist=max_dist,
-        min_scan=min_scan,
+        min_value=1,
         loop=loop,
         avoid_tharg=avoid_tharg,
     )

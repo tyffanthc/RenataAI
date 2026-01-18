@@ -22,6 +22,8 @@ class NeutronTab(ttk.Frame):
         self.var_cel = tk.StringVar()
         self.var_range = tk.DoubleVar(value=50.0)
         self.var_eff = tk.DoubleVar(value=60.0)
+        self.var_supercharge = tk.StringVar(value="Normal")
+        self.var_via = tk.StringVar()
 
         self._build_ui()
         self._range_user_overridden = False
@@ -58,12 +60,38 @@ class NeutronTab(ttk.Frame):
         ttk.Label(f_rng, text="Eff.:", width=6).pack(side="left")
         ttk.Entry(f_rng, textvariable=self.var_eff, width=7).pack(side="left")
 
+        # Supercharge + Via list
+        f_sc = ttk.Frame(fr)
+        f_sc.pack(fill="x", pady=4)
+
+        ttk.Label(f_sc, text="Charge:", width=10).pack(side="left")
+        self.cb_supercharge = ttk.Combobox(
+            f_sc,
+            textvariable=self.var_supercharge,
+            values=["Normal", "Overcharge"],
+            width=12,
+            state="readonly",
+        )
+        self.cb_supercharge.pack(side="left", padx=(0, 12))
+
+        ttk.Label(f_sc, text="Via:", width=4).pack(side="left")
+        self.e_via = ttk.Entry(f_sc, textvariable=self.var_via, width=18)
+        self.e_via.pack(side="left", padx=(0, 6))
+        ttk.Button(f_sc, text="Add", command=self._add_via).pack(side="left")
+
+        f_via = ttk.Frame(fr)
+        f_via.pack(fill="x", pady=4)
+        self.lst_via = tk.Listbox(f_via, height=3, width=40)
+        self.lst_via.pack(side="left", fill="x", expand=True)
+        ttk.Button(f_via, text="Remove", command=self._remove_via).pack(side="left", padx=6)
+
         # Przyciski
         f_btn = ttk.Frame(fr)
         f_btn.pack(pady=6)
 
         ttk.Button(f_btn, text="Wyznacz trasę", command=self.run_neutron).pack(side="left", padx=4)
         ttk.Button(f_btn, text="Wyczyść", command=self.clear).pack(side="left", padx=4)
+        ttk.Button(f_btn, text="Reverse", command=self._reverse_route).pack(side="left", padx=4)
         self.lbl_status = ttk.Label(self, text="Gotowy", font=("Arial", 10, "bold"))
         self.lbl_status.pack(pady=(4, 2))
 
@@ -78,7 +106,8 @@ class NeutronTab(ttk.Frame):
         self.ac_cel.hide()
 
     def clear(self):
-        self.lst.delete(0, tk.END)
+        self._clear_results()
+        self.lst_via.delete(0, tk.END)
         common.emit_status(
             "INFO",
             "ROUTE_CLEARED",
@@ -90,7 +119,7 @@ class NeutronTab(ttk.Frame):
         config.STATE["copied_sys"] = None
 
     def run_neutron(self):
-        self.clear()
+        self._clear_results()
 
         s = self.var_start.get().strip()
         if not s:
@@ -98,10 +127,15 @@ class NeutronTab(ttk.Frame):
         cel = self.var_cel.get().strip()
         rng = self._resolve_jump_range()
         eff = self.var_eff.get()
+        via = [item.strip() for item in self.lst_via.get(0, tk.END) if item.strip()]
+        supercharge_mode = self._resolve_supercharge_mode()
 
-        args = (s, cel, rng, eff)
+        args = (s, cel, rng, eff, supercharge_mode, via)
 
         route_manager.start_route_thread("neutron", self._th, args=args, gui_ref=self.root)
+
+    def _clear_results(self) -> None:
+        self.lst.delete(0, tk.END)
 
     def apply_jump_range_from_ship(self, value: float | None) -> None:
         if not config.get("planner_auto_use_ship_jump_range", True):
@@ -155,9 +189,17 @@ class NeutronTab(ttk.Frame):
             )
         return fallback
 
-    def _th(self, s, cel, rng, eff):
+    def _th(self, s, cel, rng, eff, supercharge_mode, via):
         try:
-            tr, details = neutron.oblicz_spansh_with_details(s, cel, rng, eff, self.root)
+            tr, details = neutron.oblicz_spansh_with_details(
+                s,
+                cel,
+                rng,
+                eff,
+                self.root,
+                supercharge_mode=supercharge_mode,
+                via=via,
+            )
 
             if tr:
                 route_manager.set_route(tr, "neutron")
@@ -244,3 +286,34 @@ class NeutronTab(ttk.Frame):
         jumps_txt = "-" if jumps is None else str(jumps)
 
         return f"{name[:30]:<30} {distance:>9} {remaining:>9} {neutron_flag:>5} {jumps_txt:>4}"
+
+    def _add_via(self) -> None:
+        value = (self.var_via.get() or "").strip()
+        if not value:
+            return
+        self.lst_via.insert(tk.END, value)
+        self.var_via.set("")
+
+    def _remove_via(self) -> None:
+        selection = list(self.lst_via.curselection())
+        if not selection:
+            return
+        for index in reversed(selection):
+            self.lst_via.delete(index)
+
+    def _reverse_route(self) -> None:
+        start = self.var_start.get().strip()
+        cel = self.var_cel.get().strip()
+        self.var_start.set(cel)
+        self.var_cel.set(start)
+
+        items = list(self.lst_via.get(0, tk.END))
+        self.lst_via.delete(0, tk.END)
+        for item in reversed(items):
+            self.lst_via.insert(tk.END, item)
+
+    def _resolve_supercharge_mode(self) -> str:
+        value = (self.var_supercharge.get() or "").strip().lower()
+        if value.startswith("over"):
+            return "overcharge"
+        return "normal"

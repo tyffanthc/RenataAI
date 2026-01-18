@@ -23,6 +23,9 @@ def oblicz_spansh(
     zasieg: float,
     eff: float,
     gui_ref: Any | None = None,
+    *,
+    supercharge_mode: str | None = None,
+    via: List[str] | None = None,
 ) -> List[str]:
     """
     API dla zakładki Neutron Plotter.
@@ -60,6 +63,8 @@ def oblicz_spansh(
         zasieg=zasieg,
         eff=eff,
         gui_ref=gui_ref,
+        supercharge_mode=supercharge_mode,
+        via=via,
     )
 
     if not systems:
@@ -81,6 +86,9 @@ def oblicz_spansh_with_details(
     zasieg: float,
     eff: float,
     gui_ref: Any | None = None,
+    *,
+    supercharge_mode: str | None = None,
+    via: List[str] | None = None,
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     """
     API dla zakładki Neutron Plotter z dodatkowymi metadanymi skoków.
@@ -113,6 +121,8 @@ def oblicz_spansh_with_details(
         eff=eff,
         gui_ref=gui_ref,
         return_details=True,
+        supercharge_mode=supercharge_mode,
+        via=via,
     )
 
     if not systems:

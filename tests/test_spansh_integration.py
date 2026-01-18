@@ -44,6 +44,7 @@ class SpanshIntegrationTests(unittest.TestCase):
             cel="Colonia",
             jump_range=42.0,
             eff=60.0,
+            supercharge_mode="normal",
         )
         result = self.client.route(
             mode="neutron",
@@ -89,7 +90,7 @@ class SpanshIntegrationTests(unittest.TestCase):
             avoid_tharg=True,
         )
         result = self.client.route(
-            mode="ammonia",
+            mode="riches",
             payload=payload,
             referer="https://spansh.co.uk/ammonia",
             gui_ref=None,
@@ -147,7 +148,7 @@ class SpanshIntegrationTests(unittest.TestCase):
             radius=50,
             max_sys=5,
             max_dist=5000,
-            min_landmark_value=200000,
+            min_value=200000,
             loop=False,
             avoid_tharg=True,
         )

@@ -11,12 +11,14 @@ Zasady:
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 import config
 
 from logic.cache_store import CacheStore
+from logic import spansh_payloads
+from logic.spansh_payloads import SpanshPayload
 
 from logic.utils.notify import powiedz, DEBOUNCER, MSG_QUEUE
 from logic.request_dedup import make_request_key, run_deduped
@@ -305,11 +307,12 @@ class SpanshClient:
     def route(
         self,
         mode: str,
-        payload: Dict[str, Any],
+        payload: Any,
         referer: str,
         gui_ref: Any | None = None,
         poll_seconds: Optional[float] = None,
         polls: Optional[int] = None,
+        endpoint_path: str | None = None,
     ) -> Optional[Any]:
         """
         Ogólny klient jobowy:
@@ -323,14 +326,56 @@ class SpanshClient:
         poll_seconds = poll_seconds or self.default_poll_interval
         polls = polls or 60
 
+        def _payload_to_fields(data: Any) -> List[Tuple[str, Any]]:
+            if isinstance(data, SpanshPayload):
+                return list(data.form_fields)
+            if isinstance(data, list):
+                return list(data)
+            if isinstance(data, dict):
+                fields: List[Tuple[str, Any]] = []
+                for key, value in data.items():
+                    if value is None:
+                        continue
+                    if isinstance(value, list):
+                        for item in value:
+                            if item is None:
+                                continue
+                            fields.append((key, item))
+                    else:
+                        fields.append((key, value))
+                return fields
+            return []
+
+        def _fields_to_dict(fields: List[Tuple[str, Any]]) -> Dict[str, Any]:
+            out: Dict[str, Any] = {}
+            for key, value in fields:
+                if key not in out:
+                    out[key] = value
+                else:
+                    current = out[key]
+                    if isinstance(current, list):
+                        current.append(value)
+                    else:
+                        out[key] = [current, value]
+            return out
+
         # neutron plotter ma inny path niż pozostałe
-        if mode in ("neutron", "route"):
+        if isinstance(payload, SpanshPayload):
+            endpoint_path = payload.endpoint_path
+
+        if endpoint_path:
+            if not endpoint_path.startswith("/"):
+                endpoint_path = f"/{endpoint_path}"
+            path = endpoint_path
+        elif mode in ("neutron", "route"):
             path = "/route"
         else:
             path = f"/{mode}/route"
 
         url = f"{self.base_url}{path}"
         headers = self._headers(referer=referer)
+        if config.get("features.spansh.form_urlencoded_enabled", True):
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
 
         def _normalize(value: Any) -> Any:
             if isinstance(value, float):
@@ -343,7 +388,8 @@ class SpanshClient:
                 return value.strip()
             return value
 
-        norm_payload = _normalize(payload)
+        payload_fields = _payload_to_fields(payload)
+        norm_payload = [(k, _normalize(v)) for k, v in payload_fields]
         cache_key = make_request_key(
             "spansh",
             path,
@@ -370,21 +416,21 @@ class SpanshClient:
                 spansh_error("Odczekaj chwilę przed kolejnym zapytaniem SPANSH.", gui_ref, context=mode)
                 return None
 
-            data: List[tuple[str, Any]] = []
-            for key, value in payload.items():
-                if isinstance(value, list):
-                    for item in value:
-                        data.append((key, item))
-                else:
-                    data.append((key, value))
-
             try:
-                r = requests.post(
-                    url,
-                    data=data,
-                    headers=headers,
-                    timeout=self.default_timeout,
-                )
+                if config.get("features.spansh.form_urlencoded_enabled", True):
+                    r = requests.post(
+                        url,
+                        data=payload_fields,
+                        headers=headers,
+                        timeout=self.default_timeout,
+                    )
+                else:
+                    r = requests.post(
+                        url,
+                        json=_fields_to_dict(payload_fields),
+                        headers=headers,
+                        timeout=self.default_timeout,
+                    )
             except Exception as e:  # noqa: BLE001
                 spansh_error(
                     f"{mode.upper()}: wyjątek HTTP przy wysyłaniu joba ({e})",
@@ -460,6 +506,8 @@ class SpanshClient:
         gui_ref: Any | None = None,
         *,
         return_details: bool = False,
+        supercharge_mode: str | None = None,
+        via: List[str] | None = None,
     ) -> List[str] | tuple[List[str], List[dict[str, Any]]]:
         """
         Wersja dedykowana dla Neutron Plottera.
@@ -474,12 +522,14 @@ class SpanshClient:
             spansh_error("NEUTRON: brak systemu startowego lub docelowego.", gui_ref, context="neutron")
             return []
 
-        payload = {
-            "efficiency": str(eff),
-            "range": str(zasieg),
-            "from": start,
-            "to": cel,
-        }
+        payload = spansh_payloads.build_neutron_payload(
+            start=start,
+            cel=cel,
+            jump_range=zasieg,
+            eff=eff,
+            supercharge_mode=supercharge_mode,
+            via=via,
+        )
 
         # neutron używa /api/route
         result = self.route(

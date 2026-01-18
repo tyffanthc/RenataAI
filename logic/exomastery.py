@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from logic.spansh_client import client, spansh_error, resolve_planner_jump_range
+from logic import spansh_payloads
 from logic.utils import powiedz, MSG_QUEUE
 import config
 from logic.rows_normalizer import normalize_body_rows
@@ -43,9 +44,7 @@ def _build_payload(
         "radius": float(radius) if radius is not None else None,
         "max_results": int(max_sys) if max_sys is not None else None,
         "max_distance": int(max_dist) if max_dist is not None else None,
-        "min_landmark_value": int(min_landmark_value)
-        if min_landmark_value is not None
-        else None,
+        "min_value": int(min_landmark_value) if min_landmark_value is not None else None,
         "loop": bool(loop),
         "avoid_thargoids": bool(avoid_tharg),
     }
@@ -109,19 +108,19 @@ def oblicz_exomastery(
         jump_range, gui_ref=gui_ref, context="exomastery"
     )
 
-    payload = _build_payload(
+    payload = spansh_payloads.build_exomastery_payload(
         start=start,
         cel=cel,
         jump_range=jump_range,
         radius=radius,
         max_sys=max_sys,
         max_dist=max_dist,
-        min_landmark_value=min_landmark_value,
+        min_value=min_landmark_value,
         loop=loop,
         avoid_tharg=avoid_tharg,
     )
     if config.get("features.spansh.debug_payload", False):
-        MSG_QUEUE.put(("log", f"[SPANSH EXOMASTERY PAYLOAD] {payload}"))
+        MSG_QUEUE.put(("log", f"[SPANSH EXOMASTERY PAYLOAD] {payload.form_fields}"))
 
     result = client.route(
         mode="exobiology",

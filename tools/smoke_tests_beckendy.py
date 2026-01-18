@@ -36,6 +36,7 @@ from logic.events import exploration_bio_events as bio_events  # type: ignore
 from logic.events import exploration_misc_events as misc_events  # type: ignore
 from logic import ammonia as ammonia_logic  # type: ignore
 from logic import exomastery as exomastery_logic  # type: ignore
+from logic import spansh_payloads
 from logic import riches as riches_logic  # type: ignore
 from logic import elw_route as elw_logic  # type: ignore
 from logic import hmc_route as hmc_logic  # type: ignore
@@ -368,23 +369,22 @@ def test_ammonia_payload_snapshot(_ctx: TestContext) -> None:
 
 
 def test_exomastery_payload_snapshot(_ctx: TestContext) -> None:
-    payload = exomastery_logic._build_payload(  # type: ignore[attr-defined]
+    payload = spansh_payloads.build_exomastery_payload(
         start="Sol",
         cel="Colonia",
         jump_range=42.5,
         radius=50,
         max_sys=25,
         max_dist=5000,
-        min_landmark_value=200000,
+        min_value=200000,
         loop=True,
         avoid_tharg=False,
     )
 
-    assert payload.get("min_landmark_value") == 200000, (
-        "min_landmark_value should map to payload key"
-    )
-    assert payload.get("loop") is True, "loop should map to loop flag"
-    assert payload.get("avoid_thargoids") is False, "avoid_thargoids should map to avoid flag"
+    fields = {key: value for key, value in payload.form_fields}
+    assert fields.get("min_value") == "200000", "min_value should map to payload key"
+    assert fields.get("loop") == "1", "loop should map to loop flag"
+    assert fields.get("avoid_thargoids") == "0", "avoid_thargoids should map to avoid flag"
 
 
 def test_riches_payload_snapshot(_ctx: TestContext) -> None:

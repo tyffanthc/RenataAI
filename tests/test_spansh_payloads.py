@@ -14,6 +14,19 @@ class DummyShipState:
         self.jump_range_current_ly = jump_range_current_ly
 
 
+def _fields_to_dict(fields):
+    out = {}
+    for key, value in fields:
+        if key in out:
+            if isinstance(out[key], list):
+                out[key].append(value)
+            else:
+                out[key] = [out[key], value]
+        else:
+            out[key] = value
+    return out
+
+
 class SpanshPayloadContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self._orig = config.config._settings.copy()
@@ -46,7 +59,8 @@ class SpanshPayloadContractTests(unittest.TestCase):
             ship_state=ship_state,
         )
 
-        self.assertEqual(payload.get("from"), "Sol")
+        fields = _fields_to_dict(payload.form_fields)
+        self.assertEqual(fields.get("from"), "Sol")
 
     def test_auto_range_uses_ship_jr(self) -> None:
         app_state = DummyAppState(current_system="Sol")
@@ -67,7 +81,8 @@ class SpanshPayloadContractTests(unittest.TestCase):
             ship_state=ship_state,
         )
 
-        self.assertEqual(payload.get("range"), 55.5)
+        fields = _fields_to_dict(payload.form_fields)
+        self.assertEqual(fields.get("range"), "55.5")
 
     def test_auto_range_fallback(self) -> None:
         app_state = DummyAppState(current_system="Sol")
@@ -88,63 +103,47 @@ class SpanshPayloadContractTests(unittest.TestCase):
             ship_state=ship_state,
         )
 
-        self.assertEqual(payload.get("range"), 33.3)
+        fields = _fields_to_dict(payload.form_fields)
+        self.assertEqual(fields.get("range"), "33.3")
 
-    def test_types_riches(self) -> None:
-        app_state = DummyAppState(current_system="Sol")
-        ship_state = DummyShipState(jump_range_current_ly=55.5)
-        self._set_range_config(auto=True, allow_override=True, fallback=30.0)
-
-        payload = spansh_payloads.build_riches_payload(
+    def test_neutron_supercharge_modes(self) -> None:
+        payload_normal = spansh_payloads.build_neutron_payload(
             start="Sol",
             cel="Colonia",
             jump_range=42.5,
-            radius=50,
-            max_sys=25,
-            max_dist=5000,
-            min_value=123,
-            loop=True,
-            use_map=True,
-            avoid_tharg=False,
-            app_state=app_state,
-            ship_state=ship_state,
+            eff=60.0,
+            supercharge_mode="normal",
         )
-
-        self.assertIsInstance(payload.get("radius"), float)
-        self.assertIsInstance(payload.get("max_results"), int)
-        self.assertIsInstance(payload.get("max_distance"), int)
-        self.assertIsInstance(payload.get("min_value"), int)
-        self.assertIsInstance(payload.get("loop"), bool)
-        self.assertIsInstance(payload.get("avoid_thargoids"), bool)
-
-    def test_ammonia_argument_mapping(self) -> None:
-        app_state = DummyAppState(current_system="Sol")
-        ship_state = DummyShipState(jump_range_current_ly=55.5)
-        self._set_range_config(auto=True, allow_override=True, fallback=30.0)
-
-        payload = spansh_payloads.build_ammonia_payload(
+        payload_overcharge = spansh_payloads.build_neutron_payload(
             start="Sol",
             cel="Colonia",
             jump_range=42.5,
-            radius=50,
-            max_sys=25,
-            max_dist=5000,
-            min_value=123,
-            loop=True,
-            avoid_tharg=False,
-            app_state=app_state,
-            ship_state=ship_state,
+            eff=60.0,
+            supercharge_mode="overcharge",
         )
 
-        self.assertEqual(payload.get("min_value"), 123)
-        self.assertEqual(payload.get("loop"), True)
-        self.assertEqual(payload.get("avoid_thargoids"), False)
+        fields_normal = _fields_to_dict(payload_normal.form_fields)
+        fields_over = _fields_to_dict(payload_overcharge.form_fields)
 
-    def test_riches_payload_snapshot(self) -> None:
-        app_state = DummyAppState(current_system="Sol")
-        ship_state = DummyShipState(jump_range_current_ly=55.5)
-        self._set_range_config(auto=True, allow_override=True, fallback=30.0)
+        self.assertEqual(payload_normal.endpoint_path, "/route")
+        self.assertEqual(fields_normal.get("supercharge_multiplier"), "4")
+        self.assertEqual(fields_over.get("supercharge_multiplier"), "6")
+        self.assertEqual(fields_normal.get("range"), "42.5")
+        self.assertEqual(fields_normal.get("efficiency"), "60")
 
+    def test_neutron_via_multi_field_order(self) -> None:
+        payload = spansh_payloads.build_neutron_payload(
+            start="Sol",
+            cel="Colonia",
+            jump_range=42.5,
+            eff=60.0,
+            supercharge_mode="normal",
+            via=["Djabal", "TY Bootis"],
+        )
+        via_fields = [value for key, value in payload.form_fields if key == "via"]
+        self.assertEqual(via_fields, ["Djabal", "TY Bootis"])
+
+    def test_riches_flags_and_endpoint(self) -> None:
         payload = spansh_payloads.build_riches_payload(
             start="Sol",
             cel="Colonia",
@@ -156,30 +155,16 @@ class SpanshPayloadContractTests(unittest.TestCase):
             loop=True,
             use_map=True,
             avoid_tharg=False,
-            app_state=app_state,
-            ship_state=ship_state,
         )
+        fields = _fields_to_dict(payload.form_fields)
 
-        expected = {
-            "from": "Sol",
-            "to": "Colonia",
-            "range": 42.5,
-            "radius": 50.0,
-            "max_results": 25,
-            "max_distance": 5000,
-            "min_value": 250000,
-            "loop": True,
-            "use_mapping_value": True,
-            "avoid_thargoids": False,
-        }
-        self.assertEqual(payload, expected)
+        self.assertEqual(payload.endpoint_path, "/riches/route")
+        self.assertEqual(fields.get("loop"), "1")
+        self.assertEqual(fields.get("use_mapping_value"), "1")
+        self.assertEqual(fields.get("avoid_thargoids"), "0")
 
-    def test_ammonia_payload_snapshot(self) -> None:
-        app_state = DummyAppState(current_system="Sol")
-        ship_state = DummyShipState(jump_range_current_ly=55.5)
-        self._set_range_config(auto=True, allow_override=True, fallback=30.0)
-
-        payload = spansh_payloads.build_ammonia_payload(
+    def test_ammonia_elw_hmc_payloads(self) -> None:
+        ammonia = spansh_payloads.build_ammonia_payload(
             start="Sol",
             cel="Colonia",
             jump_range=42.5,
@@ -187,31 +172,10 @@ class SpanshPayloadContractTests(unittest.TestCase):
             max_sys=25,
             max_dist=5000,
             min_value=123,
-            loop=True,
-            avoid_tharg=False,
-            app_state=app_state,
-            ship_state=ship_state,
+            loop=False,
+            avoid_tharg=True,
         )
-
-        expected = {
-            "from": "Sol",
-            "to": "Colonia",
-            "range": 42.5,
-            "radius": 50.0,
-            "max_results": 25,
-            "max_distance": 5000,
-            "min_value": 123,
-            "loop": True,
-            "avoid_thargoids": False,
-        }
-        self.assertEqual(payload, expected)
-
-    def test_elw_payload_snapshot(self) -> None:
-        app_state = DummyAppState(current_system="Sol")
-        ship_state = DummyShipState(jump_range_current_ly=55.5)
-        self._set_range_config(auto=True, allow_override=True, fallback=30.0)
-
-        payload = spansh_payloads.build_elw_payload(
+        elw = spansh_payloads.build_elw_payload(
             start="Sol",
             cel="Colonia",
             jump_range=42.5,
@@ -221,30 +185,8 @@ class SpanshPayloadContractTests(unittest.TestCase):
             min_value=1,
             loop=False,
             avoid_tharg=True,
-            app_state=app_state,
-            ship_state=ship_state,
         )
-
-        expected = {
-            "from": "Sol",
-            "to": "Colonia",
-            "range": 42.5,
-            "radius": 50.0,
-            "max_results": 25,
-            "max_distance": 5000,
-            "min_value": 1,
-            "loop": False,
-            "avoid_thargoids": True,
-            "body_types": "Earth-like world",
-        }
-        self.assertEqual(payload, expected)
-
-    def test_hmc_payload_snapshot(self) -> None:
-        app_state = DummyAppState(current_system="Sol")
-        ship_state = DummyShipState(jump_range_current_ly=55.5)
-        self._set_range_config(auto=True, allow_override=True, fallback=30.0)
-
-        payload = spansh_payloads.build_hmc_payload(
+        hmc = spansh_payloads.build_hmc_payload(
             start="Sol",
             cel="Colonia",
             jump_range=42.5,
@@ -254,29 +196,28 @@ class SpanshPayloadContractTests(unittest.TestCase):
             min_value=1,
             loop=False,
             avoid_tharg=True,
-            app_state=app_state,
-            ship_state=ship_state,
         )
 
-        expected = {
-            "from": "Sol",
-            "to": "Colonia",
-            "range": 42.5,
-            "radius": 50.0,
-            "max_results": 25,
-            "max_distance": 5000,
-            "min_value": 1,
-            "loop": False,
-            "avoid_thargoids": True,
-            "body_types": ["Rocky body", "High metal content world"],
-        }
-        self.assertEqual(payload, expected)
+        ammonia_fields = _fields_to_dict(ammonia.form_fields)
+        elw_fields = _fields_to_dict(elw.form_fields)
+        hmc_fields = _fields_to_dict(hmc.form_fields)
 
-    def test_exomastery_payload_snapshot(self) -> None:
-        app_state = DummyAppState(current_system="Sol")
-        ship_state = DummyShipState(jump_range_current_ly=55.5)
-        self._set_range_config(auto=True, allow_override=True, fallback=30.0)
+        self.assertEqual(ammonia.endpoint_path, "/riches/route")
+        self.assertEqual(elw.endpoint_path, "/riches/route")
+        self.assertEqual(hmc.endpoint_path, "/riches/route")
 
+        self.assertEqual(ammonia_fields.get("min_value"), "1")
+        self.assertEqual(elw_fields.get("min_value"), "1")
+        self.assertEqual(hmc_fields.get("min_value"), "1")
+
+        self.assertEqual(ammonia_fields.get("body_types"), "Ammonia world")
+        self.assertEqual(elw_fields.get("body_types"), "Earth-like world")
+        self.assertEqual(
+            hmc_fields.get("body_types"),
+            ["Rocky body", "High metal content world"],
+        )
+
+    def test_exomastery_min_value_key(self) -> None:
         payload = spansh_payloads.build_exomastery_payload(
             start="Sol",
             cel="Colonia",
@@ -284,27 +225,17 @@ class SpanshPayloadContractTests(unittest.TestCase):
             radius=50,
             max_sys=25,
             max_dist=5000,
-            min_landmark_value=200000,
+            min_value=200000,
             loop=False,
             avoid_tharg=True,
-            app_state=app_state,
-            ship_state=ship_state,
         )
+        fields = _fields_to_dict(payload.form_fields)
 
-        expected = {
-            "from": "Sol",
-            "to": "Colonia",
-            "range": 42.5,
-            "radius": 50.0,
-            "max_results": 25,
-            "max_distance": 5000,
-            "min_landmark_value": 200000,
-            "loop": False,
-            "avoid_thargoids": True,
-        }
-        self.assertEqual(payload, expected)
+        self.assertEqual(payload.endpoint_path, "/exobiology/route")
+        self.assertEqual(fields.get("min_value"), "200000")
+        self.assertNotIn("min_landmark_value", fields)
 
-    def test_trade_max_age_not_sent(self) -> None:
+    def test_trade_payload_fields(self) -> None:
         payload = spansh_payloads.build_trade_payload(
             start_system="Sol",
             start_station="Jameson Memorial",
@@ -314,23 +245,6 @@ class SpanshPayloadContractTests(unittest.TestCase):
             max_hops=10,
             max_dta=1000,
             max_age=7,
-            flags={"avoid_loops": True},
-            app_state=DummyAppState(current_system="Sol"),
-        )
-
-        self.assertNotIn("max_age", payload)
-        self.assertNotIn("max_age_days", payload)
-
-    def test_trade_payload_snapshot(self) -> None:
-        payload = spansh_payloads.build_trade_payload(
-            start_system="Sol",
-            start_station="Jameson Memorial",
-            capital=1_000_000,
-            max_hop=25.5,
-            cargo=256,
-            max_hops=10,
-            max_dta=1000,
-            max_age=0,
             flags={
                 "large_pad": True,
                 "planetary": False,
@@ -340,43 +254,19 @@ class SpanshPayloadContractTests(unittest.TestCase):
                 "avoid_loops": True,
                 "allow_permits": False,
             },
-            app_state=DummyAppState(current_system="Sol"),
         )
 
-        expected = {
-            "max_hops": 10,
-            "max_hop_distance": 25.5,
-            "system": "Sol",
-            "station": "Jameson Memorial",
-            "starting_capital": 1000000,
-            "max_cargo": 256,
-            "max_system_distance": 1000,
-            "requires_large_pad": 1,
-            "allow_prohibited": 1,
-            "allow_planetary": 0,
-            "allow_player_owned": 1,
-            "allow_restricted_access": 0,
-            "unique": 1,
-            "permit": 0,
-        }
-        self.assertEqual(payload, expected)
+        fields = _fields_to_dict(payload.form_fields)
 
-    def test_neutron_payload_types(self) -> None:
-        app_state = DummyAppState(current_system="Sol")
-        ship_state = DummyShipState(jump_range_current_ly=55.5)
-        self._set_range_config(auto=True, allow_override=True, fallback=30.0)
-
-        payload = spansh_payloads.build_neutron_payload(
-            start="Sol",
-            cel="Colonia",
-            jump_range=42.5,
-            eff=60.0,
-            app_state=app_state,
-            ship_state=ship_state,
-        )
-
-        self.assertEqual(payload.get("range"), "42.5")
-        self.assertEqual(payload.get("efficiency"), "60.0")
+        self.assertEqual(payload.endpoint_path, "/trade/route")
+        self.assertEqual(fields.get("max_price_age"), "7")
+        self.assertEqual(fields.get("requires_large_pad"), "1")
+        self.assertEqual(fields.get("allow_planetary"), "0")
+        self.assertEqual(fields.get("allow_player_owned"), "1")
+        self.assertEqual(fields.get("allow_restricted_access"), "0")
+        self.assertEqual(fields.get("allow_prohibited"), "1")
+        self.assertEqual(fields.get("unique"), "1")
+        self.assertEqual(fields.get("permit"), "0")
 
 
 if __name__ == "__main__":

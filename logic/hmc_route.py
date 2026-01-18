@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from logic.spansh_client import client, spansh_error, resolve_planner_jump_range
+from logic import spansh_payloads
 from logic.utils import powiedz
 from logic.rows_normalizer import normalize_body_rows
 
@@ -102,14 +103,14 @@ def oblicz_hmc(
 
     jump_range = resolve_planner_jump_range(jump_range, gui_ref=gui_ref, context="hmc")
 
-    payload = _build_payload(
+    payload = spansh_payloads.build_hmc_payload(
         start=start,
         cel=cel,
         jump_range=jump_range,
         radius=radius,
         max_sys=max_sys,
         max_dist=max_dist,
-        min_scan=min_scan,
+        min_value=min_scan,
         loop=loop,
         avoid_tharg=avoid_tharg,
     )

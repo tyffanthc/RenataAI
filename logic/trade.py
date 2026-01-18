@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 import config
 from logic.utils import powiedz, MSG_QUEUE
 from logic.spansh_client import client, spansh_error
+from logic import spansh_payloads
 from logic.rows_normalizer import normalize_trade_rows
 
 
@@ -30,8 +31,7 @@ def _build_payload_trade(
         cargo       – ładowność [t]
         max_hops    – maksymalna liczba skoków
         max_dta     – maksymalna odległość do stacji [ls]
-        max_age     – maksymalny wiek danych [dni] (obecnie nieużywany, ale zostaje
-                      jako potencjalny parametr do przyszłych wersji API)
+        max_age     – maksymalny wiek danych [dni] (Maximum Market Age)
         flags       – słownik z checkboxów z GUI:
                       large_pad, planetary, player_owned,
                       restricted, prohibited, avoid_loops, allow_permits
@@ -63,11 +63,6 @@ def _build_payload_trade(
         # "permit" – czy dopuszczać systemy na pozwolenie
         "permit": int(allow_permits),
     }
-
-    # max_age na razie nie jest używany w payloadzie trade (brak wsparcia w API),
-    # ale zostawiamy tutaj miejsce, gdyby SPANSH dodał takie pole w przyszłości.
-    # if max_age > 0:
-    #     payload["max_age_days"] = int(max_age)
 
     return payload
 
@@ -144,9 +139,9 @@ def oblicz_trade(
             gui_ref,
         )
 
-        payload = _build_payload_trade(
-            system=system,
-            station=station,
+        payload = spansh_payloads.build_trade_payload(
+            start_system=system,
+            start_station=station,
             capital=capital,
             max_hop=max_hop,
             cargo=cargo,
@@ -156,7 +151,7 @@ def oblicz_trade(
             flags=flags,
         )
         if config.get("features.spansh.debug_payload", False):
-            MSG_QUEUE.put(("log", f"[SPANSH TRADE PAYLOAD] {payload}"))
+            MSG_QUEUE.put(("log", f"[SPANSH TRADE PAYLOAD] {payload.form_fields}"))
 
         result = client.route(
             mode="trade",
