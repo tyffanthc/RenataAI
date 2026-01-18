@@ -124,7 +124,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
 
     # UI (JR-7)
     "ui_show_jump_range": True,
-    "ui_jump_range_location": "overlay",
+    "ui_jump_range_location": "both",
     "ui_jump_range_show_limit": True,
     "ui_jump_range_debug_details": False,
 
