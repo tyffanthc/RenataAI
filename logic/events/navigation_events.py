@@ -1,4 +1,4 @@
-from __future__ import annotations
+Ôªøfrom __future__ import annotations
 
 from typing import Dict
 
@@ -13,7 +13,7 @@ from logic.events.exploration_fss_events import reset_fss_progress
 
 def handle_fsd_jump_autoschowek(ev: Dict[str, object], gui_ref=None):
     """
-    S1-LOGIC-04 ‘«ˆ GLOBALNY AUTO-SCHOWEK PO FSDJump.
+    S1-LOGIC-04 √î√á√∂ GLOBALNY AUTO-SCHOWEK PO FSDJump.
 
     Przeniesione 1:1 z EventHandler.handle_event (sekcja FSDJump).
     """
@@ -24,7 +24,7 @@ def handle_fsd_jump_autoschowek(ev: Dict[str, object], gui_ref=None):
         or ev.get("StarSystemName")
     )
 
-    # 2. Przesu+‰ tras¶÷ w RouteManagerze
+    # 2. Przesu+√§ tras¬¶√ñ w RouteManagerze
     route_manager.advance_route(current_system)
 
     # 3. Auto-clipboard NEXT_HOP (konfigurowalny)
@@ -42,17 +42,17 @@ def handle_fsd_jump_autoschowek(ev: Dict[str, object], gui_ref=None):
 
 def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
     """
-    Obs+Èuga event+-w:
+    Obs+√©uga event+-w:
     - Location
     - FSDJump
     - CarrierJump
 
     Przeniesione z bloku 'pozycja gracza' w EventHandler.handle_event.
-    Zachowuje nawet podw+-jny reset/powiedz (jak w oryginale), +-eby nie zmienia¶Á zachowania.
+    Zachowuje nawet podw+-jny reset/powiedz (jak w oryginale), +-eby nie zmienia¬¶√ß zachowania.
     """
     typ = ev.get("event")
 
-    # D3c: inicjalizacja docked/station z eventu Location (je+çli dost¶÷pne)
+    # D3c: inicjalizacja docked/station z eventu Location (je+≈§li dost¬¶√ñpne)
     if typ == "Location":
         try:
             docked = bool(ev.get("Docked"))
@@ -70,7 +70,7 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
         or ev.get("StarSystemName")
     )
     if sysname:
-        # reset FSS + discovery/footfall przy wej+çciu do nowego systemu
+        # reset FSS + discovery/footfall przy wej+≈§ciu do nowego systemu
         reset_fss_progress()
         app_state.set_system(sysname)
         if typ == "Location":
@@ -99,8 +99,8 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
             except Exception:
                 pass
 
-    # Oryginalny kod mia+È duplikacj¶÷ tego bloku bez auto-copy;
-    # zachowujemy j¶˘, aby nie zmienia¶Á zachowania (podw+-jny powiedz przy FSDJump/CarrierJump).
+    # Oryginalny kod mia+√© duplikacj¬¶√ñ tego bloku bez auto-copy;
+    # zachowujemy j¬¶≈Ø, aby nie zmienia¬¶√ß zachowania (podw+-jny powiedz przy FSDJump/CarrierJump).
     sysname = (
         ev.get("StarSystem")
         or ev.get("SystemName")
@@ -116,7 +116,7 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
 
 def handle_docked(ev: Dict[str, object], gui_ref=None):
     """
-    Obs+Èuga eventu Docked.
+    Obs+√©uga eventu Docked.
     """
     st = ev.get("StationName")
     if st:
@@ -124,14 +124,14 @@ def handle_docked(ev: Dict[str, object], gui_ref=None):
         app_state.set_docked(True)
         powiedz(f"Dokowano w {st}", gui_ref)
     else:
-        # nawet je+çli z jakiego+ç powodu brak nazwy stacji, sam event Docked
-        # oznacza, +-e jeste+çmy zadokowani
+        # nawet je+≈§li z jakiego+≈§ powodu brak nazwy stacji, sam event Docked
+        # oznacza, +-e jeste+≈§my zadokowani
         app_state.set_docked(True)
 
 
 def handle_undocked(ev: Dict[str, object], gui_ref=None):
     """
-    Obs+Èuga eventu Undocked.
+    Obs+√©uga eventu Undocked.
     """
     app_state.set_docked(False)
     powiedz("Odlot z portu.", gui_ref)
