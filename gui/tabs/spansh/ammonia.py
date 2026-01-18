@@ -19,6 +19,7 @@ class AmmoniaTab(ttk.Frame):
         self.var_cel = tk.StringVar()
         self.var_range = tk.DoubleVar(value=50.0)
         self.var_max_dist = tk.IntVar(value=5000)
+        self.var_min_scan = tk.IntVar(value=3)
         self.var_loop = tk.BooleanVar(value=False)
         self.var_avoid_tharg = tk.BooleanVar(value=True)
 
@@ -74,6 +75,8 @@ class AmmoniaTab(ttk.Frame):
 
         ttk.Label(f_md, text="Max DTA (ls):", width=10).pack(side="left")
         ttk.Entry(f_md, textvariable=self.var_max_dist, width=7).pack(side="left", padx=(0, 12))
+        ttk.Label(f_md, text="Min value (Cr):", width=12).pack(side="left")
+        ttk.Entry(f_md, textvariable=self.var_min_scan, width=7).pack(side="left", padx=(0, 12))
 
         f_chk = ttk.Frame(fr)
         f_chk.pack(fill="x", padx=5, pady=2)
@@ -108,10 +111,11 @@ class AmmoniaTab(ttk.Frame):
         radius = self.e_radius.get()
         max_sys = self.e_maxsys.get()
         max_dist = self.var_max_dist.get()
+        min_scan = self.var_min_scan.get()
         loop = self.var_loop.get()
         avoid_tharg = self.var_avoid_tharg.get()
 
-        args = (start_sys, cel, jump_range, radius, max_sys, max_dist, loop, avoid_tharg)
+        args = (start_sys, cel, jump_range, radius, max_sys, max_dist, min_scan, loop, avoid_tharg)
         route_manager.start_route_thread("ammonia", self._th, args=args, gui_ref=self.root)
 
     def apply_jump_range_from_ship(self, value: float | None) -> None:
@@ -165,8 +169,8 @@ class AmmoniaTab(ttk.Frame):
             )
         return fallback
 
-    def _th(self, s, cel, rng, rad, mx, max_dist, loop, avoid):
-        tr, rows = ammonia.oblicz_ammonia(s, cel, rng, rad, mx, max_dist, loop, avoid, None)
+    def _th(self, s, cel, rng, rad, mx, max_dist, min_scan, loop, avoid):
+        tr, rows = ammonia.oblicz_ammonia(s, cel, rng, rad, mx, max_dist, min_scan, loop, avoid, None)
 
         if tr:
             route_manager.set_route(tr, "ammonia")
