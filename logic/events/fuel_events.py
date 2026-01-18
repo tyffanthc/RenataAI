@@ -79,9 +79,10 @@ def handle_status_update(status: dict, gui_ref=None):
     MIN_FUEL_PERCENT = threshold
     RESET_FUEL_PERCENT = max(30.0, threshold + 10.0)
 
-    low_fuel = low_fuel_flag
-    if fuel_percent is not None and fuel_percent < MIN_FUEL_PERCENT:
-        low_fuel = True
+    if fuel_percent is not None:
+        low_fuel = fuel_percent < MIN_FUEL_PERCENT
+    else:
+        low_fuel = low_fuel_flag
 
     # Jeśli realnie nisko i jeszcze nie ostrzegaliśmy – mówimy
     if low_fuel and not LOW_FUEL_WARNED:
