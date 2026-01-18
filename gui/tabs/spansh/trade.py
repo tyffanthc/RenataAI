@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 import threading
+import config
 from logic import trade
 from logic import utils
 from logic.spansh_client import client as spansh_client
@@ -27,6 +28,15 @@ class TradeTab(ttk.Frame):
         # uzupeÅ‚niane z app_state w refresh_from_app_state().
         self.var_start_system = tk.StringVar()
         self.var_start_station = tk.StringVar()
+        self._station_cache = {}
+        self._recent_stations = []
+        self._recent_limit = 25
+        self._station_autocomplete_by_system = bool(
+            config.get("features.trade.station_autocomplete_by_system", True)
+        )
+        self._station_lookup_online = bool(
+            config.get("features.trade.station_lookup_online", False)
+        )
 
         # Parametry liczbowo-konfiguracyjne
         self.var_capital = tk.IntVar(value=10_000_000)
@@ -90,6 +100,11 @@ class TradeTab(ttk.Frame):
             min_chars=2,
             suggest_func=self._suggest_station,
         )
+
+        f_detect = ttk.Frame(fr)
+        f_detect.pack(fill="x", pady=(0, 6))
+        self.lbl_detected = ttk.Label(f_detect, text="")
+        self.lbl_detected.pack(side="left", padx=(10, 0))
 
         # --- KapitaÅ‚ / hop -----------------------------------------------------
         f_cap = ttk.Frame(fr)
@@ -213,8 +228,10 @@ class TradeTab(ttk.Frame):
             self.var_start_system.set(sysname)
         if is_docked and not (self.var_start_station.get() or "").strip() and staname:
             self.var_start_station.set(staname)
+            self._remember_station(sysname, staname)
 
         print(f"[TRADE] refresh_from_app_state: {sysname!r} / {staname!r}")
+        self._set_detected_label(sysname, staname if is_docked else "")
 
     # ------------------------------------------------------------------ logika GUI
 
@@ -222,28 +239,34 @@ class TradeTab(ttk.Frame):
         """Funkcja podpowiedzi stacji dla AutocompleteController.
 
         Bazuje najpierw na aktualnym systemie z pola,
-        a jeÅ›li jest puste â€“ na app_state.current_system.
+        a je‘>li jest puste f?" na app_state.current_system.
         """
         system = (self.var_start_system.get() or "").strip()
         if not system:
             system = (getattr(self.app_state, "current_system", "") or "").strip()
 
-        if not system:
-            return []
-
-        # JeÅ›li ktoÅ› ma w polu systemu format "System / Stacja" / "System, Stacja",
-        # to do zapytania o stacje bierzemy tylko nazwÄ™ systemu (czÄ™Å›Ä‡ przed separatorem).
+        # Je‘>li kto‘> ma w polu systemu format "System / Stacja" / "System, Stacja",
+        # to do zapytania o stacje bierzemy tylko nazwŽt systemu (czŽt‘>ŽA przed separatorem).
         raw = system
         if "/" in raw:
             raw = raw.split("/", 1)[0].strip()
         elif "," in raw:
             raw = raw.split(",", 1)[0].strip()
 
-        if not raw:
-            return []
-
         q = (tekst or "").strip()
         if not q:
+            return []
+
+        if not raw:
+            return self._filter_stations(self._recent_stations, q)
+
+        cached = []
+        if self._station_autocomplete_by_system:
+            cached = self._get_cached_stations(raw)
+            if cached:
+                return self._filter_stations(cached, q)
+
+        if not self._station_lookup_online:
             return []
 
         try:
@@ -263,6 +286,50 @@ class TradeTab(ttk.Frame):
         except Exception as e:
             print(f"[Spansh] System autocomplete exception ({q!r}): {e}")
             return []
+
+    def _normalize_key(self, value: str) -> str:
+        return (value or "").strip().lower()
+
+    def _remember_station(self, system: str, station: str) -> None:
+        sys_value = (system or "").strip()
+        sta_value = (station or "").strip()
+        if not sys_value or not sta_value:
+            return
+        key = self._normalize_key(sys_value)
+        if key not in self._station_cache:
+            self._station_cache[key] = set()
+        self._station_cache[key].add(sta_value)
+
+        recent = [s for s in self._recent_stations if self._normalize_key(s) != self._normalize_key(sta_value)]
+        recent.insert(0, sta_value)
+        self._recent_stations = recent[: self._recent_limit]
+
+    def _get_cached_stations(self, system: str) -> list[str]:
+        key = self._normalize_key(system)
+        stations = list(self._station_cache.get(key, set()))
+        stations.sort(key=lambda item: item.lower())
+        return stations
+
+    def _filter_stations(self, stations: list[str], query: str) -> list[str]:
+        if not stations:
+            return []
+        q = query.strip().lower()
+        if not q:
+            return stations
+        return [item for item in stations if q in item.lower()]
+
+    def _set_detected_label(self, system: str, station: str) -> None:
+        if not getattr(self, "lbl_detected", None):
+            return
+        sys_value = (system or "").strip()
+        sta_value = (station or "").strip()
+        if sys_value and sta_value:
+            text = f"Wykryto: {sys_value} / {sta_value}"
+        elif sys_value:
+            text = f"Wykryto: {sys_value}"
+        else:
+            text = ""
+        self.lbl_detected.config(text=text)
 
     def hide_suggestions(self):
         self.ac_source.hide()
@@ -287,6 +354,9 @@ class TradeTab(ttk.Frame):
             start_system = (getattr(self.app_state, "current_system", "") or "").strip()
         if not start_station and bool(getattr(self.app_state, "is_docked", False)):
             start_station = (getattr(self.app_state, "current_station", "") or "").strip()
+
+        if start_system and start_station:
+            self._remember_station(start_system, start_station)
 
         # Ostateczny fallback do config.STATE (zgodnoÅ›Ä‡ wsteczna)
 
@@ -472,4 +542,8 @@ class TradeTab(ttk.Frame):
                 source="spansh.trade",
                 ui_target="trade",
             )
+
+
+
+
 
