@@ -1,4 +1,4 @@
-import tkinter as tk
+﻿import tkinter as tk
 from tkinter import ttk
 import threading
 import config
@@ -13,7 +13,7 @@ from app.state import app_state
 
 class TradeTab(ttk.Frame):
     """
-    Zakładka: Trade Planner (Spansh)
+    ZakĹ‚adka: Trade Planner (Spansh)
     """
 
     def __init__(self, parent, root_window):
@@ -24,8 +24,8 @@ class TradeTab(ttk.Frame):
         # Referencja do globalnego AppState (nie tworzymy nowej instancji)
         self.app_state = app_state
 
-        # System / stacja startowa – inicjalnie puste,
-        # uzupełniane z app_state w refresh_from_app_state().
+        # System / stacja startowa â€“ inicjalnie puste,
+        # uzupeĹ‚niane z app_state w refresh_from_app_state().
         self.var_start_system = tk.StringVar()
         self.var_start_station = tk.StringVar()
         self._station_cache = {}
@@ -60,7 +60,7 @@ class TradeTab(ttk.Frame):
         self._hop_updating = False
         self.var_max_hop.trace_add("write", self._on_hop_changed)
 
-        # D3c – pierwsze uzupełnienie pól z app_state
+        # D3c â€“ pierwsze uzupeĹ‚nienie pĂłl z app_state
         self.refresh_from_app_state()
         self.bind("<Visibility>", self._on_visibility)
 
@@ -93,7 +93,7 @@ class TradeTab(ttk.Frame):
         self.e_station = ttk.Entry(f_sta, textvariable=self.var_start_station, width=30)
         self.e_station.pack(side="left", padx=(0, 10))
 
-        # Autocomplete dla stacji (D3b – na podstawie wybranego systemu)
+        # Autocomplete dla stacji (D3b â€“ na podstawie wybranego systemu)
         self.ac_station = AutocompleteController(
             self.root,
             self.e_station,
@@ -106,11 +106,11 @@ class TradeTab(ttk.Frame):
         self.lbl_detected = ttk.Label(f_detect, text="")
         self.lbl_detected.pack(side="left", padx=(10, 0))
 
-        # --- Kapitał / hop -----------------------------------------------------
+        # --- KapitaĹ‚ / hop -----------------------------------------------------
         f_cap = ttk.Frame(fr)
         f_cap.pack(fill="x", pady=4)
 
-        ttk.Label(f_cap, text="Kapitał [Cr]:", width=12).pack(side="left")
+        ttk.Label(f_cap, text="KapitaĹ‚ [Cr]:", width=12).pack(side="left")
         ttk.Entry(
             f_cap,
             textvariable=self.var_capital,
@@ -199,7 +199,7 @@ class TradeTab(ttk.Frame):
             command=self.run_trade,
         ).pack(side="left", padx=5)
 
-        ttk.Button(bf, text="Wyczyść", command=self.clear).pack(side="left", padx=5)
+        ttk.Button(bf, text="WyczyĹ›Ä‡", command=self.clear).pack(side="left", padx=5)
 
         self.lbl_status = ttk.Label(self, text="Gotowy", font=("Arial", 10, "bold"))
         self.lbl_status.pack(pady=(4, 2))
@@ -207,9 +207,9 @@ class TradeTab(ttk.Frame):
         self.lst_trade = common.stworz_liste_trasy(self, title="Trade Route")
 
     def refresh_from_app_state(self):
-        """D3c: uzupełnia pola System/Stacja na podstawie AppState.
+        """D3c: uzupeĹ‚nia pola System/Stacja na podstawie AppState.
 
-        Używamy TEGO SAMEGO app_state, co navigation_events.
+        UĹĽywamy TEGO SAMEGO app_state, co navigation_events.
         """
         try:
             sysname = (getattr(self.app_state, "current_system", "") or "").strip()
@@ -239,14 +239,14 @@ class TradeTab(ttk.Frame):
         """Funkcja podpowiedzi stacji dla AutocompleteController.
 
         Bazuje najpierw na aktualnym systemie z pola,
-        a je�>li jest puste f?" na app_state.current_system.
+        a je‘>li jest puste f?" na app_state.current_system.
         """
         system = (self.var_start_system.get() or "").strip()
         if not system:
             system = (getattr(self.app_state, "current_system", "") or "").strip()
 
-        # Je�>li kto�> ma w polu systemu format "System / Stacja" / "System, Stacja",
-        # to do zapytania o stacje bierzemy tylko nazw�t systemu (cz�t�>�A przed separatorem).
+        # Je‘>li kto‘> ma w polu systemu format "System / Stacja" / "System, Stacja",
+        # to do zapytania o stacje bierzemy tylko nazwŽt systemu (czŽt‘>ŽA przed separatorem).
         raw = system
         if "/" in raw:
             raw = raw.split("/", 1)[0].strip()
@@ -276,7 +276,7 @@ class TradeTab(ttk.Frame):
             return []
 
     def _suggest_system(self, tekst: str):
-        """Funkcja podpowiedzi systemów dla AutocompleteController."""
+        """Funkcja podpowiedzi systemĂłw dla AutocompleteController."""
         q = (tekst or "").strip()
         if not q:
             return []
@@ -342,14 +342,14 @@ class TradeTab(ttk.Frame):
 
     def run_trade(self):
         """
-        Startuje obliczenia w osobnym wątku.
+        Startuje obliczenia w osobnym wÄ…tku.
         """
         self.clear()
 
         start_system = self.var_start_system.get().strip()
         start_station = self.var_start_station.get().strip()
 
-        # Fallback do aktualnej lokalizacji z app_state, jeśli pola są puste
+        # Fallback do aktualnej lokalizacji z app_state, jeĹ›li pola sÄ… puste
         if not start_system:
             start_system = (getattr(self.app_state, "current_system", "") or "").strip()
         if not start_station and bool(getattr(self.app_state, "is_docked", False)):
@@ -358,7 +358,7 @@ class TradeTab(ttk.Frame):
         if start_system and start_station:
             self._remember_station(start_system, start_station)
 
-        # Ostateczny fallback do config.STATE (zgodność wsteczna)
+        # Ostateczny fallback do config.STATE (zgodnoĹ›Ä‡ wsteczna)
 
         if not start_system:
             common.emit_status(
@@ -369,7 +369,7 @@ class TradeTab(ttk.Frame):
             )
             return
 
-        # D3b: dwa tryby wejścia:
+        # D3b: dwa tryby wejĹ›cia:
         # 1) klasyczny: osobne System + Stacja,
         # 2) kompatybilny z webowym SPANSH: "System / Stacja" w jednym polu,
         #    puste pole "Stacja" -> backend rozbije to w oblicz_trade().
@@ -480,7 +480,7 @@ class TradeTab(ttk.Frame):
         flags,
     ):
         """
-        Wątek roboczy: wywołuje logikę trade.oblicz_trade i wypełnia listę.
+        WÄ…tek roboczy: wywoĹ‚uje logikÄ™ trade.oblicz_trade i wypeĹ‚nia listÄ™.
         """
         try:
             tr, rows = trade.oblicz_trade(
@@ -538,10 +538,11 @@ class TradeTab(ttk.Frame):
             common.emit_status(
                 "ERROR",
                 "TRADE_ERROR",
-                text=f"Błąd: {e}",
+                text=f"BĹ‚Ä…d: {e}",
                 source="spansh.trade",
                 ui_target="trade",
             )
+
 
 
 
