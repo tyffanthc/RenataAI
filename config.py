@@ -110,6 +110,23 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "jump_range_rounding": 2,
     "jump_range_include_reservoir_mass": True,
     "jump_range_compute_on": "both",
+    "jump_range_engineering_enabled": True,
+    "jump_range_engineering_debug": False,
+    "jump_range_validate_enabled": False,
+    "jump_range_validate_debug": False,
+    "jump_range_validate_tolerance_ly": 0.05,
+    "jump_range_validate_log_only": True,
+
+    # PLANNERS (JR-6)
+    "planner_auto_use_ship_jump_range": True,
+    "planner_allow_manual_range_override": True,
+    "planner_fallback_range_ly": 30.0,
+
+    # UI (JR-7)
+    "ui_show_jump_range": True,
+    "ui_jump_range_location": "overlay",
+    "ui_jump_range_show_limit": True,
+    "ui_jump_range_debug_details": False,
 
     # DEBUG
     "debug_autocomplete": False,

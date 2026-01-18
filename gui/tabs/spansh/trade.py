@@ -46,6 +46,9 @@ class TradeTab(ttk.Frame):
         self.var_allow_permits = tk.BooleanVar(value=True)
 
         self._build_ui()
+        self._hop_user_overridden = False
+        self._hop_updating = False
+        self.var_max_hop.trace_add("write", self._on_hop_changed)
 
         # D3c – pierwsze uzupełnienie pól z app_state
         self.refresh_from_app_state()
@@ -311,7 +314,7 @@ class TradeTab(ttk.Frame):
                 return
 
         capital = self.var_capital.get()
-        max_hop = self.var_max_hop.get()
+        max_hop = self._resolve_max_hop()
         cargo = self.var_cargo.get()
         max_hops = self.var_max_hops.get()
         max_dta = self.var_max_dta.get()
@@ -340,6 +343,58 @@ class TradeTab(ttk.Frame):
         )
 
         route_manager.start_route_thread("trade", self._th, args=args, gui_ref=self.root)
+
+    def apply_jump_range_from_ship(self, value: float | None) -> None:
+        if not config.get("planner_auto_use_ship_jump_range", True):
+            return
+        if self._hop_user_overridden:
+            return
+        if value is None:
+            return
+        self._set_max_hop(value)
+
+    def _on_hop_changed(self, *_args) -> None:
+        if self._hop_updating:
+            return
+        if not config.get("planner_allow_manual_range_override", True):
+            return
+        self._hop_user_overridden = True
+
+    def _set_max_hop(self, value: float) -> None:
+        try:
+            self._hop_updating = True
+            self.var_max_hop.set(float(value))
+        except Exception:
+            pass
+        finally:
+            self._hop_updating = False
+
+    def _resolve_max_hop(self) -> float:
+        if not config.get("planner_auto_use_ship_jump_range", True):
+            return float(self.var_max_hop.get())
+        if self._hop_user_overridden:
+            return float(self.var_max_hop.get())
+
+        jr = getattr(self.app_state.ship_state, "jump_range_current_ly", None)
+        if jr is not None:
+            self._set_max_hop(jr)
+            return float(jr)
+
+        fallback = config.get("planner_fallback_range_ly", 30.0)
+        try:
+            fallback = float(fallback)
+        except Exception:
+            fallback = 30.0
+        self._set_max_hop(fallback)
+        if utils.DEBOUNCER.is_allowed("jr_fallback", cooldown_sec=10.0, context="trade"):
+            common.emit_status(
+                "WARN",
+                "JR_NOT_READY_FALLBACK",
+                source="spansh.trade",
+                ui_target="trade",
+                notify_overlay=True,
+            )
+        return fallback
 
     def _th(
         self,

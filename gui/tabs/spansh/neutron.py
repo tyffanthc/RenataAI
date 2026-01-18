@@ -23,6 +23,9 @@ class NeutronTab(ttk.Frame):
         self.var_eff = tk.DoubleVar(value=0.6)
 
         self._build_ui()
+        self._range_user_overridden = False
+        self._range_updating = False
+        self.var_range.trace_add("write", self._on_range_changed)
 
     def _build_ui(self):
         fr = ttk.Frame(self)
@@ -92,12 +95,64 @@ class NeutronTab(ttk.Frame):
         if not s:
             s = (getattr(app_state, "current_system", "") or "").strip() or "Nieznany"
         cel = self.var_cel.get().strip()
-        rng = self.var_range.get()
+        rng = self._resolve_jump_range()
         eff = self.var_eff.get()
 
         args = (s, cel, rng, eff)
 
         route_manager.start_route_thread("neutron", self._th, args=args, gui_ref=self.root)
+
+    def apply_jump_range_from_ship(self, value: float | None) -> None:
+        if not config.get("planner_auto_use_ship_jump_range", True):
+            return
+        if self._range_user_overridden:
+            return
+        if value is None:
+            return
+        self._set_range_value(value)
+
+    def _on_range_changed(self, *_args) -> None:
+        if self._range_updating:
+            return
+        if not config.get("planner_allow_manual_range_override", True):
+            return
+        self._range_user_overridden = True
+
+    def _set_range_value(self, value: float) -> None:
+        try:
+            self._range_updating = True
+            self.var_range.set(float(value))
+        except Exception:
+            pass
+        finally:
+            self._range_updating = False
+
+    def _resolve_jump_range(self) -> float:
+        if not config.get("planner_auto_use_ship_jump_range", True):
+            return float(self.var_range.get())
+        if self._range_user_overridden:
+            return float(self.var_range.get())
+
+        jr = getattr(app_state.ship_state, "jump_range_current_ly", None)
+        if jr is not None:
+            self._set_range_value(jr)
+            return float(jr)
+
+        fallback = config.get("planner_fallback_range_ly", 30.0)
+        try:
+            fallback = float(fallback)
+        except Exception:
+            fallback = 30.0
+        self._set_range_value(fallback)
+        if utils.DEBOUNCER.is_allowed("jr_fallback", cooldown_sec=10.0, context="neutron"):
+            common.emit_status(
+                "WARN",
+                "JR_NOT_READY_FALLBACK",
+                source="spansh.neutron",
+                ui_target="neu",
+                notify_overlay=True,
+            )
+        return fallback
 
     def _th(self, s, cel, rng, eff):
         try:

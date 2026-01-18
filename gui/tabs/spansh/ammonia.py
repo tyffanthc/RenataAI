@@ -23,6 +23,9 @@ class AmmoniaTab(ttk.Frame):
         self.var_avoid_tharg = tk.BooleanVar(value=True)
 
         self._build_ui()
+        self._range_user_overridden = False
+        self._range_updating = False
+        self.var_range.trace_add("write", self._on_range_changed)
 
     def _build_ui(self):
         fr = ttk.Frame(self)
@@ -107,7 +110,7 @@ class AmmoniaTab(ttk.Frame):
         if not start_sys:
             start_sys = (getattr(app_state, "current_system", "") or "").strip() or "Nieznany"
         cel = self.e_cel.get().strip()
-        jump_range = self.var_range.get()
+        jump_range = self._resolve_jump_range()
         radius = self.e_radius.get()
         max_sys = self.e_maxsys.get()
         max_dist = self.var_max_dist.get()
@@ -116,6 +119,57 @@ class AmmoniaTab(ttk.Frame):
 
         args = (start_sys, cel, jump_range, radius, max_sys, max_dist, loop, avoid_tharg)
         route_manager.start_route_thread("ammonia", self._th, args=args, gui_ref=self.root)
+
+    def apply_jump_range_from_ship(self, value: float | None) -> None:
+        if not config.get("planner_auto_use_ship_jump_range", True):
+            return
+        if self._range_user_overridden:
+            return
+        if value is None:
+            return
+        self._set_range_value(value)
+
+    def _on_range_changed(self, *_args) -> None:
+        if self._range_updating:
+            return
+        if not config.get("planner_allow_manual_range_override", True):
+            return
+        self._range_user_overridden = True
+
+    def _set_range_value(self, value: float) -> None:
+        try:
+            self._range_updating = True
+            self.var_range.set(float(value))
+        except Exception:
+            pass
+        finally:
+            self._range_updating = False
+
+    def _resolve_jump_range(self) -> float:
+        if not config.get("planner_auto_use_ship_jump_range", True):
+            return float(self.var_range.get())
+        if self._range_user_overridden:
+            return float(self.var_range.get())
+
+        jr = getattr(app_state.ship_state, "jump_range_current_ly", None)
+        if jr is not None:
+            self._set_range_value(jr)
+            return float(jr)
+
+        fallback = config.get("planner_fallback_range_ly", 30.0)
+        try:
+            fallback = float(fallback)
+        except Exception:
+            fallback = 30.0
+        self._set_range_value(fallback)
+        if utils.DEBOUNCER.is_allowed("jr_fallback", cooldown_sec=10.0, context="ammonia"):
+            common.emit_status(
+                "WARN",
+                "JR_NOT_READY_FALLBACK",
+                source="spansh.ammonia",
+                notify_overlay=True,
+            )
+        return fallback
 
     def _th(self, s, cel, rng, rad, mx, max_dist, loop, avoid):
         tr, det = ammonia.oblicz_ammonia(s, cel, rng, rad, mx, max_dist, loop, avoid, None)

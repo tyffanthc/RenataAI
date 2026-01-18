@@ -40,6 +40,10 @@ STATUS_TEXTS = {
     "JR_READY": "Jump range obliczony.",
     "JR_WAITING_DATA": "Jump range: czekam na dane.",
     "JR_COMPUTE_FAIL": "Jump range: b‘'Žd oblicze‘'.",
+    "JR_VALIDATE_OK": "Jump range: walidacja OK.",
+    "JR_VALIDATE_DELTA": "Jump range: odchy‘'ka od gry.",
+    "JR_ENGINEERING_APPLIED": "Jump range: zastosowano engineering.",
+    "JR_NOT_READY_FALLBACK": "Jump range: brak danych, u‘•ywam fallback.",
     "AUTO_CLIPBOARD_OFF": "Auto-schowek wyłączony.",
 }
 

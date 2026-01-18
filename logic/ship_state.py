@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import config
-from logic.utils import MSG_QUEUE
+from logic.utils import MSG_QUEUE, DEBOUNCER
 
 
 @dataclass
@@ -41,6 +41,8 @@ class ShipState:
     jump_range_last_calc_at: Optional[float] = None
     jump_range_limited_by: Optional[str] = None
     jump_range_fuel_needed_t: Optional[float] = None
+    loadout_max_jump_range_ly: Optional[float] = None
+    jump_range_validate_delta_ly: Optional[float] = None
     _jump_range_last_status_code: Optional[str] = None
 
     last_update_ts: Optional[float] = None
@@ -72,6 +74,8 @@ class ShipState:
             "jump_range_last_calc_at": self.jump_range_last_calc_at,
             "jump_range_limited_by": self.jump_range_limited_by,
             "jump_range_fuel_needed_t": self.jump_range_fuel_needed_t,
+            "loadout_max_jump_range_ly": self.loadout_max_jump_range_ly,
+            "jump_range_validate_delta_ly": self.jump_range_validate_delta_ly,
             "completeness": self.get_completeness(),
             "ts": self.last_update_ts,
         }
@@ -90,13 +94,21 @@ class ShipState:
         return False
 
     def _emit_jump_range_status(
-        self, level: str, code: str, text: str | None = None, *, debug_only: bool = False
+        self,
+        level: str,
+        code: str,
+        text: str | None = None,
+        *,
+        debug_only: bool = False,
+        notify_overlay: bool | None = None,
     ) -> None:
         if debug_only and not config.get("jump_range_engine_debug", False):
             return
         if code == self._jump_range_last_status_code and not debug_only:
             return
         self._jump_range_last_status_code = code
+        if notify_overlay is None:
+            notify_overlay = not debug_only
         try:
             from gui import common as gui_common  # type: ignore
 
@@ -105,10 +117,15 @@ class ShipState:
                 code,
                 text=text,
                 source="jump_range_engine",
-                notify_overlay=not debug_only,
+                notify_overlay=bool(notify_overlay),
             )
         except Exception:
             MSG_QUEUE.put(("log", f"[{level}] {code}: {text or code}"))
+
+    def recompute_jump_range(self, trigger: str = "status_change") -> None:
+        self._compute_jump_range(trigger)
+        if trigger == "loadout":
+            self._validate_jump_range()
 
     def _compute_jump_range(self, trigger: str) -> None:
         if not self._should_compute_jump_range(trigger):
@@ -161,6 +178,15 @@ class ShipState:
             self.jump_range_last_calc_at = time.time()
             self.jump_range_limited_by = result.jump_range_limited_by
             self.jump_range_fuel_needed_t = result.jump_range_fuel_needed_t
+            if result.details.get("engineering_applied") and config.get(
+                "jump_range_engineering_debug", False
+            ):
+                self._emit_jump_range_status(
+                    "INFO",
+                    "JR_ENGINEERING_APPLIED",
+                    "Jump range engineering applied",
+                    notify_overlay=False,
+                )
             self._emit_jump_range_status("OK", "JR_READY", "Jump range computed")
             return
 
@@ -183,6 +209,72 @@ class ShipState:
                 "Jump range compute failed",
             )
 
+    def _validate_jump_range(self) -> None:
+        if not config.get("jump_range_validate_enabled", True):
+            return
+        if self.loadout_max_jump_range_ly is None:
+            return
+        if not self.fit_ready_for_jr:
+            return
+        try:
+            from app.state import app_state
+
+            modules_data = getattr(app_state, "modules_data", None)
+            modules_data_loaded = bool(getattr(app_state, "modules_data_loaded", False))
+        except Exception:
+            modules_data = None
+            modules_data_loaded = False
+
+        if not modules_data_loaded or not modules_data:
+            return
+
+        try:
+            from logic.jump_range_engine import compute_jump_range_loadout_max
+
+            result = compute_jump_range_loadout_max(self, modules_data)
+        except Exception as exc:
+            self._log_debug(f"Jump range validate failed: {exc}")
+            if config.get("jump_range_engine_debug", False):
+                raise
+            return
+
+        if not result.ok or result.jump_range_ly is None:
+            return
+
+        try:
+            delta = abs(float(self.loadout_max_jump_range_ly) - float(result.jump_range_ly))
+        except Exception:
+            return
+
+        self.jump_range_validate_delta_ly = delta
+        tolerance = config.get("jump_range_validate_tolerance_ly", 0.05)
+        try:
+            tolerance = float(tolerance)
+        except Exception:
+            tolerance = 0.05
+
+        code = "JR_VALIDATE_OK"
+        level = "INFO"
+        text = f"JR validate ok (delta={delta:.3f} ly)"
+        if delta > tolerance:
+            code = "JR_VALIDATE_DELTA"
+            level = "WARN"
+            text = f"JR validate delta {delta:.3f} ly"
+
+        log_only = bool(config.get("jump_range_validate_log_only", True))
+        if not DEBOUNCER.is_allowed("jr_validate", cooldown_sec=10.0):
+            return
+        debug_ok = code == "JR_VALIDATE_OK" and not config.get(
+            "jump_range_validate_debug", False
+        )
+        self._emit_jump_range_status(
+            level,
+            code,
+            text,
+            debug_only=debug_ok,
+            notify_overlay=not log_only,
+        )
+
     def update_from_loadout(self, event: Dict[str, Any], source: str = "journal") -> None:
         if not event:
             return
@@ -190,6 +282,7 @@ class ShipState:
         ship_type = event.get("Ship")
         unladen_mass = event.get("UnladenMass")
         modules = event.get("Modules") or []
+        max_jump_range = event.get("MaxJumpRange")
 
         changed = False
         if ship_id is not None:
@@ -214,6 +307,15 @@ class ShipState:
                 unladen_mass = None
         if unladen_mass is not None and unladen_mass != self.unladen_mass_t:
             self.unladen_mass_t = unladen_mass
+            changed = True
+
+        if max_jump_range is not None:
+            try:
+                max_jump_range = float(max_jump_range)
+            except Exception:
+                max_jump_range = None
+        if max_jump_range is not None and max_jump_range != self.loadout_max_jump_range_ly:
+            self.loadout_max_jump_range_ly = max_jump_range
             changed = True
 
         if isinstance(modules, list) and modules != self.modules:
@@ -247,7 +349,7 @@ class ShipState:
                 f"Loadout: ship_id={self.ship_id}, ship_type={self.ship_type}, "
                 f"unladen={self.unladen_mass_t}"
             )
-            self._compute_jump_range("loadout")
+            self.recompute_jump_range("loadout")
             self._emit_update()
 
     def update_from_status_json(self, data: Dict[str, Any], source: str = "status_json") -> None:

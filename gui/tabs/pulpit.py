@@ -79,6 +79,9 @@ class PulpitTab(ttk.Frame):
         self.lbl_status_fuel = ttk.Label(status_frame, text="Paliwo: -/- t")
         self.lbl_status_fuel.pack(side="left", padx=(0, 15))
 
+        self.lbl_status_jr = ttk.Label(status_frame, text="JR: -")
+        self.lbl_status_jr.pack(side="left", padx=(0, 15))
+
         # PRZYCISKI / AKCJE
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill="x", padx=5, pady=5)
@@ -203,6 +206,40 @@ class PulpitTab(ttk.Frame):
             fm = "-" if fuel_main is None else f"{fuel_main:.2f}"
             fr = "-" if fuel_res is None else f"{fuel_res:.2f}"
             self.lbl_status_fuel.config(text=f"Paliwo: {fm}/{fr} t")
+
+        if not config.get("ui_show_jump_range", True):
+            self.lbl_status_jr.config(text="JR: -")
+            return
+
+        location = str(config.get("ui_jump_range_location", "overlay")).strip().lower()
+        if location not in ("statusbar", "both"):
+            self.lbl_status_jr.config(text="JR: -")
+            return
+
+        jr = data.get("jump_range_current_ly")
+        if jr is None:
+            self.lbl_status_jr.config(text="JR: -")
+            return
+
+        try:
+            jr_val = float(jr)
+        except Exception:
+            self.lbl_status_jr.config(text="JR: -")
+            return
+
+        txt = f"JR: {jr_val:.2f} LY"
+        if config.get("ui_jump_range_show_limit", True):
+            limit = data.get("jump_range_limited_by")
+            if limit in ("fuel", "mass"):
+                txt += f" ({limit})"
+        if config.get("ui_jump_range_debug_details", False):
+            fuel_needed = data.get("jump_range_fuel_needed_t")
+            if fuel_needed is not None:
+                try:
+                    txt += f" fuel:{float(fuel_needed):.2f}t"
+                except Exception:
+                    pass
+        self.lbl_status_jr.config(text=txt)
 
     # ------------------------------------------------------------
     # AKCJE

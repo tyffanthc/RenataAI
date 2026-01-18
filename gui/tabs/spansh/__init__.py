@@ -55,6 +55,22 @@ class SpanshTab(ttk.Frame):
                   self.tab_elw, self.tab_hmc, self.tab_exo]:
             t.var_start.set(text)
 
+    def update_jump_range(self, value):
+        for t in [
+            self.tab_neutron,
+            self.tab_riches,
+            self.tab_ammonia,
+            self.tab_elw,
+            self.tab_hmc,
+            self.tab_exo,
+            self.tab_trade,
+        ]:
+            if hasattr(t, "apply_jump_range_from_ship"):
+                try:
+                    t.apply_jump_range_from_ship(value)
+                except Exception:
+                    pass
+
     def _on_tab_changed(self, _event):
         self.hide_suggestions()
 

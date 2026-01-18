@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
-from logic.spansh_client import client, spansh_error
+from logic.spansh_client import client, spansh_error, resolve_planner_jump_range
 from logic.utils import powiedz
 
 
@@ -146,6 +146,8 @@ def oblicz_hmc(
     if not start:
         spansh_error("HMC: brak systemu startowego.", gui_ref, context="hmc")
         return [], {}
+
+    jump_range = resolve_planner_jump_range(jump_range, gui_ref=gui_ref, context="hmc")
 
     payload = _build_payload(
         start=start,

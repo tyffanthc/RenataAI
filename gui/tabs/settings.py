@@ -106,6 +106,19 @@ class SettingsTab(ttk.Frame):
         self.var_debug_dedup = tk.BooleanVar(value=False)
         self.var_debug_ship_state = tk.BooleanVar(value=False)
 
+        # Statek i zasięg skoku (JR)
+        self.var_jump_range_engine_enabled = tk.BooleanVar(value=True)
+        self.var_planner_auto_use_ship_jump_range = tk.BooleanVar(value=True)
+        self.var_planner_allow_manual_range_override = tk.BooleanVar(value=True)
+        self.var_planner_fallback_range_ly = tk.StringVar(value="30.0")
+        self.var_jump_range_validate_enabled = tk.BooleanVar(value=False)
+        self.var_jump_range_include_reservoir_mass = tk.BooleanVar(value=True)
+        self.var_jump_range_engineering_enabled = tk.BooleanVar(value=True)
+        self.var_jump_range_compute_on = tk.StringVar(value="both")
+        self.var_jump_range_engine_debug = tk.BooleanVar(value=False)
+        self.var_fit_resolver_debug = tk.BooleanVar(value=False)
+        self.var_jump_range_validate_debug = tk.BooleanVar(value=False)
+
         # Status naukowy – StringVar do sekcji Eksploracja
         self.science_status_var = tk.StringVar(value="")
         self.modules_status_var = tk.StringVar(value="")
@@ -318,7 +331,52 @@ class SettingsTab(ttk.Frame):
         ).grid(row=1, column=0, columnspan=4, padx=8, pady=(0, 8), sticky="w")
 
         # Dół zakładki – przyciski
-        self._add_save_bar(parent, row=5)
+        # Sekcja: STATEK I ZASIĘG SKOKU (JR)
+        lf_jump_range = ttk.LabelFrame(parent, text=" Statek i zasięg skoku (JR) ")
+        lf_jump_range.grid(row=5, column=0, padx=12, pady=(6, 6), sticky="nsew")
+        lf_jump_range.columnconfigure(0, weight=1)
+        lf_jump_range.columnconfigure(1, weight=1)
+
+        ttk.Checkbutton(
+            lf_jump_range,
+            text="Automatycznie wykrywaj zasięg skoku statku",
+            variable=self.var_jump_range_engine_enabled,
+        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_jump_range,
+            text="Używaj zasięgu statku do obliczeń tras",
+            variable=self.var_planner_auto_use_ship_jump_range,
+        ).grid(row=1, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_jump_range,
+            text="Pozwól ręcznie nadpisać zasięg w zakładce",
+            variable=self.var_planner_allow_manual_range_override,
+        ).grid(row=2, column=0, padx=8, pady=4, sticky="w")
+
+        fallback_frame = ttk.Frame(lf_jump_range)
+        fallback_frame.grid(row=2, column=1, padx=8, pady=4, sticky="w")
+        ttk.Label(fallback_frame, text="Fallback range (LY):").pack(side="left")
+        ttk.Entry(
+            fallback_frame,
+            textvariable=self.var_planner_fallback_range_ly,
+            width=8,
+        ).pack(side="left", padx=(6, 0))
+
+        ttk.Checkbutton(
+            lf_jump_range,
+            text="Waliduj zgodność z grą (diagnostyka)",
+            variable=self.var_jump_range_validate_enabled,
+        ).grid(row=3, column=0, padx=8, pady=(4, 6), sticky="w")
+
+        ttk.Label(
+            lf_jump_range,
+            text="Opcje JR wpływają na planery tras i widok zasięgu.",
+            foreground="#888888",
+        ).grid(row=4, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="w")
+
+        self._add_save_bar(parent, row=6)
 
     # ------------------------------------------------------------------ #
     #   Zakładka: ASYSTENCI
@@ -704,8 +762,42 @@ class SettingsTab(ttk.Frame):
         parent = self._tab_advanced
         parent.columnconfigure(0, weight=1)
 
+        lf_jr_advanced = ttk.LabelFrame(parent, text=" Statek i zasięg skoku (JR) - Zaawansowane ")
+        lf_jr_advanced.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="nsew")
+        lf_jr_advanced.columnconfigure(0, weight=1)
+        lf_jr_advanced.columnconfigure(1, weight=1)
+
+        ttk.Checkbutton(
+            lf_jr_advanced,
+            text="Uwzględniaj masę zbiornika rezerwowego paliwa",
+            variable=self.var_jump_range_include_reservoir_mass,
+        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_jr_advanced,
+            text="Uwzględniaj modyfikacje inżynierskie FSD",
+            variable=self.var_jump_range_engineering_enabled,
+        ).grid(row=1, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Label(lf_jr_advanced, text="Tryb przeliczania:").grid(
+            row=2, column=0, padx=8, pady=4, sticky="w"
+        )
+        ttk.Combobox(
+            lf_jr_advanced,
+            textvariable=self.var_jump_range_compute_on,
+            values=("loadout", "status_change", "both"),
+            state="readonly",
+            width=18,
+        ).grid(row=2, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Label(
+            lf_jr_advanced,
+            text="Opcje techniczne JR dla bardziej precyzyjnych obliczeń.",
+            foreground="#888888",
+        ).grid(row=3, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="w")
+
         lf_debug = ttk.LabelFrame(parent, text=" Debug ")
-        lf_debug.grid(row=0, column=0, padx=12, pady=(12, 12), sticky="nsew")
+        lf_debug.grid(row=1, column=0, padx=12, pady=(6, 12), sticky="nsew")
         lf_debug.columnconfigure(0, weight=1)
 
         ttk.Checkbutton(
@@ -732,13 +824,31 @@ class SettingsTab(ttk.Frame):
             variable=self.var_debug_ship_state,
         ).grid(row=3, column=0, padx=8, pady=4, sticky="w")
 
+        ttk.Checkbutton(
+            lf_debug,
+            text="Debug: Jump Range Engine",
+            variable=self.var_jump_range_engine_debug,
+        ).grid(row=4, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_debug,
+            text="Debug: Fit Resolver",
+            variable=self.var_fit_resolver_debug,
+        ).grid(row=5, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_debug,
+            text="Debug: JR Validate",
+            variable=self.var_jump_range_validate_debug,
+        ).grid(row=6, column=0, padx=8, pady=4, sticky="w")
+
         ttk.Label(
             lf_debug,
             text="Włącza dodatkowe logi w konsoli i pulpicie.",
             foreground="#888888",
-        ).grid(row=4, column=0, padx=8, pady=(2, 8), sticky="w")
+        ).grid(row=7, column=0, padx=8, pady=(2, 8), sticky="w")
 
-        self._add_save_bar(parent, row=1)
+        self._add_save_bar(parent, row=2)
 
     # ------------------------------------------------------------------ #
     # Ładowanie / zapisywanie – połączone z backendowym configiem
@@ -849,11 +959,71 @@ class SettingsTab(ttk.Frame):
             cfg.get("ship_state_debug", self.var_debug_ship_state.get())
         )
 
+        # Statek i zasięg skoku (JR)
+        self.var_jump_range_engine_enabled.set(
+            cfg.get("jump_range_engine_enabled", self.var_jump_range_engine_enabled.get())
+        )
+        self.var_planner_auto_use_ship_jump_range.set(
+            cfg.get(
+                "planner_auto_use_ship_jump_range",
+                self.var_planner_auto_use_ship_jump_range.get(),
+            )
+        )
+        self.var_planner_allow_manual_range_override.set(
+            cfg.get(
+                "planner_allow_manual_range_override",
+                self.var_planner_allow_manual_range_override.get(),
+            )
+        )
+        self.var_planner_fallback_range_ly.set(
+            str(cfg.get("planner_fallback_range_ly", self.var_planner_fallback_range_ly.get()))
+        )
+        self.var_jump_range_validate_enabled.set(
+            cfg.get("jump_range_validate_enabled", self.var_jump_range_validate_enabled.get())
+        )
+        self.var_jump_range_include_reservoir_mass.set(
+            cfg.get(
+                "jump_range_include_reservoir_mass",
+                self.var_jump_range_include_reservoir_mass.get(),
+            )
+        )
+        self.var_jump_range_engineering_enabled.set(
+            cfg.get(
+                "jump_range_engineering_enabled",
+                self.var_jump_range_engineering_enabled.get(),
+            )
+        )
+        self.var_jump_range_compute_on.set(
+            cfg.get("jump_range_compute_on", self.var_jump_range_compute_on.get())
+        )
+        self.var_jump_range_engine_debug.set(
+            cfg.get("jump_range_engine_debug", self.var_jump_range_engine_debug.get())
+        )
+        self.var_fit_resolver_debug.set(
+            cfg.get("fit_resolver_debug", self.var_fit_resolver_debug.get())
+        )
+        self.var_jump_range_validate_debug.set(
+            cfg.get("jump_range_validate_debug", self.var_jump_range_validate_debug.get())
+        )
+
         self._on_use_system_theme()
 
     def _parse_int_range(self, raw: str, *, default: int, min_val: int, max_val: int) -> int:
         try:
             val = int(str(raw).strip())
+        except Exception:
+            return default
+        if val < min_val:
+            return min_val
+        if val > max_val:
+            return max_val
+        return val
+
+    def _parse_float_range(
+        self, raw: str, *, default: float, min_val: float, max_val: float
+    ) -> float:
+        try:
+            val = float(str(raw).strip())
         except Exception:
             return default
         if val < min_val:
@@ -889,6 +1059,18 @@ class SettingsTab(ttk.Frame):
         )
         self.var_spansh_timeout.set(str(spansh_timeout))
         self.var_spansh_retries.set(str(spansh_retries))
+
+        fallback_range = self._parse_float_range(
+            self.var_planner_fallback_range_ly.get(),
+            default=float(config.get("planner_fallback_range_ly", 30.0)),
+            min_val=1.0,
+            max_val=500.0,
+        )
+        self.var_planner_fallback_range_ly.set(f"{fallback_range:.2f}")
+        compute_on = self.var_jump_range_compute_on.get()
+        if compute_on not in ("loadout", "status_change", "both"):
+            compute_on = "both"
+            self.var_jump_range_compute_on.set(compute_on)
 
         cfg: Dict[str, Any] = {
             # klucze główne (uzgodnione z backendem)
@@ -935,6 +1117,18 @@ class SettingsTab(ttk.Frame):
             "debug_cache": self.var_debug_cache.get(),
             "debug_dedup": self.var_debug_dedup.get(),
             "ship_state_debug": self.var_debug_ship_state.get(),
+
+            "jump_range_engine_enabled": self.var_jump_range_engine_enabled.get(),
+            "planner_auto_use_ship_jump_range": self.var_planner_auto_use_ship_jump_range.get(),
+            "planner_allow_manual_range_override": self.var_planner_allow_manual_range_override.get(),
+            "planner_fallback_range_ly": fallback_range,
+            "jump_range_validate_enabled": self.var_jump_range_validate_enabled.get(),
+            "jump_range_include_reservoir_mass": self.var_jump_range_include_reservoir_mass.get(),
+            "jump_range_engineering_enabled": self.var_jump_range_engineering_enabled.get(),
+            "jump_range_compute_on": compute_on,
+            "jump_range_engine_debug": self.var_jump_range_engine_debug.get(),
+            "fit_resolver_debug": self.var_fit_resolver_debug.get(),
+            "jump_range_validate_debug": self.var_jump_range_validate_debug.get(),
         }
         return cfg
 
@@ -1074,6 +1268,18 @@ class SettingsTab(ttk.Frame):
         self.var_debug_cache.set(False)
         self.var_debug_dedup.set(False)
         self.var_debug_ship_state.set(False)
+        self.var_jump_range_engine_debug.set(False)
+        self.var_fit_resolver_debug.set(False)
+        self.var_jump_range_validate_debug.set(False)
+
+        self.var_jump_range_engine_enabled.set(True)
+        self.var_planner_auto_use_ship_jump_range.set(True)
+        self.var_planner_allow_manual_range_override.set(True)
+        self.var_planner_fallback_range_ly.set("30.0")
+        self.var_jump_range_validate_enabled.set(False)
+        self.var_jump_range_include_reservoir_mass.set(True)
+        self.var_jump_range_engineering_enabled.set(True)
+        self.var_jump_range_compute_on.set("both")
 
         # Reset statusu naukowego do stanu „brak danych”
         self.update_science_status(False)

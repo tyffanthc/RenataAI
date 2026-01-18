@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
-from logic.spansh_client import client, spansh_error
+from logic.spansh_client import client, spansh_error, resolve_planner_jump_range
 from logic.utils import powiedz
 
 
@@ -162,6 +162,10 @@ def oblicz_exomastery(
             context="exomastery",
         )
         return [], {}
+
+    jump_range = resolve_planner_jump_range(
+        jump_range, gui_ref=gui_ref, context="exomastery"
+    )
 
     payload = _build_payload(
         start=start,

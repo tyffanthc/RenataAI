@@ -18,7 +18,7 @@ import config
 
 from logic.cache_store import CacheStore
 
-from logic.utils.notify import powiedz, DEBOUNCER
+from logic.utils.notify import powiedz, DEBOUNCER, MSG_QUEUE
 from logic.request_dedup import make_request_key, run_deduped
 
 
@@ -54,6 +54,58 @@ def spansh_error(message: str, gui_ref: Any | None = None, *, context: str | Non
         return
 
     powiedz(message, gui_ref)
+
+
+def resolve_planner_jump_range(
+    requested_range: Any,
+    *,
+    gui_ref: Any | None = None,
+    context: str | None = None,
+) -> Optional[float]:
+    if not config.get("planner_auto_use_ship_jump_range", True):
+        try:
+            return float(requested_range) if requested_range is not None else None
+        except Exception:
+            return None
+
+    if requested_range is not None and config.get("planner_allow_manual_range_override", True):
+        try:
+            return float(requested_range)
+        except Exception:
+            return None
+
+    try:
+        from app.state import app_state
+
+        jr = getattr(app_state.ship_state, "jump_range_current_ly", None)
+    except Exception:
+        jr = None
+
+    if jr is not None:
+        try:
+            return float(jr)
+        except Exception:
+            return None
+
+    try:
+        fallback = float(config.get("planner_fallback_range_ly", 30.0))
+    except Exception:
+        fallback = 30.0
+
+    if DEBOUNCER.is_allowed("jr_fallback", cooldown_sec=10.0, context=context or "spansh"):
+        try:
+            from gui import common as gui_common  # type: ignore
+
+            gui_common.emit_status(
+                "WARN",
+                "JR_NOT_READY_FALLBACK",
+                source=f"spansh.{context}" if context else "spansh",
+                notify_overlay=True,
+            )
+        except Exception:
+            MSG_QUEUE.put(("log", "[WARN] JR_NOT_READY_FALLBACK: Jump range fallback"))
+
+    return fallback
 
 
 class SpanshClient:

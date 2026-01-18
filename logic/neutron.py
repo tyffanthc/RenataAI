@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, List, Tuple, Dict
 
-from logic.spansh_client import client, spansh_error
+from logic.spansh_client import client, spansh_error, resolve_planner_jump_range
 from logic.utils import powiedz
 
 
@@ -51,6 +51,8 @@ def oblicz_spansh(
             context="neutron",
         )
         return []
+
+    zasieg = resolve_planner_jump_range(zasieg, gui_ref=gui_ref, context="neutron")
 
     systems = client.neutron_route(
         start=start,
@@ -101,6 +103,8 @@ def oblicz_spansh_with_details(
             context="neutron",
         )
         return [], []
+
+    zasieg = resolve_planner_jump_range(zasieg, gui_ref=gui_ref, context="neutron")
 
     systems, details = client.neutron_route(
         start=start,

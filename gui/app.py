@@ -345,6 +345,12 @@ class RenataApp:
         except Exception:
             pass
 
+        if self.modules_data_loaded:
+            try:
+                app_state.ship_state.recompute_jump_range("loadout")
+            except Exception:
+                pass
+
         if getattr(self, "settings_tab", None) is not None:
             if hasattr(self.settings_tab, "update_modules_status"):
                 try:
@@ -450,6 +456,11 @@ class RenataApp:
                         self.tab_pulpit.update_ship_state(content)
                     except Exception:
                         pass
+                    try:
+                        self.tab_spansh.update_jump_range(content.get("jump_range_current_ly"))
+                    except Exception:
+                        pass
+                    self._overlay_update_jump_range(content)
 
                 elif msg_type == "start_label":
                     self.tab_spansh.update_start_label(content)
@@ -498,6 +509,15 @@ class RenataApp:
             font=("Arial", 9, "bold"),
         )
         self.overlay_status_label.pack(anchor="w", padx=8, pady=(6, 2))
+
+        self.overlay_jr_label = tk.Label(
+            self.overlay_frame,
+            text="",
+            bg=self._overlay_bg,
+            fg=self._overlay_sec,
+            font=("Arial", 9),
+        )
+        self.overlay_jr_label.pack(anchor="w", padx=8, pady=(0, 2))
 
         self.overlay_next_label = tk.Label(
             self.overlay_frame,
@@ -564,6 +584,37 @@ class RenataApp:
             self._overlay_show_for(None)
         else:
             self._overlay_show_for(4.0)
+
+    def _overlay_update_jump_range(self, data: dict) -> None:
+        if not config.get("ui_show_jump_range", True):
+            self.overlay_jr_label.config(text="")
+            return
+        location = str(config.get("ui_jump_range_location", "overlay")).strip().lower()
+        if location not in ("overlay", "both"):
+            self.overlay_jr_label.config(text="")
+            return
+        jr = data.get("jump_range_current_ly")
+        if jr is None:
+            self.overlay_jr_label.config(text="JR: -")
+            return
+        try:
+            jr_val = float(jr)
+        except Exception:
+            self.overlay_jr_label.config(text="JR: -")
+            return
+        txt = f"JR: {jr_val:.2f} LY"
+        if config.get("ui_jump_range_show_limit", True):
+            limit = data.get("jump_range_limited_by")
+            if limit in ("fuel", "mass"):
+                txt += f" (limit: {limit})"
+        if config.get("ui_jump_range_debug_details", False):
+            fuel_needed = data.get("jump_range_fuel_needed_t")
+            if fuel_needed is not None:
+                try:
+                    txt += f" fuel:{float(fuel_needed):.2f}t"
+                except Exception:
+                    pass
+        self.overlay_jr_label.config(text=txt)
 
     def _overlay_update_next(self):
         systems = common.get_last_route_systems()
