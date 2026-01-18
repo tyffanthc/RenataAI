@@ -34,6 +34,7 @@ from logic.events import exploration_fss_events as fss_events  # type: ignore
 from logic.events import exploration_bio_events as bio_events  # type: ignore
 from logic.events import exploration_misc_events as misc_events  # type: ignore
 from logic import ammonia as ammonia_logic  # type: ignore
+from logic import exomastery as exomastery_logic  # type: ignore
 
 
 # --- POMOCNICZY KONTEKST TESTÓW ----------------------------------------------
@@ -360,6 +361,26 @@ def test_ammonia_payload_snapshot(_ctx: TestContext) -> None:
     assert payload.get("avoid_thargoids") is False, "avoid_thargoids should map to avoid flag"
 
 
+def test_exomastery_payload_snapshot(_ctx: TestContext) -> None:
+    payload = exomastery_logic._build_payload(  # type: ignore[attr-defined]
+        start="Sol",
+        cel="Colonia",
+        jump_range=42.5,
+        radius=50,
+        max_sys=25,
+        max_dist=5000,
+        min_landmark_value=200000,
+        loop=True,
+        avoid_tharg=False,
+    )
+
+    assert payload.get("min_landmark_value") == 200000, (
+        "min_landmark_value should map to payload key"
+    )
+    assert payload.get("loop") is True, "loop should map to loop flag"
+    assert payload.get("avoid_thargoids") is False, "avoid_thargoids should map to avoid flag"
+
+
 # --- TESTY: FIRST FOOTFALL ---------------------------------------------------
 
 
@@ -438,6 +459,7 @@ def run_all_tests() -> int:
         ("test_first_footfall_basic", test_first_footfall_basic),
         ("test_table_schemas_basic", test_table_schemas_basic),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
+        ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
     ]
 
     print("=== RenataAI Backend Smoke Tests (T1) ===")

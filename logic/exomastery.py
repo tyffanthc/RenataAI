@@ -14,7 +14,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from logic.spansh_client import client, spansh_error, resolve_planner_jump_range
-from logic.utils import powiedz
+from logic.utils import powiedz, MSG_QUEUE
+import config
 from logic.rows_normalizer import normalize_body_rows
 
 
@@ -119,6 +120,8 @@ def oblicz_exomastery(
         loop=loop,
         avoid_tharg=avoid_tharg,
     )
+    if config.get("features.spansh.debug_payload", False):
+        MSG_QUEUE.put(("log", f"[SPANSH EXOMASTERY PAYLOAD] {payload}"))
 
     result = client.route(
         mode="exobiology",
