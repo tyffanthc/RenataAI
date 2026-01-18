@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-import config
-
 
 def _resolve_start(start: str | None, app_state: Any | None) -> str:
     start_value = (start or "").strip()
@@ -19,6 +17,8 @@ def _resolve_start(start: str | None, app_state: Any | None) -> str:
 
 
 def _resolve_range(requested: Any, ship_state: Any | None) -> float | None:
+    import config
+
     if not config.get("planner_auto_use_ship_jump_range", True):
         try:
             return float(requested) if requested is not None else None
