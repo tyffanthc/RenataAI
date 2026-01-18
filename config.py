@@ -52,6 +52,12 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
 
     # SCHOWEK / AUTO-COPY
     "auto_clipboard": True,           # auto-schowek (route)
+    "auto_clipboard_mode": "FULL_ROUTE",
+    "auto_clipboard_next_hop_trigger": "fsdjump",
+    "auto_clipboard_next_hop_copy_on_route_ready": False,
+    "auto_clipboard_next_hop_resync_policy": "nearest_forward",
+    "auto_clipboard_next_hop_allow_manual_advance": True,
+    "debug_next_hop": False,
 
     # SPANSH / SIEĆ
     "spansh_timeout": 20,

@@ -541,6 +541,16 @@ class RenataApp:
         )
         self.overlay_btn_copy.pack(side="left", padx=2)
 
+        self.overlay_btn_next = tk.Button(
+            btn_row,
+            text="Copy next",
+            command=self._overlay_copy_next,
+            bg=self._overlay_bg,
+            fg=self._overlay_fg,
+            relief="flat",
+        )
+        self.overlay_btn_next.pack(side="left", padx=2)
+
         self.overlay_btn_details = tk.Button(
             btn_row,
             text="Pokaż szczegóły",
@@ -617,30 +627,25 @@ class RenataApp:
         self.overlay_jr_label.config(text=txt)
 
     def _overlay_update_next(self):
-        systems = common.get_last_route_systems()
-        current = (getattr(app_state, "current_system", "") or "").strip()
         next_text = "Next: -"
-        if systems:
-            idx = -1
-            if current:
-                for i, name in enumerate(systems):
-                    if name.casefold() == current.casefold():
-                        idx = i
-                        break
-            if idx >= 0 and idx + 1 < len(systems):
-                next_text = f"Next: {systems[idx + 1]}"
-            else:
-                next_text = f"Next: {systems[0]}"
+        next_system = common.get_active_route_next_system()
+        if next_system:
+            next_text = f"Next: {next_system}"
         else:
             text = common.get_last_route_text()
             if text.startswith("Route: "):
                 first_line = text.splitlines()[0].strip()
                 next_text = first_line
+
         self.overlay_next_label.config(text=next_text)
 
         has_text = bool(common.get_last_route_text())
         state = tk.NORMAL if has_text else tk.DISABLED
         self.overlay_btn_copy.config(state=state)
+        if config.get("auto_clipboard_next_hop_allow_manual_advance", True):
+            self.overlay_btn_next.config(state=tk.NORMAL if next_system else tk.DISABLED)
+        else:
+            self.overlay_btn_next.config(state=tk.DISABLED)
 
     def _overlay_show_for(self, seconds):
         if not self._overlay_visible:
@@ -695,6 +700,10 @@ class RenataApp:
             self.root.focus_force()
         except Exception:
             pass
+
+    def _overlay_copy_next(self):
+        common.copy_next_hop_manual(source="overlay")
+        self._overlay_update_next()
 
     def on_toggle_always_on_top(self, is_on: bool):
         try:

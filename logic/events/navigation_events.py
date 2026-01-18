@@ -13,7 +13,7 @@ from logic.events.exploration_fss_events import reset_fss_progress
 
 def handle_fsd_jump_autoschowek(ev: Dict[str, object], gui_ref=None):
     """
-    S1-LOGIC-04 ‚Äî GLOBALNY AUTO-SCHOWEK PO FSDJump.
+    S1-LOGIC-04 ‘«ˆ GLOBALNY AUTO-SCHOWEK PO FSDJump.
 
     Przeniesione 1:1 z EventHandler.handle_event (sekcja FSDJump).
     """
@@ -24,50 +24,35 @@ def handle_fsd_jump_autoschowek(ev: Dict[str, object], gui_ref=None):
         or ev.get("StarSystemName")
     )
 
-    # 2. Przesu≈Ñ trasƒô w RouteManagerze
+    # 2. Przesu+‰ tras¶÷ w RouteManagerze
     route_manager.advance_route(current_system)
 
-    # 3. Pobierz nastƒôpny system
-    next_system = route_manager.get_next_system(current_system)
+    # 3. Auto-clipboard NEXT_HOP (konfigurowalny)
+    try:
+        from gui import common as gui_common  # type: ignore
 
-    # 4. Sprawd≈∫ checkbox Auto-Schowek z zak≈Çadki Spansh (przez gui_ref)
-    auto_copy_enabled = False
-    if gui_ref is not None:
-        try:
-            auto_copy_enabled = getattr(gui_ref.tab_spansh, "auto_copy_var").get()
-        except Exception:
-            auto_copy_enabled = False
-
-    # 5. Je≈õli Auto-Schowek w≈ÇƒÖczony i trasa istnieje ‚Üí kopiujemy
-    if auto_copy_enabled and next_system:
-        try:
-            pyperclip.copy(next_system)
-            utils.MSG_QUEUE.put(
-                ("log", f"[AUTO-SCHOWEK] Skok wykryty ‚Äî skopiowano: {next_system}")
-            )
-        except Exception as e:
-            utils.MSG_QUEUE.put(
-                ("log", f"[AUTO-SCHOWEK] B≈ÇƒÖd kopiowania: {e}")
-            )
-    elif auto_copy_enabled and not next_system:
-        utils.MSG_QUEUE.put(
-            ("log", "[AUTO-SCHOWEK] Brak kolejnego systemu.")
+        gui_common.update_next_hop_on_system(
+            str(current_system) if current_system is not None else None,
+            "fsdjump",
+            source="auto_clipboard",
         )
+    except Exception:
+        pass
 
 
 def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
     """
-    Obs≈Çuga event√≥w:
+    Obs+Èuga event+-w:
     - Location
     - FSDJump
     - CarrierJump
 
     Przeniesione z bloku 'pozycja gracza' w EventHandler.handle_event.
-    Zachowuje nawet podw√≥jny reset/powiedz (jak w oryginale), ≈ºeby nie zmieniaƒá zachowania.
+    Zachowuje nawet podw+-jny reset/powiedz (jak w oryginale), +-eby nie zmienia¶Á zachowania.
     """
     typ = ev.get("event")
 
-    # D3c: inicjalizacja docked/station z eventu Location (je≈õli dostƒôpne)
+    # D3c: inicjalizacja docked/station z eventu Location (je+çli dost¶÷pne)
     if typ == "Location":
         try:
             docked = bool(ev.get("Docked"))
@@ -85,12 +70,23 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
         or ev.get("StarSystemName")
     )
     if sysname:
-        # reset FSS + discovery/footfall przy wej≈õciu do nowego systemu
+        # reset FSS + discovery/footfall przy wej+çciu do nowego systemu
         reset_fss_progress()
         app_state.set_system(sysname)
+        if typ == "Location":
+            try:
+                from gui import common as gui_common  # type: ignore
+
+                gui_common.update_next_hop_on_system(
+                    str(sysname) if sysname is not None else None,
+                    "location",
+                    source="auto_clipboard",
+                )
+            except Exception:
+                pass
         if typ != "Location":
             powiedz(f"Skok: {sysname}", gui_ref)
-            # AUTO-COPY Cel podr√≥≈ºy (tylko w pierwszym bloku, jak w oryginale)
+            # AUTO-COPY Cel podr+-+-y (tylko w pierwszym bloku, jak w oryginale)
             try:
                 if (gui_ref and hasattr(gui_ref, "state")
                         and getattr(gui_ref.state, "next_travel_target", None) == sysname):
@@ -98,13 +94,13 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
                            or getattr(gui_ref.state, "current_body", None))
                     if obj:
                         pyperclip.copy(obj)
-                        powiedz("Skopiowano cel podr√≥≈ºy", gui_ref)
+                        powiedz("Skopiowano cel podr+-+-y", gui_ref)
                     gui_ref.state.next_travel_target = None
             except Exception:
                 pass
 
-    # Oryginalny kod mia≈Ç duplikacjƒô tego bloku bez auto-copy;
-    # zachowujemy jƒÖ, aby nie zmieniaƒá zachowania (podw√≥jny powiedz przy FSDJump/CarrierJump).
+    # Oryginalny kod mia+È duplikacj¶÷ tego bloku bez auto-copy;
+    # zachowujemy j¶˘, aby nie zmienia¶Á zachowania (podw+-jny powiedz przy FSDJump/CarrierJump).
     sysname = (
         ev.get("StarSystem")
         or ev.get("SystemName")
@@ -113,13 +109,14 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
     if sysname:
         reset_fss_progress()
         app_state.set_system(sysname)
+        
         if typ != "Location":
             powiedz(f"Skok: {sysname}", gui_ref)
 
 
 def handle_docked(ev: Dict[str, object], gui_ref=None):
     """
-    Obs≈Çuga eventu Docked.
+    Obs+Èuga eventu Docked.
     """
     st = ev.get("StationName")
     if st:
@@ -127,14 +124,14 @@ def handle_docked(ev: Dict[str, object], gui_ref=None):
         app_state.set_docked(True)
         powiedz(f"Dokowano w {st}", gui_ref)
     else:
-        # nawet je≈õli z jakiego≈õ powodu brak nazwy stacji, sam event Docked
-        # oznacza, ≈ºe jeste≈õmy zadokowani
+        # nawet je+çli z jakiego+ç powodu brak nazwy stacji, sam event Docked
+        # oznacza, +-e jeste+çmy zadokowani
         app_state.set_docked(True)
 
 
 def handle_undocked(ev: Dict[str, object], gui_ref=None):
     """
-    Obs≈Çuga eventu Undocked.
+    Obs+Èuga eventu Undocked.
     """
     app_state.set_docked(False)
     powiedz("Odlot z portu.", gui_ref)

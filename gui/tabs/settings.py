@@ -79,6 +79,11 @@ class SettingsTab(ttk.Frame):
         self.var_route_progress_messages = tk.BooleanVar(value=True)   # route_progress_speech
         self.var_low_fuel_warning = tk.BooleanVar(value=True)          # fuel_warning
         self.var_low_fuel_threshold = tk.StringVar(value="15")         # fuel_warning_threshold_pct
+        self.var_auto_clipboard_mode = tk.StringVar(value="FULL_ROUTE")
+        self.var_auto_clipboard_next_hop_trigger = tk.StringVar(value="fsdjump")
+        self.var_auto_clipboard_next_hop_copy_on_route_ready = tk.BooleanVar(value=False)
+        self.var_auto_clipboard_next_hop_resync_policy = tk.StringVar(value="nearest_forward")
+        self.var_auto_clipboard_next_hop_allow_manual_advance = tk.BooleanVar(value=True)
 
         self.var_fss_assistant = tk.BooleanVar(value=True)             # fss_assistant
         self.var_high_value_planet_alerts = tk.BooleanVar(value=True)  # high_value_planets
@@ -105,6 +110,7 @@ class SettingsTab(ttk.Frame):
         self.var_debug_cache = tk.BooleanVar(value=False)
         self.var_debug_dedup = tk.BooleanVar(value=False)
         self.var_debug_ship_state = tk.BooleanVar(value=False)
+        self.var_debug_next_hop = tk.BooleanVar(value=False)
 
         # Statek i zasięg skoku (JR)
         self.var_jump_range_engine_enabled = tk.BooleanVar(value=True)
@@ -427,12 +433,56 @@ class SettingsTab(ttk.Frame):
             text="Komunikaty o postępie trasy",
             variable=self.var_route_progress_messages,
         ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+        ttk.Label(lf_navigation, text="Auto-schowek trasy:").grid(
+            row=1, column=0, padx=8, pady=4, sticky="w"
+        )
+        ttk.Combobox(
+            lf_navigation,
+            textvariable=self.var_auto_clipboard_mode,
+            values=("FULL_ROUTE", "NEXT_HOP"),
+            state="readonly",
+            width=14,
+        ).grid(row=1, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Label(lf_navigation, text="Trigger NEXT_HOP:").grid(
+            row=2, column=0, padx=8, pady=4, sticky="w"
+        )
+        ttk.Combobox(
+            lf_navigation,
+            textvariable=self.var_auto_clipboard_next_hop_trigger,
+            values=("fsdjump", "location", "both"),
+            state="readonly",
+            width=14,
+        ).grid(row=2, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Label(lf_navigation, text="Resync policy:").grid(
+            row=3, column=0, padx=8, pady=4, sticky="w"
+        )
+        ttk.Combobox(
+            lf_navigation,
+            textvariable=self.var_auto_clipboard_next_hop_resync_policy,
+            values=("nearest_forward", "strict"),
+            state="readonly",
+            width=14,
+        ).grid(row=3, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_navigation,
+            text="Kopiuj pierwszy hop po wyznaczeniu trasy",
+            variable=self.var_auto_clipboard_next_hop_copy_on_route_ready,
+        ).grid(row=4, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_navigation,
+            text="Zezwol na reczne 'Copy next' w overlay",
+            variable=self.var_auto_clipboard_next_hop_allow_manual_advance,
+        ).grid(row=4, column=1, padx=8, pady=4, sticky="w")
 
         ttk.Label(
             lf_navigation,
             text="Komunikaty o trasie i postępie lotu.",
             foreground="#888888",
-        ).grid(row=1, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="w")
+        ).grid(row=5, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="w")
 
         # Paliwo i bezpieczeństwo
         lf_fuel_safety = ttk.LabelFrame(parent, text=" Paliwo i bezpieczeństwo ")
@@ -792,7 +842,7 @@ class SettingsTab(ttk.Frame):
 
         ttk.Label(
             lf_jr_advanced,
-            text="Opcje techniczne JR dla bardziej precyzyjnych obliczeń.",
+            text="Opcje techniczne JR dla bardziej precyzyjnych obliczen.",
             foreground="#888888",
         ).grid(row=3, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="w")
 
@@ -826,27 +876,33 @@ class SettingsTab(ttk.Frame):
 
         ttk.Checkbutton(
             lf_debug,
+            text="Debug: Next Hop",
+            variable=self.var_debug_next_hop,
+        ).grid(row=4, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_debug,
             text="Debug: Jump Range Engine",
             variable=self.var_jump_range_engine_debug,
-        ).grid(row=4, column=0, padx=8, pady=4, sticky="w")
+        ).grid(row=5, column=0, padx=8, pady=4, sticky="w")
 
         ttk.Checkbutton(
             lf_debug,
             text="Debug: Fit Resolver",
             variable=self.var_fit_resolver_debug,
-        ).grid(row=5, column=0, padx=8, pady=4, sticky="w")
+        ).grid(row=6, column=0, padx=8, pady=4, sticky="w")
 
         ttk.Checkbutton(
             lf_debug,
             text="Debug: JR Validate",
             variable=self.var_jump_range_validate_debug,
-        ).grid(row=6, column=0, padx=8, pady=4, sticky="w")
+        ).grid(row=7, column=0, padx=8, pady=4, sticky="w")
 
         ttk.Label(
             lf_debug,
             text="Włącza dodatkowe logi w konsoli i pulpicie.",
             foreground="#888888",
-        ).grid(row=7, column=0, padx=8, pady=(2, 8), sticky="w")
+        ).grid(row=8, column=0, padx=8, pady=(2, 8), sticky="w")
 
         self._add_save_bar(parent, row=2)
 
@@ -886,6 +942,33 @@ class SettingsTab(ttk.Frame):
         )
         self.var_auto_clipboard.set(
             cfg.get("auto_clipboard", self.var_auto_clipboard.get())
+        )
+        self.var_auto_clipboard_mode.set(
+            cfg.get("auto_clipboard_mode", self.var_auto_clipboard_mode.get())
+        )
+        self.var_auto_clipboard_next_hop_trigger.set(
+            cfg.get(
+                "auto_clipboard_next_hop_trigger",
+                self.var_auto_clipboard_next_hop_trigger.get(),
+            )
+        )
+        self.var_auto_clipboard_next_hop_copy_on_route_ready.set(
+            cfg.get(
+                "auto_clipboard_next_hop_copy_on_route_ready",
+                self.var_auto_clipboard_next_hop_copy_on_route_ready.get(),
+            )
+        )
+        self.var_auto_clipboard_next_hop_resync_policy.set(
+            cfg.get(
+                "auto_clipboard_next_hop_resync_policy",
+                self.var_auto_clipboard_next_hop_resync_policy.get(),
+            )
+        )
+        self.var_auto_clipboard_next_hop_allow_manual_advance.set(
+            cfg.get(
+                "auto_clipboard_next_hop_allow_manual_advance",
+                self.var_auto_clipboard_next_hop_allow_manual_advance.get(),
+            )
         )
         self.var_route_progress_messages.set(
             cfg.get("route_progress_speech", self.var_route_progress_messages.get())
@@ -957,6 +1040,9 @@ class SettingsTab(ttk.Frame):
         )
         self.var_debug_ship_state.set(
             cfg.get("ship_state_debug", self.var_debug_ship_state.get())
+        )
+        self.var_debug_next_hop.set(
+            cfg.get("debug_next_hop", self.var_debug_next_hop.get())
         )
 
         # Statek i zasięg skoku (JR)
@@ -1072,6 +1158,21 @@ class SettingsTab(ttk.Frame):
             compute_on = "both"
             self.var_jump_range_compute_on.set(compute_on)
 
+        auto_clip_mode = self.var_auto_clipboard_mode.get().strip().upper()
+        if auto_clip_mode not in ("FULL_ROUTE", "NEXT_HOP"):
+            auto_clip_mode = "FULL_ROUTE"
+            self.var_auto_clipboard_mode.set(auto_clip_mode)
+
+        next_hop_trigger = self.var_auto_clipboard_next_hop_trigger.get().strip().lower()
+        if next_hop_trigger not in ("fsdjump", "location", "both"):
+            next_hop_trigger = "fsdjump"
+            self.var_auto_clipboard_next_hop_trigger.set(next_hop_trigger)
+
+        resync_policy = self.var_auto_clipboard_next_hop_resync_policy.get().strip().lower()
+        if resync_policy not in ("nearest_forward", "strict"):
+            resync_policy = "nearest_forward"
+            self.var_auto_clipboard_next_hop_resync_policy.set(resync_policy)
+
         cfg: Dict[str, Any] = {
             # klucze główne (uzgodnione z backendem)
             "log_dir": self.var_log_path.get().strip(),
@@ -1082,6 +1183,11 @@ class SettingsTab(ttk.Frame):
 
             "landing_pad_speech": self.var_read_landing_pad.get(),
             "auto_clipboard": self.var_auto_clipboard.get(),
+            "auto_clipboard_mode": auto_clip_mode,
+            "auto_clipboard_next_hop_trigger": next_hop_trigger,
+            "auto_clipboard_next_hop_copy_on_route_ready": self.var_auto_clipboard_next_hop_copy_on_route_ready.get(),
+            "auto_clipboard_next_hop_resync_policy": resync_policy,
+            "auto_clipboard_next_hop_allow_manual_advance": self.var_auto_clipboard_next_hop_allow_manual_advance.get(),
             "route_progress_speech": self.var_route_progress_messages.get(),
             "fuel_warning": self.var_low_fuel_warning.get(),
             "fuel_warning_threshold_pct": int(
@@ -1117,6 +1223,7 @@ class SettingsTab(ttk.Frame):
             "debug_cache": self.var_debug_cache.get(),
             "debug_dedup": self.var_debug_dedup.get(),
             "ship_state_debug": self.var_debug_ship_state.get(),
+            "debug_next_hop": self.var_debug_next_hop.get(),
 
             "jump_range_engine_enabled": self.var_jump_range_engine_enabled.get(),
             "planner_auto_use_ship_jump_range": self.var_planner_auto_use_ship_jump_range.get(),
@@ -1244,6 +1351,11 @@ class SettingsTab(ttk.Frame):
         # Asystenci – domyślnie włączone jak w DEFAULT_SETTINGS
         self.var_read_landing_pad.set(True)
         self.var_auto_clipboard.set(True)
+        self.var_auto_clipboard_mode.set("FULL_ROUTE")
+        self.var_auto_clipboard_next_hop_trigger.set("fsdjump")
+        self.var_auto_clipboard_next_hop_copy_on_route_ready.set(False)
+        self.var_auto_clipboard_next_hop_resync_policy.set("nearest_forward")
+        self.var_auto_clipboard_next_hop_allow_manual_advance.set(True)
 
         self.var_route_progress_messages.set(True)
         self.var_low_fuel_warning.set(True)
@@ -1268,6 +1380,7 @@ class SettingsTab(ttk.Frame):
         self.var_debug_cache.set(False)
         self.var_debug_dedup.set(False)
         self.var_debug_ship_state.set(False)
+        self.var_debug_next_hop.set(False)
         self.var_jump_range_engine_debug.set(False)
         self.var_fit_resolver_debug.set(False)
         self.var_jump_range_validate_debug.set(False)
