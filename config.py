@@ -146,6 +146,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "features.tables.column_picker_enabled": True,
     "features.tables.ui_badges_enabled": True,
     "tables_visible_columns": {},
+    "features.ui.neutron_via_compact": True,
 
     # DEBUG
     "debug_autocomplete": False,

@@ -24,6 +24,8 @@ class NeutronTab(ttk.Frame):
         self.var_eff = tk.DoubleVar(value=60.0)
         self.var_supercharge = tk.StringVar(value="Normal")
         self.var_via = tk.StringVar()
+        self._via_items = []
+        self._via_compact = bool(config.get("features.ui.neutron_via_compact", True))
 
         self._build_ui()
         self._range_user_overridden = False
@@ -81,9 +83,30 @@ class NeutronTab(ttk.Frame):
 
         f_via = ttk.Frame(fr)
         f_via.pack(fill="x", pady=4)
-        self.lst_via = tk.Listbox(f_via, height=3, width=40)
-        self.lst_via.pack(side="left", fill="x", expand=True)
-        ttk.Button(f_via, text="Remove", command=self._remove_via).pack(side="left", padx=6)
+        if self._via_compact:
+            self.via_canvas = tk.Canvas(f_via, height=60, highlightthickness=0)
+            self.via_scroll = ttk.Scrollbar(
+                f_via,
+                orient="vertical",
+                command=self.via_canvas.yview,
+            )
+            self.via_canvas.configure(yscrollcommand=self.via_scroll.set)
+            self.via_canvas.pack(side="left", fill="x", expand=True)
+            self.via_scroll.pack(side="left", fill="y")
+
+            self.via_frame = ttk.Frame(self.via_canvas)
+            self.via_window = self.via_canvas.create_window(
+                (0, 0),
+                window=self.via_frame,
+                anchor="nw",
+            )
+
+            self.via_frame.bind("<Configure>", self._on_via_frame_configure)
+            self.via_canvas.bind("<Configure>", self._on_via_canvas_configure)
+        else:
+            self.lst_via = tk.Listbox(f_via, height=3, width=40)
+            self.lst_via.pack(side="left", fill="x", expand=True)
+            ttk.Button(f_via, text="Remove", command=self._remove_via).pack(side="left", padx=6)
 
         # Przyciski
         f_btn = ttk.Frame(fr)
@@ -107,7 +130,7 @@ class NeutronTab(ttk.Frame):
 
     def clear(self):
         self._clear_results()
-        self.lst_via.delete(0, tk.END)
+        self._set_via_items([])
         common.emit_status(
             "INFO",
             "ROUTE_CLEARED",
@@ -127,7 +150,7 @@ class NeutronTab(ttk.Frame):
         cel = self.var_cel.get().strip()
         rng = self._resolve_jump_range()
         eff = self.var_eff.get()
-        via = [item.strip() for item in self.lst_via.get(0, tk.END) if item.strip()]
+        via = self._get_via_items()
         supercharge_mode = self._resolve_supercharge_mode()
 
         args = (s, cel, rng, eff, supercharge_mode, via)
@@ -291,10 +314,16 @@ class NeutronTab(ttk.Frame):
         value = (self.var_via.get() or "").strip()
         if not value:
             return
-        self.lst_via.insert(tk.END, value)
+        if self._via_compact:
+            self._via_items.append(value)
+            self._render_via_chips()
+        else:
+            self.lst_via.insert(tk.END, value)
         self.var_via.set("")
 
     def _remove_via(self) -> None:
+        if self._via_compact:
+            return
         selection = list(self.lst_via.curselection())
         if not selection:
             return
@@ -307,13 +336,75 @@ class NeutronTab(ttk.Frame):
         self.var_start.set(cel)
         self.var_cel.set(start)
 
-        items = list(self.lst_via.get(0, tk.END))
-        self.lst_via.delete(0, tk.END)
-        for item in reversed(items):
-            self.lst_via.insert(tk.END, item)
+        items = self._get_via_items()
+        self._set_via_items(list(reversed(items)))
 
     def _resolve_supercharge_mode(self) -> str:
         value = (self.var_supercharge.get() or "").strip().lower()
         if value.startswith("over"):
             return "overcharge"
         return "normal"
+
+    def _get_via_items(self) -> list[str]:
+        if self._via_compact:
+            return list(self._via_items)
+        return [item.strip() for item in self.lst_via.get(0, tk.END) if item.strip()]
+
+    def _set_via_items(self, items: list[str]) -> None:
+        if self._via_compact:
+            self._via_items = [item.strip() for item in items if item.strip()]
+            self._render_via_chips()
+        else:
+            self.lst_via.delete(0, tk.END)
+            for item in items:
+                value = (item or "").strip()
+                if value:
+                    self.lst_via.insert(tk.END, value)
+
+    def _render_via_chips(self) -> None:
+        if not self._via_compact:
+            return
+        for child in self.via_frame.winfo_children():
+            child.destroy()
+
+        width = self.via_canvas.winfo_width() or 320
+        col_width = 140
+        columns = max(1, int(width / col_width))
+        row = 0
+        col = 0
+
+        for idx, item in enumerate(self._via_items):
+            chip = ttk.Frame(self.via_frame)
+            label = ttk.Label(chip, text=item)
+            label.pack(side="left", padx=(6, 2))
+            btn = ttk.Button(
+                chip,
+                text="x",
+                width=2,
+                command=lambda i=idx: self._remove_via_index(i),
+            )
+            btn.pack(side="left", padx=(2, 4))
+            chip.grid(row=row, column=col, padx=4, pady=2, sticky="w")
+
+            col += 1
+            if col >= columns:
+                col = 0
+                row += 1
+
+        self.via_frame.update_idletasks()
+        self.via_canvas.configure(scrollregion=self.via_canvas.bbox("all"))
+
+    def _remove_via_index(self, index: int) -> None:
+        if index < 0 or index >= len(self._via_items):
+            return
+        del self._via_items[index]
+        self._render_via_chips()
+
+    def _on_via_frame_configure(self, _event) -> None:
+        self.via_canvas.configure(scrollregion=self.via_canvas.bbox("all"))
+
+    def _on_via_canvas_configure(self, event) -> None:
+        if not self._via_compact:
+            return
+        self.via_canvas.itemconfigure(self.via_window, width=event.width)
+        self._render_via_chips()
