@@ -37,6 +37,9 @@ STATUS_TEXTS = {
     "CACHE_CORRUPT": "Cache uszkodzony.",
     "DEDUP_HIT": "Dedup hit",
     "DEDUP_WAIT": "Dedup wait",
+    "JR_READY": "Jump range obliczony.",
+    "JR_WAITING_DATA": "Jump range: czekam na dane.",
+    "JR_COMPUTE_FAIL": "Jump range: b‘'Žd oblicze‘'.",
     "AUTO_CLIPBOARD_OFF": "Auto-schowek wyłączony.",
 }
 

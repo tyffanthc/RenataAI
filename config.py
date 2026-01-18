@@ -104,6 +104,13 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "fit_resolver_debug": False,
     "fit_resolver_fail_on_missing": False,
 
+    # JUMP RANGE ENGINE (JR-4)
+    "jump_range_engine_enabled": True,
+    "jump_range_engine_debug": False,
+    "jump_range_rounding": 2,
+    "jump_range_include_reservoir_mass": True,
+    "jump_range_compute_on": "both",
+
     # DEBUG
     "debug_autocomplete": False,
     "debug_cache": False,

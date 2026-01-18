@@ -36,6 +36,12 @@ class ShipState:
         }
     )
     fit_ready_for_jr: bool = False
+    jump_range_current_ly: Optional[float] = None
+    jump_range_current_source: Optional[str] = None
+    jump_range_last_calc_at: Optional[float] = None
+    jump_range_limited_by: Optional[str] = None
+    jump_range_fuel_needed_t: Optional[float] = None
+    _jump_range_last_status_code: Optional[str] = None
 
     last_update_ts: Optional[float] = None
     last_update_by: Dict[str, float] = field(default_factory=dict)
@@ -61,10 +67,121 @@ class ShipState:
             "fsd": self.fsd,
             "fsd_booster": self.fsd_booster,
             "fit_ready_for_jr": self.fit_ready_for_jr,
+            "jump_range_current_ly": self.jump_range_current_ly,
+            "jump_range_current_source": self.jump_range_current_source,
+            "jump_range_last_calc_at": self.jump_range_last_calc_at,
+            "jump_range_limited_by": self.jump_range_limited_by,
+            "jump_range_fuel_needed_t": self.jump_range_fuel_needed_t,
             "completeness": self.get_completeness(),
             "ts": self.last_update_ts,
         }
         MSG_QUEUE.put(("ship_state", payload))
+
+    def _should_compute_jump_range(self, trigger: str) -> bool:
+        if not config.get("jump_range_engine_enabled", True):
+            return False
+        mode = str(config.get("jump_range_compute_on", "both")).strip().lower()
+        if mode == "both":
+            return True
+        if mode == "loadout" and trigger == "loadout":
+            return True
+        if mode == "status_change" and trigger == "status_change":
+            return True
+        return False
+
+    def _emit_jump_range_status(
+        self, level: str, code: str, text: str | None = None, *, debug_only: bool = False
+    ) -> None:
+        if debug_only and not config.get("jump_range_engine_debug", False):
+            return
+        if code == self._jump_range_last_status_code and not debug_only:
+            return
+        self._jump_range_last_status_code = code
+        try:
+            from gui import common as gui_common  # type: ignore
+
+            gui_common.emit_status(
+                level,
+                code,
+                text=text,
+                source="jump_range_engine",
+                notify_overlay=not debug_only,
+            )
+        except Exception:
+            MSG_QUEUE.put(("log", f"[{level}] {code}: {text or code}"))
+
+    def _compute_jump_range(self, trigger: str) -> None:
+        if not self._should_compute_jump_range(trigger):
+            return
+        try:
+            from app.state import app_state
+
+            modules_data = getattr(app_state, "modules_data", None)
+            modules_data_loaded = bool(getattr(app_state, "modules_data_loaded", False))
+        except Exception:
+            modules_data = None
+            modules_data_loaded = False
+
+        if not self.fit_ready_for_jr or not modules_data_loaded or not modules_data:
+            self.jump_range_current_ly = None
+            self.jump_range_current_source = None
+            self.jump_range_last_calc_at = time.time()
+            self.jump_range_limited_by = "unknown"
+            self.jump_range_fuel_needed_t = None
+            self._emit_jump_range_status(
+                "WARN",
+                "JR_WAITING_DATA",
+                "Jump range: waiting for data",
+            )
+            return
+
+        try:
+            from logic.jump_range_engine import compute_jump_range_current
+
+            result = compute_jump_range_current(self, modules_data)
+        except Exception as exc:
+            self.jump_range_current_ly = None
+            self.jump_range_current_source = None
+            self.jump_range_last_calc_at = time.time()
+            self.jump_range_limited_by = "unknown"
+            self.jump_range_fuel_needed_t = None
+            self._emit_jump_range_status(
+                "WARN",
+                "JR_COMPUTE_FAIL",
+                "Jump range compute failed",
+            )
+            self._log_debug(f"Jump range compute failed: {exc}")
+            if config.get("jump_range_engine_debug", False):
+                raise
+            return
+
+        if result.ok and result.jump_range_ly is not None:
+            self.jump_range_current_ly = result.jump_range_ly
+            self.jump_range_current_source = result.source
+            self.jump_range_last_calc_at = time.time()
+            self.jump_range_limited_by = result.jump_range_limited_by
+            self.jump_range_fuel_needed_t = result.jump_range_fuel_needed_t
+            self._emit_jump_range_status("OK", "JR_READY", "Jump range computed")
+            return
+
+        self.jump_range_current_ly = None
+        self.jump_range_current_source = None
+        self.jump_range_last_calc_at = time.time()
+        self.jump_range_limited_by = "unknown"
+        self.jump_range_fuel_needed_t = None
+
+        if result.error and result.error.startswith("missing_"):
+            self._emit_jump_range_status(
+                "WARN",
+                "JR_WAITING_DATA",
+                "Jump range: waiting for data",
+            )
+        else:
+            self._emit_jump_range_status(
+                "WARN",
+                "JR_COMPUTE_FAIL",
+                "Jump range compute failed",
+            )
 
     def update_from_loadout(self, event: Dict[str, Any], source: str = "journal") -> None:
         if not event:
@@ -130,6 +247,7 @@ class ShipState:
                 f"Loadout: ship_id={self.ship_id}, ship_type={self.ship_type}, "
                 f"unladen={self.unladen_mass_t}"
             )
+            self._compute_jump_range("loadout")
             self._emit_update()
 
     def update_from_status_json(self, data: Dict[str, Any], source: str = "status_json") -> None:
@@ -166,6 +284,7 @@ class ShipState:
             self._log_debug(
                 f"Fuel: main={self.fuel_main_t}, reservoir={self.fuel_reservoir_t}"
             )
+            self._compute_jump_range("status_change")
             self._emit_update()
 
     def update_from_cargo_json(self, data: Dict[str, Any], source: str = "cargo_json") -> None:
@@ -212,6 +331,7 @@ class ShipState:
             self.cargo_mass_t = cargo_mass
             self._mark_updated(source)
             self._log_debug(f"Cargo: mass={self.cargo_mass_t}")
+            self._compute_jump_range("status_change")
             self._emit_update()
 
     def get_completeness(self) -> Dict[str, bool]:
