@@ -24,6 +24,7 @@ class RenataApp:
         self.root = root
         self.root.title("R.E.N.A.T.A.")
         self.root.geometry("1100x700")
+        self._ui_thread_id = threading.get_ident()
 
         # ==========================================================
         # 🎨 RENATA "BLACKOUT" PROTOCOL - STYLIZACJA TOTALNA
@@ -576,7 +577,14 @@ class RenataApp:
         self._overlay_hide()
 
     def _init_debug_panel(self):
+        self._debug_panel_enabled = bool(config.get("features.debug.panel", False))
         self._debug_panel_visible = False
+        self._debug_panel_refresh_ms = 400
+        self._debug_panel_last_text = None
+        if not self._debug_panel_enabled:
+            self.debug_frame = None
+            self.debug_label = None
+            return
         self.debug_frame = tk.Frame(
             self.root,
             bg=self._overlay_bg,
@@ -592,15 +600,36 @@ class RenataApp:
             justify="left",
         )
         self.debug_label.pack(anchor="w", padx=8, pady=6)
-        self._update_debug_panel()
+        self._schedule_debug_panel_update()
+
+    def _run_on_ui(self, fn):
+        if threading.get_ident() == self._ui_thread_id:
+            fn()
+            return
+        try:
+            self.root.after(0, fn)
+        except Exception:
+            pass
+
+    def _schedule_debug_panel_update(self):
+        if not self._debug_panel_enabled:
+            return
+        try:
+            self.root.after(self._debug_panel_refresh_ms, self._update_debug_panel)
+        except Exception:
+            pass
 
     def _update_debug_panel(self):
-        enabled = bool(config.get("features.debug.panel", False))
-        if not enabled:
+        if threading.get_ident() != self._ui_thread_id:
+            self._run_on_ui(self._update_debug_panel)
+            return
+        if not self._debug_panel_enabled or self.debug_frame is None:
+            return
+        if not config.get("features.debug.panel", False):
             if self._debug_panel_visible:
                 self.debug_frame.place_forget()
                 self._debug_panel_visible = False
-            self.root.after(500, self._update_debug_panel)
+            self._debug_panel_enabled = False
             return
 
         if not self._debug_panel_visible:
@@ -627,8 +656,10 @@ class RenataApp:
             f"Route idx: {route_index}\n"
             f"Clipboard: {clip_mode}"
         )
-        self.debug_label.config(text=text)
-        self.root.after(500, self._update_debug_panel)
+        if text != self._debug_panel_last_text:
+            self.debug_label.config(text=text)
+            self._debug_panel_last_text = text
+        self._schedule_debug_panel_update()
 
     def _overlay_set_status(self, event):
         if not event:
