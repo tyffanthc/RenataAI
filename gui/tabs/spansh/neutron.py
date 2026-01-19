@@ -417,12 +417,6 @@ class NeutronTab(ttk.Frame):
         q = (query or "").strip()
         if not q:
             return []
-
-        local = self._filter_systems(self._local_system_candidates(), q)
-        if local:
-            return local
-        if not self._via_online_lookup:
-            return []
         try:
             return utils.pobierz_sugestie(q)
         except Exception:
