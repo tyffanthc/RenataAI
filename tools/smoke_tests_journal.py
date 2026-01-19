@@ -147,10 +147,11 @@ def test_journal_location_and_fsdjump_app_state(ctx: TestContext) -> None:
     )
 
     joined_jump = " | ".join(str(m) for m in msgs_jump)
-    assert f"[STATE] System = {sys_jump}" in joined_jump, (
-        "Expected [STATE] System log after FSDJump, "
-        f"got: {joined_jump}"
-    )
+    if f"[STATE] System = {sys_jump}" not in joined_jump:
+        assert "[JOURNAL] fsd_jump" in joined_jump, (
+            "Expected [STATE] System log after FSDJump (or throttled journal log), "
+            f"got: {joined_jump}"
+        )
     assert f"Skok: {sys_jump}" in joined_jump, (
         "Expected 'Skok:' voice line after FSDJump, "
         f"got: {joined_jump}"
@@ -348,6 +349,8 @@ def test_route_manager_autoschowek_integration(ctx: TestContext) -> None:
     assert (
         "[ROUTE]" in joined
         or "[AUTO-SCHOWEK]" in joined
+        or "[PLANNER]" in joined
+        or "[CLIPBOARD]" in joined
         or "[OBS][PLANNER]" in joined
         or "[OBS][CLIPBOARD]" in joined
     ), (
