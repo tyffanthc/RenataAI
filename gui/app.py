@@ -619,6 +619,58 @@ class RenataApp:
         except Exception:
             pass
 
+    def _build_debug_snapshot(self) -> dict:
+        try:
+            system = getattr(app_state, "current_system", None)
+            docked = getattr(app_state, "is_docked", False)
+            station = getattr(app_state, "current_station", None)
+        except Exception:
+            system = None
+            docked = False
+            station = None
+
+        with route_manager.lock:
+            route_type = route_manager.route_type
+            route_len = len(route_manager.route)
+            route_index = route_manager.current_index
+
+        next_hop_preview = common.get_active_route_next_system()
+        if not next_hop_preview:
+            text = common.get_last_route_text()
+            if text.startswith("Route: "):
+                next_hop_preview = text.splitlines()[0].strip()
+
+        return {
+            "current_system": system,
+            "docked": docked,
+            "station": station,
+            "route_type": route_type,
+            "route_len": route_len,
+            "route_index": route_index,
+            "next_hop_preview": next_hop_preview,
+            "clipboard_mode": str(config.get("auto_clipboard_mode", "FULL_ROUTE")).strip().upper(),
+            "next_hop_stepper_enabled": bool(
+                config.get("features.clipboard.next_hop_stepper", True)
+            ),
+        }
+
+    def _format_debug_text(self, snapshot: dict) -> str:
+        def fmt(value) -> str:
+            if value is None or value == "":
+                return "—"
+            return str(value)
+
+        return (
+            f"System: {fmt(snapshot.get('current_system'))}\n"
+            f"Docked: {fmt(snapshot.get('docked'))}\n"
+            f"Station: {fmt(snapshot.get('station'))}\n"
+            f"Route: {fmt(snapshot.get('route_type'))} ({fmt(snapshot.get('route_len'))})\n"
+            f"Route idx: {fmt(snapshot.get('route_index'))}\n"
+            f"Next hop: {fmt(snapshot.get('next_hop_preview'))}\n"
+            f"Clipboard: {fmt(snapshot.get('clipboard_mode'))}\n"
+            f"Next hop stepper: {fmt(snapshot.get('next_hop_stepper_enabled'))}"
+        )
+
     def _update_debug_panel(self):
         if threading.get_ident() != self._ui_thread_id:
             self._run_on_ui(self._update_debug_panel)
@@ -636,26 +688,8 @@ class RenataApp:
             self.debug_frame.place(relx=0.0, rely=1.0, x=12, y=-12, anchor="sw")
             self._debug_panel_visible = True
 
-        try:
-            system = getattr(app_state, "current_system", None)
-            docked = getattr(app_state, "is_docked", False)
-        except Exception:
-            system = None
-            docked = False
-
-        with route_manager.lock:
-            route_type = route_manager.route_type
-            route_len = len(route_manager.route)
-            route_index = route_manager.current_index
-
-        clip_mode = str(config.get("auto_clipboard_mode", "FULL_ROUTE")).strip().upper()
-        text = (
-            f"System: {system or '-'}\n"
-            f"Docked: {docked}\n"
-            f"Route: {route_type or '-'} ({route_len})\n"
-            f"Route idx: {route_index}\n"
-            f"Clipboard: {clip_mode}"
-        )
+        snapshot = self._build_debug_snapshot()
+        text = self._format_debug_text(snapshot)
         if text != self._debug_panel_last_text:
             self.debug_label.config(text=text)
             self._debug_panel_last_text = text
