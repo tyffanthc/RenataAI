@@ -8,6 +8,7 @@ from logic import neutron_via
 from logic.rows_normalizer import normalize_neutron_rows
 from logic import utils
 from gui import common
+from gui import strings as ui
 from gui.common_autocomplete import AutocompleteController
 from app.route_manager import route_manager
 from app.state import app_state
@@ -43,11 +44,11 @@ class NeutronTab(ttk.Frame):
         f_sys = ttk.Frame(fr)
         f_sys.pack(fill="x", pady=4)
 
-        ttk.Label(f_sys, text="Start:", width=8).pack(side="left")
+        ttk.Label(f_sys, text=f"{ui.LABEL_START}:", width=8).pack(side="left")
         self.e_start = ttk.Entry(f_sys, textvariable=self.var_start, width=25)
         self.e_start.pack(side="left", padx=(0, 10))
 
-        ttk.Label(f_sys, text="Cel:", width=8).pack(side="left")
+        ttk.Label(f_sys, text=f"{ui.LABEL_TARGET}:", width=8).pack(side="left")
         self.e_cel = ttk.Entry(f_sys, textvariable=self.var_cel, width=25)
         self.e_cel.pack(side="left")
 
@@ -59,17 +60,17 @@ class NeutronTab(ttk.Frame):
         f_rng = ttk.Frame(fr)
         f_rng.pack(fill="x", pady=4)
 
-        ttk.Label(f_rng, text="Max range:", width=10).pack(side="left")
+        ttk.Label(f_rng, text=ui.LABEL_JUMP_RANGE, width=16).pack(side="left")
         ttk.Entry(f_rng, textvariable=self.var_range, width=7).pack(side="left", padx=(0, 12))
 
-        ttk.Label(f_rng, text="Eff.:", width=6).pack(side="left")
+        ttk.Label(f_rng, text=ui.LABEL_EFFICIENCY, width=16).pack(side="left")
         ttk.Entry(f_rng, textvariable=self.var_eff, width=7).pack(side="left")
 
         # Supercharge + Via list
         f_sc = ttk.Frame(fr)
         f_sc.pack(fill="x", pady=4)
 
-        ttk.Label(f_sc, text="Charge:", width=10).pack(side="left")
+        ttk.Label(f_sc, text=ui.LABEL_SUPERCHARGE, width=16).pack(side="left")
         self.cb_supercharge = ttk.Combobox(
             f_sc,
             textvariable=self.var_supercharge,
@@ -79,7 +80,7 @@ class NeutronTab(ttk.Frame):
         )
         self.cb_supercharge.pack(side="left", padx=(0, 12))
 
-        ttk.Label(f_sc, text="Via:", width=4).pack(side="left")
+        ttk.Label(f_sc, text=f"{ui.LABEL_VIA}:", width=6).pack(side="left")
         self.e_via = ttk.Entry(f_sc, textvariable=self.var_via, width=18)
         self.e_via.pack(side="left", padx=(0, 6))
         self.e_via.bind("<Return>", self._add_via_event)
@@ -91,7 +92,7 @@ class NeutronTab(ttk.Frame):
                 min_chars=2,
                 suggest_func=self._suggest_via_system,
             )
-        ttk.Button(f_sc, text="Add", command=self._add_via).pack(side="left")
+        ttk.Button(f_sc, text=ui.BUTTON_ADD, command=self._add_via).pack(side="left")
 
         f_via = ttk.Frame(fr)
         f_via.pack(fill="x", pady=4)
@@ -118,15 +119,15 @@ class NeutronTab(ttk.Frame):
         else:
             self.lst_via = tk.Listbox(f_via, height=3, width=40)
             self.lst_via.pack(side="left", fill="x", expand=True)
-            ttk.Button(f_via, text="Remove", command=self._remove_via).pack(side="left", padx=6)
+            ttk.Button(f_via, text=ui.BUTTON_REMOVE, command=self._remove_via).pack(side="left", padx=6)
 
         # Przyciski
         f_btn = ttk.Frame(fr)
         f_btn.pack(pady=(6, 2))
 
-        ttk.Button(f_btn, text="Wyznacz trasę", command=self.run_neutron).pack(side="left", padx=4)
-        ttk.Button(f_btn, text="Wyczyść", command=self.clear).pack(side="left", padx=4)
-        ttk.Button(f_btn, text="Reverse", command=self._reverse_route).pack(side="left", padx=4)
+        ttk.Button(f_btn, text=ui.BUTTON_CALCULATE, command=self.run_neutron).pack(side="left", padx=4)
+        ttk.Button(f_btn, text=ui.BUTTON_CLEAR, command=self.clear).pack(side="left", padx=4)
+        ttk.Button(f_btn, text=ui.BUTTON_REVERSE, command=self._reverse_route).pack(side="left", padx=4)
         f_status = ttk.Frame(fr)
         f_status.pack(pady=(2, 2))
         self.lbl_status = ttk.Label(f_status, text="Gotowy", font=("Arial", 10, "bold"))
@@ -134,7 +135,7 @@ class NeutronTab(ttk.Frame):
 
 
         # Lista wyników
-        self.lst = common.stworz_liste_trasy(self, title="Neutron Route")
+        self.lst = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_NEUTRON)
 
     # ------------------------------------------------------------------ public
 

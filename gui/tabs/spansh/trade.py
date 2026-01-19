@@ -6,6 +6,7 @@ from logic import trade
 from logic import utils
 from logic.spansh_client import client as spansh_client
 from gui import common
+from gui import strings as ui
 from gui.common_autocomplete import AutocompleteController
 from app.route_manager import route_manager
 from app.state import app_state
@@ -75,7 +76,7 @@ class TradeTab(ttk.Frame):
         f_src = ttk.Frame(fr)
         f_src.pack(fill="x", pady=4)
 
-        ttk.Label(f_src, text="System:", width=10).pack(side="left")
+        ttk.Label(f_src, text=f"{ui.LABEL_SYSTEM}:", width=10).pack(side="left")
         self.e_system = ttk.Entry(f_src, textvariable=self.var_start_system, width=30)
         self.e_system.pack(side="left", padx=(0, 10))
 
@@ -89,7 +90,7 @@ class TradeTab(ttk.Frame):
         f_sta = ttk.Frame(fr)
         f_sta.pack(fill="x", pady=4)
 
-        ttk.Label(f_sta, text="Stacja:", width=10).pack(side="left")
+        ttk.Label(f_sta, text=f"{ui.LABEL_STATION}:", width=10).pack(side="left")
         self.e_station = ttk.Entry(f_sta, textvariable=self.var_start_station, width=30)
         self.e_station.pack(side="left", padx=(0, 10))
 
@@ -110,38 +111,38 @@ class TradeTab(ttk.Frame):
         f_cap = ttk.Frame(fr)
         f_cap.pack(fill="x", pady=4)
 
-        ttk.Label(f_cap, text="KapitaĹ‚ [Cr]:", width=12).pack(side="left")
+        ttk.Label(f_cap, text=ui.LABEL_CAPITAL, width=12).pack(side="left")
         ttk.Entry(
             f_cap,
             textvariable=self.var_capital,
             width=12,
         ).pack(side="left", padx=(0, 12))
 
-        ttk.Label(f_cap, text="Max hop [LY]:", width=12).pack(side="left")
+        ttk.Label(f_cap, text=ui.LABEL_MAX_HOP, width=16).pack(side="left")
         ttk.Entry(f_cap, textvariable=self.var_max_hop, width=8).pack(side="left")
 
         # --- Cargo / max hops --------------------------------------------------
         f_cargo = ttk.Frame(fr)
         f_cargo.pack(fill="x", pady=4)
 
-        ttk.Label(f_cargo, text="Cargo:", width=12).pack(side="left")
+        ttk.Label(f_cargo, text=ui.LABEL_CARGO, width=16).pack(side="left")
         ttk.Entry(f_cargo, textvariable=self.var_cargo, width=8).pack(
             side="left", padx=(0, 12)
         )
 
-        ttk.Label(f_cargo, text="Max hops:", width=12).pack(side="left")
+        ttk.Label(f_cargo, text=ui.LABEL_MAX_HOPS, width=18).pack(side="left")
         ttk.Entry(f_cargo, textvariable=self.var_max_hops, width=8).pack(side="left")
 
         # --- Max DTA / Max age -------------------------------------------------
         f_dta = ttk.Frame(fr)
         f_dta.pack(fill="x", pady=4)
 
-        ttk.Label(f_dta, text="Max DTA [ls]:", width=12).pack(side="left")
+        ttk.Label(f_dta, text=ui.LABEL_MAX_DISTANCE, width=18).pack(side="left")
         ttk.Entry(f_dta, textvariable=self.var_max_dta, width=8).pack(
             side="left", padx=(0, 12)
         )
 
-        ttk.Label(f_dta, text="Maximum Market Age:", width=20).pack(side="left")
+        ttk.Label(f_dta, text=ui.LABEL_MAX_AGE, width=22).pack(side="left")
         self.e_max_age = ttk.Entry(f_dta, textvariable=self.var_max_age, width=8)
         self.e_max_age.pack(side="left")
 
@@ -151,17 +152,17 @@ class TradeTab(ttk.Frame):
 
         ttk.Checkbutton(
             f_flags1,
-            text="Large pad",
+            text=ui.FLAG_LARGE_PAD,
             variable=self.var_large_pad,
         ).pack(side="left", padx=5)
         ttk.Checkbutton(
             f_flags1,
-            text="Planetary",
+            text=ui.FLAG_PLANETARY,
             variable=self.var_planetary,
         ).pack(side="left", padx=5)
         ttk.Checkbutton(
             f_flags1,
-            text="Player owned",
+            text=ui.FLAG_PLAYER_OWNED,
             variable=self.var_player_owned,
         ).pack(side="left", padx=5)
 
@@ -170,22 +171,22 @@ class TradeTab(ttk.Frame):
 
         ttk.Checkbutton(
             f_flags2,
-            text="Restricted",
+            text=ui.FLAG_RESTRICTED,
             variable=self.var_restricted,
         ).pack(side="left", padx=5)
         ttk.Checkbutton(
             f_flags2,
-            text="Prohibited",
+            text=ui.FLAG_PROHIBITED,
             variable=self.var_prohibited,
         ).pack(side="left", padx=5)
         ttk.Checkbutton(
             f_flags2,
-            text="Avoid loops",
+            text=ui.FLAG_AVOID_LOOPS,
             variable=self.var_avoid_loops,
         ).pack(side="left", padx=5)
         ttk.Checkbutton(
             f_flags2,
-            text="Allow permits",
+            text=ui.FLAG_ALLOW_PERMITS,
             variable=self.var_allow_permits,
         ).pack(side="left", padx=5)
 
@@ -195,16 +196,16 @@ class TradeTab(ttk.Frame):
 
         ttk.Button(
             bf,
-            text="Szukaj trasy handlowej",
+            text=ui.BUTTON_CALCULATE_TRADE,
             command=self.run_trade,
         ).pack(side="left", padx=5)
 
-        ttk.Button(bf, text="WyczyĹ›Ä‡", command=self.clear).pack(side="left", padx=5)
+        ttk.Button(bf, text=ui.BUTTON_CLEAR, command=self.clear).pack(side="left", padx=5)
 
         self.lbl_status = ttk.Label(self, text="Gotowy", font=("Arial", 10, "bold"))
         self.lbl_status.pack(pady=(4, 2))
 
-        self.lst_trade = common.stworz_liste_trasy(self, title="Trade Route")
+        self.lst_trade = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_TRADE)
 
     def refresh_from_app_state(self):
         """D3c: uzupeĹ‚nia pola System/Stacja na podstawie AppState.
@@ -324,9 +325,9 @@ class TradeTab(ttk.Frame):
         sys_value = (system or "").strip()
         sta_value = (station or "").strip()
         if sys_value and sta_value:
-            text = f"Wykryto: {sys_value} / {sta_value}"
+            text = f"{ui.DETECTED_PREFIX}: {sys_value} / {sta_value}"
         elif sys_value:
-            text = f"Wykryto: {sys_value}"
+            text = f"{ui.DETECTED_PREFIX}: {sys_value}"
         else:
             text = ""
         self.lbl_detected.config(text=text)

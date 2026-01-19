@@ -4,6 +4,7 @@ import threading
 import config
 from logic import utils, riches
 from gui import common
+from gui import strings as ui
 from gui.common_autocomplete import AutocompleteController
 from app.route_manager import route_manager
 from app.state import app_state
@@ -39,11 +40,11 @@ class RichesTab(ttk.Frame):
         f_sys = ttk.Frame(fr)
         f_sys.pack(fill="x", pady=4)
 
-        ttk.Label(f_sys, text="Start:", width=8).pack(side="left")
+        ttk.Label(f_sys, text=f"{ui.LABEL_START}:", width=8).pack(side="left")
         self.e_start = ttk.Entry(f_sys, textvariable=self.var_start, width=25)
         self.e_start.pack(side="left", padx=(0, 10))
 
-        ttk.Label(f_sys, text="Cel:", width=8).pack(side="left")
+        ttk.Label(f_sys, text=f"{ui.LABEL_TARGET}:", width=8).pack(side="left")
         self.e_cel = ttk.Entry(f_sys, textvariable=self.var_cel, width=25)
         self.e_cel.pack(side="left")
 
@@ -55,36 +56,36 @@ class RichesTab(ttk.Frame):
         f_rng = ttk.Frame(fr)
         f_rng.pack(fill="x", pady=4)
 
-        ttk.Label(f_rng, text="Range:", width=10).pack(side="left")
+        ttk.Label(f_rng, text=ui.LABEL_JUMP_RANGE, width=16).pack(side="left")
         ttk.Entry(f_rng, textvariable=self.var_range, width=7).pack(side="left", padx=(0, 12))
 
         # Radius + Max Sys
         f_rm = ttk.Frame(fr)
         f_rm.pack(fill="x", pady=4)
 
-        ttk.Label(f_rm, text="Radius:", width=10).pack(side="left")
+        ttk.Label(f_rm, text=ui.LABEL_RADIUS, width=16).pack(side="left")
         ttk.Entry(f_rm, textvariable=self.var_radius, width=7).pack(side="left", padx=(0, 12))
 
-        ttk.Label(f_rm, text="Max Sys:", width=10).pack(side="left")
+        ttk.Label(f_rm, text=ui.LABEL_MAX_SYSTEMS, width=18).pack(side="left")
         ttk.Entry(f_rm, textvariable=self.var_max_sys, width=7).pack(side="left")
 
         # Max Dist + Min Scan
         f_dm = ttk.Frame(fr)
         f_dm.pack(fill="x", pady=4)
 
-        ttk.Label(f_dm, text="Max Dist (ls):", width=12).pack(side="left")
+        ttk.Label(f_dm, text=ui.LABEL_MAX_DISTANCE, width=18).pack(side="left")
         ttk.Entry(f_dm, textvariable=self.var_max_dist, width=7).pack(side="left", padx=(0, 12))
 
-        ttk.Label(f_dm, text="Minimum Scan Value (CR):", width=20).pack(side="left")
+        ttk.Label(f_dm, text=ui.LABEL_MIN_SCAN_VALUE, width=22).pack(side="left")
         ttk.Entry(f_dm, textvariable=self.var_min_scan, width=7).pack(side="left")
 
         # Checkboxy
         f_chk = ttk.Frame(fr)
         f_chk.pack(fill="x", pady=4)
 
-        ttk.Checkbutton(f_chk, text="Loop", variable=self.var_loop).pack(side="left")
-        ttk.Checkbutton(f_chk, text="Use Map", variable=self.var_use_map).pack(side="left", padx=10)
-        ttk.Checkbutton(f_chk, text="Avoid Thargoids", variable=self.var_avoid_tharg).pack(
+        ttk.Checkbutton(f_chk, text=ui.LABEL_LOOP, variable=self.var_loop).pack(side="left")
+        ttk.Checkbutton(f_chk, text=ui.LABEL_USE_MAP, variable=self.var_use_map).pack(side="left", padx=10)
+        ttk.Checkbutton(f_chk, text=ui.LABEL_AVOID_THARGOIDS, variable=self.var_avoid_tharg).pack(
             side="left", padx=10
         )
 
@@ -92,11 +93,11 @@ class RichesTab(ttk.Frame):
         f_btn = ttk.Frame(fr)
         f_btn.pack(pady=6)
 
-        ttk.Button(f_btn, text="Wyznacz Riches", command=self.run_rtr).pack(side="left", padx=4)
-        ttk.Button(f_btn, text="Wyczyść", command=self.clear_rtr).pack(side="left", padx=4)
+        ttk.Button(f_btn, text=ui.BUTTON_CALCULATE, command=self.run_rtr).pack(side="left", padx=4)
+        ttk.Button(f_btn, text=ui.BUTTON_CLEAR, command=self.clear_rtr).pack(side="left", padx=4)
 
         # Lista
-        self.lst_rtr = common.stworz_liste_trasy(self, title="Riches Route")
+        self.lst_rtr = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_RICHES)
 
     # ------------------------------------------------------------------ public
 

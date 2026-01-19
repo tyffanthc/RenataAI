@@ -4,6 +4,7 @@ import threading
 import config
 from logic import utils, ammonia
 from gui import common
+from gui import strings as ui
 from gui.common_autocomplete import AutocompleteController
 from app.route_manager import route_manager
 from app.state import app_state
@@ -35,11 +36,11 @@ class AmmoniaTab(ttk.Frame):
         f_sys = ttk.Frame(fr)
         f_sys.pack(fill="x", pady=4)
 
-        ttk.Label(f_sys, text="Start:", width=8).pack(side="left")
+        ttk.Label(f_sys, text=f"{ui.LABEL_START}:", width=8).pack(side="left")
         self.e_start = ttk.Entry(f_sys, textvariable=self.var_start, width=25)
         self.e_start.pack(side="left", padx=(0, 10))
 
-        ttk.Label(f_sys, text="Cel:", width=8).pack(side="left")
+        ttk.Label(f_sys, text=f"{ui.LABEL_TARGET}:", width=8).pack(side="left")
         self.e_cel = ttk.Entry(f_sys, textvariable=self.var_cel, width=25)
         self.e_cel.pack(side="left")
 
@@ -51,19 +52,19 @@ class AmmoniaTab(ttk.Frame):
         f_rng = ttk.Frame(fr)
         f_rng.pack(fill="x", pady=4)
 
-        ttk.Label(f_rng, text="Range:", width=10).pack(side="left")
+        ttk.Label(f_rng, text=ui.LABEL_JUMP_RANGE, width=16).pack(side="left")
         ttk.Entry(f_rng, textvariable=self.var_range, width=7).pack(side="left", padx=(0, 12))
 
         # Radius + Max Sys
         f_rm = ttk.Frame(fr)
         f_rm.pack(fill="x", padx=5, pady=2)
 
-        ttk.Label(f_rm, text="Radius (LY):", width=10).pack(side="left")
+        ttk.Label(f_rm, text=ui.LABEL_RADIUS, width=16).pack(side="left")
         self.e_radius = ttk.Entry(f_rm, width=5)
         self.e_radius.insert(0, "50")
         self.e_radius.pack(side="left", padx=(0, 12))
 
-        ttk.Label(f_rm, text="Max Sys:", width=8).pack(side="left")
+        ttk.Label(f_rm, text=ui.LABEL_MAX_SYSTEMS, width=18).pack(side="left")
         self.e_maxsys = ttk.Entry(f_rm, width=5)
         self.e_maxsys.insert(0, "25")
         self.e_maxsys.pack(side="left")
@@ -72,23 +73,23 @@ class AmmoniaTab(ttk.Frame):
         f_md = ttk.Frame(fr)
         f_md.pack(fill="x", padx=5, pady=2)
 
-        ttk.Label(f_md, text="Max DTA (ls):", width=10).pack(side="left")
+        ttk.Label(f_md, text=ui.LABEL_MAX_DISTANCE, width=18).pack(side="left")
         ttk.Entry(f_md, textvariable=self.var_max_dist, width=7).pack(side="left", padx=(0, 12))
         f_chk = ttk.Frame(fr)
         f_chk.pack(fill="x", padx=5, pady=2)
 
-        ttk.Checkbutton(f_chk, text="Loop", variable=self.var_loop).pack(side="left", padx=5)
-        ttk.Checkbutton(f_chk, text="Avoid Thargoids", variable=self.var_avoid_tharg).pack(
+        ttk.Checkbutton(f_chk, text=ui.LABEL_LOOP, variable=self.var_loop).pack(side="left", padx=5)
+        ttk.Checkbutton(f_chk, text=ui.LABEL_AVOID_THARGOIDS, variable=self.var_avoid_tharg).pack(
             side="left", padx=5
         )
 
         bf = ttk.Frame(fr)
         bf.pack(pady=6)
 
-        ttk.Button(bf, text="Wyznacz Ammonia", command=self.run_amm).pack(side="left", padx=5)
-        ttk.Button(bf, text="Wyczyść", command=self.clear_amm).pack(side="left", padx=5)
+        ttk.Button(bf, text=ui.BUTTON_CALCULATE, command=self.run_amm).pack(side="left", padx=5)
+        ttk.Button(bf, text=ui.BUTTON_CLEAR, command=self.clear_amm).pack(side="left", padx=5)
 
-        self.lst_amm = common.stworz_liste_trasy(self, title="Ammonia Route")
+        self.lst_amm = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_AMMONIA)
 
     # ------------------------------------------------------------------ public
 
