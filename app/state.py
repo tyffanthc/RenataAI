@@ -8,6 +8,7 @@ from logic.science_data import load_science_data
 from logic.system_value_engine import SystemValueEngine
 from logic.exit_summary import ExitSummaryGenerator  
 from logic.ship_state import ShipState
+from logic.utils.renata_log import log_event_throttled
 
 
 class AppState:
@@ -69,7 +70,7 @@ class AppState:
             self.current_system = system_name
             config.STATE["sys"] = system_name
         utils.MSG_QUEUE.put(("start_label", system_name))
-        utils.MSG_QUEUE.put(("log", f"[STATE] System = {system_name}"))
+        log_event_throttled("state.system", 500, "STATE", f"System = {system_name}")
 
     def set_station(self, station_name):
         if not station_name:
@@ -77,7 +78,7 @@ class AppState:
         with self.lock:
             self.current_station = station_name
             config.STATE["station"] = station_name
-        utils.MSG_QUEUE.put(("log", f"[STATE] Station = {station_name}"))
+        log_event_throttled("state.station", 500, "STATE", f"Station = {station_name}")
 
     def set_docked(self, is_docked: bool):
         """
@@ -86,7 +87,7 @@ class AppState:
         with self.lock:
             self.is_docked = bool(is_docked)
             config.STATE["is_docked"] = self.is_docked
-        utils.MSG_QUEUE.put(("log", f"[STATE] Docked = {self.is_docked}"))
+        log_event_throttled("state.docked", 500, "STATE", f"Docked = {self.is_docked}")
 
     def set_inventory(self, inv_dict):
         with self.lock:

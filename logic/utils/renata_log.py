@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import Any
+import threading
+import time
 
 import config
 
@@ -11,6 +13,14 @@ MAX_FIELD_LEN = 400
 MAX_COLLECTION_ITEMS = 12
 MAX_OBJECT_FIELDS = 10
 MAX_DEPTH = 3
+
+_THROTTLE_LOCK = threading.Lock()
+_THROTTLE_LAST: dict[str, float] = {}
+
+
+def _now() -> float:
+    return time.monotonic()
+
 
 def _debug_logging_enabled() -> bool:
     return bool(config.get("debug_logging", False))
@@ -109,3 +119,25 @@ def log_event(category: str, msg: str, **fields: Any) -> None:
         if _debug_logging_enabled():
             print("logging failed")
 
+
+def log_event_throttled(
+    key: str,
+    interval_ms: int,
+    category: str,
+    msg: str,
+    **fields: Any,
+) -> bool:
+    try:
+        interval_sec = max(0.0, float(interval_ms) / 1000.0)
+        now = _now()
+        with _THROTTLE_LOCK:
+            last = _THROTTLE_LAST.get(key)
+            if last is not None and (now - last) < interval_sec:
+                return False
+            _THROTTLE_LAST[key] = now
+        log_event(category, msg, **fields)
+        return True
+    except Exception:
+        if _debug_logging_enabled():
+            print("logging failed")
+        return False

@@ -28,9 +28,13 @@ class RenataLogTests(unittest.TestCase):
         self._orig_queue = utils.MSG_QUEUE
         self._dummy_queue = DummyQueue()
         utils.MSG_QUEUE = self._dummy_queue
+        self._orig_now = renata_log._now
+        renata_log._THROTTLE_LAST.clear()
 
     def tearDown(self) -> None:
         utils.MSG_QUEUE = self._orig_queue
+        renata_log._now = self._orig_now
+        renata_log._THROTTLE_LAST.clear()
 
     def test_log_event_accepts_unserializable_object(self) -> None:
         obj = BadRepr()
@@ -51,6 +55,18 @@ class RenataLogTests(unittest.TestCase):
         line = self._dummy_queue.items[-1][1]
         self.assertIn("data=", line)
         self.assertIn("a:", line)
+
+    def test_throttle_suppresses_duplicates_within_interval(self) -> None:
+        times = iter([1.0, 1.1, 2.0])
+        renata_log._now = lambda: next(times)
+        first = renata_log.log_event_throttled("key", 500, "TEST", "msg")
+        second = renata_log.log_event_throttled("key", 500, "TEST", "msg")
+        third = renata_log.log_event_throttled("key", 500, "TEST", "msg")
+
+        self.assertTrue(first)
+        self.assertFalse(second)
+        self.assertTrue(third)
+        self.assertEqual(len(self._dummy_queue.items), 2)
 
 if __name__ == "__main__":
     unittest.main()

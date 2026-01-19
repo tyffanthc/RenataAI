@@ -2,8 +2,9 @@ import os
 import time
 import json
 
-from logic.utils import MSG_QUEUE, powiedz
+from logic.utils import powiedz
 from logic.events.files import status_path, market_path, cargo_path
+from logic.utils.renata_log import log_event_throttled
 
 
 class BaseWatcher:
@@ -33,7 +34,12 @@ class BaseWatcher:
     def _log_once(self, msg):
         if msg != self._last_error:
             self._last_error = msg
-            MSG_QUEUE.put(("log", f"[WATCHER-{self._label}] {msg}"))
+            log_event_throttled(
+                f"watcher.{self._label}",
+                2000,
+                f"WATCHER-{self._label}",
+                msg,
+            )
 
     def _load_json_safely(self):
         """
