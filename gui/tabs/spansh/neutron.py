@@ -4,6 +4,7 @@ import threading
 from itertools import zip_longest
 import config
 from logic import neutron
+from logic import neutron_via
 from logic.rows_normalizer import normalize_neutron_rows
 from logic import utils
 from gui import common
@@ -26,6 +27,8 @@ class NeutronTab(ttk.Frame):
         self.var_via = tk.StringVar()
         self._via_items = []
         self._via_compact = bool(config.get("features.ui.neutron_via_compact", True))
+        self._via_autocomplete = bool(config.get("features.ui.neutron_via_autocomplete", True))
+        self._via_online_lookup = bool(config.get("features.providers.system_lookup_online", False))
 
         self._build_ui()
         self._range_user_overridden = False
@@ -81,6 +84,13 @@ class NeutronTab(ttk.Frame):
         self.e_via.pack(side="left", padx=(0, 6))
         self.e_via.bind("<Return>", self._add_via_event)
         self.e_via.bind("<KP_Enter>", self._add_via_event)
+        if self._via_autocomplete:
+            self.ac_via = AutocompleteController(
+                self.root,
+                self.e_via,
+                min_chars=2,
+                suggest_func=self._suggest_via_system,
+            )
         ttk.Button(f_sc, text="Add", command=self._add_via).pack(side="left")
 
         f_via = ttk.Frame(fr)
@@ -131,6 +141,8 @@ class NeutronTab(ttk.Frame):
     def hide_suggestions(self):
         self.ac_start.hide()
         self.ac_cel.hide()
+        if hasattr(self, "ac_via"):
+            self.ac_via.hide()
 
     def clear(self):
         self._clear_results()
@@ -316,16 +328,33 @@ class NeutronTab(ttk.Frame):
 
     def _add_via(self) -> None:
         value = (self.var_via.get() or "").strip()
-        if not value:
+        ok, reason, warn_short = neutron_via.validate_via(
+            value=value,
+            existing=self._get_via_items(),
+            start=self.var_start.get(),
+            end=self.var_cel.get(),
+        )
+        if not ok:
+            if reason == "empty":
+                self._emit_via_warning("Via: puste pole.")
+            elif reason == "start_or_end":
+                self._emit_via_warning("Via: system taki sam jak Start lub Cel.")
+            elif reason == "duplicate":
+                self._emit_via_warning("Via: duplikat.")
             return
         if self._via_compact:
             self._via_items.append(value)
             self._render_via_chips()
         else:
             self.lst_via.insert(tk.END, value)
+        if warn_short:
+            self._emit_via_warning("Via: to wygląda jak literówka.")
         self.var_via.set("")
+        self.e_via.focus_set()
 
     def _add_via_event(self, _event) -> None:
+        if hasattr(self, "ac_via") and self.ac_via.sug_list.winfo_ismapped():
+            return
         self._add_via()
 
     def _remove_via(self) -> None:
@@ -351,6 +380,59 @@ class NeutronTab(ttk.Frame):
         if value.startswith("over"):
             return "overcharge"
         return "normal"
+
+    def _emit_via_warning(self, text: str) -> None:
+        common.emit_status(
+            "WARN",
+            "VIA_INPUT",
+            text=text,
+            source="spansh.neutron",
+            ui_target="neu",
+        )
+
+    def _local_system_candidates(self) -> list[str]:
+        candidates = []
+        current = (getattr(app_state, "current_system", "") or "").strip()
+        if current:
+            candidates.append(current)
+        for item in config.STATE.get("trasa", []) or []:
+            if item:
+                candidates.append(str(item).strip())
+        for item in self._get_via_items():
+            if item:
+                candidates.append(str(item).strip())
+        unique = []
+        seen = set()
+        for item in candidates:
+            key = neutron_via.normalize_system_name(item)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            unique.append(item)
+        return unique
+
+    def _suggest_via_system(self, query: str) -> list[str]:
+        if not self._via_autocomplete:
+            return []
+        q = (query or "").strip()
+        if not q:
+            return []
+
+        local = self._filter_systems(self._local_system_candidates(), q)
+        if local:
+            return local
+        if not self._via_online_lookup:
+            return []
+        try:
+            return utils.pobierz_sugestie(q)
+        except Exception:
+            return []
+
+    def _filter_systems(self, systems: list[str], query: str) -> list[str]:
+        q = query.strip().lower()
+        if not q:
+            return systems
+        return [item for item in systems if q in (item or "").lower()]
 
     def _get_via_items(self) -> list[str]:
         if self._via_compact:

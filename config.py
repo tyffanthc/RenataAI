@@ -147,6 +147,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "features.tables.ui_badges_enabled": True,
     "tables_visible_columns": {},
     "features.ui.neutron_via_compact": True,
+    "features.ui.neutron_via_autocomplete": True,
+    "features.providers.system_lookup_online": False,
     "features.trade.station_autocomplete_by_system": True,
     "features.trade.station_lookup_online": False,
 
