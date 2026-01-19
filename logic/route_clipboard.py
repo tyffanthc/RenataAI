@@ -4,6 +4,8 @@ from typing import Any, Iterable
 import hashlib
 import json
 
+from logic.utils.renata_log import log_event
+
 try:
     import pyperclip
 except Exception:
@@ -158,17 +160,20 @@ def format_route_for_clipboard(route: Any) -> str:
     return "\n".join(lines)
 
 
-def try_copy_to_clipboard(text: str) -> dict[str, Any]:
+def try_copy_to_clipboard(text: str, *, context: str | None = None) -> dict[str, Any]:
     if text is None or str(text) == "":
+        log_event("CLIPBOARD", "copy_skip", reason="empty_text", context=context)
         return {"ok": False, "error": "empty text"}
 
     data = str(text)
+    preview = data.splitlines()[0][:60] if data else ""
 
     errors: list[str] = []
 
     if pyperclip is not None:
         try:
             pyperclip.copy(data)
+            log_event("CLIPBOARD", "copy", ok=True, context=context, preview=preview)
             return {"ok": True}
         except Exception as exc:
             errors.append(f"pyperclip: {exc}")
@@ -183,12 +188,22 @@ def try_copy_to_clipboard(text: str) -> dict[str, Any]:
         root.update_idletasks()
         root.update()
         root.destroy()
+        log_event("CLIPBOARD", "copy", ok=True, context=context, preview=preview)
         return {"ok": True}
     except Exception as exc:
         errors.append(f"tkinter: {exc}")
 
     if errors:
+        log_event(
+            "CLIPBOARD",
+            "copy",
+            ok=False,
+            context=context,
+            preview=preview,
+            error="; ".join(errors),
+        )
         return {"ok": False, "error": "; ".join(errors)}
+    log_event("CLIPBOARD", "copy", ok=False, context=context, preview=preview)
     return {"ok": False, "error": "clipboard unavailable"}
 
 

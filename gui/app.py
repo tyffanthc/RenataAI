@@ -16,6 +16,7 @@ from app.route_manager import route_manager
 import threading
 from logic.science_data import load_science_data
 from logic.modules_data import load_modules_data
+from logic.utils.renata_log import log_event
 
 
 class RenataApp:
@@ -200,6 +201,7 @@ class RenataApp:
 
         # --- OVERLAY / QUICK-VIEW ---
         self._init_overlay()
+        self._init_debug_panel()
 
         # =========================
         # DANE NAUKOWE (S2-LOGIC-01)
@@ -573,6 +575,61 @@ class RenataApp:
 
         self._overlay_hide()
 
+    def _init_debug_panel(self):
+        self._debug_panel_visible = False
+        self.debug_frame = tk.Frame(
+            self.root,
+            bg=self._overlay_bg,
+            bd=1,
+            relief="solid",
+        )
+        self.debug_label = tk.Label(
+            self.debug_frame,
+            text="",
+            bg=self._overlay_bg,
+            fg=self._overlay_sec,
+            font=("Consolas", 9),
+            justify="left",
+        )
+        self.debug_label.pack(anchor="w", padx=8, pady=6)
+        self._update_debug_panel()
+
+    def _update_debug_panel(self):
+        enabled = bool(config.get("features.debug.panel", False))
+        if not enabled:
+            if self._debug_panel_visible:
+                self.debug_frame.place_forget()
+                self._debug_panel_visible = False
+            self.root.after(500, self._update_debug_panel)
+            return
+
+        if not self._debug_panel_visible:
+            self.debug_frame.place(relx=0.0, rely=1.0, x=12, y=-12, anchor="sw")
+            self._debug_panel_visible = True
+
+        try:
+            system = getattr(app_state, "current_system", None)
+            docked = getattr(app_state, "is_docked", False)
+        except Exception:
+            system = None
+            docked = False
+
+        with route_manager.lock:
+            route_type = route_manager.route_type
+            route_len = len(route_manager.route)
+            route_index = route_manager.current_index
+
+        clip_mode = str(config.get("auto_clipboard_mode", "FULL_ROUTE")).strip().upper()
+        text = (
+            f"System: {system or '-'}\n"
+            f"Docked: {docked}\n"
+            f"Route: {route_type or '-'} ({route_len})\n"
+            f"Route idx: {route_index}\n"
+            f"Clipboard: {clip_mode}"
+        )
+        self.debug_label.config(text=text)
+        self.root.after(500, self._update_debug_panel)
+
     def _overlay_set_status(self, event):
         if not event:
             return
@@ -675,15 +732,17 @@ class RenataApp:
         self._overlay_visible = False
 
     def _overlay_copy(self):
+        log_event("OVERLAY", "copy_click")
         text = common.get_last_route_text()
         if not text:
+            log_event("OVERLAY", "copy_skip", reason="no_text")
             common.emit_status(
                 "WARN",
                 "CLIPBOARD_FAIL",
                 source="overlay",
             )
             return
-        result = common.try_copy_to_clipboard(text)
+        result = common.try_copy_to_clipboard(text, context="overlay.full_route")
         if result.get("ok"):
             common.emit_status(
                 "OK",
@@ -705,7 +764,9 @@ class RenataApp:
 
     def _overlay_copy_next(self):
         if not config.get("features.clipboard.next_hop_stepper", True):
+            log_event("OVERLAY", "copy_next_skip", reason="feature_off")
             return
+        log_event("OVERLAY", "copy_next_click")
         common.copy_next_hop_manual(source="overlay")
         self._overlay_update_next()
 

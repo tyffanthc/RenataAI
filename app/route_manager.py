@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from typing import Callable, Iterable, Optional, Any
 
-from logic import utils
+from logic.utils.renata_log import log_event
 
 
 class RouteManager:
@@ -63,11 +63,11 @@ class RouteManager:
             self.route_type = route_type
             self.current_index = 0
 
-        utils.MSG_QUEUE.put(
-            (
-                "log",
-                f"[ROUTE] Ustawiono trasę typu '{route_type}' ({len(route_list)} systemów).",
-            )
+        log_event(
+            "PLANNER",
+            "route_set",
+            route_type=route_type,
+            route_len=len(route_list),
         )
 
     def clear_route(self) -> None:
@@ -77,7 +77,7 @@ class RouteManager:
             self.route_type = None
             self.current_index = 0
 
-        utils.MSG_QUEUE.put(("log", "[ROUTE] Wyczyszczono trasę."))
+        log_event("PLANNER", "route_cleared")
 
     def get_next_system(self, current_system: Optional[str]) -> Optional[str]:
         """Zwraca kolejny system na trasie, NIE zmieniając current_index.
@@ -132,12 +132,12 @@ class RouteManager:
 
             # clamp + sprawdzenie końca trasy
             if self.current_index >= len(self.route):
-                utils.MSG_QUEUE.put(("log", "[ROUTE] Koniec trasy."))
+                log_event("PLANNER", "route_end")
                 return None
 
             next_sys = self.route[self.current_index]
 
-        utils.MSG_QUEUE.put(("log", f"[ROUTE] Następny system: {next_sys}"))  # poza lockiem
+        log_event("PLANNER", "route_next_system", next_system=next_sys)
         return next_sys
 
     # ---------------------------------------------------------
@@ -187,17 +187,14 @@ class RouteManager:
                 with self.lock:
                     self._busy = False
                     self._current_mode = None
-                utils.MSG_QUEUE.put(
-                    ("log", f"[ROUTE] Zakończono obliczanie trasy '{mode}'.")
-                )
+                log_event("PLANNER", "route_job_done", mode=mode)
 
         with self.lock:
             self._busy = True
             self._current_mode = mode
 
         # Prosty log dla diagnostyki (nie zmienia UX zakładek)
-        utils.MSG_QUEUE.put(("log", f"[ROUTE] Start obliczania trasy '{mode}'."))
-
+        log_event("PLANNER", "route_job_start", mode=mode)
         t = threading.Thread(target=_runner, daemon=True)
         t.start()
 
@@ -211,12 +208,7 @@ class RouteManager:
         (standardowe ograniczenie Pythona), więc metoda jedynie loguje zamiast
         próbować ubijać wątek na siłę.
         """
-        utils.MSG_QUEUE.put(
-            (
-                "log",
-                "[ROUTE] cancel_route() wywołane, ale anulowanie joba nie jest wspierane.",
-            )
-        )
+        log_event("PLANNER", "route_cancel_ignored")
 
 
 # Globalny, współdzielony menedżer dla całej aplikacji

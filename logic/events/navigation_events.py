@@ -7,6 +7,7 @@ import pyperclip
 
 from logic.utils import powiedz
 from logic import utils
+from logic.utils.renata_log import log_event
 from app.state import app_state
 from app.route_manager import route_manager
 from logic.events.exploration_fss_events import reset_fss_progress
@@ -24,6 +25,7 @@ def handle_fsd_jump_autoschowek(ev: Dict[str, object], gui_ref=None):
         or ev.get("SystemName")
         or ev.get("StarSystemName")
     )
+    log_event("JOURNAL", "fsd_jump", system=current_system)
 
     # 2. Przesu+ä tras¦Ö w RouteManagerze
     route_manager.advance_route(current_system)
@@ -32,7 +34,15 @@ def handle_fsd_jump_autoschowek(ev: Dict[str, object], gui_ref=None):
     try:
         from gui import common as gui_common  # type: ignore
 
-        if config.get("features.clipboard.next_hop_stepper", True):
+        stepper_enabled = config.get("features.clipboard.next_hop_stepper", True)
+        log_event(
+            "CLIPBOARD",
+            "next_hop_trigger",
+            trigger="fsdjump",
+            enabled=stepper_enabled,
+            system=current_system,
+        )
+        if stepper_enabled:
             gui_common.update_next_hop_on_system(
                 str(current_system) if current_system is not None else None,
                 "fsdjump",
@@ -79,7 +89,15 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
             try:
                 from gui import common as gui_common  # type: ignore
 
-                if config.get("features.clipboard.next_hop_stepper", True):
+                stepper_enabled = config.get("features.clipboard.next_hop_stepper", True)
+                log_event(
+                    "CLIPBOARD",
+                    "next_hop_trigger",
+                    trigger="location",
+                    enabled=stepper_enabled,
+                    system=sysname,
+                )
+                if stepper_enabled:
                     gui_common.update_next_hop_on_system(
                         str(sysname) if sysname is not None else None,
                         "location",

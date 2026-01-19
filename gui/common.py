@@ -463,7 +463,7 @@ def _copy_next_hop_at_index(
     if not allow_duplicate and next_norm and last_norm and next_norm == last_norm:
         return False
 
-    result = try_copy_to_clipboard(next_system)
+    result = try_copy_to_clipboard(next_system, context=source or "next_hop")
     if result.get("ok"):
         _ACTIVE_ROUTE_LAST_COPIED_SYSTEM = next_system
         _ACTIVE_ROUTE_LAST_PROGRESS_AT = time.time()
@@ -707,7 +707,7 @@ def handle_route_ready_autoclipboard(
             )
             return
 
-        result = try_copy_to_clipboard(text)
+        result = try_copy_to_clipboard(text, context=f"full_route.{status_target}")
         if result.get("ok"):
             if sig:
                 setattr(owner, "_last_copied_route_sig", sig)
