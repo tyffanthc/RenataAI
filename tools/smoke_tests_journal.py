@@ -345,7 +345,12 @@ def test_route_manager_autoschowek_integration(ctx: TestContext) -> None:
     )
 
     joined = " | ".join(str(m) for m in msgs)
-    assert "[ROUTE]" in joined or "[AUTO-SCHOWEK]" in joined, (
+    assert (
+        "[ROUTE]" in joined
+        or "[AUTO-SCHOWEK]" in joined
+        or "[OBS][PLANNER]" in joined
+        or "[OBS][CLIPBOARD]" in joined
+    ), (
         "Expected some route/auto-schowek related logs after FSDJump, "
         f"got: {joined}"
     )

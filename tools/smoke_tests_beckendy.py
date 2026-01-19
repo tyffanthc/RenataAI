@@ -487,10 +487,14 @@ def test_neutron_payload_snapshot(_ctx: TestContext) -> None:
     dummy.neutron_route("Sol", "Colonia", 42.5, 60.0)
 
     assert dummy.last_payload is not None, "neutron payload should be captured"
-    assert dummy.last_payload.get("from") == "Sol", "neutron payload should map from"
-    assert dummy.last_payload.get("to") == "Colonia", "neutron payload should map to"
-    assert dummy.last_payload.get("range") == "42.5", "neutron range should be string"
-    assert dummy.last_payload.get("efficiency") == "60.0", "neutron efficiency should be string"
+    if hasattr(dummy.last_payload, "form_fields"):
+        fields = {key: value for key, value in dummy.last_payload.form_fields}
+    else:
+        fields = dummy.last_payload
+    assert fields.get("from") == "Sol", "neutron payload should map from"
+    assert fields.get("to") == "Colonia", "neutron payload should map to"
+    assert fields.get("range") == "42.5", "neutron range should be string"
+    assert fields.get("efficiency") == "60.0", "neutron efficiency should be string"
 
 
 def test_start_system_fallback_source(_ctx: TestContext) -> None:
