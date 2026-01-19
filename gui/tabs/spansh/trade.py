@@ -7,6 +7,7 @@ from logic import utils
 from logic.spansh_client import client as spansh_client
 from gui import common
 from gui import strings as ui
+from gui import ui_layout as layout
 from gui.common_autocomplete import AutocompleteController
 from app.route_manager import route_manager
 from app.state import app_state
@@ -72,13 +73,24 @@ class TradeTab(ttk.Frame):
         fr = ttk.Frame(self)
         fr.pack(fill="both", expand=True, padx=8, pady=8)
 
-        # --- System / stacja ---------------------------------------------------
-        f_src = ttk.Frame(fr)
-        f_src.pack(fill="x", pady=4)
+        f_form = ttk.Frame(fr)
+        f_form.pack(fill="x", pady=4)
+        layout.configure_form_grid(f_form)
 
-        ttk.Label(f_src, text=f"{ui.LABEL_SYSTEM}:", width=10).pack(side="left")
-        self.e_system = ttk.Entry(f_src, textvariable=self.var_start_system, width=30)
-        self.e_system.pack(side="left", padx=(0, 10))
+        self.e_system = layout.add_labeled_entry(
+            f_form,
+            0,
+            ui.LABEL_SYSTEM,
+            self.var_start_system,
+            entry_width=layout.ENTRY_W_LONG,
+        )
+        self.e_station = layout.add_labeled_entry(
+            f_form,
+            1,
+            ui.LABEL_STATION,
+            self.var_start_station,
+            entry_width=layout.ENTRY_W_LONG,
+        )
 
         # Autocomplete dla systemu
         self.ac_source = AutocompleteController(
@@ -87,14 +99,7 @@ class TradeTab(ttk.Frame):
             suggest_func=self._suggest_system,
         )
 
-        f_sta = ttk.Frame(fr)
-        f_sta.pack(fill="x", pady=4)
-
-        ttk.Label(f_sta, text=f"{ui.LABEL_STATION}:", width=10).pack(side="left")
-        self.e_station = ttk.Entry(f_sta, textvariable=self.var_start_station, width=30)
-        self.e_station.pack(side="left", padx=(0, 10))
-
-        # Autocomplete dla stacji (D3b â€“ na podstawie wybranego systemu)
+        # Autocomplete dla stacji (D3b ??" na podstawie wybranego systemu)
         self.ac_station = AutocompleteController(
             self.root,
             self.e_station,
@@ -107,44 +112,32 @@ class TradeTab(ttk.Frame):
         self.lbl_detected = ttk.Label(f_detect, text="")
         self.lbl_detected.pack(side="left", padx=(10, 0))
 
-        # --- KapitaĹ‚ / hop -----------------------------------------------------
-        f_cap = ttk.Frame(fr)
-        f_cap.pack(fill="x", pady=4)
-
-        ttk.Label(f_cap, text=ui.LABEL_CAPITAL, width=12).pack(side="left")
-        ttk.Entry(
-            f_cap,
-            textvariable=self.var_capital,
-            width=12,
-        ).pack(side="left", padx=(0, 12))
-
-        ttk.Label(f_cap, text=ui.LABEL_MAX_HOP, width=16).pack(side="left")
-        ttk.Entry(f_cap, textvariable=self.var_max_hop, width=8).pack(side="left")
-
-        # --- Cargo / max hops --------------------------------------------------
-        f_cargo = ttk.Frame(fr)
-        f_cargo.pack(fill="x", pady=4)
-
-        ttk.Label(f_cargo, text=ui.LABEL_CARGO, width=16).pack(side="left")
-        ttk.Entry(f_cargo, textvariable=self.var_cargo, width=8).pack(
-            side="left", padx=(0, 12)
+        layout.add_labeled_pair(
+            f_form,
+            2,
+            ui.LABEL_CAPITAL,
+            self.var_capital,
+            ui.LABEL_MAX_HOP,
+            self.var_max_hop,
+            left_entry_width=12,
         )
-
-        ttk.Label(f_cargo, text=ui.LABEL_MAX_HOPS, width=18).pack(side="left")
-        ttk.Entry(f_cargo, textvariable=self.var_max_hops, width=8).pack(side="left")
-
-        # --- Max DTA / Max age -------------------------------------------------
-        f_dta = ttk.Frame(fr)
-        f_dta.pack(fill="x", pady=4)
-
-        ttk.Label(f_dta, text=ui.LABEL_MAX_DISTANCE, width=18).pack(side="left")
-        ttk.Entry(f_dta, textvariable=self.var_max_dta, width=8).pack(
-            side="left", padx=(0, 12)
+        layout.add_labeled_pair(
+            f_form,
+            3,
+            ui.LABEL_CARGO,
+            self.var_cargo,
+            ui.LABEL_MAX_HOPS,
+            self.var_max_hops,
         )
-
-        ttk.Label(f_dta, text=ui.LABEL_MAX_AGE, width=22).pack(side="left")
-        self.e_max_age = ttk.Entry(f_dta, textvariable=self.var_max_age, width=8)
-        self.e_max_age.pack(side="left")
+        _, max_age_entry = layout.add_labeled_pair(
+            f_form,
+            4,
+            ui.LABEL_MAX_DISTANCE,
+            self.var_max_dta,
+            ui.LABEL_MAX_AGE,
+            self.var_max_age,
+        )
+        self.e_max_age = max_age_entry
 
         # --- Flagowe checkboxy -------------------------------------------------
         f_flags1 = ttk.Frame(fr)
