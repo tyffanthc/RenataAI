@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox
 import config
 from logic import utils
 from gui import common
+from gui import strings as ui
 from gui.tabs import pulpit, engineer
 from gui.tabs import spansh
 from gui.menu_bar import RenataMenuBar
@@ -134,15 +135,15 @@ class RenataApp:
             app_state=app_state,
             route_manager=route_manager,
         )
-        self.main_nb.add(self.tab_pulpit, text="Pulpit")
+        self.main_nb.add(self.tab_pulpit, text=ui.TAB_MAIN_PULPIT)
 
         # --- SPANSH ---
         self.tab_spansh = spansh.SpanshTab(self.main_nb, self.root)
-        self.main_nb.add(self.tab_spansh, text="Spansh")
+        self.main_nb.add(self.tab_spansh, text=ui.TAB_MAIN_SPANSH)
 
         # --- Inara (stub) ---
         self.tab_inara = ttk.Frame(self.main_nb)
-        self.main_nb.add(self.tab_inara, text="Inara")
+        self.main_nb.add(self.tab_inara, text=ui.TAB_MAIN_INARA)
         ttk.Label(
             self.tab_inara,
             text="Moduł Inara - Wkrótce",
@@ -151,7 +152,7 @@ class RenataApp:
 
         # --- EDTools (stub) ---
         self.tab_edtools = ttk.Frame(self.main_nb)
-        self.main_nb.add(self.tab_edtools, text="EDTools")
+        self.main_nb.add(self.tab_edtools, text=ui.TAB_MAIN_EDTOOLS)
         ttk.Label(
             self.tab_edtools,
             text="Moduł EDTools - Wkrótce",
@@ -160,13 +161,13 @@ class RenataApp:
 
         # --- Inżynier ---
         self.tab_engi = engineer.EngineerTab(self.main_nb, self)
-        self.main_nb.add(self.tab_engi, text="Inżynier")
+        self.main_nb.add(self.tab_engi, text=ui.TAB_MAIN_ENGINEER)
 
         # --- Dziennik ---
         from logic.logbook_manager import LogbookManager
         self.logbook_manager = LogbookManager()
         self.tab_journal = LogbookTab(self.main_nb, app=self, manager=self.logbook_manager)
-        self.main_nb.add(self.tab_journal, text="Dziennik")
+        self.main_nb.add(self.tab_journal, text=ui.TAB_MAIN_JOURNAL)
 
         # Mapa kluczy -> zakładek (do obsługi menu "Nawigacja")
         self._tab_map = {
@@ -190,12 +191,12 @@ class RenataApp:
             on_toggle_always_on_top=self.on_toggle_always_on_top,
             on_open_link=self.on_open_link,
             tab_labels={
-                "pulpit": "Pulpit",
-                "spansh": "Spansh",
-                "engineer": "Inżynier",
-                "inara": "Inara",
-                "edtools": "EDTools",
-                "journal": "Dziennik",
+                "pulpit": ui.TAB_MAIN_PULPIT,
+                "spansh": ui.TAB_MAIN_SPANSH,
+                "engineer": ui.TAB_MAIN_ENGINEER,
+                "inara": ui.TAB_MAIN_INARA,
+                "edtools": ui.TAB_MAIN_EDTOOLS,
+                "journal": ui.TAB_MAIN_JOURNAL,
             },
         )
         self.root.config(menu=self.menu_bar)

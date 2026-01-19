@@ -39,11 +39,11 @@ class ExomasteryTab(ttk.Frame):
         f_sys = ttk.Frame(fr)
         f_sys.pack(fill="x", pady=4)
 
-        ttk.Label(f_sys, text=f"{ui.LABEL_START}:", width=8).pack(side="left")
+        ttk.Label(f_sys, text=f"{ui.LABEL_START}:", width=10).pack(side="left")
         self.e_start = ttk.Entry(f_sys, textvariable=self.var_start, width=25)
         self.e_start.pack(side="left", padx=(0, 10))
 
-        ttk.Label(f_sys, text=f"{ui.LABEL_TARGET}:", width=8).pack(side="left")
+        ttk.Label(f_sys, text=f"{ui.LABEL_TARGET}:", width=10).pack(side="left")
         self.e_cel = ttk.Entry(f_sys, textvariable=self.var_cel, width=25)
         self.e_cel.pack(side="left")
 
@@ -87,7 +87,9 @@ class ExomasteryTab(ttk.Frame):
         ttk.Checkbutton(f_chk, text=ui.LABEL_AVOID_THARGOIDS, variable=self.var_avoid).pack(
             side="left", padx=10
         )
-        ttk.Checkbutton(f_chk, text=ui.LABEL_LOOP, variable=self.var_loop).pack(side="left", padx=10)
+        ttk.Checkbutton(f_chk, text=ui.LABEL_LOOP, variable=self.var_loop).pack(
+            side="left", padx=10
+        )
 
         bf = ttk.Frame(fr)
         bf.pack(pady=6)

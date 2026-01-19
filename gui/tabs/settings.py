@@ -157,12 +157,13 @@ class SettingsTab(ttk.Frame):
         self._tab_engineer = ttk.Frame(self.nb)
         self._tab_advanced = ttk.Frame(self.nb)
 
-        self.nb.add(self._tab_general, text="Ogólne")
-        self.nb.add(self._tab_assistants, text="Asystenci")
-        self.nb.add(self._tab_exploration, text="Eksploracja")
-        self.nb.add(self._tab_trade, text="Handel")
-        self.nb.add(self._tab_engineer, text="Inżynier")
-        self.nb.add(self._tab_advanced, text="Zaawansowane")
+        from gui import strings as ui
+        self.nb.add(self._tab_general, text=ui.TAB_SETTINGS_GENERAL)
+        self.nb.add(self._tab_assistants, text=ui.TAB_SETTINGS_ASSISTANTS)
+        self.nb.add(self._tab_exploration, text=ui.TAB_SETTINGS_EXPLORATION)
+        self.nb.add(self._tab_trade, text=ui.TAB_SETTINGS_TRADE)
+        self.nb.add(self._tab_engineer, text=ui.TAB_SETTINGS_ENGINEER)
+        self.nb.add(self._tab_advanced, text=ui.TAB_SETTINGS_ADVANCED)
 
         # Budowa zawartości zakładek
         self._build_tab_general()

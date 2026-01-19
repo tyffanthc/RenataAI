@@ -44,11 +44,11 @@ class NeutronTab(ttk.Frame):
         f_sys = ttk.Frame(fr)
         f_sys.pack(fill="x", pady=4)
 
-        ttk.Label(f_sys, text=f"{ui.LABEL_START}:", width=8).pack(side="left")
+        ttk.Label(f_sys, text=f"{ui.LABEL_START}:", width=10).pack(side="left")
         self.e_start = ttk.Entry(f_sys, textvariable=self.var_start, width=25)
         self.e_start.pack(side="left", padx=(0, 10))
 
-        ttk.Label(f_sys, text=f"{ui.LABEL_TARGET}:", width=8).pack(side="left")
+        ttk.Label(f_sys, text=f"{ui.LABEL_TARGET}:", width=10).pack(side="left")
         self.e_cel = ttk.Entry(f_sys, textvariable=self.var_cel, width=25)
         self.e_cel.pack(side="left")
 
