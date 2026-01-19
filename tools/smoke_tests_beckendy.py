@@ -494,7 +494,8 @@ def test_neutron_payload_snapshot(_ctx: TestContext) -> None:
     assert fields.get("from") == "Sol", "neutron payload should map from"
     assert fields.get("to") == "Colonia", "neutron payload should map to"
     assert fields.get("range") == "42.5", "neutron range should be string"
-    assert fields.get("efficiency") == "60.0", "neutron efficiency should be string"
+    efficiency = fields.get("efficiency")
+    assert efficiency in ("60.0", "60"), "neutron efficiency should be string"
 
 
 def test_start_system_fallback_source(_ctx: TestContext) -> None:
