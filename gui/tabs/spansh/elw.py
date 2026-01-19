@@ -6,6 +6,7 @@ from logic import utils
 from logic import elw_route
 from gui import common
 from gui import strings as ui
+from gui import ui_layout as layout
 from gui.common_autocomplete import AutocompleteController
 from app.route_manager import route_manager
 from app.state import app_state
@@ -35,44 +36,40 @@ class ELWTab(ttk.Frame):
         fr = ttk.Frame(self)
         fr.pack(fill="both", expand=True, padx=8, pady=8)
 
-        f_sys = ttk.Frame(fr)
-        f_sys.pack(fill="x", pady=4)
+        f_form = ttk.Frame(fr)
+        f_form.pack(fill="x", pady=4)
+        layout.configure_form_grid(f_form)
 
-        ttk.Label(f_sys, text=f"{ui.LABEL_START}:", width=10).pack(side="left")
-        self.e_start = ttk.Entry(f_sys, textvariable=self.var_start, width=25)
-        self.e_start.pack(side="left", padx=(0, 10))
-
-        ttk.Label(f_sys, text=f"{ui.LABEL_TARGET}:", width=10).pack(side="left")
-        self.e_cel = ttk.Entry(f_sys, textvariable=self.var_cel, width=25)
-        self.e_cel.pack(side="left")
+        self.e_start, self.e_cel = layout.add_labeled_pair(
+            f_form,
+            0,
+            ui.LABEL_START,
+            self.var_start,
+            ui.LABEL_TARGET,
+            self.var_cel,
+            left_entry_width=layout.ENTRY_W_LONG,
+            right_entry_width=layout.ENTRY_W_LONG,
+        )
 
         self.ac = AutocompleteController(self.root, self.e_start)
         self.ac_c = AutocompleteController(self.root, self.e_cel)
 
-        f_rng = ttk.Frame(fr)
-        f_rng.pack(fill="x", pady=4)
-
-        ttk.Label(f_rng, text=ui.LABEL_JUMP_RANGE, width=16).pack(side="left")
-        ttk.Entry(f_rng, textvariable=self.var_range, width=7).pack(side="left", padx=(0, 12))
-
-        f_rm = ttk.Frame(fr)
-        f_rm.pack(fill="x", padx=5, pady=2)
-
-        ttk.Label(f_rm, text=ui.LABEL_RADIUS, width=16).pack(side="left")
-        self.e_radius = ttk.Entry(f_rm, width=5)
-        self.e_radius.insert(0, "50")
-        self.e_radius.pack(side="left", padx=(0, 12))
-
-        ttk.Label(f_rm, text=ui.LABEL_MAX_SYSTEMS, width=18).pack(side="left")
-        self.e_maxsys = ttk.Entry(f_rm, width=5)
-        self.e_maxsys.insert(0, "25")
-        self.e_maxsys.pack(side="left")
-
-        f_dist = ttk.Frame(fr)
-        f_dist.pack(fill="x", padx=5, pady=5)
-
-        ttk.Label(f_dist, text=ui.LABEL_MAX_DISTANCE, width=18).pack(side="left")
-        ttk.Entry(f_dist, textvariable=self.var_max_dist, width=7).pack(side="left", padx=5)
+        layout.add_labeled_pair(
+            f_form,
+            1,
+            ui.LABEL_JUMP_RANGE,
+            self.var_range,
+            ui.LABEL_RADIUS,
+            self.var_radius,
+        )
+        layout.add_labeled_pair(
+            f_form,
+            2,
+            ui.LABEL_MAX_DISTANCE,
+            self.var_max_dist,
+            ui.LABEL_MAX_SYSTEMS,
+            self.var_max_sys,
+        )
 
         f_chk = ttk.Frame(fr)
         f_chk.pack(fill="x", padx=5, pady=2)
@@ -108,8 +105,8 @@ class ELWTab(ttk.Frame):
             start_sys = (getattr(app_state, "current_system", "") or "").strip() or "Nieznany"
         cel = self.e_cel.get().strip()
         rng = self._resolve_jump_range()
-        rad = self.e_radius.get()
-        mx = self.e_maxsys.get()
+        rad = self.var_radius.get()
+        mx = self.var_max_sys.get()
         max_dist = self.var_max_dist.get()
         loop = self.var_loop.get()
         avoid = self.var_avoid.get()

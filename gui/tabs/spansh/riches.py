@@ -5,6 +5,7 @@ import config
 from logic import utils, riches
 from gui import common
 from gui import strings as ui
+from gui import ui_layout as layout
 from gui.common_autocomplete import AutocompleteController
 from app.route_manager import route_manager
 from app.state import app_state
@@ -36,48 +37,51 @@ class RichesTab(ttk.Frame):
         fr = ttk.Frame(self)
         fr.pack(fill="both", expand=True, padx=8, pady=8)
 
-        # Start / Cel
-        f_sys = ttk.Frame(fr)
-        f_sys.pack(fill="x", pady=4)
+        f_form = ttk.Frame(fr)
+        f_form.pack(fill="x", pady=4)
+        layout.configure_form_grid(f_form)
 
-        ttk.Label(f_sys, text=f"{ui.LABEL_START}:", width=10).pack(side="left")
-        self.e_start = ttk.Entry(f_sys, textvariable=self.var_start, width=25)
-        self.e_start.pack(side="left", padx=(0, 10))
-
-        ttk.Label(f_sys, text=f"{ui.LABEL_TARGET}:", width=10).pack(side="left")
-        self.e_cel = ttk.Entry(f_sys, textvariable=self.var_cel, width=25)
-        self.e_cel.pack(side="left")
+        self.e_start, self.e_cel = layout.add_labeled_pair(
+            f_form,
+            0,
+            ui.LABEL_START,
+            self.var_start,
+            ui.LABEL_TARGET,
+            self.var_cel,
+            left_entry_width=layout.ENTRY_W_LONG,
+            right_entry_width=layout.ENTRY_W_LONG,
+        )
 
         # Autocomplete poprawione
         self.ac_start = AutocompleteController(self.root, self.e_start)
         self.ac_cel = AutocompleteController(self.root, self.e_cel)
 
-        # Range slider
-        f_rng = ttk.Frame(fr)
-        f_rng.pack(fill="x", pady=4)
+        layout.add_labeled_pair(
+            f_form,
+            1,
+            ui.LABEL_JUMP_RANGE,
+            self.var_range,
+            ui.LABEL_RADIUS,
+            self.var_radius,
+        )
+        layout.add_labeled_pair(
+            f_form,
+            2,
+            ui.LABEL_MAX_DISTANCE,
+            self.var_max_dist,
+            ui.LABEL_MAX_SYSTEMS,
+            self.var_max_sys,
+        )
 
-        ttk.Label(f_rng, text=ui.LABEL_JUMP_RANGE, width=16).pack(side="left")
-        ttk.Entry(f_rng, textvariable=self.var_range, width=7).pack(side="left", padx=(0, 12))
-
-        # Radius + Max Sys
-        f_rm = ttk.Frame(fr)
-        f_rm.pack(fill="x", pady=4)
-
-        ttk.Label(f_rm, text=ui.LABEL_RADIUS, width=16).pack(side="left")
-        ttk.Entry(f_rm, textvariable=self.var_radius, width=7).pack(side="left", padx=(0, 12))
-
-        ttk.Label(f_rm, text=ui.LABEL_MAX_SYSTEMS, width=18).pack(side="left")
-        ttk.Entry(f_rm, textvariable=self.var_max_sys, width=7).pack(side="left")
-
-        # Max Dist + Min Scan
-        f_dm = ttk.Frame(fr)
-        f_dm.pack(fill="x", pady=4)
-
-        ttk.Label(f_dm, text=ui.LABEL_MAX_DISTANCE, width=18).pack(side="left")
-        ttk.Entry(f_dm, textvariable=self.var_max_dist, width=7).pack(side="left", padx=(0, 12))
-
-        ttk.Label(f_dm, text=ui.LABEL_MIN_SCAN_VALUE, width=22).pack(side="left")
-        ttk.Entry(f_dm, textvariable=self.var_min_scan, width=7).pack(side="left")
+        f_extra = ttk.Frame(fr)
+        f_extra.pack(fill="x", pady=4)
+        layout.configure_form_grid(f_extra)
+        layout.add_labeled_entry(
+            f_extra,
+            0,
+            ui.LABEL_MIN_SCAN_VALUE,
+            self.var_min_scan,
+        )
 
         # Checkboxy
         f_chk = ttk.Frame(fr)
