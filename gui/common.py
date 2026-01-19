@@ -488,6 +488,8 @@ def _copy_next_hop_at_index(
 
 
 def copy_next_hop_manual(source: str | None = None) -> bool:
+    if not config.get("features.clipboard.next_hop_stepper", True):
+        return False
     if not config.get("auto_clipboard_next_hop_allow_manual_advance", True):
         return False
     if not _ACTIVE_ROUTE_SYSTEMS_RAW:
@@ -504,6 +506,8 @@ def update_next_hop_on_system(current_system: str | None, trigger: str, source: 
 
     mode = str(config.get("auto_clipboard_mode", "FULL_ROUTE")).strip().upper()
     if mode != "NEXT_HOP":
+        return
+    if not config.get("features.clipboard.next_hop_stepper", True):
         return
 
     trigger_mode = str(config.get("auto_clipboard_next_hop_trigger", "fsdjump")).strip().lower()

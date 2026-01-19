@@ -2,6 +2,7 @@
 
 from typing import Dict
 
+import config
 import pyperclip
 
 from logic.utils import powiedz
@@ -31,11 +32,12 @@ def handle_fsd_jump_autoschowek(ev: Dict[str, object], gui_ref=None):
     try:
         from gui import common as gui_common  # type: ignore
 
-        gui_common.update_next_hop_on_system(
-            str(current_system) if current_system is not None else None,
-            "fsdjump",
-            source="auto_clipboard",
-        )
+        if config.get("features.clipboard.next_hop_stepper", True):
+            gui_common.update_next_hop_on_system(
+                str(current_system) if current_system is not None else None,
+                "fsdjump",
+                source="auto_clipboard",
+            )
     except Exception:
         pass
 
@@ -77,11 +79,12 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
             try:
                 from gui import common as gui_common  # type: ignore
 
-                gui_common.update_next_hop_on_system(
-                    str(sysname) if sysname is not None else None,
-                    "location",
-                    source="auto_clipboard",
-                )
+                if config.get("features.clipboard.next_hop_stepper", True):
+                    gui_common.update_next_hop_on_system(
+                        str(sysname) if sysname is not None else None,
+                        "location",
+                        source="auto_clipboard",
+                    )
             except Exception:
                 pass
         if typ != "Location":

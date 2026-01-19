@@ -1,4 +1,4 @@
-# gui/tabs/settings.py
+﻿# gui/tabs/settings.py
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -84,6 +84,7 @@ class SettingsTab(ttk.Frame):
         self.var_auto_clipboard_next_hop_copy_on_route_ready = tk.BooleanVar(value=False)
         self.var_auto_clipboard_next_hop_resync_policy = tk.StringVar(value="nearest_forward")
         self.var_auto_clipboard_next_hop_allow_manual_advance = tk.BooleanVar(value=True)
+        self.var_features_clipboard_next_hop_stepper = tk.BooleanVar(value=True)
 
         self.var_fss_assistant = tk.BooleanVar(value=True)             # fss_assistant
         self.var_high_value_planet_alerts = tk.BooleanVar(value=True)  # high_value_planets
@@ -488,11 +489,17 @@ class SettingsTab(ttk.Frame):
             variable=self.var_auto_clipboard_next_hop_allow_manual_advance,
         ).grid(row=4, column=1, padx=8, pady=4, sticky="w")
 
+        ttk.Checkbutton(
+            lf_navigation,
+            text="Auto-schowek: NEXT_HOP kopiuje następny punkt po skoku",
+            variable=self.var_features_clipboard_next_hop_stepper,
+        ).grid(row=5, column=0, columnspan=2, padx=8, pady=4, sticky="w")
+
         ttk.Label(
             lf_navigation,
             text="Komunikaty o trasie i postępie lotu.",
             foreground="#888888",
-        ).grid(row=5, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="w")
+        ).grid(row=6, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="w")
 
         # Paliwo i bezpieczeństwo
         lf_fuel_safety = ttk.LabelFrame(parent, text=" Paliwo i bezpieczeństwo ")
@@ -1136,6 +1143,12 @@ class SettingsTab(ttk.Frame):
                 self.var_auto_clipboard_next_hop_allow_manual_advance.get(),
             )
         )
+        self.var_features_clipboard_next_hop_stepper.set(
+            cfg.get(
+                "features.clipboard.next_hop_stepper",
+                self.var_features_clipboard_next_hop_stepper.get(),
+            )
+        )
         self.var_route_progress_messages.set(
             cfg.get("route_progress_speech", self.var_route_progress_messages.get())
         )
@@ -1394,6 +1407,7 @@ class SettingsTab(ttk.Frame):
             "auto_clipboard_next_hop_copy_on_route_ready": self.var_auto_clipboard_next_hop_copy_on_route_ready.get(),
             "auto_clipboard_next_hop_resync_policy": resync_policy,
             "auto_clipboard_next_hop_allow_manual_advance": self.var_auto_clipboard_next_hop_allow_manual_advance.get(),
+            "features.clipboard.next_hop_stepper": self.var_features_clipboard_next_hop_stepper.get(),
             "route_progress_speech": self.var_route_progress_messages.get(),
             "fuel_warning": self.var_low_fuel_warning.get(),
             "fuel_warning_threshold_pct": int(
@@ -1570,6 +1584,7 @@ class SettingsTab(ttk.Frame):
         self.var_auto_clipboard_next_hop_copy_on_route_ready.set(False)
         self.var_auto_clipboard_next_hop_resync_policy.set("nearest_forward")
         self.var_auto_clipboard_next_hop_allow_manual_advance.set(True)
+        self.var_features_clipboard_next_hop_stepper.set(True)
 
         self.var_route_progress_messages.set(True)
         self.var_low_fuel_warning.set(True)
@@ -1630,3 +1645,5 @@ class SettingsTab(ttk.Frame):
 
         cfg = self._collect_config()
         self._save_config(cfg)
+
+

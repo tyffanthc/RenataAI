@@ -57,6 +57,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "auto_clipboard_next_hop_copy_on_route_ready": False,
     "auto_clipboard_next_hop_resync_policy": "nearest_forward",
     "auto_clipboard_next_hop_allow_manual_advance": True,
+    "features.clipboard.next_hop_stepper": True,
     "debug_next_hop": False,
 
     # SPANSH / SIEĆ

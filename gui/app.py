@@ -642,7 +642,9 @@ class RenataApp:
         has_text = bool(common.get_last_route_text())
         state = tk.NORMAL if has_text else tk.DISABLED
         self.overlay_btn_copy.config(state=state)
-        if config.get("auto_clipboard_next_hop_allow_manual_advance", True):
+        if not config.get("features.clipboard.next_hop_stepper", True):
+            self.overlay_btn_next.config(state=tk.DISABLED)
+        elif config.get("auto_clipboard_next_hop_allow_manual_advance", True):
             self.overlay_btn_next.config(state=tk.NORMAL if next_system else tk.DISABLED)
         else:
             self.overlay_btn_next.config(state=tk.DISABLED)
@@ -702,6 +704,8 @@ class RenataApp:
             pass
 
     def _overlay_copy_next(self):
+        if not config.get("features.clipboard.next_hop_stepper", True):
+            return
         common.copy_next_hop_manual(source="overlay")
         self._overlay_update_next()
 
