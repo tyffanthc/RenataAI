@@ -42,22 +42,30 @@ class SpanshTab(ttk.Frame):
         self.tab_trade = TradeTab(self.nb, root_window)
         self.nb.add(self.tab_trade, text=ui.TAB_SPANSH_TRADE)
 
-        self._add_optional_tab(
-            ui.TAB_SPANSH_TOURIST,
-            "features.ui.tabs.tourist_enabled",
-        )
-        self._add_optional_tab(
-            ui.TAB_SPANSH_FLEET,
-            "features.ui.tabs.fleet_carrier_enabled",
-        )
-        self._add_optional_tab(
-            ui.TAB_SPANSH_COLONISATION,
-            "features.ui.tabs.colonisation_enabled",
-        )
-        self._add_optional_tab(
-            ui.TAB_SPANSH_GALAXY,
-            "features.ui.tabs.galaxy_enabled",
-        )
+        tab_defs = [
+            {
+                "title": ui.TAB_SPANSH_TOURIST,
+                "flag_key": "features.ui.tabs.tourist_enabled",
+                "builder_real": None,
+            },
+            {
+                "title": ui.TAB_SPANSH_FLEET,
+                "flag_key": "features.ui.tabs.fleet_carrier_enabled",
+                "builder_real": None,
+            },
+            {
+                "title": ui.TAB_SPANSH_COLONISATION,
+                "flag_key": "features.ui.tabs.colonisation_enabled",
+                "builder_real": None,
+            },
+            {
+                "title": ui.TAB_SPANSH_GALAXY,
+                "flag_key": "features.ui.tabs.galaxy_enabled",
+                "builder_real": None,
+            },
+        ]
+        for tab_def in tab_defs:
+            self._add_optional_tab(tab_def)
 
     def _add_placeholder(self, title):
         fr = ttk.Frame(self.nb)
@@ -73,9 +81,15 @@ class SpanshTab(ttk.Frame):
         ttk.Label(fr, text=ui.PLACEHOLDER_ENABLED_LINE_2, font=("Arial", 11)).pack(pady=(4, 0))
         self.nb.add(fr, text=title)
 
-    def _add_optional_tab(self, title: str, flag_key: str) -> None:
+    def _add_optional_tab(self, tab_def: dict) -> None:
+        title = tab_def.get("title")
+        flag_key = tab_def.get("flag_key")
+        builder_real = tab_def.get("builder_real")
         if config.get(flag_key, False):
-            self._add_enabled_placeholder(title)
+            if builder_real is not None:
+                builder_real()
+            else:
+                self._add_enabled_placeholder(title)
         else:
             self._add_placeholder(title)
 
