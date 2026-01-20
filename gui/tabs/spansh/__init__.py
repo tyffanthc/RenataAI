@@ -41,14 +41,16 @@ class SpanshTab(ttk.Frame):
         self.tab_trade = TradeTab(self.nb, root_window)
         self.nb.add(self.tab_trade, text=ui.TAB_SPANSH_TRADE)
 
-        self._add_placeholder("Tourist (beta)")
-        self._add_placeholder("Fleet Carrier (beta)")
-        self._add_placeholder("Colonisation (beta)")
-        self._add_placeholder("Galaxy (later)")
+        self._add_placeholder(ui.TAB_SPANSH_TOURIST)
+        self._add_placeholder(ui.TAB_SPANSH_FLEET)
+        self._add_placeholder(ui.TAB_SPANSH_COLONISATION)
+        self._add_placeholder(ui.TAB_SPANSH_GALAXY)
 
     def _add_placeholder(self, title):
         fr = ttk.Frame(self.nb)
-        ttk.Label(fr, text="Ten tryb dodamy w kolejnym etapie.", font=("Arial", 12)).pack(pady=40)
+        ttk.Label(fr, text=ui.PLACEHOLDER_TITLE, font=("Arial", 14, "bold")).pack(pady=(40, 8))
+        ttk.Label(fr, text=ui.PLACEHOLDER_LINE_1, font=("Arial", 11)).pack()
+        ttk.Label(fr, text=ui.PLACEHOLDER_LINE_2, font=("Arial", 11)).pack(pady=(4, 0))
         self.nb.add(fr, text=title)
 
     def update_start_label(self, text):
