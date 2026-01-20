@@ -93,6 +93,7 @@ class SettingsTab(ttk.Frame):
         self.var_trade_jackpot_alerts = tk.BooleanVar(value=True)      # trade_jackpot_speech
         self.var_smuggler_alert = tk.BooleanVar(value=False)           # smuggler_alert
         self.var_mining_accountant = tk.BooleanVar(value=False)        # tylko frontend na razie
+        self.var_trade_market_age_slider = tk.BooleanVar(value=False)  # features.trade.market_age_slider
 
         # Progi Maklera (dict)
         self.jackpot_thresholds: Dict[str, int] = config.DEFAULT_JACKPOT_THRESHOLDS.copy()
@@ -722,6 +723,12 @@ class SettingsTab(ttk.Frame):
             foreground="#888888",
         ).grid(row=1, column=0, columnspan=3, padx=8, pady=(0, 6), sticky="w")
 
+        ttk.Checkbutton(
+            lf_trade,
+            text="Market Age: suwak + data/czas (beta)",
+            variable=self.var_trade_market_age_slider,
+        ).grid(row=2, column=0, padx=8, pady=4, sticky="w")
+
         self._add_save_bar(parent, row=1)
 
     def _edit_jackpot_thresholds(self) -> None:
@@ -1187,6 +1194,10 @@ class SettingsTab(ttk.Frame):
             cfg.get("smuggler_alert", self.var_smuggler_alert.get())
         )
 
+        self.var_trade_market_age_slider.set(
+            cfg.get("features.trade.market_age_slider", self.var_trade_market_age_slider.get())
+        )
+
         # pozostałe – czysto frontendowe / future
         self.var_mining_accountant.set(
             cfg.get("mining_accountant", self.var_mining_accountant.get())
@@ -1434,6 +1445,7 @@ class SettingsTab(ttk.Frame):
 
             "trade_jackpot_speech": self.var_trade_jackpot_alerts.get(),
             "smuggler_alert": self.var_smuggler_alert.get(),
+            "features.trade.market_age_slider": self.var_trade_market_age_slider.get(),
 
             # dodatkowe / frontend only (ale możemy też trzymać w JSON)
             "use_system_theme": self.var_use_system_theme.get(),
@@ -1608,6 +1620,7 @@ class SettingsTab(ttk.Frame):
 
         self.var_trade_jackpot_alerts.set(True)
         self.var_smuggler_alert.set(True)
+        self.var_trade_market_age_slider.set(False)
         self.var_mining_accountant.set(False)
         self.jackpot_thresholds = config.DEFAULT_JACKPOT_THRESHOLDS.copy()
 

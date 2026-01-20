@@ -1,6 +1,7 @@
 ﻿import tkinter as tk
 from tkinter import ttk
 import threading
+from datetime import datetime, timedelta
 import config
 from logic import trade
 from logic import utils
@@ -46,7 +47,9 @@ class TradeTab(ttk.Frame):
         self.var_cargo = tk.IntVar(value=256)
         self.var_max_hops = tk.IntVar(value=10)
         self.var_max_dta = tk.IntVar(value=5000)
-        self.var_max_age = tk.IntVar(value=2)
+        self.var_max_age = tk.DoubleVar(value=2.0)
+        self.var_market_age_cutoff = tk.StringVar()
+        self.var_market_age_hours = tk.DoubleVar(value=48.0)
 
         # Flagowe checkboxy
         self.var_large_pad = tk.BooleanVar(value=True)
@@ -57,6 +60,11 @@ class TradeTab(ttk.Frame):
         self.var_avoid_loops = tk.BooleanVar(value=True)
         self.var_allow_permits = tk.BooleanVar(value=True)
 
+        self._market_age_slider_enabled = bool(
+            config.get("features.trade.market_age_slider", False)
+        )
+        self._market_age_updating = False
+
         self._build_ui()
         self._hop_user_overridden = False
         self._hop_updating = False
@@ -65,6 +73,9 @@ class TradeTab(ttk.Frame):
         self._required_fields = [
             (ui.LABEL_STATION, self.var_start_station, self.e_station),
         ]
+
+        if self._market_age_slider_enabled:
+            self._apply_market_age_hours(float(self.var_max_age.get() or 0) * 24.0)
 
         # D3c â€“ pierwsze uzupeĹ‚nienie pĂłl z app_state
         self.refresh_from_app_state()
@@ -133,15 +144,54 @@ class TradeTab(ttk.Frame):
             ui.LABEL_MAX_HOPS,
             self.var_max_hops,
         )
-        _, max_age_entry = layout.add_labeled_pair(
-            f_form,
-            4,
-            ui.LABEL_MAX_DISTANCE,
-            self.var_max_dta,
-            ui.LABEL_MAX_AGE,
-            self.var_max_age,
-        )
-        self.e_max_age = max_age_entry
+        if self._market_age_slider_enabled:
+            _, max_age_entry = layout.add_labeled_pair(
+                f_form,
+                4,
+                ui.LABEL_MAX_DISTANCE,
+                self.var_max_dta,
+                ui.LABEL_MARKET_AGE_CUTOFF,
+                self.var_market_age_cutoff,
+                right_entry_width=18,
+            )
+            self.e_max_age = max_age_entry
+            self.e_max_age.bind("<FocusOut>", self._on_market_age_cutoff_commit)
+            self.e_max_age.bind("<Return>", self._on_market_age_cutoff_commit)
+
+            f_age = ttk.Frame(fr)
+            f_age.pack(fill="x", pady=(0, 4))
+            ttk.Label(f_age, text=f"{ui.LABEL_MARKET_AGE_SLIDER}:").pack(
+                side="left", padx=(10, 6)
+            )
+            self.scale_market_age = ttk.Scale(
+                f_age,
+                from_=self._market_age_min_hours(),
+                to=self._market_age_max_hours(),
+                variable=self.var_market_age_hours,
+                command=self._on_market_age_slider,
+            )
+            self.scale_market_age.pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+            f_presets = ttk.Frame(fr)
+            f_presets.pack(fill="x", pady=(0, 6))
+            ttk.Label(f_presets, text="Presety:").pack(side="left", padx=(10, 6))
+            for label, hours in self._market_age_presets():
+                ttk.Button(
+                    f_presets,
+                    text=label,
+                    command=lambda h=hours: self._apply_market_age_hours(h),
+                ).pack(side="left", padx=2)
+        else:
+            _, max_age_entry = layout.add_labeled_pair(
+                f_form,
+                4,
+                ui.LABEL_MAX_DISTANCE,
+                self.var_max_dta,
+                ui.LABEL_MAX_AGE,
+                self.var_max_age,
+            )
+            self.e_max_age = max_age_entry
+
 
         # --- Flagowe checkboxy -------------------------------------------------
         f_flags1 = ttk.Frame(fr)
@@ -203,6 +253,78 @@ class TradeTab(ttk.Frame):
         self.lbl_status.pack(pady=(4, 2))
 
         self.lst_trade = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_TRADE)
+
+
+    def _market_age_min_hours(self) -> float:
+        return 0.25
+
+    def _market_age_max_hours(self) -> float:
+        return 72.0
+
+    def _market_age_presets(self) -> list[tuple[str, float]]:
+        return [
+            ("15m", 0.25),
+            ("30m", 0.5),
+            ("1h", 1.0),
+            ("2h", 2.0),
+            ("6h", 6.0),
+            ("12h", 12.0),
+            ("24h", 24.0),
+            ("48h", 48.0),
+            ("72h", 72.0),
+        ]
+
+    def _clamp_market_age_hours(self, hours: float) -> float:
+        min_h = self._market_age_min_hours()
+        max_h = self._market_age_max_hours()
+        if hours < min_h:
+            return min_h
+        if hours > max_h:
+            return max_h
+        return hours
+
+    def _format_market_age_cutoff(self, value: datetime) -> str:
+        return value.strftime("%Y-%m-%d %H:%M")
+
+    def _parse_market_age_cutoff(self, raw: str) -> datetime | None:
+        try:
+            return datetime.strptime(raw, "%Y-%m-%d %H:%M")
+        except Exception:
+            return None
+
+    def _apply_market_age_hours(self, hours: float) -> None:
+        if self._market_age_updating:
+            return
+        try:
+            hours = float(hours)
+        except Exception:
+            return
+        self._market_age_updating = True
+        try:
+            hours = self._clamp_market_age_hours(hours)
+            self.var_market_age_hours.set(hours)
+            self.var_max_age.set(hours / 24.0)
+            cutoff = datetime.now() - timedelta(hours=hours)
+            self.var_market_age_cutoff.set(self._format_market_age_cutoff(cutoff))
+        finally:
+            self._market_age_updating = False
+
+    def _on_market_age_slider(self, value: str) -> None:
+        if self._market_age_updating:
+            return
+        self._apply_market_age_hours(value)
+
+    def _on_market_age_cutoff_commit(self, _event=None) -> None:
+        if self._market_age_updating:
+            return
+        raw = (self.var_market_age_cutoff.get() or "").strip()
+        if not raw:
+            return
+        parsed = self._parse_market_age_cutoff(raw)
+        if parsed is None:
+            return
+        hours = (datetime.now() - parsed).total_seconds() / 3600.0
+        self._apply_market_age_hours(hours)
 
     def refresh_from_app_state(self):
         """D3c: uzupeĹ‚nia pola System/Stacja na podstawie AppState.

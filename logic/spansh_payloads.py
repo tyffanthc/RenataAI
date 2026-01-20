@@ -296,7 +296,7 @@ def build_trade_payload(
     cargo: int,
     max_hops: int,
     max_dta: int,
-    max_age: int,
+    max_age: float,
     flags: dict[str, Any],
     app_state: Any | None = None,
 ) -> SpanshPayload:

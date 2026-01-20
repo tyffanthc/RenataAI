@@ -17,7 +17,7 @@ def _build_payload_trade(
     cargo: int,
     max_hops: int,
     max_dta: int,
-    max_age: int,
+    max_age: float,
     flags: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
@@ -75,7 +75,7 @@ def oblicz_trade(
     cargo: int,
     max_hops: int,
     max_dta: int,
-    max_age: int,
+    max_age: float,
     flags: Dict[str, Any],
     gui_ref: Any | None = None,
 ) -> tuple[list[str], list[dict]]:

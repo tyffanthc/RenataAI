@@ -22,6 +22,8 @@ LABEL_MAX_HOP = "Maks. skok [ly]"
 LABEL_CARGO = "Ladownosc [t]"
 LABEL_MAX_HOPS = "Maks. skokow [szt.]"
 LABEL_MAX_AGE = "Maks. wiek rynku [dni]"
+LABEL_MARKET_AGE_CUTOFF = "Starsze niz [YYYY-MM-DD HH:MM]"
+LABEL_MARKET_AGE_SLIDER = "Wiek rynku [h]"
 
 LABEL_LOOP = "Petla"
 LABEL_USE_MAP = "Uzyj mapy"

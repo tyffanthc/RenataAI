@@ -157,6 +157,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "features.providers.system_lookup_online": False,
     "features.trade.station_autocomplete_by_system": True,
     "features.trade.station_lookup_online": False,
+    "features.trade.market_age_slider": False,
 
     # DEBUG
     "debug_autocomplete": False,
