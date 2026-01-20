@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
+from gui import strings as ui
 
 @dataclass(frozen=True)
 class TableColumn:
@@ -32,11 +33,11 @@ SCHEMAS: dict[str, TableSchema] = {
         title="Neutron Route",
         columns=_cols(
             [
-                TableColumn("system_name", "System", width=28),
-                TableColumn("distance_ly", "Dist(LY)", fmt="ly", align="right", width=9),
-                TableColumn("remaining_ly", "Rem(LY)", fmt="ly", align="right", width=9),
-                TableColumn("neutron", "Neut", fmt="bool", align="center", width=4),
-                TableColumn("jumps", "Jmp", fmt="int", align="right", width=4),
+                TableColumn("system_name", ui.TABLE_HDR_SYSTEM, width=28),
+                TableColumn("distance_ly", ui.TABLE_HDR_DISTANCE_LY, fmt="ly", align="right", width=11),
+                TableColumn("remaining_ly", ui.TABLE_HDR_REMAINING_LY, fmt="ly", align="right", width=12),
+                TableColumn("neutron", ui.TABLE_HDR_NEUTRON, fmt="bool", align="center", width=7),
+                TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
     ),
@@ -45,15 +46,15 @@ SCHEMAS: dict[str, TableSchema] = {
         title="Riches Route",
         columns=_cols(
             [
-                TableColumn("done", "Done", fmt="bool", align="center", width=4),
-                TableColumn("system_name", "System Name", width=26),
-                TableColumn("body_name", "Name", width=24),
-                TableColumn("subtype", "Subtype", width=22),
-                TableColumn("terraformable", "Terra", fmt="bool", align="center", width=5),
-                TableColumn("distance_ls", "Distance (LS)", fmt="ls", align="right", width=12),
-                TableColumn("value_scan", "Scan Value", fmt="cr", align="right", width=12),
-                TableColumn("value_map", "Mapping Value", fmt="cr", align="right", width=13),
-                TableColumn("jumps", "Jumps", fmt="int", align="right", width=5),
+                TableColumn("done", ui.TABLE_HDR_DONE, fmt="bool", align="center", width=4),
+                TableColumn("system_name", ui.TABLE_HDR_SYSTEM_NAME, width=20),
+                TableColumn("body_name", ui.TABLE_HDR_BODY_NAME, width=20),
+                TableColumn("subtype", ui.TABLE_HDR_SUBTYPE, width=16),
+                TableColumn("terraformable", ui.TABLE_HDR_TERRA, fmt="bool", align="center", width=6),
+                TableColumn("distance_ls", ui.TABLE_HDR_DISTANCE_LS, fmt="ls", align="right", width=12),
+                TableColumn("value_scan", ui.TABLE_HDR_SCAN_VALUE, fmt="cr", align="right", width=14),
+                TableColumn("value_map", ui.TABLE_HDR_MAPPING_VALUE, fmt="cr", align="right", width=14),
+                TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
     ),
@@ -62,15 +63,15 @@ SCHEMAS: dict[str, TableSchema] = {
         title="Ammonia Route",
         columns=_cols(
             [
-                TableColumn("done", "Done", fmt="bool", align="center", width=4),
-                TableColumn("system_name", "System Name", width=26),
-                TableColumn("body_name", "Name", width=24),
-                TableColumn("subtype", "Subtype", width=22),
-                TableColumn("terraformable", "Terra", fmt="bool", align="center", width=5),
-                TableColumn("distance_ls", "Distance (LS)", fmt="ls", align="right", width=12),
-                TableColumn("value_scan", "Scan Value", fmt="cr", align="right", width=12),
-                TableColumn("value_map", "Mapping Value", fmt="cr", align="right", width=13),
-                TableColumn("jumps", "Jumps", fmt="int", align="right", width=5),
+                TableColumn("done", ui.TABLE_HDR_DONE, fmt="bool", align="center", width=4),
+                TableColumn("system_name", ui.TABLE_HDR_SYSTEM_NAME, width=20),
+                TableColumn("body_name", ui.TABLE_HDR_BODY_NAME, width=20),
+                TableColumn("subtype", ui.TABLE_HDR_SUBTYPE, width=16),
+                TableColumn("terraformable", ui.TABLE_HDR_TERRA, fmt="bool", align="center", width=6),
+                TableColumn("distance_ls", ui.TABLE_HDR_DISTANCE_LS, fmt="ls", align="right", width=12),
+                TableColumn("value_scan", ui.TABLE_HDR_SCAN_VALUE, fmt="cr", align="right", width=14),
+                TableColumn("value_map", ui.TABLE_HDR_MAPPING_VALUE, fmt="cr", align="right", width=14),
+                TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
     ),
@@ -79,15 +80,15 @@ SCHEMAS: dict[str, TableSchema] = {
         title="ELW Route",
         columns=_cols(
             [
-                TableColumn("done", "Done", fmt="bool", align="center", width=4),
-                TableColumn("system_name", "System Name", width=26),
-                TableColumn("body_name", "Name", width=24),
-                TableColumn("subtype", "Subtype", width=22),
-                TableColumn("terraformable", "Terra", fmt="bool", align="center", width=5),
-                TableColumn("distance_ls", "Distance (LS)", fmt="ls", align="right", width=12),
-                TableColumn("value_scan", "Scan Value", fmt="cr", align="right", width=12),
-                TableColumn("value_map", "Mapping Value", fmt="cr", align="right", width=13),
-                TableColumn("jumps", "Jumps", fmt="int", align="right", width=5),
+                TableColumn("done", ui.TABLE_HDR_DONE, fmt="bool", align="center", width=4),
+                TableColumn("system_name", ui.TABLE_HDR_SYSTEM_NAME, width=20),
+                TableColumn("body_name", ui.TABLE_HDR_BODY_NAME, width=20),
+                TableColumn("subtype", ui.TABLE_HDR_SUBTYPE, width=16),
+                TableColumn("terraformable", ui.TABLE_HDR_TERRA, fmt="bool", align="center", width=6),
+                TableColumn("distance_ls", ui.TABLE_HDR_DISTANCE_LS, fmt="ls", align="right", width=12),
+                TableColumn("value_scan", ui.TABLE_HDR_SCAN_VALUE, fmt="cr", align="right", width=14),
+                TableColumn("value_map", ui.TABLE_HDR_MAPPING_VALUE, fmt="cr", align="right", width=14),
+                TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
     ),
@@ -96,15 +97,15 @@ SCHEMAS: dict[str, TableSchema] = {
         title="HMC / Rocky Route",
         columns=_cols(
             [
-                TableColumn("done", "Done", fmt="bool", align="center", width=4),
-                TableColumn("system_name", "System Name", width=26),
-                TableColumn("body_name", "Name", width=24),
-                TableColumn("subtype", "Subtype", width=22),
-                TableColumn("terraformable", "Terra", fmt="bool", align="center", width=5),
-                TableColumn("distance_ls", "Distance (LS)", fmt="ls", align="right", width=12),
-                TableColumn("value_scan", "Scan Value", fmt="cr", align="right", width=12),
-                TableColumn("value_map", "Mapping Value", fmt="cr", align="right", width=13),
-                TableColumn("jumps", "Jumps", fmt="int", align="right", width=5),
+                TableColumn("done", ui.TABLE_HDR_DONE, fmt="bool", align="center", width=4),
+                TableColumn("system_name", ui.TABLE_HDR_SYSTEM_NAME, width=20),
+                TableColumn("body_name", ui.TABLE_HDR_BODY_NAME, width=20),
+                TableColumn("subtype", ui.TABLE_HDR_SUBTYPE, width=16),
+                TableColumn("terraformable", ui.TABLE_HDR_TERRA, fmt="bool", align="center", width=6),
+                TableColumn("distance_ls", ui.TABLE_HDR_DISTANCE_LS, fmt="ls", align="right", width=12),
+                TableColumn("value_scan", ui.TABLE_HDR_SCAN_VALUE, fmt="cr", align="right", width=14),
+                TableColumn("value_map", ui.TABLE_HDR_MAPPING_VALUE, fmt="cr", align="right", width=14),
+                TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
     ),
@@ -113,13 +114,13 @@ SCHEMAS: dict[str, TableSchema] = {
         title="Exomastery Route",
         columns=_cols(
             [
-                TableColumn("done", "Done", fmt="bool", align="center", width=4),
-                TableColumn("system_name", "System Name", width=26),
-                TableColumn("body_name", "Name", width=24),
-                TableColumn("subtype", "Subtype", width=22),
-                TableColumn("distance_ls", "Distance (LS)", fmt="ls", align="right", width=12),
-                TableColumn("value_scan", "Scan Value", fmt="cr", align="right", width=12),
-                TableColumn("jumps", "Jumps", fmt="int", align="right", width=5),
+                TableColumn("done", ui.TABLE_HDR_DONE, fmt="bool", align="center", width=4),
+                TableColumn("system_name", ui.TABLE_HDR_SYSTEM_NAME, width=20),
+                TableColumn("body_name", ui.TABLE_HDR_BODY_NAME, width=20),
+                TableColumn("subtype", ui.TABLE_HDR_SUBTYPE, width=16),
+                TableColumn("distance_ls", ui.TABLE_HDR_DISTANCE_LS, fmt="ls", align="right", width=12),
+                TableColumn("value_scan", ui.TABLE_HDR_SCAN_VALUE, fmt="cr", align="right", width=14),
+                TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
     ),
@@ -128,12 +129,12 @@ SCHEMAS: dict[str, TableSchema] = {
         title="Trade Route",
         columns=_cols(
             [
-                TableColumn("from_system", "From", width=20),
-                TableColumn("to_system", "To", width=20),
-                TableColumn("commodity", "Commodity", width=18),
-                TableColumn("profit", "Profit", fmt="cr", align="right", width=12),
-                TableColumn("profit_per_ton", "Profit/t", fmt="cr", align="right", width=10),
-                TableColumn("jumps", "Jumps", fmt="int", align="right", width=5),
+                TableColumn("from_system", ui.TABLE_HDR_FROM, width=20),
+                TableColumn("to_system", ui.TABLE_HDR_TO, width=20),
+                TableColumn("commodity", ui.TABLE_HDR_COMMODITY, width=18),
+                TableColumn("profit", ui.TABLE_HDR_PROFIT, fmt="cr", align="right", width=12),
+                TableColumn("profit_per_ton", ui.TABLE_HDR_PROFIT_TON, fmt="cr", align="right", width=12),
+                TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
     ),
