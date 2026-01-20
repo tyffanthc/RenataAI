@@ -88,11 +88,21 @@ def stworz_liste_trasy(parent, title="Plan Lotu"):
     frame = ttk.LabelFrame(parent, text=title)
     frame.pack(side="top", fill="both", expand=True, padx=8, pady=8)
 
-    sc = ttk.Scrollbar(frame)
+    header_label = ttk.Label(
+        frame,
+        text="",
+        font=("Consolas", 10, "bold"),
+        anchor="w",
+    )
+
+    list_frame = ttk.Frame(frame)
+    list_frame.pack(side="top", fill="both", expand=True)
+
+    sc = ttk.Scrollbar(list_frame)
     sc.pack(side="right", fill="y")
 
     lb = tk.Listbox(
-        frame,
+        list_frame,
         yscrollcommand=sc.set,
         font=("Consolas", 10),
         activestyle="none",
@@ -102,7 +112,23 @@ def stworz_liste_trasy(parent, title="Plan Lotu"):
     lb.pack(side="left", fill="both", expand=True)
 
     sc.config(command=lb.yview)
+    lb._renata_header_label = header_label  # type: ignore[attr-defined]
+    header_label.pack_forget()
     return lb
+
+
+def _set_list_header(listbox, text: str | None) -> None:
+    label = getattr(listbox, "_renata_header_label", None)
+    if label is None:
+        return
+    if text:
+        label.config(text=text)
+        if not label.winfo_ismapped():
+            label.pack(side="top", fill="x", padx=4, pady=(2, 2))
+    else:
+        label.config(text="")
+        if label.winfo_ismapped():
+            label.pack_forget()
 
 
 def wypelnij_liste(
@@ -272,28 +298,44 @@ def _get_visible_columns(schema_id: str) -> list[str]:
     return visible
 
 
-def render_table_lines(schema_id: str, rows: list[dict]) -> list[str]:
+def _compute_column_widths(columns: list, rows: list[dict], max_rows: int = 25) -> dict:
+    widths = {}
+    for col in columns:
+        label = col.label or ""
+        widths[col.key] = max(len(label), col.width or 0)
+
+    for row in rows[:max_rows]:
+        for col in columns:
+            value = _get_value_by_key(row, col.value_path or col.key)
+            text = format_value(value, col.fmt)
+            current = widths.get(col.key, 0)
+            widths[col.key] = max(current, len(text))
+    return widths
+
+
+def render_table(schema_id: str, rows: list[dict]) -> tuple[str, list[str]]:
     if not config.get("features.tables.spansh_schema_enabled", True):
-        return []
+        return "", []
     if not config.get("features.tables.schema_renderer_enabled", True):
-        return []
+        return "", []
     try:
         from gui import table_schemas
     except Exception:
-        return []
+        return "", []
     schema = table_schemas.get_schema(schema_id)
     if schema is None:
-        return []
+        return "", []
 
     visible_cols = _get_visible_columns(schema_id)
     columns = [col for col in schema.columns if col.key in visible_cols]
     if not columns:
-        return []
+        return "", []
 
+    widths = _compute_column_widths(columns, rows)
     header = "  ".join(
-        _align_text(col.label, col.width, col.align) for col in columns
+        _align_text(col.label, widths.get(col.key), col.align) for col in columns
     )
-    lines = [header]
+    lines = []
 
     badges_enabled = bool(config.get("features.tables.ui_badges_enabled", True))
     for row in rows:
@@ -313,9 +355,14 @@ def render_table_lines(schema_id: str, rows: list[dict]) -> list[str]:
             if suffix and col.key == primary_key:
                 text = f"{text}{suffix}"
                 suffix = ""
-            parts.append(_align_text(text, col.width, col.align))
+            parts.append(_align_text(text, widths.get(col.key), col.align))
         lines.append("  ".join(parts))
 
+    return header, lines
+
+
+def render_table_lines(schema_id: str, rows: list[dict]) -> list[str]:
+    _header, lines = render_table(schema_id, rows)
     return lines
 
 
@@ -381,9 +428,11 @@ def register_active_route_list(
         _ACTIVE_ROUTE_TABLE_SCHEMA = schema_id
         _ACTIVE_ROUTE_TABLE_ROWS = list(rows)
         _ACTIVE_ROUTE_TABLE_VISIBLE = _get_visible_columns(schema_id)
-        _ACTIVE_ROUTE_LIST_DATA = render_table_lines(schema_id, _ACTIVE_ROUTE_TABLE_ROWS)
+        header, lines = render_table(schema_id, _ACTIVE_ROUTE_TABLE_ROWS)
+        _ACTIVE_ROUTE_LIST_DATA = lines
         _ACTIVE_ROUTE_LIST_NUMERATE = False
-        _ACTIVE_ROUTE_LIST_OFFSET = 1
+        _ACTIVE_ROUTE_LIST_OFFSET = 0
+        _set_list_header(listbox, header)
     else:
         _ACTIVE_ROUTE_TABLE_SCHEMA = None
         _ACTIVE_ROUTE_TABLE_ROWS = []
@@ -394,6 +443,7 @@ def register_active_route_list(
             _ACTIVE_ROUTE_LIST_OFFSET = int(offset)
         except Exception:
             _ACTIVE_ROUTE_LIST_OFFSET = 0
+        _set_list_header(listbox, None)
     config.STATE["copied_idx"] = None
 
 
@@ -414,9 +464,10 @@ def _update_active_route_list_mark(route_index: int | None) -> None:
             meta = _ACTIVE_ROUTE_TABLE_ROWS[route_index].setdefault("_meta", {})
             if isinstance(meta, dict):
                 meta["badges"] = ["COPIED"]
-        _ACTIVE_ROUTE_LIST_DATA = render_table_lines(
+        header, lines = render_table(
             _ACTIVE_ROUTE_TABLE_SCHEMA, _ACTIVE_ROUTE_TABLE_ROWS
         )
+        _ACTIVE_ROUTE_LIST_DATA = lines
         try:
             wypelnij_liste(
                 _ACTIVE_ROUTE_LISTBOX,
@@ -427,6 +478,7 @@ def _update_active_route_list_mark(route_index: int | None) -> None:
             )
         except Exception:
             pass
+        _set_list_header(_ACTIVE_ROUTE_LISTBOX, header)
         return
     list_index = route_index + _ACTIVE_ROUTE_LIST_OFFSET
     config.STATE["copied_idx"] = list_index
