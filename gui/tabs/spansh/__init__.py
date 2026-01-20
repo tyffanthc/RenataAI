@@ -8,6 +8,7 @@ from .hmc import HMCTab
 from .exomastery import ExomasteryTab
 from .trade import TradeTab
 from gui import strings as ui
+import config
 
 
 class SpanshTab(ttk.Frame):
@@ -41,10 +42,22 @@ class SpanshTab(ttk.Frame):
         self.tab_trade = TradeTab(self.nb, root_window)
         self.nb.add(self.tab_trade, text=ui.TAB_SPANSH_TRADE)
 
-        self._add_placeholder(ui.TAB_SPANSH_TOURIST)
-        self._add_placeholder(ui.TAB_SPANSH_FLEET)
-        self._add_placeholder(ui.TAB_SPANSH_COLONISATION)
-        self._add_placeholder(ui.TAB_SPANSH_GALAXY)
+        self._add_optional_tab(
+            ui.TAB_SPANSH_TOURIST,
+            "features.ui.tabs.tourist_enabled",
+        )
+        self._add_optional_tab(
+            ui.TAB_SPANSH_FLEET,
+            "features.ui.tabs.fleet_carrier_enabled",
+        )
+        self._add_optional_tab(
+            ui.TAB_SPANSH_COLONISATION,
+            "features.ui.tabs.colonisation_enabled",
+        )
+        self._add_optional_tab(
+            ui.TAB_SPANSH_GALAXY,
+            "features.ui.tabs.galaxy_enabled",
+        )
 
     def _add_placeholder(self, title):
         fr = ttk.Frame(self.nb)
@@ -52,6 +65,19 @@ class SpanshTab(ttk.Frame):
         ttk.Label(fr, text=ui.PLACEHOLDER_LINE_1, font=("Arial", 11)).pack()
         ttk.Label(fr, text=ui.PLACEHOLDER_LINE_2, font=("Arial", 11)).pack(pady=(4, 0))
         self.nb.add(fr, text=title)
+
+    def _add_enabled_placeholder(self, title: str) -> None:
+        fr = ttk.Frame(self.nb)
+        ttk.Label(fr, text=ui.PLACEHOLDER_ENABLED_TITLE, font=("Arial", 14, "bold")).pack(pady=(40, 8))
+        ttk.Label(fr, text=ui.PLACEHOLDER_ENABLED_LINE_1, font=("Arial", 11)).pack()
+        ttk.Label(fr, text=ui.PLACEHOLDER_ENABLED_LINE_2, font=("Arial", 11)).pack(pady=(4, 0))
+        self.nb.add(fr, text=title)
+
+    def _add_optional_tab(self, title: str, flag_key: str) -> None:
+        if config.get(flag_key, False):
+            self._add_enabled_placeholder(title)
+        else:
+            self._add_placeholder(title)
 
     def update_start_label(self, text):
         for t in [self.tab_neutron, self.tab_riches, self.tab_ammonia,
