@@ -30,6 +30,7 @@ Każda pozycja: opis, pliki, ryzyko, test, flaga.
 - M-08 (P3): Dodanie wyszukiwarki w Settings; Files: `gui/tabs/settings.py`; Risk: medium; Test: filtr opcji; Flag: no.
 - M-09 (P3): Dodanie wyszukiwarki/filtru w Logbook; Files: `gui/tabs/logbook.py`, `logic/logbook_manager.py`; Risk: medium; Test: filtr wpisów; Flag: no.
 - M-10 (P3): Lepsza obsługa „rate limit” w autocomplete (cancel old requests); Files: `gui/common_autocomplete.py`, `logic/spansh_client.py`; Risk: medium; Test: szybkie wpisywanie; Flag: no.
+- M-11 (P2): Trade Market Age UX zgodny ze Spansh (kalendarz, format, layout); Files: `gui/tabs/spansh/trade.py`, `gui/strings.py`; Risk: medium; Test: manualny przeglad Trade; Flag: `features.trade.market_age_slider`.
 
 ## Duże (refaktor / nowy layout)
 - L-01 (P1): Spójny redesign UI „cockpit”, ujednolicone fonty i style; Files: `gui/app.py`, `gui/tabs/*`, `gui/common.py`; Risk: high; Test: pełny smoke + manual; Flag: `features.ui.new_theme`.
