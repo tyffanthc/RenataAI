@@ -113,6 +113,7 @@ def stworz_liste_trasy(parent, title="Plan Lotu"):
 
     sc.config(command=lb.yview)
     lb._renata_header_label = header_label  # type: ignore[attr-defined]
+    lb._renata_list_frame = list_frame  # type: ignore[attr-defined]
     header_label.pack_forget()
     return lb
 
@@ -121,10 +122,14 @@ def _set_list_header(listbox, text: str | None) -> None:
     label = getattr(listbox, "_renata_header_label", None)
     if label is None:
         return
+    list_frame = getattr(listbox, "_renata_list_frame", None)
     if text:
         label.config(text=text)
         if not label.winfo_ismapped():
-            label.pack(side="top", fill="x", padx=4, pady=(2, 2))
+            if list_frame is not None:
+                label.pack(side="top", fill="x", padx=4, pady=(2, 2), before=list_frame)
+            else:
+                label.pack(side="top", fill="x", padx=4, pady=(2, 2))
     else:
         label.config(text="")
         if label.winfo_ismapped():
