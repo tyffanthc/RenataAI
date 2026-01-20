@@ -1,0 +1,153 @@
+# RENATA_STATUS.md
+
+Ostatnia aktualizacja: 2026-01-20  
+Właściciel procesu: Patryk  
+Tryb pracy: **1 post = 1 ticket** (asystent) → raport → weryfikacja → następny ticket
+
+---
+
+## 0) Zasady stałe (obowiązujące)
+
+1) **Każda nowa funkcja → feature flag / ustawienie + spójna obsługa w aplikacji**
+- `config.py` (default + fallback)
+- GUI Settings (jeśli user-facing)
+
+2) Kod składamy w **VS Code z Codexem**.
+
+3) Po każdym tickecie: raport
+- co zmieniono
+- pliki
+- jak testować (komendy + manual)
+
+4) Smoke testy wg `RUNBOOK_SMOKE.md` + dopisany UX smoke (clipboard/overlay/tabele).
+
+5) Preferencja: offline-first (online lookup tylko pod flagą).
+
+---
+
+## 1) Standard ticketu
+
+- Cel + zakres + DoD  
+- Flagi (jeśli dotyczy)  
+- Testy (unit/contract/integration/manual)  
+- Ryzyka/regresje  
+
+---
+
+## 2) Stan projektu (DONE)
+
+### EPIC A — Core stabilizacja + Observability
+
+#### A1 — D4.2c NEXT_HOP (P0)
+- ✅ `features.clipboard.next_hop_stepper` + GUI checkbox + guarded logic (common/navigation_events/app)
+- ✅ RUNBOOK: sekcja „Clipboard / NEXT_HOP — UX smoke”
+
+#### A2 — Observability (P1/P2)
+- ✅ `renata_log.py`: safe logging (`safe_repr` + limity + brak crashy) + format `[CATEGORY] message key=value`
+- ✅ throttling logów + wpięcia w state/watchery (mniej spamu)
+- ✅ debug panel: thread-safe UI update + throttled refresh + snapshot + gating flagą `features.debug.panel`
+- ✅ testy: `tests/test_renata_log.py` (PASS)
+
+### EPIC B — UX “pro” (P1)
+
+#### B1a — UI-POLISH (wejścia + spójność)
+- ✅ B1a: ujednolicone etykiety pól wejściowych, PL-first, centralizacja w `strings.py`
+- ✅ B1a.1: spójne tab titles + stały układ opcji (checkbox order)
+- ✅ B1a.3: wspólna siatka layoutu pól (ui_layout.py) + wyrównanie kolumn w plannerach
+  - ✅ rozszerzenie: Trade przerobiony na wspólną siatkę (`ui_layout.py`)
+- ✅ B1a.2: nagłówki tabel wyników po PL + spójne jednostki (`strings.py` + `table_schemas.py`)
+- ✅ B1a.4: sticky header + autosize kolumn tabel (czytelne nagłówki, header zawsze widoczny)
+
+#### B1b — Required fields (Trade)
+- ✅ znacznik `Stacja*` + walidacja przed run (status “Uzupełnij pole: Stacja”, bez requestu)
+
+#### B1c — Placeholder tabs (beta)
+- ✅ spójne placeholdery “Wkrótce” + mikrocopy
+- ✅ gating flagami w `config.py` (`features.ui.tabs.*`)
+- ✅ TAB_DEFS: jedno miejsce wyboru (OFF→Wkrótce, ON+real→real, ON+brak→Beta aktywna)
+
+#### B2 — TRADE-UI-AGE-01: Market Age jak na Spansh (DONE)
+- Cel: kontrola wieku rynku jak w Spansh (data/czas + suwak presetów).
+- Zakres: widget data/czas + slider presetów; dwukierunkowa synchronizacja; brak auto-odpalania.
+- DoD: zmiana suwaka/pola aktualizuje drugie; brak requestu bez kliknięcia “Wyznacz”.
+- Flagi: `features.trade.market_age_slider=true`.
+- Testy: manual (Trade → zmiana suwaka/pola; brak auto-run), smoke standard.
+- Ryzyka: rozjazd wartości czasu przy ręcznej edycji; niejednoznaczne strefy czasowe.
+
+---
+
+## 3) Aktualny UX stan (skrót)
+
+- Wejścia w plannerach: spójne labelki + jednostki, spójny układ opcji, wspólna siatka layoutu.
+- Tabele: nagłówki PL + jednostki; sticky header + autosize kolumn.
+- Trade: walidacja “Stacja wymagana”; autocomplete stacji działa offline z cache (bez gry cache może być puste), online lookup opcjonalny pod flagą.
+- Debug: debug panel i logger utwardzone, throttling ogranicza spam.
+
+---
+
+## 4) Flagi kluczowe (obecne)
+
+- Clipboard:
+  - `features.clipboard.next_hop_stepper`
+- Debug:
+  - `features.debug.panel`
+  - `features.debug.autocomplete` (jeśli istnieje: powinno być default OFF)
+- UI Tabs (beta):
+  - `features.ui.tabs.tourist_enabled`
+  - `features.ui.tabs.fleet_carrier_enabled`
+  - `features.ui.tabs.colonisation_enabled`
+  - `features.ui.tabs.galaxy_enabled`
+- Trade (online lookup):
+  - `features.trade.station_lookup_online` / `features.providers.system_lookup_online` (wg realnych kluczy w config)
+
+---
+
+## 5) Testy / komendy (minimum)
+
+### Unit / contract
+- `python -m unittest tests.test_spansh_payloads`
+- `py -m unittest tests/test_renata_log.py`
+
+### Smoke
+- `python tools/smoke_tests_beckendy.py`
+- `python tools/smoke_tests_journal.py`
+
+### Manual (GUI)
+- `py main.py`
+- UX smoke: NEXT_HOP (clipboard + overlay), tabele (nagłówki, sticky, autosize), Trade required field.
+
+---
+
+## 6) Known gotchas / zasady repo
+
+### user_settings.json
+- `user_settings.json` to **lokalny plik** ustawień dev-a.
+- Nie commitować.
+- Jeśli Git pokazuje zmianę po kliknięciu checkboxów:
+  - `git restore user_settings.json` przed commitem
+- Docelowo:
+  - dodać do `.gitignore`
+  - jeśli już trackowany: `git rm --cached user_settings.json` + commit “stop tracking local settings”
+- Jeśli potrzebny template:
+  - `user_settings.example.json`
+
+---
+
+## 7) NEXT (priorytety)
+
+### P1 — następny ticket
+**B3 — Menu kontekstowe wyników**
+- Prawy klik: kopiuj/ustaw start/cel/dodaj via/CSV/TSV (część pod flagą).
+
+### Kolejne (po B3)
+- C1/C2: tabelki “pro” (Treeview renderer + wybór kolumn)
+- D1: EDSM helpery (online provider)
+- SCI/TTS/AI/i18n później
+
+---
+
+## 8) Tryb pracy w nowym czacie (procedura)
+1) Wybieramy 1 ticket (max 1–3 dopiero później).
+2) Codex implementuje pod flagą + raport.
+3) Patryk robi smoke wg runbook + UX smoke.
+4) Jeśli OK → merge → następny ticket.
