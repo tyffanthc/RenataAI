@@ -62,6 +62,10 @@ class TradeTab(ttk.Frame):
         self._hop_updating = False
         self.var_max_hop.trace_add("write", self._on_hop_changed)
 
+        self._required_fields = [
+            (ui.LABEL_STATION, self.var_start_station, self.e_station),
+        ]
+
         # D3c â€“ pierwsze uzupeĹ‚nienie pĂłl z app_state
         self.refresh_from_app_state()
         self.bind("<Visibility>", self._on_visibility)
@@ -87,7 +91,7 @@ class TradeTab(ttk.Frame):
         self.e_station = layout.add_labeled_entry(
             f_form,
             1,
-            ui.LABEL_STATION,
+            ui.LABEL_STATION_REQUIRED,
             self.var_start_station,
             entry_width=layout.ENTRY_W_LONG,
         )
@@ -367,16 +371,8 @@ class TradeTab(ttk.Frame):
         # 1) klasyczny: osobne System + Stacja,
         # 2) kompatybilny z webowym SPANSH: "System / Stacja" w jednym polu,
         #    puste pole "Stacja" -> backend rozbije to w oblicz_trade().
-        if not start_station:
-            sep_raw = start_system or ""
-            if "/" not in sep_raw and "," not in sep_raw:
-                common.emit_status(
-                    "ERROR",
-                    "TRADE_STATION_REQUIRED",
-                    source="spansh.trade",
-                    ui_target="trade",
-                )
-                return
+        if not self._validate_required_fields(start_system, start_station):
+            return
 
         capital = self.var_capital.get()
         max_hop = self._resolve_max_hop()
@@ -408,6 +404,27 @@ class TradeTab(ttk.Frame):
         )
 
         route_manager.start_route_thread("trade", self._th, args=args, gui_ref=self.root)
+
+    def _has_inline_station(self, system_value: str) -> bool:
+        if not system_value:
+            return False
+        return "/" in system_value or "," in system_value
+
+    def _validate_required_fields(self, start_system: str, start_station: str) -> bool:
+        if start_station:
+            return True
+        if self._has_inline_station(start_system):
+            return True
+        label = self._required_fields[0][0] if self._required_fields else "Stacja"
+        common.emit_status(
+            "WARN",
+            "TRADE_STATION_REQUIRED",
+            text=f"Uzupełnij pole: {label}",
+            source="spansh.trade",
+            ui_target="trade",
+            notify_overlay=True,
+        )
+        return False
 
     def apply_jump_range_from_ship(self, value: float | None) -> None:
         if not config.get("planner_auto_use_ship_jump_range", True):

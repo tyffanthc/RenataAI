@@ -5,6 +5,7 @@ LABEL_START = "Start"
 LABEL_TARGET = "Cel"
 LABEL_SYSTEM = "System"
 LABEL_STATION = "Stacja"
+LABEL_STATION_REQUIRED = "Stacja*"
 
 LABEL_JUMP_RANGE = "Zasieg skoku [ly]"
 LABEL_EFFICIENCY = "Efektywnosc [%]"
