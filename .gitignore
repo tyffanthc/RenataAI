@@ -7,4 +7,3 @@ __pycache__/
 # Runtime config
 user_settings.json
 config.json
-config.py
