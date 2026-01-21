@@ -122,6 +122,7 @@ class SettingsTab(ttk.Frame):
         self.var_tables_schema_renderer_enabled = tk.BooleanVar(value=True)
         self.var_tables_column_picker_enabled = tk.BooleanVar(value=False)
         self.var_tables_ui_badges_enabled = tk.BooleanVar(value=True)
+        self.var_tables_treeview_enabled = tk.BooleanVar(value=False)
         self.var_results_context_menu = tk.BooleanVar(value=False)
         self.tables_visible_columns: Dict[str, list] = {}
 
@@ -1014,9 +1015,15 @@ class SettingsTab(ttk.Frame):
 
         ttk.Checkbutton(
             lf_tables,
+            text="Treeview renderer enabled",
+            variable=self.var_tables_treeview_enabled,
+        ).grid(row=1, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_tables,
             text="UI badges enabled",
             variable=self.var_tables_ui_badges_enabled,
-        ).grid(row=1, column=1, padx=8, pady=4, sticky="w")
+        ).grid(row=2, column=1, padx=8, pady=4, sticky="w")
 
         ttk.Checkbutton(
             lf_tables,
@@ -1284,6 +1291,12 @@ class SettingsTab(ttk.Frame):
                 self.var_tables_column_picker_enabled.get(),
             )
         )
+        self.var_tables_treeview_enabled.set(
+            cfg.get(
+                "features.tables.treeview_enabled",
+                self.var_tables_treeview_enabled.get(),
+            )
+        )
         self.var_tables_ui_badges_enabled.set(
             cfg.get(
                 "features.tables.ui_badges_enabled",
@@ -1487,6 +1500,7 @@ class SettingsTab(ttk.Frame):
             "features.tables.normalized_rows_enabled": self.var_tables_normalized_rows_enabled.get(),
             "features.tables.schema_renderer_enabled": self.var_tables_schema_renderer_enabled.get(),
             "features.tables.column_picker_enabled": self.var_tables_column_picker_enabled.get(),
+            "features.tables.treeview_enabled": self.var_tables_treeview_enabled.get(),
             "features.tables.ui_badges_enabled": self.var_tables_ui_badges_enabled.get(),
             "features.ui.results_context_menu": self.var_results_context_menu.get(),
             "tables_visible_columns": self.tables_visible_columns,
@@ -1660,6 +1674,7 @@ class SettingsTab(ttk.Frame):
         self.var_tables_schema_renderer_enabled.set(True)
         self.var_tables_column_picker_enabled.set(False)
         self.var_tables_ui_badges_enabled.set(True)
+        self.var_tables_treeview_enabled.set(False)
         self.var_results_context_menu.set(False)
         self.tables_visible_columns = {}
 

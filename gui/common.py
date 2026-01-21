@@ -130,6 +130,46 @@ def stworz_liste_trasy(parent, title="Plan Lotu"):
     return lb
 
 
+def stworz_tabele_trasy(parent, title="Plan Lotu"):
+    frame = ttk.LabelFrame(parent, text=title)
+    frame.pack(side="top", fill="both", expand=True, padx=8, pady=8)
+
+    header_bar = ttk.Frame(frame)
+    header_bar.pack(side="top", fill="x")
+
+    columns_button = ttk.Button(
+        header_bar,
+        text="⚙ Kolumny",
+        command=lambda: _open_columns_picker(tree),
+    )
+    if config.get("features.tables.column_picker_enabled", False):
+        columns_button.pack(side="right", padx=4, pady=(2, 2))
+
+    tree_frame = ttk.Frame(frame)
+    tree_frame.pack(side="top", fill="both", expand=True)
+
+    sc = ttk.Scrollbar(tree_frame)
+    sc.pack(side="right", fill="y")
+
+    tree = ttk.Treeview(
+        tree_frame,
+        columns=(),
+        show="headings",
+        selectmode="browse",
+    )
+    tree.pack(side="left", fill="both", expand=True)
+    sc.config(command=tree.yview)
+    tree.configure(yscrollcommand=sc.set)
+
+    tree._renata_header_bar = header_bar  # type: ignore[attr-defined]
+    tree._renata_columns_button = columns_button  # type: ignore[attr-defined]
+    tree._renata_table_schema = None  # type: ignore[attr-defined]
+    tree._renata_table_rows = []  # type: ignore[attr-defined]
+    tree._renata_tree_rows_by_iid = {}  # type: ignore[attr-defined]
+    tree._renata_tree_sort = {"column": None, "desc": False}  # type: ignore[attr-defined]
+    return tree
+
+
 def _set_list_header(listbox, text: str | None) -> None:
     label = getattr(listbox, "_renata_header_label", None)
     if label is None:
@@ -316,7 +356,7 @@ def _get_visible_columns(schema_id: str) -> list[str]:
         visible = [col.key for col in schema.columns if col.default_visible]
     if len(visible) < 2:
         visible = [col.key for col in schema.columns[:2]]
-    return visible
+    return _sanitize_visible_columns(schema, visible)
 
 
 def _compute_column_widths(columns: list, rows: list[dict], max_rows: int = 25) -> dict:
@@ -380,6 +420,109 @@ def render_table(schema_id: str, rows: list[dict]) -> tuple[str, list[str]]:
         lines.append("  ".join(parts))
 
     return header, lines
+
+
+def _ensure_route_indices(rows: list[dict]) -> None:
+    for idx, row in enumerate(rows):
+        if isinstance(row, dict) and "_route_index" not in row:
+            row["_route_index"] = idx
+
+
+def render_table_treeview(tree, schema_id: str, rows: list[dict]) -> None:
+    try:
+        from gui import table_schemas
+    except Exception:
+        return
+    schema = table_schemas.get_schema(schema_id)
+    if schema is None:
+        return
+
+    _ensure_route_indices(rows)
+    visible_cols = _get_visible_columns(schema_id)
+    columns = [col for col in schema.columns if col.key in visible_cols]
+    if not columns:
+        columns = list(schema.columns)
+
+    tree["columns"] = [col.key for col in columns]
+    tree["show"] = "headings"
+
+    widths = _compute_column_widths(columns, rows)
+    for col in columns:
+        width_px = max(60, int(widths.get(col.key, 8) * 8))
+        anchor = "w"
+        if col.align == "right":
+            anchor = "e"
+        elif col.align == "center":
+            anchor = "center"
+        tree.column(col.key, width=width_px, anchor=anchor, stretch=True)
+        tree.heading(
+            col.key,
+            text=col.label,
+            command=lambda key=col.key: _sort_treeview(tree, schema_id, key),
+        )
+
+    tree.delete(*tree.get_children())
+    rows_by_iid = {}
+    for idx, row in enumerate(rows):
+        iid = str(idx)
+        values = []
+        for col in columns:
+            value = _get_value_by_key(row, col.value_path or col.key)
+            values.append(format_value(value, col.fmt))
+        tree.insert("", "end", iid=iid, values=values)
+        rows_by_iid[iid] = row
+    tree._renata_table_schema = schema_id  # type: ignore[attr-defined]
+    tree._renata_table_rows = list(rows)  # type: ignore[attr-defined]
+    tree._renata_tree_rows_by_iid = rows_by_iid  # type: ignore[attr-defined]
+    tree.tag_configure("copied", background=COPIED_BG, foreground=COPIED_FG)
+
+
+def _sort_key_for_value(value):
+    if value is None:
+        return (1, "")
+    if isinstance(value, bool):
+        return (0, int(value))
+    if isinstance(value, (int, float)):
+        return (0, value)
+    try:
+        number = float(str(value).replace(" ", "").replace(",", ""))
+        return (0, number)
+    except Exception:
+        return (0, str(value).casefold())
+
+
+def _sort_treeview(tree, schema_id: str, col_key: str) -> None:
+    try:
+        from gui import table_schemas
+    except Exception:
+        return
+    schema = table_schemas.get_schema(schema_id)
+    if schema is None:
+        return
+    col = next((c for c in schema.columns if c.key == col_key), None)
+    if col is None:
+        return
+
+    sort_state = getattr(tree, "_renata_tree_sort", {"column": None, "desc": False})
+    desc = False
+    if sort_state.get("column") == col_key:
+        desc = not bool(sort_state.get("desc"))
+    sort_state = {"column": col_key, "desc": desc}
+    tree._renata_tree_sort = sort_state  # type: ignore[attr-defined]
+
+    rows_by_iid = getattr(tree, "_renata_tree_rows_by_iid", {})
+    items = []
+    for iid, row in rows_by_iid.items():
+        value = _get_value_by_key(row, col.value_path or col.key)
+        items.append((iid, _sort_key_for_value(value)))
+    items.sort(key=lambda item: item[1], reverse=desc)
+    for idx, (iid, _) in enumerate(items):
+        tree.move(iid, "", idx)
+
+
+def _get_treeview_row(tree, row_id: str) -> dict | None:
+    rows_by_iid = getattr(tree, "_renata_tree_rows_by_iid", {})
+    return rows_by_iid.get(row_id)
 
 
 def render_table_lines(schema_id: str, rows: list[dict]) -> list[str]:
@@ -488,6 +631,14 @@ def _refresh_table_listbox(listbox) -> None:
         globals()["_ACTIVE_ROUTE_LIST_DATA"] = list(lines)
 
 
+def _refresh_table_treeview(tree) -> None:
+    schema_id = getattr(tree, "_renata_table_schema", None)
+    rows = getattr(tree, "_renata_table_rows", None)
+    if not schema_id or rows is None:
+        return
+    render_table_treeview(tree, schema_id, list(rows))
+
+
 def _open_columns_picker(listbox) -> None:
     if not config.get("features.tables.column_picker_enabled", False):
         return
@@ -541,7 +692,10 @@ def _open_columns_picker(listbox) -> None:
         if not selected:
             return
         _save_visible_columns(schema_id, selected)
-        _refresh_table_listbox(listbox)
+        if isinstance(listbox, ttk.Treeview):
+            _refresh_table_treeview(listbox)
+        else:
+            _refresh_table_listbox(listbox)
 
     for col in schema.columns:
         var = tk.BooleanVar(value=col.key in visible)
@@ -628,6 +782,10 @@ def attach_results_context_menu(
                 row_text = " ".join(str(v) for v in widget.item(row_id, "values") or [])
             except Exception:
                 row_text = None
+            if not row_text:
+                row = _get_treeview_row(widget, row_id)
+                if isinstance(row, dict):
+                    row_text = " ".join(str(v) for v in row.values() if v is not None)
         else:
             try:
                 row_id = widget.nearest(event.y)
@@ -759,7 +917,8 @@ def register_active_route_list(
         _ACTIVE_ROUTE_LIST_DATA = lines
         _ACTIVE_ROUTE_LIST_NUMERATE = False
         _ACTIVE_ROUTE_LIST_OFFSET = 0
-        _set_list_header(listbox, header)
+        if not isinstance(listbox, ttk.Treeview):
+            _set_list_header(listbox, header)
         listbox._renata_table_schema = schema_id  # type: ignore[attr-defined]
         listbox._renata_table_rows = list(rows)  # type: ignore[attr-defined]
     else:
@@ -787,6 +946,19 @@ def _update_active_route_list_mark(route_index: int | None) -> None:
         config.STATE["copied_idx"] = None
         return
     if _ACTIVE_ROUTE_TABLE_SCHEMA and _ACTIVE_ROUTE_TABLE_ROWS:
+        if isinstance(_ACTIVE_ROUTE_LISTBOX, ttk.Treeview):
+            for iid in _ACTIVE_ROUTE_LISTBOX.get_children():
+                _ACTIVE_ROUTE_LISTBOX.item(iid, tags=())
+            target = None
+            for iid, row in getattr(_ACTIVE_ROUTE_LISTBOX, "_renata_tree_rows_by_iid", {}).items():
+                if row.get("_route_index") == route_index:
+                    target = iid
+                    break
+            if target is not None:
+                _ACTIVE_ROUTE_LISTBOX.item(target, tags=("copied",))
+                _ACTIVE_ROUTE_LISTBOX.selection_set(target)
+                _ACTIVE_ROUTE_LISTBOX.see(target)
+            return
         for row in _ACTIVE_ROUTE_TABLE_ROWS:
             meta = row.get("_meta")
             if isinstance(meta, dict):

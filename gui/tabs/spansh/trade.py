@@ -63,6 +63,12 @@ class TradeTab(ttk.Frame):
         self._results_rows: list[dict] = []
         self._results_row_offset = 0
 
+        self._use_treeview = bool(config.get("features.tables.treeview_enabled", False)) and bool(
+            config.get("features.tables.spansh_schema_enabled", True)
+        ) and bool(config.get("features.tables.schema_renderer_enabled", True)) and bool(
+            config.get("features.tables.normalized_rows_enabled", True)
+        )
+
         self._market_age_slider_enabled = bool(
             config.get("features.trade.market_age_slider", False)
         )
@@ -254,8 +260,10 @@ class TradeTab(ttk.Frame):
 
         self.lbl_status = ttk.Label(self, text="Gotowy", font=("Arial", 10, "bold"))
         self.lbl_status.pack(pady=(4, 2))
-
-        self.lst_trade = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_TRADE)
+        if self._use_treeview:
+            self.lst_trade = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_TRADE)
+        else:
+            self.lst_trade = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_TRADE)
         common.attach_results_context_menu(
             self.lst_trade,
             self._get_results_payload,
@@ -335,7 +343,10 @@ class TradeTab(ttk.Frame):
         self._apply_market_age_hours(hours)
 
     def _get_results_payload(self, row_index, row_text=None) -> dict | None:
-        idx = int(row_index) - int(self._results_row_offset)
+        try:
+            idx = int(row_index) - int(self._results_row_offset)
+        except Exception:
+            return None
         if idx < 0 or idx >= len(self._results_rows):
             return None
         row = self._results_rows[idx]
@@ -543,7 +554,10 @@ class TradeTab(ttk.Frame):
             self.ac_station.hide()
 
     def clear(self):
-        self.lst_trade.delete(0, tk.END)
+        if isinstance(self.lst_trade, ttk.Treeview):
+            self.lst_trade.delete(*self.lst_trade.get_children())
+        else:
+            self.lst_trade.delete(0, tk.END)
         self.lbl_status.config(text="Wyczyszczono", foreground="grey")
         self._results_rows = []
         self._results_row_offset = 0
@@ -722,22 +736,34 @@ class TradeTab(ttk.Frame):
                 self._results_row_offset = 0
                 route_manager.set_route(tr, "trade")
                 if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
-                    opis = common.render_table_lines("trade", rows)
-                    common.register_active_route_list(
-                        self.lst_trade,
-                        opis,
-                        numerate=False,
-                        offset=1,
-                        schema_id="trade",
-                        rows=rows,
-                    )
-                    common.wypelnij_liste(
-                        self.lst_trade,
-                        opis,
-                        numerate=False,
-                        show_copied_suffix=False,
-                    )
+                    if self._use_treeview:
+                        common.render_table_treeview(self.lst_trade, "trade", rows)
+                        common.register_active_route_list(
+                            self.lst_trade,
+                            [],
+                            numerate=False,
+                            offset=1,
+                            schema_id="trade",
+                            rows=rows,
+                        )
+                    else:
+                        opis = common.render_table_lines("trade", rows)
+                        common.register_active_route_list(
+                            self.lst_trade,
+                            opis,
+                            numerate=False,
+                            offset=1,
+                            schema_id="trade",
+                            rows=rows,
+                        )
+                        common.wypelnij_liste(
+                            self.lst_trade,
+                            opis,
+                            numerate=False,
+                            show_copied_suffix=False,
+                        )
                 else:
+else:
                     opis = [f"{row.get('from_system', '')} -> {row.get('to_system', '')}" for row in rows]
                     common.register_active_route_list(self.lst_trade, opis)
                     common.wypelnij_liste(self.lst_trade, opis)

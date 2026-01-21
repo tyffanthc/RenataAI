@@ -33,6 +33,11 @@ class NeutronTab(ttk.Frame):
         self._via_online_lookup = bool(config.get("features.providers.system_lookup_online", False))
         self._results_rows: list[dict] = []
         self._results_row_offset = 0
+        self._use_treeview = bool(config.get("features.tables.treeview_enabled", False)) and bool(
+            config.get("features.tables.spansh_schema_enabled", True)
+        ) and bool(config.get("features.tables.schema_renderer_enabled", True)) and bool(
+            config.get("features.tables.normalized_rows_enabled", True)
+        )
 
         self._build_ui()
         self._range_user_overridden = False
@@ -137,10 +142,11 @@ class NeutronTab(ttk.Frame):
         f_status.pack(pady=(2, 2))
         self.lbl_status = ttk.Label(f_status, text="Gotowy", font=("Arial", 10, "bold"))
         self.lbl_status.pack()
-
-
-        # Lista wyników
-        self.lst = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_NEUTRON)
+        # Lista wynikow
+        if self._use_treeview:
+            self.lst = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_NEUTRON)
+        else:
+            self.lst = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_NEUTRON)
         common.attach_results_context_menu(
             self.lst,
             self._get_results_payload,
@@ -185,7 +191,10 @@ class NeutronTab(ttk.Frame):
         route_manager.start_route_thread("neutron", self._th, args=args, gui_ref=self.root)
 
     def _clear_results(self) -> None:
-        self.lst.delete(0, tk.END)
+        if isinstance(self.lst, ttk.Treeview):
+            self.lst.delete(*self.lst.get_children())
+        else:
+            self.lst.delete(0, tk.END)
         self._results_rows = []
         self._results_row_offset = 0
 
@@ -259,22 +268,34 @@ class NeutronTab(ttk.Frame):
                     rows = normalize_neutron_rows(details)
                     self._results_rows = rows
                     self._results_row_offset = 0
-                    opis = common.render_table_lines("neutron", rows)
-                    common.register_active_route_list(
-                        self.lst,
-                        opis,
-                        numerate=False,
-                        offset=1,
-                        schema_id="neutron",
-                        rows=rows,
-                    )
-                    common.wypelnij_liste(
-                        self.lst,
-                        opis,
-                        numerate=False,
-                        show_copied_suffix=False,
-                    )
+                    if self._use_treeview:
+                        common.render_table_treeview(self.lst, "neutron", rows)
+                        common.register_active_route_list(
+                            self.lst,
+                            [],
+                            numerate=False,
+                            offset=1,
+                            schema_id="neutron",
+                            rows=rows,
+                        )
+                    else:
+                        opis = common.render_table_lines("neutron", rows)
+                        common.register_active_route_list(
+                            self.lst,
+                            opis,
+                            numerate=False,
+                            offset=1,
+                            schema_id="neutron",
+                            rows=rows,
+                        )
+                        common.wypelnij_liste(
+                            self.lst,
+                            opis,
+                            numerate=False,
+                            show_copied_suffix=False,
+                        )
                 else:
+else:
                     self._results_rows = normalize_neutron_rows(details)
                     self._results_row_offset = 1
                     header = "{:<30} {:>9} {:>9} {:>5} {:>4}".format("System", "Dist(LY)", "Rem(LY)", "Neut", "Jmp")
@@ -312,7 +333,10 @@ class NeutronTab(ttk.Frame):
             )
 
     def _get_results_payload(self, row_index, row_text=None) -> dict | None:
-        idx = int(row_index) - int(self._results_row_offset)
+        try:
+            idx = int(row_index) - int(self._results_row_offset)
+        except Exception:
+            return None
         if idx < 0 or idx >= len(self._results_rows):
             return None
         row = self._results_rows[idx]
