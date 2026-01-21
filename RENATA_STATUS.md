@@ -79,6 +79,11 @@ Tryb pracy: **1 post = 1 ticket** (asystent) → raport → weryfikacja → nast
 - Dziala w Neutron + Trade; wspolny mechanizm w `gui/common.py`.
 - Flaga: `features.ui.results_context_menu=false` (Settings).
 
+#### C1 - Column Picker (DONE)
+- Potwierdzenie: fallback gdy wszystkie kolumny odznaczone -> default_visible_columns.
+- Potwierdzenie: nieznane kolumny z ustawien sa filtrowane, brak crasha.
+- Brak auto-run: zmiana tylko re-renderuje UI.
+
 ---
 
 ## 3) Aktualny UX stan (skrót)
