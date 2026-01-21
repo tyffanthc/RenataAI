@@ -117,6 +117,12 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Flaga: `features.providers.edsm_enabled=false`.
 - Testy smoke: backend + journal PASS.
 
+#### M-05 - Zapamietywanie sortu + ukladu kolumn (DONE)
+- Sort (kolumna + kierunek) zapisywany per schema i odtwarzany po restarcie.
+- Fallback gdy sortowana kolumna ukryta (LP lub pierwsza widoczna).
+- Flaga: `features.tables.persist_sort_enabled=true`.
+- Testy smoke: backend + journal PASS.
+
 #### M-04 - Panel bledow + ostatnie zapytanie SPANSH (DONE)
 - Status SPANSH: sukces, brak wynikow, blad/timeout (czytelne komunikaty).
 - Ostatnie zapytanie do Spansh jako sekcja zwijana (debug).
@@ -154,6 +160,7 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Tabele:
   - `features.tables.column_picker_enabled`
   - `features.tables.treeview_enabled`
+  - `features.tables.persist_sort_enabled`
 - Providerzy (online):
   - `features.providers.edsm_enabled`
 - Trade (online lookup):

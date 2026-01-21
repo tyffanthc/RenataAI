@@ -491,6 +491,7 @@ def render_table_treeview(tree, schema_id: str, rows: list[dict]) -> None:
     tree._renata_tree_show_lp = show_lp  # type: ignore[attr-defined]
     tree.tag_configure("copied", background=COPIED_BG, foreground=COPIED_FG)
     tree.tag_configure("hover", background=HOVER_BG)
+    _apply_saved_sort(tree, schema_id, columns, show_lp)
     _update_treeview_sort_indicators(tree, schema_id)
 
 
@@ -518,17 +519,7 @@ def _sort_treeview(tree, schema_id: str, col_key: str) -> None:
         return
     lp_key = "__lp__"
     if col_key == lp_key and "__lp__" in list(tree["columns"] or []):
-        tree._renata_tree_sort = {"column": lp_key, "desc": False}  # type: ignore[attr-defined]
-        rows_by_iid = getattr(tree, "_renata_tree_rows_by_iid", {})
-        items = []
-        for iid, row in rows_by_iid.items():
-            route_index = row.get("_route_index", 0)
-            items.append((iid, route_index))
-        items.sort(key=lambda item: item[1])
-        for idx, (iid, _) in enumerate(items):
-            tree.move(iid, "", idx)
-        _update_treeview_lp(tree)
-        _update_treeview_sort_indicators(tree, schema_id)
+        _apply_treeview_sort(tree, schema_id, col_key, desc=False, persist=True)
         return
 
     col = next((c for c in schema.columns if c.key == col_key), None)
@@ -539,19 +530,7 @@ def _sort_treeview(tree, schema_id: str, col_key: str) -> None:
     desc = False
     if sort_state.get("column") == col_key:
         desc = not bool(sort_state.get("desc"))
-    sort_state = {"column": col_key, "desc": desc}
-    tree._renata_tree_sort = sort_state  # type: ignore[attr-defined]
-
-    rows_by_iid = getattr(tree, "_renata_tree_rows_by_iid", {})
-    items = []
-    for iid, row in rows_by_iid.items():
-        value = _get_value_by_key(row, col.value_path or col.key)
-        items.append((iid, _sort_key_for_value(value)))
-    items.sort(key=lambda item: item[1], reverse=desc)
-    for idx, (iid, _) in enumerate(items):
-        tree.move(iid, "", idx)
-    _update_treeview_lp(tree)
-    _update_treeview_sort_indicators(tree, schema_id)
+    _apply_treeview_sort(tree, schema_id, col_key, desc=desc, persist=True)
 
 
 def _update_treeview_lp(tree) -> None:
@@ -564,6 +543,73 @@ def _update_treeview_lp(tree) -> None:
         else:
             values[0] = str(idx + 1)
         tree.item(iid, values=values)
+
+
+def _apply_treeview_sort(tree, schema_id: str, col_key: str, *, desc: bool, persist: bool) -> None:
+    try:
+        from gui import table_schemas
+    except Exception:
+        return
+    schema = table_schemas.get_schema(schema_id)
+    if schema is None:
+        return
+    lp_key = "__lp__"
+    rows_by_iid = getattr(tree, "_renata_tree_rows_by_iid", {})
+    if col_key == lp_key and "__lp__" in list(tree["columns"] or []):
+        tree._renata_tree_sort = {"column": lp_key, "desc": False}  # type: ignore[attr-defined]
+        items = []
+        for iid, row in rows_by_iid.items():
+            route_index = row.get("_route_index", 0)
+            items.append((iid, route_index))
+        items.sort(key=lambda item: item[1])
+        for idx, (iid, _) in enumerate(items):
+            tree.move(iid, "", idx)
+        _update_treeview_lp(tree)
+        _update_treeview_sort_indicators(tree, schema_id)
+        if persist:
+            _save_sort_state(schema_id, lp_key, False)
+        return
+
+    col = next((c for c in schema.columns if c.key == col_key), None)
+    if col is None:
+        return
+
+    tree._renata_tree_sort = {"column": col_key, "desc": bool(desc)}  # type: ignore[attr-defined]
+    items = []
+    for iid, row in rows_by_iid.items():
+        value = _get_value_by_key(row, col.value_path or col.key)
+        items.append((iid, _sort_key_for_value(value)))
+    items.sort(key=lambda item: item[1], reverse=bool(desc))
+    for idx, (iid, _) in enumerate(items):
+        tree.move(iid, "", idx)
+    _update_treeview_lp(tree)
+    _update_treeview_sort_indicators(tree, schema_id)
+    if persist:
+        _save_sort_state(schema_id, col_key, bool(desc))
+
+
+def _apply_saved_sort(tree, schema_id: str, columns: list, show_lp: bool) -> None:
+    if not _is_persist_sort_enabled():
+        return
+    sort_state = _get_saved_sort_state(schema_id)
+    if not sort_state:
+        return
+    available = [col.key for col in columns]
+    if show_lp:
+        available = ["__lp__"] + available
+    col_key = sort_state.get("column")
+    desc = bool(sort_state.get("desc"))
+    if col_key not in available:
+        if show_lp:
+            col_key = "__lp__"
+            desc = False
+        elif available:
+            col_key = available[0]
+            desc = False
+        else:
+            return
+        _save_sort_state(schema_id, col_key, desc)
+    _apply_treeview_sort(tree, schema_id, col_key, desc=desc, persist=False)
 
 
 def _update_treeview_sort_indicators(tree, schema_id: str) -> None:
@@ -703,6 +749,38 @@ def _get_default_visible_columns(schema) -> list[str]:
 def _sanitize_visible_columns(schema, visible: list[str]) -> list[str]:
     keys = {col.key for col in schema.columns}
     return [key for key in visible if key in keys]
+
+
+def _is_persist_sort_enabled() -> bool:
+    return bool(config.get("features.tables.persist_sort_enabled", False))
+
+
+def _get_saved_sort_state(schema_id: str) -> dict | None:
+    cfg = config.get("tables_sort_state", {})
+    if not isinstance(cfg, dict):
+        return None
+    state = cfg.get(schema_id)
+    if not isinstance(state, dict):
+        return None
+    column = state.get("column")
+    desc = state.get("desc")
+    if not isinstance(column, str) or not column:
+        return None
+    return {"column": column, "desc": bool(desc)}
+
+
+def _save_sort_state(schema_id: str, column: str, desc: bool) -> None:
+    if not _is_persist_sort_enabled():
+        return
+    cfg = config.get("tables_sort_state", {})
+    if not isinstance(cfg, dict):
+        cfg = {}
+    new_cfg = dict(cfg)
+    new_cfg[schema_id] = {"column": column, "desc": bool(desc)}
+    try:
+        config.save({"tables_sort_state": new_cfg})
+    except Exception:
+        pass
 
 
 def _get_saved_visible_columns(schema_id: str) -> list[str] | None:
