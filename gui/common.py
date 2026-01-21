@@ -451,21 +451,24 @@ def render_table_treeview(tree, schema_id: str, rows: list[dict]) -> None:
     tree.column(lp_key, width=40, anchor="e", stretch=False)
     tree.heading(
         lp_key,
-        text="LP",
+        text=_format_treeview_header(tree, lp_key, "LP"),
         command=lambda key=lp_key: _sort_treeview(tree, schema_id, key),
+        anchor="e",
     )
     for col in columns:
         width_px = max(60, int(widths.get(col.key, 8) * 8))
-        anchor = "w"
-        if col.align == "right":
-            anchor = "e"
-        elif col.align == "center":
+        key_text = (col.key or "").lower()
+        label_text = (col.label or "").lower()
+        if "system" in key_text or label_text.startswith("system"):
+            anchor = "w"
+        else:
             anchor = "center"
         tree.column(col.key, width=width_px, anchor=anchor, stretch=True)
         tree.heading(
             col.key,
-            text=col.label,
+            text=_format_treeview_header(tree, col.key, col.label),
             command=lambda key=col.key: _sort_treeview(tree, schema_id, key),
+            anchor=anchor,
         )
 
     tree.delete(*tree.get_children())
@@ -571,18 +574,35 @@ def _update_treeview_sort_indicators(tree, schema_id: str) -> None:
     arrow = " ▼" if desc else " ▲"
     tree.heading(
         lp_key,
-        text="LP" + (arrow if active == lp_key else ""),
+        text=_format_treeview_header(tree, lp_key, "LP" + (arrow if active == lp_key else "")),
         command=lambda key=lp_key: _sort_treeview(tree, schema_id, key),
+        anchor="e",
     )
     for col in schema.columns:
         label = col.label
+        key_text = (col.key or "").lower()
+        label_text = (col.label or "").lower()
+        if "system" in key_text or label_text.startswith("system"):
+            anchor = "w"
+        else:
+            anchor = "center"
         if col.key == active:
             label = f"{label}{arrow}"
         tree.heading(
             col.key,
-            text=label,
+            text=_format_treeview_header(tree, col.key, label),
             command=lambda key=col.key: _sort_treeview(tree, schema_id, key),
+            anchor=anchor,
         )
+
+
+def _format_treeview_header(tree, col_key: str, label: str) -> str:
+    columns = list(tree["columns"] or [])
+    if not columns:
+        return label
+    last_key = columns[-1]
+    sep = " |" if col_key != last_key else ""
+    return f"{label}{sep}"
 
 
 def _get_treeview_row(tree, row_id: str) -> dict | None:
