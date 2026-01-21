@@ -60,6 +60,9 @@ class TradeTab(ttk.Frame):
         self.var_avoid_loops = tk.BooleanVar(value=True)
         self.var_allow_permits = tk.BooleanVar(value=True)
 
+        self._results_rows: list[dict] = []
+        self._results_row_offset = 0
+
         self._market_age_slider_enabled = bool(
             config.get("features.trade.market_age_slider", False)
         )
@@ -253,6 +256,11 @@ class TradeTab(ttk.Frame):
         self.lbl_status.pack(pady=(4, 2))
 
         self.lst_trade = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_TRADE)
+        common.attach_results_context_menu(
+            self.lst_trade,
+            self._get_results_payload,
+            self._get_results_actions,
+        )
 
 
     def _market_age_min_hours(self) -> float:
@@ -325,6 +333,84 @@ class TradeTab(ttk.Frame):
             return
         hours = (datetime.now() - parsed).total_seconds() / 3600.0
         self._apply_market_age_hours(hours)
+
+    def _get_results_payload(self, row_index, row_text=None) -> dict | None:
+        idx = int(row_index) - int(self._results_row_offset)
+        if idx < 0 or idx >= len(self._results_rows):
+            return None
+        row = self._results_rows[idx]
+        return {
+            "row_index": idx,
+            "row_text": row_text,
+            "schema_id": "trade",
+            "row": row,
+            "from_system": row.get("from_system"),
+            "to_system": row.get("to_system"),
+            "station": row.get("station") or row.get("from_station") or row.get("to_station"),
+        }
+
+    def _get_results_actions(self, payload: dict) -> list[dict]:
+        actions = []
+        from_system = (payload.get("from_system") or "").strip()
+        to_system = (payload.get("to_system") or "").strip()
+        station = (payload.get("station") or "").strip()
+
+        if to_system:
+            actions.append(
+                {
+                    "label": "Kopiuj system",
+                    "action": lambda p: common.copy_text_to_clipboard(to_system, context="results.system"),
+                }
+            )
+        if station:
+            actions.append(
+                {
+                    "label": "Kopiuj stacje",
+                    "action": lambda p: common.copy_text_to_clipboard(station, context="results.station"),
+                }
+            )
+
+        if from_system:
+            actions.append({"separator": True})
+            actions.append(
+                {
+                    "label": "Ustaw jako Start",
+                    "action": lambda p: self.var_start_system.set(from_system),
+                }
+            )
+
+        row_text = (payload.get("row_text") or "").strip()
+        if row_text:
+            actions.append({"separator": True})
+            actions.append(
+                {
+                    "label": "Kopiuj caly wiersz",
+                    "action": lambda p: common.copy_text_to_clipboard(row_text, context="results.row"),
+                }
+            )
+
+        row = payload.get("row") or {}
+        csv_text = common.format_row_delimited("trade", row, ",")
+        tsv_text = common.format_row_delimited("trade", row, "	")
+        if csv_text or tsv_text:
+            actions.append({"separator": True})
+        if csv_text:
+            actions.append(
+                {
+                    "label": "Kopiuj jako CSV",
+                    "action": lambda p: common.copy_text_to_clipboard(csv_text, context="results.csv"),
+                }
+            )
+        if tsv_text:
+            actions.append(
+                {
+                    "label": "Kopiuj jako TSV",
+                    "action": lambda p: common.copy_text_to_clipboard(tsv_text, context="results.tsv"),
+                }
+            )
+
+        return actions
+
 
     def refresh_from_app_state(self):
         """D3c: uzupeĹ‚nia pola System/Stacja na podstawie AppState.
@@ -459,6 +545,8 @@ class TradeTab(ttk.Frame):
     def clear(self):
         self.lst_trade.delete(0, tk.END)
         self.lbl_status.config(text="Wyczyszczono", foreground="grey")
+        self._results_rows = []
+        self._results_row_offset = 0
 
     def run_trade(self):
         """
@@ -630,6 +718,8 @@ class TradeTab(ttk.Frame):
             )
 
             if rows:
+                self._results_rows = rows
+                self._results_row_offset = 0
                 route_manager.set_route(tr, "trade")
                 if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
                     opis = common.render_table_lines("trade", rows)

@@ -371,6 +371,139 @@ def render_table_lines(schema_id: str, rows: list[dict]) -> list[str]:
     return lines
 
 
+def _escape_delimited_value(value: str, sep: str) -> str:
+    text = "" if value is None else str(value)
+    if "\"" in text:
+        text = text.replace("\"", "\"\"")
+    if sep in text or "\n" in text or "\r" in text:
+        return f"\"{text}\""
+    return text
+
+
+def format_row_delimited(schema_id: str, row: dict, sep: str) -> str:
+    try:
+        from gui import table_schemas
+    except Exception:
+        return ""
+    schema = table_schemas.get_schema(schema_id)
+    if schema is None:
+        return ""
+    visible_cols = _get_visible_columns(schema_id)
+    columns = [col for col in schema.columns if col.key in visible_cols]
+    values = []
+    for col in columns:
+        value = _get_value_by_key(row, col.value_path or col.key)
+        text = format_value(value, col.fmt)
+        values.append(_escape_delimited_value(text, sep))
+    return sep.join(values)
+
+
+def copy_text_to_clipboard(text: str, *, context: str = "context_menu") -> bool:
+    if not text:
+        return False
+    result = try_copy_to_clipboard(text, context=context)
+    return bool(result.get("ok"))
+
+
+def attach_results_context_menu(
+    widget,
+    get_row_payload,
+    actions_provider,
+    *,
+    flag_key: str = "features.ui.results_context_menu",
+) -> None:
+    if getattr(widget, "_renata_ctx_menu_bound", False):
+        return
+    widget._renata_ctx_menu_bound = True  # type: ignore[attr-defined]
+
+    def _get_payload(row_id, row_text):
+        try:
+            return get_row_payload(row_id, row_text)
+        except TypeError:
+            return get_row_payload(row_id)
+
+    def _on_context_menu(event):
+        if not config.get(flag_key, False):
+            return
+        row_id = None
+        row_text = None
+        if isinstance(widget, ttk.Treeview):
+            row_id = widget.identify_row(event.y)
+            if not row_id:
+                return
+            try:
+                widget.selection_set(row_id)
+            except Exception:
+                pass
+            try:
+                row_text = " ".join(str(v) for v in widget.item(row_id, "values") or [])
+            except Exception:
+                row_text = None
+        else:
+            try:
+                row_id = widget.nearest(event.y)
+            except Exception:
+                return
+            if row_id is None:
+                return
+            try:
+                if row_id < 0 or row_id >= widget.size():
+                    return
+            except Exception:
+                return
+            try:
+                widget.selection_clear(0, tk.END)
+                widget.selection_set(row_id)
+                widget.activate(row_id)
+            except Exception:
+                pass
+            try:
+                row_text = widget.get(row_id)
+            except Exception:
+                row_text = None
+
+        payload = _get_payload(row_id, row_text)
+        if not payload:
+            return
+        actions = actions_provider(payload) or []
+        if not actions:
+            return
+        menu = getattr(widget, "_renata_ctx_menu", None)
+        if menu is None:
+            menu = tk.Menu(widget, tearoff=0)
+            widget._renata_ctx_menu = menu  # type: ignore[attr-defined]
+        menu.delete(0, tk.END)
+        has_action = False
+        for item in actions:
+            if not item:
+                continue
+            if item.get("separator"):
+                menu.add_separator()
+                continue
+            label = item.get("label")
+            action = item.get("action")
+            if not label or not callable(action):
+                continue
+            enabled = item.get("enabled", True)
+            menu.add_command(
+                label=label,
+                command=lambda fn=action: fn(payload),
+                state=("normal" if enabled else "disabled"),
+            )
+            has_action = True
+        if not has_action:
+            return
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            try:
+                menu.grab_release()
+            except Exception:
+                pass
+
+    widget.bind("<Button-3>", _on_context_menu)
+
+
 def _set_active_route_data(route, text, sig, source: str | None) -> None:
     global _ACTIVE_ROUTE_SYSTEMS, _ACTIVE_ROUTE_SYSTEMS_RAW
     global _ACTIVE_ROUTE_SIG, _ACTIVE_ROUTE_TEXT, _ACTIVE_ROUTE_INDEX

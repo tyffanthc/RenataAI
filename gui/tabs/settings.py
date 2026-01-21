@@ -122,6 +122,7 @@ class SettingsTab(ttk.Frame):
         self.var_tables_schema_renderer_enabled = tk.BooleanVar(value=True)
         self.var_tables_column_picker_enabled = tk.BooleanVar(value=True)
         self.var_tables_ui_badges_enabled = tk.BooleanVar(value=True)
+        self.var_results_context_menu = tk.BooleanVar(value=False)
         self.tables_visible_columns: Dict[str, list] = {}
 
         # Statek i zasieg skoku (JR)
@@ -1017,6 +1018,12 @@ class SettingsTab(ttk.Frame):
             variable=self.var_tables_ui_badges_enabled,
         ).grid(row=1, column=1, padx=8, pady=4, sticky="w")
 
+        ttk.Checkbutton(
+            lf_tables,
+            text="Results context menu",
+            variable=self.var_results_context_menu,
+        ).grid(row=2, column=0, padx=8, pady=4, sticky="w")
+
         ttk.Button(
             lf_tables,
             text="Configure columns...",
@@ -1283,6 +1290,12 @@ class SettingsTab(ttk.Frame):
                 self.var_tables_ui_badges_enabled.get(),
             )
         )
+        self.var_results_context_menu.set(
+            cfg.get(
+                "features.ui.results_context_menu",
+                self.var_results_context_menu.get(),
+            )
+        )
         visible_cols = cfg.get("tables_visible_columns", {})
         self.tables_visible_columns = visible_cols if isinstance(visible_cols, dict) else {}
 
@@ -1475,6 +1488,7 @@ class SettingsTab(ttk.Frame):
             "features.tables.schema_renderer_enabled": self.var_tables_schema_renderer_enabled.get(),
             "features.tables.column_picker_enabled": self.var_tables_column_picker_enabled.get(),
             "features.tables.ui_badges_enabled": self.var_tables_ui_badges_enabled.get(),
+            "features.ui.results_context_menu": self.var_results_context_menu.get(),
             "tables_visible_columns": self.tables_visible_columns,
 
             "jump_range_engine_enabled": self.var_jump_range_engine_enabled.get(),
@@ -1646,6 +1660,7 @@ class SettingsTab(ttk.Frame):
         self.var_tables_schema_renderer_enabled.set(True)
         self.var_tables_column_picker_enabled.set(True)
         self.var_tables_ui_badges_enabled.set(True)
+        self.var_results_context_menu.set(False)
         self.tables_visible_columns = {}
 
         self.var_jump_range_engine_enabled.set(True)

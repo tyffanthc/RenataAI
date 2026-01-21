@@ -31,6 +31,8 @@ class NeutronTab(ttk.Frame):
         self._via_compact = bool(config.get("features.ui.neutron_via_compact", True))
         self._via_autocomplete = bool(config.get("features.ui.neutron_via_autocomplete", True))
         self._via_online_lookup = bool(config.get("features.providers.system_lookup_online", False))
+        self._results_rows: list[dict] = []
+        self._results_row_offset = 0
 
         self._build_ui()
         self._range_user_overridden = False
@@ -139,6 +141,11 @@ class NeutronTab(ttk.Frame):
 
         # Lista wyników
         self.lst = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_NEUTRON)
+        common.attach_results_context_menu(
+            self.lst,
+            self._get_results_payload,
+            self._get_results_actions,
+        )
 
     # ------------------------------------------------------------------ public
 
@@ -179,6 +186,8 @@ class NeutronTab(ttk.Frame):
 
     def _clear_results(self) -> None:
         self.lst.delete(0, tk.END)
+        self._results_rows = []
+        self._results_row_offset = 0
 
     def apply_jump_range_from_ship(self, value: float | None) -> None:
         if not config.get("planner_auto_use_ship_jump_range", True):
@@ -248,6 +257,8 @@ class NeutronTab(ttk.Frame):
                 route_manager.set_route(tr, "neutron")
                 if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
                     rows = normalize_neutron_rows(details)
+                    self._results_rows = rows
+                    self._results_row_offset = 0
                     opis = common.render_table_lines("neutron", rows)
                     common.register_active_route_list(
                         self.lst,
@@ -264,6 +275,8 @@ class NeutronTab(ttk.Frame):
                         show_copied_suffix=False,
                     )
                 else:
+                    self._results_rows = normalize_neutron_rows(details)
+                    self._results_row_offset = 1
                     header = "{:<30} {:>9} {:>9} {:>5} {:>4}".format("System", "Dist(LY)", "Rem(LY)", "Neut", "Jmp")
                     opis = [header]
                     for sys_name, detail in zip_longest(tr, details, fillvalue={}):
@@ -297,6 +310,89 @@ class NeutronTab(ttk.Frame):
                 source="spansh.neutron",
                 ui_target="neu",
             )
+
+    def _get_results_payload(self, row_index, row_text=None) -> dict | None:
+        idx = int(row_index) - int(self._results_row_offset)
+        if idx < 0 or idx >= len(self._results_rows):
+            return None
+        row = self._results_rows[idx]
+        return {
+            "row_index": idx,
+            "row_text": row_text,
+            "schema_id": "neutron",
+            "row": row,
+            "system": row.get("system_name"),
+        }
+
+    def _get_results_actions(self, payload: dict) -> list[dict]:
+        actions = []
+        system = (payload.get("system") or "").strip()
+
+        if system:
+            actions.append(
+                {
+                    "label": "Kopiuj system",
+                    "action": lambda p: common.copy_text_to_clipboard(system, context="results.system"),
+                }
+            )
+            actions.append({"separator": True})
+            actions.append(
+                {
+                    "label": "Ustaw jako Start",
+                    "action": lambda p: self.var_start.set(system),
+                }
+            )
+            actions.append(
+                {
+                    "label": "Ustaw jako Cel",
+                    "action": lambda p: self.var_cel.set(system),
+                }
+            )
+            actions.append(
+                {
+                    "label": "Dodaj jako Via",
+                    "action": lambda p: self._add_via_from_system(system),
+                }
+            )
+
+        row_text = (payload.get("row_text") or "").strip()
+        if row_text:
+            actions.append({"separator": True})
+            actions.append(
+                {
+                    "label": "Kopiuj caly wiersz",
+                    "action": lambda p: common.copy_text_to_clipboard(row_text, context="results.row"),
+                }
+            )
+
+        row = payload.get("row") or {}
+        csv_text = common.format_row_delimited("neutron", row, ",")
+        tsv_text = common.format_row_delimited("neutron", row, "	")
+        if csv_text or tsv_text:
+            actions.append({"separator": True})
+        if csv_text:
+            actions.append(
+                {
+                    "label": "Kopiuj jako CSV",
+                    "action": lambda p: common.copy_text_to_clipboard(csv_text, context="results.csv"),
+                }
+            )
+        if tsv_text:
+            actions.append(
+                {
+                    "label": "Kopiuj jako TSV",
+                    "action": lambda p: common.copy_text_to_clipboard(tsv_text, context="results.tsv"),
+                }
+            )
+
+        return actions
+
+    def _add_via_from_system(self, system: str) -> None:
+        if not system:
+            return
+        self.var_via.set(system)
+        self._add_via()
+
 
     def _format_jump_row(self, system_name, detail):
         def _fmt_num(value):
