@@ -59,7 +59,7 @@ SCHEMAS: dict[str, TableSchema] = {
                 TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
-        show_lp=False,
+        show_lp=True,
     ),
     "ammonia": TableSchema(
         schema_id="ammonia",
@@ -77,7 +77,7 @@ SCHEMAS: dict[str, TableSchema] = {
                 TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
-        show_lp=False,
+        show_lp=True,
     ),
     "elw": TableSchema(
         schema_id="elw",
@@ -95,7 +95,7 @@ SCHEMAS: dict[str, TableSchema] = {
                 TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
-        show_lp=False,
+        show_lp=True,
     ),
     "hmc": TableSchema(
         schema_id="hmc",
@@ -113,7 +113,7 @@ SCHEMAS: dict[str, TableSchema] = {
                 TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
-        show_lp=False,
+        show_lp=True,
     ),
     "exomastery": TableSchema(
         schema_id="exomastery",
@@ -129,7 +129,7 @@ SCHEMAS: dict[str, TableSchema] = {
                 TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
-        show_lp=False,
+        show_lp=True,
     ),
     "trade": TableSchema(
         schema_id="trade",

@@ -123,7 +123,10 @@ class RichesTab(ttk.Frame):
         self.ac_cel.hide()
 
     def clear_rtr(self):
-        self.lst_rtr.delete(0, tk.END)
+        if isinstance(self.lst_rtr, ttk.Treeview):
+            self.lst_rtr.delete(*self.lst_rtr.get_children())
+        else:
+            self.lst_rtr.delete(0, tk.END)
         common.emit_status(
             "INFO",
             "ROUTE_CLEARED",
