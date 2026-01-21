@@ -132,23 +132,28 @@ class NeutronTab(ttk.Frame):
             self.lst_via.pack(side="left", fill="x", expand=True)
             ttk.Button(f_via, text=ui.BUTTON_REMOVE, command=self._remove_via).pack(side="left", padx=6)
 
-        # Przyciski
-        f_btn = ttk.Frame(fr)
-        f_btn.pack(pady=(6, 2))
+        # Pasek akcji + status (tuż nad tabelą)
+        f_actions = ttk.Frame(fr)
+        f_actions.pack(fill="x", pady=(6, 4))
+        f_actions.columnconfigure(0, weight=0)
+        f_actions.columnconfigure(1, weight=1)
+        f_actions.columnconfigure(2, weight=0)
 
+        f_btn = ttk.Frame(f_actions)
+        f_btn.grid(row=0, column=0, sticky="w")
         self.btn_run = ttk.Button(f_btn, text=ui.BUTTON_CALCULATE, command=self.run_neutron)
-        self.btn_run.pack(side="left", padx=4)
-        ttk.Button(f_btn, text=ui.BUTTON_CLEAR, command=self.clear).pack(side="left", padx=4)
-        ttk.Button(f_btn, text=ui.BUTTON_REVERSE, command=self._reverse_route).pack(side="left", padx=4)
-        f_status = ttk.Frame(fr)
-        f_status.pack(pady=(2, 2))
-        self.lbl_status = ttk.Label(f_status, text="Gotowy", font=("Arial", 10, "bold"))
-        self.lbl_status.pack()
+        self.btn_run.pack(side="left", padx=(0, 6))
+        ttk.Button(f_btn, text=ui.BUTTON_CLEAR, command=self.clear).pack(side="left", padx=(0, 6))
+        ttk.Button(f_btn, text=ui.BUTTON_REVERSE, command=self._reverse_route).pack(side="left")
+
+        self.lbl_status = ttk.Label(f_actions, text="Status: Gotowy", font=("Arial", 10, "bold"))
+        self.lbl_status.grid(row=0, column=1)
+
         # Lista wynikow
         if self._use_treeview:
-            self.lst = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_NEUTRON)
+            self.lst = common.stworz_tabele_trasy(fr, title=ui.LIST_TITLE_NEUTRON)
         else:
-            self.lst = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_NEUTRON)
+            self.lst = common.stworz_liste_trasy(fr, title=ui.LIST_TITLE_NEUTRON)
         common.attach_results_context_menu(
             self.lst,
             self._get_results_payload,
@@ -353,7 +358,18 @@ class NeutronTab(ttk.Frame):
         if getattr(self, "btn_run", None):
             self.btn_run.config(state=("disabled" if busy else "normal"))
         if getattr(self, "lbl_status", None):
-            self.lbl_status.config(text=("Laduje..." if busy else "Gotowy"))
+            self.set_status_text("Laduje..." if busy else "Gotowy", None)
+
+    def set_status_text(self, text: str | None, color: str | None) -> None:
+        raw = (text or "").strip()
+        if not raw:
+            raw = "—"
+        if not raw.lower().startswith("status:"):
+            raw = f"Status: {raw}"
+        if color:
+            self.lbl_status.config(text=raw, foreground=color)
+        else:
+            self.lbl_status.config(text=raw)
 
     def _get_results_payload(self, row_index, row_text=None) -> dict | None:
         try:

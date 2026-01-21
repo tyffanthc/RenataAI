@@ -426,7 +426,10 @@ class RenataApp:
 
                 elif msg_type == "status_neu":
                     txt, col = content
-                    self.tab_spansh.tab_neutron.lbl_status.config(text=txt, foreground=col)
+                    if hasattr(self.tab_spansh.tab_neutron, "set_status_text"):
+                        self.tab_spansh.tab_neutron.set_status_text(txt, col)
+                    else:
+                        self.tab_spansh.tab_neutron.lbl_status.config(text=txt, foreground=col)
                 elif msg_type == "list_nav":
                     common.wypelnij_liste(self.tab_spansh.tab_neutron.lst_nav, content)
                 elif msg_type == "select_nav":
