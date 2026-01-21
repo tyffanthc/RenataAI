@@ -25,6 +25,7 @@ class AmmoniaTab(ttk.Frame):
         self.var_max_dist = tk.IntVar(value=5000)
         self.var_loop = tk.BooleanVar(value=False)
         self.var_avoid_tharg = tk.BooleanVar(value=True)
+        self._busy = False
 
         self._use_treeview = bool(config.get("features.tables.treeview_enabled", False)) and bool(
             config.get("features.tables.spansh_schema_enabled", True)
@@ -89,7 +90,8 @@ class AmmoniaTab(ttk.Frame):
         bf = ttk.Frame(fr)
         bf.pack(pady=6)
 
-        ttk.Button(bf, text=ui.BUTTON_CALCULATE, command=self.run_amm).pack(side="left", padx=5)
+        self.btn_run = ttk.Button(bf, text=ui.BUTTON_CALCULATE, command=self.run_amm)
+        self.btn_run.pack(side="left", padx=5)
         ttk.Button(bf, text=ui.BUTTON_CLEAR, command=self.clear_amm).pack(side="left", padx=5)
         if self._use_treeview:
             self.lst_amm = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_AMMONIA)
@@ -103,6 +105,8 @@ class AmmoniaTab(ttk.Frame):
         self.ac_c.hide()
 
     def run_amm(self):
+        if not self._can_start():
+            return
         self.clear_amm()
 
         start_sys = self.e_start.get().strip()
@@ -117,6 +121,7 @@ class AmmoniaTab(ttk.Frame):
         avoid_tharg = self.var_avoid_tharg.get()
 
         args = (start_sys, cel, jump_range, radius, max_sys, max_dist, loop, avoid_tharg)
+        self._set_busy(True)
         route_manager.start_route_thread("ammonia", self._th, args=args, gui_ref=self.root)
 
     def apply_jump_range_from_ship(self, value: float | None) -> None:
@@ -171,62 +176,81 @@ class AmmoniaTab(ttk.Frame):
         return fallback
 
     def _th(self, s, cel, rng, rad, mx, max_dist, loop, avoid):
-        tr, rows = ammonia.oblicz_ammonia(s, cel, rng, rad, mx, max_dist, loop, avoid, None)
+        try:
+            tr, rows = ammonia.oblicz_ammonia(s, cel, rng, rad, mx, max_dist, loop, avoid, None)
 
-        if tr:
-            route_manager.set_route(tr, "ammonia")
-            if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
-                if self._use_treeview:
-                    common.render_table_treeview(self.lst_amm, "ammonia", rows)
-                    common.register_active_route_list(
-                        self.lst_amm,
-                        [],
-                        numerate=False,
-                        offset=1,
-                        schema_id="ammonia",
-                        rows=rows,
-                    )
+            if tr:
+                route_manager.set_route(tr, "ammonia")
+                if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
+                    if self._use_treeview:
+                        common.render_table_treeview(self.lst_amm, "ammonia", rows)
+                        common.register_active_route_list(
+                            self.lst_amm,
+                            [],
+                            numerate=False,
+                            offset=1,
+                            schema_id="ammonia",
+                            rows=rows,
+                        )
+                    else:
+                        opis = common.render_table_lines("ammonia", rows)
+                        common.register_active_route_list(
+                            self.lst_amm,
+                            opis,
+                            numerate=False,
+                            offset=1,
+                            schema_id="ammonia",
+                            rows=rows,
+                        )
+                        common.wypelnij_liste(
+                            self.lst_amm,
+                            opis,
+                            numerate=False,
+                            show_copied_suffix=False,
+                        )
                 else:
-                    opis = common.render_table_lines("ammonia", rows)
-                    common.register_active_route_list(
-                        self.lst_amm,
-                        opis,
-                        numerate=False,
-                        offset=1,
-                        schema_id="ammonia",
-                        rows=rows,
-                    )
-                    common.wypelnij_liste(
-                        self.lst_amm,
-                        opis,
-                        numerate=False,
-                        show_copied_suffix=False,
-                    )
+                    counts = {}
+                    for row in rows:
+                        sys_name = row.get("system_name")
+                        if sys_name:
+                            counts[sys_name] = counts.get(sys_name, 0) + 1
+                    opis = [f"{sys} ({counts.get(sys, 0)} cial)" for sys in tr]
+                    common.register_active_route_list(self.lst_amm, opis)
+                    common.wypelnij_liste(self.lst_amm, opis)
+                common.handle_route_ready_autoclipboard(self, tr, status_target="amm")
+                common.emit_status(
+                    "OK",
+                    "ROUTE_FOUND",
+                    text=f"Znaleziono {len(tr)}",
+                    source="spansh.ammonia",
+                    ui_target="amm",
+                )
             else:
-                counts = {}
-                for row in rows:
-                    sys_name = row.get("system_name")
-                    if sys_name:
-                        counts[sys_name] = counts.get(sys_name, 0) + 1
-                opis = [f"{sys} ({counts.get(sys, 0)} cial)" for sys in tr]
-                common.register_active_route_list(self.lst_amm, opis)
-                common.wypelnij_liste(self.lst_amm, opis)
-            common.handle_route_ready_autoclipboard(self, tr, status_target="amm")
-            common.emit_status(
-                "OK",
-                "ROUTE_FOUND",
-                text=f"Znaleziono {len(tr)}",
-                source="spansh.ammonia",
-                ui_target="amm",
-            )
-        else:
-            common.emit_status(
-            "ERROR",
-            "ROUTE_EMPTY",
-            text="Brak wyników",
-            source="spansh.ammonia",
-            ui_target="amm",
-        )
+                common.emit_status(
+                    "ERROR",
+                    "ROUTE_EMPTY",
+                    text="Brak wynikow",
+                    source="spansh.ammonia",
+                    ui_target="amm",
+                )
+        finally:
+            self.root.after(0, lambda: self._set_busy(False))
+
+    def _can_start(self) -> bool:
+        if self._busy:
+            common.emit_status("WARN", "ROUTE_BUSY", text="Laduje...", source="spansh.ammonia", ui_target="amm")
+            return False
+        if route_manager.is_busy():
+            common.emit_status("WARN", "ROUTE_BUSY", text="Inny planner juz liczy.", source="spansh.ammonia", ui_target="amm")
+            return False
+        return True
+
+    def _set_busy(self, busy: bool) -> None:
+        self._busy = busy
+        if busy:
+            common.emit_status("INFO", "ROUTE_BUSY", text="Laduje...", source="spansh.ammonia", ui_target="amm")
+        if getattr(self, "btn_run", None):
+            self.btn_run.config(state=("disabled" if busy else "normal"))
 
     def clear_amm(self):
         if isinstance(self.lst_amm, ttk.Treeview):

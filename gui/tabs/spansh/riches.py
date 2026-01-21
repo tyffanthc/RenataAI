@@ -27,6 +27,7 @@ class RichesTab(ttk.Frame):
         self.var_loop = tk.BooleanVar(value=False)
         self.var_use_map = tk.BooleanVar(value=True)
         self.var_avoid_tharg = tk.BooleanVar(value=True)
+        self._busy = False
 
         self._use_treeview = bool(config.get("features.tables.treeview_enabled", False)) and bool(
             config.get("features.tables.spansh_schema_enabled", True)
@@ -107,7 +108,8 @@ class RichesTab(ttk.Frame):
         f_btn = ttk.Frame(fr)
         f_btn.pack(pady=6)
 
-        ttk.Button(f_btn, text=ui.BUTTON_CALCULATE, command=self.run_rtr).pack(side="left", padx=4)
+        self.btn_run = ttk.Button(f_btn, text=ui.BUTTON_CALCULATE, command=self.run_rtr)
+        self.btn_run.pack(side="left", padx=4)
         ttk.Button(f_btn, text=ui.BUTTON_CLEAR, command=self.clear_rtr).pack(side="left", padx=4)
 
         # Lista
@@ -135,6 +137,8 @@ class RichesTab(ttk.Frame):
         )
 
     def run_rtr(self):
+        if not self._can_start():
+            return
         self.clear_rtr()
 
         start_sys = self.var_start.get().strip()
@@ -163,7 +167,24 @@ class RichesTab(ttk.Frame):
             avoid_tharg,
         )
 
+        self._set_busy(True)
         route_manager.start_route_thread("riches", self._th_r, args=args, gui_ref=self.root)
+
+    def _can_start(self) -> bool:
+        if self._busy:
+            common.emit_status("WARN", "ROUTE_BUSY", text="Laduje...", source="spansh.riches", ui_target="rtr")
+            return False
+        if route_manager.is_busy():
+            common.emit_status("WARN", "ROUTE_BUSY", text="Inny planner juz liczy.", source="spansh.riches", ui_target="rtr")
+            return False
+        return True
+
+    def _set_busy(self, busy: bool) -> None:
+        self._busy = busy
+        if busy:
+            common.emit_status("INFO", "ROUTE_BUSY", text="Laduje...", source="spansh.riches", ui_target="rtr")
+        if getattr(self, "btn_run", None):
+            self.btn_run.config(state=("disabled" if busy else "normal"))
 
     def apply_jump_range_from_ship(self, value: float | None) -> None:
         if not config.get("planner_auto_use_ship_jump_range", True):
@@ -229,72 +250,75 @@ class RichesTab(ttk.Frame):
         use_map,
         avoid_tharg,
     ):
-        tr, rows = riches.oblicz_rtr(
-            s,
-            cel,
-            jump_range,
-            rad,
-            mx,
-            max_dist,
-            min_scan,
-            loop,
-            use_map,
-            avoid_tharg,
-            None,
-        )
-
-        if tr:
-            route_manager.set_route(tr, "riches")
-            if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
-                if self._use_treeview:
-                    common.render_table_treeview(self.lst_rtr, "riches", rows)
-                    common.register_active_route_list(
-                        self.lst_rtr,
-                        [],
-                        numerate=False,
-                        offset=1,
-                        schema_id="riches",
-                        rows=rows,
-                    )
-                else:
-                    opis = common.render_table_lines("riches", rows)
-                    common.register_active_route_list(
-                        self.lst_rtr,
-                        opis,
-                        numerate=False,
-                        offset=1,
-                        schema_id="riches",
-                        rows=rows,
-                    )
-                    common.wypelnij_liste(
-                        self.lst_rtr,
-                        opis,
-                        numerate=False,
-                        show_copied_suffix=False,
-                    )
-            else:
-                counts = {}
-                for row in rows:
-                    sys_name = row.get("system_name")
-                    if sys_name:
-                        counts[sys_name] = counts.get(sys_name, 0) + 1
-                opis = [f"{sys} ({counts.get(sys, 0)} cial)" for sys in tr]
-                common.register_active_route_list(self.lst_rtr, opis)
-                common.wypelnij_liste(self.lst_rtr, opis)
-            common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
-            common.emit_status(
-                "OK",
-                "ROUTE_FOUND",
-                text=f"Znaleziono {len(tr)}",
-                source="spansh.riches",
-                ui_target="rtr",
+        try:
+            tr, rows = riches.oblicz_rtr(
+                s,
+                cel,
+                jump_range,
+                rad,
+                mx,
+                max_dist,
+                min_scan,
+                loop,
+                use_map,
+                avoid_tharg,
+                None,
             )
-        else:
-            common.emit_status(
-            "ERROR",
-            "ROUTE_EMPTY",
-            text="Brak wyników",
-            source="spansh.riches",
-            ui_target="rtr",
-        )
+
+            if tr:
+                route_manager.set_route(tr, "riches")
+                if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
+                    if self._use_treeview:
+                        common.render_table_treeview(self.lst_rtr, "riches", rows)
+                        common.register_active_route_list(
+                            self.lst_rtr,
+                            [],
+                            numerate=False,
+                            offset=1,
+                            schema_id="riches",
+                            rows=rows,
+                        )
+                    else:
+                        opis = common.render_table_lines("riches", rows)
+                        common.register_active_route_list(
+                            self.lst_rtr,
+                            opis,
+                            numerate=False,
+                            offset=1,
+                            schema_id="riches",
+                            rows=rows,
+                        )
+                        common.wypelnij_liste(
+                            self.lst_rtr,
+                            opis,
+                            numerate=False,
+                            show_copied_suffix=False,
+                        )
+                else:
+                    counts = {}
+                    for row in rows:
+                        sys_name = row.get("system_name")
+                        if sys_name:
+                            counts[sys_name] = counts.get(sys_name, 0) + 1
+                    opis = [f"{sys} ({counts.get(sys, 0)} cial)" for sys in tr]
+                    common.register_active_route_list(self.lst_rtr, opis)
+                    common.wypelnij_liste(self.lst_rtr, opis)
+                common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
+                common.emit_status(
+                    "OK",
+                    "ROUTE_FOUND",
+                    text=f"Znaleziono {len(tr)}",
+                    source="spansh.riches",
+                    ui_target="rtr",
+                )
+            else:
+                common.emit_status(
+                    "ERROR",
+                    "ROUTE_EMPTY",
+                    text="Brak wynikow",
+                    source="spansh.riches",
+                    ui_target="rtr",
+                )
+        finally:
+            self.root.after(0, lambda: self._set_busy(False))
 

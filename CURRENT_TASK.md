@@ -3,7 +3,7 @@
 Date: 2026-01-21
 
 ## Current focus (next ticket)
-M-03: Centralny "busy" + blokada multi-clicka w plannerach.
+M-04: Panel bledow + ostatnie zapytanie SPANSH.
 
 ## Recent done (for context)
 - C1 Column Picker (flagged).
@@ -11,6 +11,7 @@ M-03: Centralny "busy" + blokada multi-clicka w plannerach.
 - C2.1 Treeview UX polish (LP, alignment, sort indicator).
 - C3 Treeview rollout to remaining planners.
 - C4 Treeview polish (no separators, hover, header alignment).
+- M-03 Busy + blokada multi-clicka.
 
 ## Do not forget
 - Keep `user_settings.json` untracked.

@@ -32,7 +32,7 @@ Każda pozycja: opis, pliki, ryzyko, test, flaga.
 ## Średnie (0.5–2 dni)
 - M-01 [DONE] (P1): Dodać UI do wyboru kolumn tabel (column picker); Files: `gui/common.py`, `gui/tabs/settings.py`, `gui/table_schemas.py`; Risk: medium; Test: wybór kolumn i rendering; Flag: `features.tables.column_picker_enabled`.
 - M-02 [DONE] (P1): Zastąpić Listbox na Treeview z sortowaniem dla wyników tras; Files: `gui/common.py`, `gui/tabs/spansh/*`, `gui/table_schemas.py`; Risk: medium; Test: sortowanie i copy; Flag: `features.tables.treeview_enabled`.
-- M-03 (P1): Centralny wskaźnik „busy” + blokada wielokrotnego clicka; Files: `app/route_manager.py`, `gui/app.py`, `gui/tabs/spansh/*`; Risk: medium; Test: szybkie kliknięcia; Flag: no.
+- M-03 [DONE] (P1): Centralny wskaźnik „busy” + blokada wielokrotnego clicka; Files: `app/route_manager.py`, `gui/app.py`, `gui/tabs/spansh/*`; Risk: medium; Test: szybkie kliknięcia; Flag: no.
 - M-04 (P2): Dodać panel błędów i ostatniego zapytania SPANSH (HTTP status/job id); Files: `logic/spansh_client.py`, `gui/tabs/spansh/*`; Risk: medium; Test: celowe błędy; Flag: no.
 - M-05 (P2): Przepisanie layoutów Spansh do jednolitej siatki (grid/columns); Files: `gui/tabs/spansh/*`; Risk: medium; Test: porównanie layoutów; Flag: no.
 - M-06 (P2): Zapisywanie rozmiaru okna + ostatniej zakładki w config; Files: `gui/app.py`, `config.py`; Risk: medium; Test: restart app; Flag: no.

@@ -26,6 +26,7 @@ class ELWTab(ttk.Frame):
         self.var_max_dist = tk.IntVar(value=5000)
         self.var_loop = tk.BooleanVar(value=False)
         self.var_avoid = tk.BooleanVar(value=True)
+        self._busy = False
 
         self._use_treeview = bool(config.get("features.tables.treeview_enabled", False)) and bool(
             config.get("features.tables.spansh_schema_enabled", True)
@@ -90,7 +91,8 @@ class ELWTab(ttk.Frame):
         bf = ttk.Frame(fr)
         bf.pack(pady=6)
 
-        ttk.Button(bf, text=ui.BUTTON_CALCULATE, command=self.run).pack(side="left", padx=5)
+        self.btn_run = ttk.Button(bf, text=ui.BUTTON_CALCULATE, command=self.run)
+        self.btn_run.pack(side="left", padx=5)
         ttk.Button(bf, text=ui.BUTTON_CLEAR, command=self.clear).pack(side="left", padx=5)
 
         self.lbl_status = ttk.Label(self, text="Gotowy", font=("Arial", 10, "bold"))
@@ -107,6 +109,8 @@ class ELWTab(ttk.Frame):
         self.ac_c.hide()
 
     def run(self):
+        if not self._can_start():
+            return
         self.clear()
 
         start_sys = self.e_start.get().strip()
@@ -121,6 +125,7 @@ class ELWTab(ttk.Frame):
         avoid = self.var_avoid.get()
 
         args = (start_sys, cel, rng, rad, mx, max_dist, loop, avoid)
+        self._set_busy(True)
         route_manager.start_route_thread("elw", self._th, args=args, gui_ref=self.root)
 
     def apply_jump_range_from_ship(self, value: float | None) -> None:
@@ -175,62 +180,81 @@ class ELWTab(ttk.Frame):
         return fallback
 
     def _th(self, s, cel, rng, rad, mx, max_dist, loop, avoid):
-        tr, rows = elw_route.oblicz_elw(s, cel, rng, rad, mx, max_dist, loop, avoid)
+        try:
+            tr, rows = elw_route.oblicz_elw(s, cel, rng, rad, mx, max_dist, loop, avoid)
 
-        if tr:
-            route_manager.set_route(tr, "elw")
-            if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
-                if self._use_treeview:
-                    common.render_table_treeview(self.lst, "elw", rows)
-                    common.register_active_route_list(
-                        self.lst,
-                        [],
-                        numerate=False,
-                        offset=1,
-                        schema_id="elw",
-                        rows=rows,
-                    )
+            if tr:
+                route_manager.set_route(tr, "elw")
+                if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
+                    if self._use_treeview:
+                        common.render_table_treeview(self.lst, "elw", rows)
+                        common.register_active_route_list(
+                            self.lst,
+                            [],
+                            numerate=False,
+                            offset=1,
+                            schema_id="elw",
+                            rows=rows,
+                        )
+                    else:
+                        opis = common.render_table_lines("elw", rows)
+                        common.register_active_route_list(
+                            self.lst,
+                            opis,
+                            numerate=False,
+                            offset=1,
+                            schema_id="elw",
+                            rows=rows,
+                        )
+                        common.wypelnij_liste(
+                            self.lst,
+                            opis,
+                            numerate=False,
+                            show_copied_suffix=False,
+                        )
                 else:
-                    opis = common.render_table_lines("elw", rows)
-                    common.register_active_route_list(
-                        self.lst,
-                        opis,
-                        numerate=False,
-                        offset=1,
-                        schema_id="elw",
-                        rows=rows,
-                    )
-                    common.wypelnij_liste(
-                        self.lst,
-                        opis,
-                        numerate=False,
-                        show_copied_suffix=False,
-                    )
+                    counts = {}
+                    for row in rows:
+                        sys_name = row.get("system_name")
+                        if sys_name:
+                            counts[sys_name] = counts.get(sys_name, 0) + 1
+                    opis = [f"{sys} ({counts.get(sys, 0)} cial)" for sys in tr]
+                    common.register_active_route_list(self.lst, opis)
+                    common.wypelnij_liste(self.lst, opis)
+                common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
+                common.emit_status(
+                    "OK",
+                    "ROUTE_FOUND",
+                    text=f"Znaleziono {len(tr)}",
+                    source="spansh.elw",
+                    ui_target="rtr",
+                )
             else:
-                counts = {}
-                for row in rows:
-                    sys_name = row.get("system_name")
-                    if sys_name:
-                        counts[sys_name] = counts.get(sys_name, 0) + 1
-                opis = [f"{sys} ({counts.get(sys, 0)} cial)" for sys in tr]
-                common.register_active_route_list(self.lst, opis)
-                common.wypelnij_liste(self.lst, opis)
-            common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
-            common.emit_status(
-                "OK",
-                "ROUTE_FOUND",
-                text=f"Znaleziono {len(tr)}",
-                source="spansh.elw",
-                ui_target="rtr",
-            )
-        else:
-            common.emit_status(
-            "ERROR",
-            "ROUTE_EMPTY",
-            text="Brak wyników",
-            source="spansh.elw",
-            ui_target="rtr",
-        )
+                common.emit_status(
+                    "ERROR",
+                    "ROUTE_EMPTY",
+                    text="Brak wynikow",
+                    source="spansh.elw",
+                    ui_target="rtr",
+                )
+        finally:
+            self.root.after(0, lambda: self._set_busy(False))
+
+    def _can_start(self) -> bool:
+        if self._busy:
+            common.emit_status("WARN", "ROUTE_BUSY", text="Laduje...", source="spansh.elw", ui_target="rtr")
+            return False
+        if route_manager.is_busy():
+            common.emit_status("WARN", "ROUTE_BUSY", text="Inny planner juz liczy.", source="spansh.elw", ui_target="rtr")
+            return False
+        return True
+
+    def _set_busy(self, busy: bool) -> None:
+        self._busy = busy
+        if getattr(self, "btn_run", None):
+            self.btn_run.config(state=("disabled" if busy else "normal"))
+        if getattr(self, "lbl_status", None):
+            self.lbl_status.config(text=("Laduje..." if busy else "Gotowy"))
 
     def clear(self):
         if isinstance(self.lst, ttk.Treeview):

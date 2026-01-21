@@ -33,6 +33,7 @@ class NeutronTab(ttk.Frame):
         self._via_online_lookup = bool(config.get("features.providers.system_lookup_online", False))
         self._results_rows: list[dict] = []
         self._results_row_offset = 0
+        self._busy = False
         self._use_treeview = bool(config.get("features.tables.treeview_enabled", False)) and bool(
             config.get("features.tables.spansh_schema_enabled", True)
         ) and bool(config.get("features.tables.schema_renderer_enabled", True)) and bool(
@@ -135,7 +136,8 @@ class NeutronTab(ttk.Frame):
         f_btn = ttk.Frame(fr)
         f_btn.pack(pady=(6, 2))
 
-        ttk.Button(f_btn, text=ui.BUTTON_CALCULATE, command=self.run_neutron).pack(side="left", padx=4)
+        self.btn_run = ttk.Button(f_btn, text=ui.BUTTON_CALCULATE, command=self.run_neutron)
+        self.btn_run.pack(side="left", padx=4)
         ttk.Button(f_btn, text=ui.BUTTON_CLEAR, command=self.clear).pack(side="left", padx=4)
         ttk.Button(f_btn, text=ui.BUTTON_REVERSE, command=self._reverse_route).pack(side="left", padx=4)
         f_status = ttk.Frame(fr)
@@ -175,6 +177,8 @@ class NeutronTab(ttk.Frame):
         config.STATE["copied_sys"] = None
 
     def run_neutron(self):
+        if not self._can_start():
+            return
         self._clear_results()
 
         s = self.var_start.get().strip()
@@ -188,6 +192,7 @@ class NeutronTab(ttk.Frame):
 
         args = (s, cel, rng, eff, supercharge_mode, via)
 
+        self._set_busy(True)
         route_manager.start_route_thread("neutron", self._th, args=args, gui_ref=self.root)
 
     def _clear_results(self) -> None:
@@ -330,6 +335,25 @@ class NeutronTab(ttk.Frame):
                 source="spansh.neutron",
                 ui_target="neu",
             )
+
+        finally:
+            self.root.after(0, lambda: self._set_busy(False))
+
+    def _can_start(self) -> bool:
+        if self._busy:
+            common.emit_status("WARN", "ROUTE_BUSY", text="Laduje...", source="spansh.neutron", ui_target="neu")
+            return False
+        if route_manager.is_busy():
+            common.emit_status("WARN", "ROUTE_BUSY", text="Inny planner juz liczy.", source="spansh.neutron", ui_target="neu")
+            return False
+        return True
+
+    def _set_busy(self, busy: bool) -> None:
+        self._busy = busy
+        if getattr(self, "btn_run", None):
+            self.btn_run.config(state=("disabled" if busy else "normal"))
+        if getattr(self, "lbl_status", None):
+            self.lbl_status.config(text=("Laduje..." if busy else "Gotowy"))
 
     def _get_results_payload(self, row_index, row_text=None) -> dict | None:
         try:

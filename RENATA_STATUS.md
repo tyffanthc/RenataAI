@@ -105,6 +105,12 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Hover row dodany dla czytelnego feedbacku.
 - Testy smoke: backend + journal PASS.
 
+#### M-03 - Busy + blokada multi-clicka (DONE)
+- Run blokowany na czas obliczen w kazdym plannerze.
+- Przycisk Run jest disabled podczas pracy; status widoczny (label lub status bar).
+- Busy zwalniany w success i error (finally).
+- Testy smoke: backend + journal PASS.
+
 ---
 
 ## 3) Aktualny UX stan (skrót)
@@ -174,7 +180,7 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 ## 7) NEXT (priorytety)
 
 ### P1 - nastepny ticket
-**M-03 - Centralny "busy" + blokada multi-clicka**
+**M-04 - Panel bledow + ostatnie zapytanie SPANSH**
 
 ### Kolejne
 - M-04: panel bledow + ostatnie zapytanie SPANSH
