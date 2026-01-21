@@ -26,6 +26,12 @@ class AmmoniaTab(ttk.Frame):
         self.var_loop = tk.BooleanVar(value=False)
         self.var_avoid_tharg = tk.BooleanVar(value=True)
 
+        self._use_treeview = bool(config.get("features.tables.treeview_enabled", False)) and bool(
+            config.get("features.tables.spansh_schema_enabled", True)
+        ) and bool(config.get("features.tables.schema_renderer_enabled", True)) and bool(
+            config.get("features.tables.normalized_rows_enabled", True)
+        )
+
         self._build_ui()
         self._range_user_overridden = False
         self._range_updating = False
@@ -85,8 +91,10 @@ class AmmoniaTab(ttk.Frame):
 
         ttk.Button(bf, text=ui.BUTTON_CALCULATE, command=self.run_amm).pack(side="left", padx=5)
         ttk.Button(bf, text=ui.BUTTON_CLEAR, command=self.clear_amm).pack(side="left", padx=5)
-
-        self.lst_amm = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_AMMONIA)
+        if self._use_treeview:
+            self.lst_amm = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_AMMONIA)
+        else:
+            self.lst_amm = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_AMMONIA)
 
     # ------------------------------------------------------------------ public
 
@@ -168,21 +176,32 @@ class AmmoniaTab(ttk.Frame):
         if tr:
             route_manager.set_route(tr, "ammonia")
             if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
-                opis = common.render_table_lines("ammonia", rows)
-                common.register_active_route_list(
-                    self.lst_amm,
-                    opis,
-                    numerate=False,
-                    offset=1,
-                    schema_id="ammonia",
-                    rows=rows,
-                )
-                common.wypelnij_liste(
-                    self.lst_amm,
-                    opis,
-                    numerate=False,
-                    show_copied_suffix=False,
-                )
+                if self._use_treeview:
+                    common.render_table_treeview(self.lst_amm, "ammonia", rows)
+                    common.register_active_route_list(
+                        self.lst_amm,
+                        [],
+                        numerate=False,
+                        offset=1,
+                        schema_id="ammonia",
+                        rows=rows,
+                    )
+                else:
+                    opis = common.render_table_lines("ammonia", rows)
+                    common.register_active_route_list(
+                        self.lst_amm,
+                        opis,
+                        numerate=False,
+                        offset=1,
+                        schema_id="ammonia",
+                        rows=rows,
+                    )
+                    common.wypelnij_liste(
+                        self.lst_amm,
+                        opis,
+                        numerate=False,
+                        show_copied_suffix=False,
+                    )
             else:
                 counts = {}
                 for row in rows:
@@ -210,7 +229,10 @@ class AmmoniaTab(ttk.Frame):
         )
 
     def clear_amm(self):
-        self.lst_amm.delete(0, tk.END)
+        if isinstance(self.lst_amm, ttk.Treeview):
+            self.lst_amm.delete(*self.lst_amm.get_children())
+        else:
+            self.lst_amm.delete(0, tk.END)
         common.emit_status(
             "INFO",
             "ROUTE_CLEARED",

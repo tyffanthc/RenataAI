@@ -28,6 +28,12 @@ class RichesTab(ttk.Frame):
         self.var_use_map = tk.BooleanVar(value=True)
         self.var_avoid_tharg = tk.BooleanVar(value=True)
 
+        self._use_treeview = bool(config.get("features.tables.treeview_enabled", False)) and bool(
+            config.get("features.tables.spansh_schema_enabled", True)
+        ) and bool(config.get("features.tables.schema_renderer_enabled", True)) and bool(
+            config.get("features.tables.normalized_rows_enabled", True)
+        )
+
         self._build_ui()
         self._range_user_overridden = False
         self._range_updating = False
@@ -105,7 +111,10 @@ class RichesTab(ttk.Frame):
         ttk.Button(f_btn, text=ui.BUTTON_CLEAR, command=self.clear_rtr).pack(side="left", padx=4)
 
         # Lista
-        self.lst_rtr = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_RICHES)
+        if self._use_treeview:
+            self.lst_rtr = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_RICHES)
+        else:
+            self.lst_rtr = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_RICHES)
 
     # ------------------------------------------------------------------ public
 
@@ -234,21 +243,32 @@ class RichesTab(ttk.Frame):
         if tr:
             route_manager.set_route(tr, "riches")
             if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
-                opis = common.render_table_lines("riches", rows)
-                common.register_active_route_list(
-                    self.lst_rtr,
-                    opis,
-                    numerate=False,
-                    offset=1,
-                    schema_id="riches",
-                    rows=rows,
-                )
-                common.wypelnij_liste(
-                    self.lst_rtr,
-                    opis,
-                    numerate=False,
-                    show_copied_suffix=False,
-                )
+                if self._use_treeview:
+                    common.render_table_treeview(self.lst_rtr, "riches", rows)
+                    common.register_active_route_list(
+                        self.lst_rtr,
+                        [],
+                        numerate=False,
+                        offset=1,
+                        schema_id="riches",
+                        rows=rows,
+                    )
+                else:
+                    opis = common.render_table_lines("riches", rows)
+                    common.register_active_route_list(
+                        self.lst_rtr,
+                        opis,
+                        numerate=False,
+                        offset=1,
+                        schema_id="riches",
+                        rows=rows,
+                    )
+                    common.wypelnij_liste(
+                        self.lst_rtr,
+                        opis,
+                        numerate=False,
+                        show_copied_suffix=False,
+                    )
             else:
                 counts = {}
                 for row in rows:

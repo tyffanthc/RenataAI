@@ -84,6 +84,20 @@ Tryb pracy: **1 post = 1 ticket** (asystent) → raport → weryfikacja → nast
 - Potwierdzenie: nieznane kolumny z ustawien sa filtrowane, brak crasha.
 - Brak auto-run: zmiana tylko re-renderuje UI.
 
+#### C2 - Treeview renderer + sort (DONE)
+- Treeview dla wynikow Neutron + Trade (z column picker).
+- Sort po kliknieciu naglowka, stabilny dla liczb/stringow/pustych.
+- Flaga: features.tables.treeview_enabled.
+
+#### C2.1 - Treeview UX polish (DONE)
+- LP jako pierwsza kolumna; sort po LP resetuje kolejnosc.
+- Wyrownania: LP prawa, System lewa, reszta srodek.
+- Wskaznik sortu w naglowku.
+
+#### C3 - Rollout Treeview na pozostale planery (DONE)
+- Treeview podpiety do: Ammonia, ELW, HMC, Exomastery, Riches.
+- LP tylko dla tras (schema.show_lp), brak LP dla list wynikow.
+
 ---
 
 ## 3) Aktualny UX stan (skrót)

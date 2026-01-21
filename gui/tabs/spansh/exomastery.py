@@ -28,6 +28,12 @@ class ExomasteryTab(ttk.Frame):
         self.var_loop = tk.BooleanVar(value=False)
         self.var_avoid = tk.BooleanVar(value=True)
 
+        self._use_treeview = bool(config.get("features.tables.treeview_enabled", False)) and bool(
+            config.get("features.tables.spansh_schema_enabled", True)
+        ) and bool(config.get("features.tables.schema_renderer_enabled", True)) and bool(
+            config.get("features.tables.normalized_rows_enabled", True)
+        )
+
         self._build_ui()
         self._range_user_overridden = False
         self._range_updating = False
@@ -100,7 +106,10 @@ class ExomasteryTab(ttk.Frame):
 
         self.lbl_status = ttk.Label(self, text="Gotowy", font=("Arial", 10, "bold"))
         self.lbl_status.pack()
-        self.lst = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_EXOMASTERY)
+        if self._use_treeview:
+            self.lst = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_EXOMASTERY)
+        else:
+            self.lst = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_EXOMASTERY)
 
     # ------------------------------------------------------------------ public
 
@@ -185,21 +194,32 @@ class ExomasteryTab(ttk.Frame):
         if tr:
             route_manager.set_route(tr, "exomastery")
             if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
-                opis = common.render_table_lines("exomastery", rows)
-                common.register_active_route_list(
-                    self.lst,
-                    opis,
-                    numerate=False,
-                    offset=1,
-                    schema_id="exomastery",
-                    rows=rows,
-                )
-                common.wypelnij_liste(
-                    self.lst,
-                    opis,
-                    numerate=False,
-                    show_copied_suffix=False,
-                )
+                if self._use_treeview:
+                    common.render_table_treeview(self.lst, "exomastery", rows)
+                    common.register_active_route_list(
+                        self.lst,
+                        [],
+                        numerate=False,
+                        offset=1,
+                        schema_id="exomastery",
+                        rows=rows,
+                    )
+                else:
+                    opis = common.render_table_lines("exomastery", rows)
+                    common.register_active_route_list(
+                        self.lst,
+                        opis,
+                        numerate=False,
+                        offset=1,
+                        schema_id="exomastery",
+                        rows=rows,
+                    )
+                    common.wypelnij_liste(
+                        self.lst,
+                        opis,
+                        numerate=False,
+                        show_copied_suffix=False,
+                    )
             else:
                 counts = {}
                 for row in rows:
@@ -227,7 +247,10 @@ class ExomasteryTab(ttk.Frame):
         )
 
     def clear(self):
-        self.lst.delete(0, tk.END)
+        if isinstance(self.lst, ttk.Treeview):
+            self.lst.delete(*self.lst.get_children())
+        else:
+            self.lst.delete(0, tk.END)
         self.lbl_status.config(text="Wyczyszczono", foreground="grey")
         config.STATE["rtr_data"] = {}
         config.STATE["trasa"] = []

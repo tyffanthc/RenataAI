@@ -443,18 +443,20 @@ def render_table_treeview(tree, schema_id: str, rows: list[dict]) -> None:
     if not columns:
         columns = list(schema.columns)
 
+    show_lp = bool(getattr(schema, "show_lp", True))
     lp_key = "__lp__"
-    tree["columns"] = [lp_key] + [col.key for col in columns]
+    tree["columns"] = ([lp_key] if show_lp else []) + [col.key for col in columns]
     tree["show"] = "headings"
 
     widths = _compute_column_widths(columns, rows)
-    tree.column(lp_key, width=40, anchor="e", stretch=False)
-    tree.heading(
-        lp_key,
-        text=_format_treeview_header(tree, lp_key, "LP"),
-        command=lambda key=lp_key: _sort_treeview(tree, schema_id, key),
-        anchor="e",
-    )
+    if show_lp:
+        tree.column(lp_key, width=40, anchor="e", stretch=False)
+        tree.heading(
+            lp_key,
+            text=_format_treeview_header(tree, lp_key, "LP"),
+            command=lambda key=lp_key: _sort_treeview(tree, schema_id, key),
+            anchor="center",
+        )
     for col in columns:
         width_px = max(60, int(widths.get(col.key, 8) * 8))
         key_text = (col.key or "").lower()
@@ -475,7 +477,7 @@ def render_table_treeview(tree, schema_id: str, rows: list[dict]) -> None:
     rows_by_iid = {}
     for idx, row in enumerate(rows):
         iid = str(idx)
-        values = [str(idx + 1)]
+        values = [str(idx + 1)] if show_lp else []
         for col in columns:
             value = _get_value_by_key(row, col.value_path or col.key)
             values.append(format_value(value, col.fmt))
@@ -484,6 +486,7 @@ def render_table_treeview(tree, schema_id: str, rows: list[dict]) -> None:
     tree._renata_table_schema = schema_id  # type: ignore[attr-defined]
     tree._renata_table_rows = list(rows)  # type: ignore[attr-defined]
     tree._renata_tree_rows_by_iid = rows_by_iid  # type: ignore[attr-defined]
+    tree._renata_tree_show_lp = show_lp  # type: ignore[attr-defined]
     tree.tag_configure("copied", background=COPIED_BG, foreground=COPIED_FG)
     _update_treeview_sort_indicators(tree, schema_id)
 
@@ -511,7 +514,7 @@ def _sort_treeview(tree, schema_id: str, col_key: str) -> None:
     if schema is None:
         return
     lp_key = "__lp__"
-    if col_key == lp_key:
+    if col_key == lp_key and "__lp__" in list(tree["columns"] or []):
         tree._renata_tree_sort = {"column": lp_key, "desc": False}  # type: ignore[attr-defined]
         rows_by_iid = getattr(tree, "_renata_tree_rows_by_iid", {})
         items = []
@@ -549,6 +552,8 @@ def _sort_treeview(tree, schema_id: str, col_key: str) -> None:
 
 
 def _update_treeview_lp(tree) -> None:
+    if "__lp__" not in list(tree["columns"] or []):
+        return
     for idx, iid in enumerate(tree.get_children()):
         values = list(tree.item(iid, "values") or [])
         if not values:
@@ -572,12 +577,13 @@ def _update_treeview_sort_indicators(tree, schema_id: str) -> None:
 
     lp_key = "__lp__"
     arrow = " ▼" if desc else " ▲"
-    tree.heading(
-        lp_key,
-        text=_format_treeview_header(tree, lp_key, "LP" + (arrow if active == lp_key else "")),
-        command=lambda key=lp_key: _sort_treeview(tree, schema_id, key),
-        anchor="e",
-    )
+    if "__lp__" in list(tree["columns"] or []):
+        tree.heading(
+            lp_key,
+            text=_format_treeview_header(tree, lp_key, "LP" + (arrow if active == lp_key else "")),
+            command=lambda key=lp_key: _sort_treeview(tree, schema_id, key),
+            anchor="center",
+        )
     for col in schema.columns:
         label = col.label
         key_text = (col.key or "").lower()

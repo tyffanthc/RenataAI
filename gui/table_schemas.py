@@ -21,6 +21,7 @@ class TableSchema:
     schema_id: str
     title: str
     columns: tuple[TableColumn, ...]
+    show_lp: bool = True
 
 
 def _cols(items: Iterable[TableColumn]) -> tuple[TableColumn, ...]:
@@ -40,6 +41,7 @@ SCHEMAS: dict[str, TableSchema] = {
                 TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
+        show_lp=True,
     ),
     "riches": TableSchema(
         schema_id="riches",
@@ -57,6 +59,7 @@ SCHEMAS: dict[str, TableSchema] = {
                 TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
+        show_lp=False,
     ),
     "ammonia": TableSchema(
         schema_id="ammonia",
@@ -74,6 +77,7 @@ SCHEMAS: dict[str, TableSchema] = {
                 TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
+        show_lp=False,
     ),
     "elw": TableSchema(
         schema_id="elw",
@@ -91,6 +95,7 @@ SCHEMAS: dict[str, TableSchema] = {
                 TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
+        show_lp=False,
     ),
     "hmc": TableSchema(
         schema_id="hmc",
@@ -108,6 +113,7 @@ SCHEMAS: dict[str, TableSchema] = {
                 TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
+        show_lp=False,
     ),
     "exomastery": TableSchema(
         schema_id="exomastery",
@@ -123,6 +129,7 @@ SCHEMAS: dict[str, TableSchema] = {
                 TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
+        show_lp=False,
     ),
     "trade": TableSchema(
         schema_id="trade",
@@ -137,6 +144,7 @@ SCHEMAS: dict[str, TableSchema] = {
                 TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
             ]
         ),
+        show_lp=True,
     ),
 }
 
