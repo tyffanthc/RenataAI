@@ -295,7 +295,6 @@ class NeutronTab(ttk.Frame):
                             show_copied_suffix=False,
                         )
                 else:
-else:
                     self._results_rows = normalize_neutron_rows(details)
                     self._results_row_offset = 1
                     header = "{:<30} {:>9} {:>9} {:>5} {:>4}".format("System", "Dist(LY)", "Rem(LY)", "Neut", "Jmp")

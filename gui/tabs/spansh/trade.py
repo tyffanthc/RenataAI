@@ -763,7 +763,6 @@ class TradeTab(ttk.Frame):
                             show_copied_suffix=False,
                         )
                 else:
-else:
                     opis = [f"{row.get('from_system', '')} -> {row.get('to_system', '')}" for row in rows]
                     common.register_active_route_list(self.lst_trade, opis)
                     common.wypelnij_liste(self.lst_trade, opis)
