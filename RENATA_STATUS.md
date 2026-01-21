@@ -144,6 +144,16 @@ Tryb pracy: **1 post = 1 ticket** (asystent) → raport → weryfikacja → nast
 - D1: EDSM helpery (online provider)
 - SCI/TTS/AI/i18n później
 
+### Roadmapa ? Cel Renaty (glos i UX)
+- Cel: pokladowy asystent Elite Dangerous (journal events, akcje w GUI, spojny glos, brak spamu i cooldowny).
+- STT offline: whisper.cpp (base/small) + intent offline (reguly/regex) -> kontrola, zero kosztow.
+- TTS: edge-tts (jakosc/komplikacja) + kolejka, krotkie wypowiedzi, retry/backoff.
+- Speech Manager: kolejka + priorytety (ALERT>ACK>STATUS>LORE), cancel lore na alert, anti-repeat/cooldown.
+- Policy layer: tryb minimalny w stresie, lore opt-in, brak recytowania parametrow trasy.
+- Content/Lore DB: warianty wypowiedzi + cooldowny; lore po FSDJump: pytanie 'chcesz ciekawostke?'.
+- Sterowanie glosem: push-to-talk na start, mute STT gdy TTS mowi; wake word pozniej.
+- MVP: SpeechManager, Content DB + selector, STT offline + PTT, Intent router, TTS Edge + SSML presets, LoreDB hook po FSDJump.
+
 ---
 
 ## 8) Tryb pracy w nowym czacie (procedura)
