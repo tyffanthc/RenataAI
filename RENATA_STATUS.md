@@ -74,12 +74,18 @@ Tryb pracy: **1 post = 1 ticket** (asystent) → raport → weryfikacja → nast
 - Testy: manual (Trade → zmiana suwaka/pola; brak auto-run), smoke standard.
 - Ryzyka: rozjazd wartości czasu przy ręcznej edycji; niejednoznaczne strefy czasowe.
 
+#### B3 - RESULTS-CONTEXT-MENU-01 (DONE)
+- Prawy klik na wynikach: kopiuj/ustaw start/cel/dodaj via/CSV/TSV.
+- Dziala w Neutron + Trade; wspolny mechanizm w `gui/common.py`.
+- Flaga: `features.ui.results_context_menu=false` (Settings).
+
 ---
 
 ## 3) Aktualny UX stan (skrót)
 
 - Wejścia w plannerach: spójne labelki + jednostki, spójny układ opcji, wspólna siatka layoutu.
 - Tabele: nagłówki PL + jednostki; sticky header + autosize kolumn.
+- Wyniki: menu kontekstowe (prawy klik) pod flaga `features.ui.results_context_menu`.
 - Trade: walidacja “Stacja wymagana”; autocomplete stacji działa offline z cache (bez gry cache może być puste), online lookup opcjonalny pod flagą.
 - Debug: debug panel i logger utwardzone, throttling ogranicza spam.
 
@@ -97,6 +103,8 @@ Tryb pracy: **1 post = 1 ticket** (asystent) → raport → weryfikacja → nast
   - `features.ui.tabs.fleet_carrier_enabled`
   - `features.ui.tabs.colonisation_enabled`
   - `features.ui.tabs.galaxy_enabled`
+- UI (wyniki):
+  - `features.ui.results_context_menu`
 - Trade (online lookup):
   - `features.trade.station_lookup_online` / `features.providers.system_lookup_online` (wg realnych kluczy w config)
 
@@ -114,7 +122,7 @@ Tryb pracy: **1 post = 1 ticket** (asystent) → raport → weryfikacja → nast
 
 ### Manual (GUI)
 - `py main.py`
-- UX smoke: NEXT_HOP (clipboard + overlay), tabele (nagłówki, sticky, autosize), Trade required field.
+- UX smoke: NEXT_HOP (clipboard + overlay), tabele (naglowki, sticky, autosize), Trade required field, menu kontekstowe wynikow.
 
 ---
 
@@ -135,16 +143,15 @@ Tryb pracy: **1 post = 1 ticket** (asystent) → raport → weryfikacja → nast
 
 ## 7) NEXT (priorytety)
 
-### P1 — następny ticket
-**B3 — Menu kontekstowe wyników**
-- Prawy klik: kopiuj/ustaw start/cel/dodaj via/CSV/TSV (część pod flagą).
+### P1 - nastepny ticket
+**C1/C2 - tabelki pro (Treeview renderer + wybor kolumn)**
 
-### Kolejne (po B3)
+### Kolejne
 - C1/C2: tabelki “pro” (Treeview renderer + wybór kolumn)
 - D1: EDSM helpery (online provider)
 - SCI/TTS/AI/i18n później
 
-### Roadmapa ? Cel Renaty (glos i UX)
+### Roadmapa - Cel Renaty (glos i UX)
 - Cel: pokladowy asystent Elite Dangerous (journal events, akcje w GUI, spojny glos, brak spamu i cooldowny).
 - STT offline: whisper.cpp (base/small) + intent offline (reguly/regex) -> kontrola, zero kosztow.
 - TTS: edge-tts (jakosc/komplikacja) + kolejka, krotkie wypowiedzi, retry/backoff.
