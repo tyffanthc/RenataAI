@@ -468,7 +468,7 @@ def render_table_treeview(tree, schema_id: str, rows: list[dict]) -> None:
             col.key,
             text=_format_treeview_header(tree, col.key, col.label),
             command=lambda key=col.key: _sort_treeview(tree, schema_id, key),
-            anchor=anchor,
+            anchor="center",
         )
 
     tree.delete(*tree.get_children())
@@ -592,7 +592,7 @@ def _update_treeview_sort_indicators(tree, schema_id: str) -> None:
             col.key,
             text=_format_treeview_header(tree, col.key, label),
             command=lambda key=col.key: _sort_treeview(tree, schema_id, key),
-            anchor=anchor,
+            anchor="center",
         )
 
 
