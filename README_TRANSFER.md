@@ -18,6 +18,11 @@ Desktop assistant for Elite Dangerous with Spansh planners, route tools, and UX-
 - `docs/RENATA_UX_BACKLOG.md` - UX backlog
 - `docs/RENATA_ARCH.mmd` - architecture sketch
 
+## Recent updates (C1-C3)
+- Column Picker for result tables (flagged).
+- Treeview renderer + sort + LP + header indicators (flagged).
+- Treeview rollout to Ammonia/ELW/HMC/Exomastery/Riches.
+
 ## Where to look in code
 - UI tabs: `gui/tabs/*`
 - Spansh planners: `gui/tabs/spansh/*`, `logic/spansh_payloads.py`
@@ -27,6 +32,10 @@ Desktop assistant for Elite Dangerous with Spansh planners, route tools, and UX-
 ## Flags and settings
 Feature flags live in `config.py` and are surfaced in Settings when user-facing.
 Follow rule: new feature => flag + default OFF + Settings (if user-facing).
+Key flags:
+- `features.tables.column_picker_enabled`
+- `features.tables.treeview_enabled`
+- `features.ui.results_context_menu`
 
 ## Gotchas
 - Use `py` on Windows if `python` is not available.

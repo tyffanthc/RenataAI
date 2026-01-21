@@ -1,21 +1,15 @@
 # Current Task Snapshot
 
-Date: 2026-01-20
+Date: 2026-01-21
 
-## Latest UX decision
-Trade "Market Age" UI was implemented with cutoff datetime + slider + presets
-behind `features.trade.market_age_slider`. It is accepted for now, but the UX is
-not final and should be aligned with Spansh later (calendar widget, better layout
-and formatting).
+## Current focus (next ticket)
+M-03: Centralny "busy" + blokada multi-clicka w plannerach.
 
-## Follow-up UX task (planned)
-Add a backlog item for: "Trade Market Age UX zgodny ze Spansh (kalendarz, format, layout)".
-
-## How to verify the feature
-- Settings -> Handel -> enable "Market Age: suwak + data/czas (beta)"
-- Restart app
-- Trade tab: preset changes cutoff datetime; manual datetime updates slider
+## Recent done (for context)
+- C1 Column Picker (flagged).
+- C2 Treeview renderer + sort (flagged).
+- C2.1 Treeview UX polish (LP, alignment, sort indicator).
+- C3 Treeview rollout to remaining planners.
 
 ## Do not forget
-- No auto-run on value change (only changes parameters).
 - Keep `user_settings.json` untracked.

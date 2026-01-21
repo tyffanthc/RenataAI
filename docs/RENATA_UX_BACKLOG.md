@@ -1,5 +1,14 @@
 ﻿# RenataAI UX/UI Backlog
 
+## Done (recent)
+- C1: Column Picker (flagged, persistence).
+- C2: Treeview renderer + sort (Neutron + Trade).
+- C2.1: Treeview UX polish (LP, alignment, sort indicator).
+- C3: Treeview rollout (Ammonia/ELW/HMC/Exomastery/Riches) + LP everywhere.
+- B2: Trade Market Age slider + datetime (flagged).
+- B3: Results context menu (flagged).
+
+
 Każda pozycja: opis, pliki, ryzyko, test, flaga.
 
 ## Quick wins (1–2h)
@@ -20,8 +29,8 @@ Każda pozycja: opis, pliki, ryzyko, test, flaga.
 - QW-15 (P3): Wpiąć flagi asystentów do logiki (fss/bio/high_value/smuggler); Files: `logic/events/exploration_fss_events.py`, `logic/events/exploration_bio_events.py`, `logic/events/exploration_high_value_events.py`, `logic/events/smuggler_events.py`; Risk: low; Test: smoke tests + manual; Flag: no.
 
 ## Średnie (0.5–2 dni)
-- M-01 (P1): Dodać UI do wyboru kolumn tabel (column picker); Files: `gui/common.py`, `gui/tabs/settings.py`, `gui/table_schemas.py`; Risk: medium; Test: wybór kolumn i rendering; Flag: `features.tables.column_picker_enabled`.
-- M-02 (P1): Zastąpić Listbox na Treeview z sortowaniem dla wyników tras; Files: `gui/common.py`, `gui/tabs/spansh/*`, `gui/table_schemas.py`; Risk: medium; Test: sortowanie i copy; Flag: `features.tables.spansh_schema_enabled`.
+- M-01 [DONE] (P1): Dodać UI do wyboru kolumn tabel (column picker); Files: `gui/common.py`, `gui/tabs/settings.py`, `gui/table_schemas.py`; Risk: medium; Test: wybór kolumn i rendering; Flag: `features.tables.column_picker_enabled`.
+- M-02 [DONE] (P1): Zastąpić Listbox na Treeview z sortowaniem dla wyników tras; Files: `gui/common.py`, `gui/tabs/spansh/*`, `gui/table_schemas.py`; Risk: medium; Test: sortowanie i copy; Flag: `features.tables.treeview_enabled`.
 - M-03 (P1): Centralny wskaźnik „busy” + blokada wielokrotnego clicka; Files: `app/route_manager.py`, `gui/app.py`, `gui/tabs/spansh/*`; Risk: medium; Test: szybkie kliknięcia; Flag: no.
 - M-04 (P2): Dodać panel błędów i ostatniego zapytania SPANSH (HTTP status/job id); Files: `logic/spansh_client.py`, `gui/tabs/spansh/*`; Risk: medium; Test: celowe błędy; Flag: no.
 - M-05 (P2): Przepisanie layoutów Spansh do jednolitej siatki (grid/columns); Files: `gui/tabs/spansh/*`; Risk: medium; Test: porównanie layoutów; Flag: no.

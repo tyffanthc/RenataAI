@@ -1,8 +1,8 @@
 # RENATA_STATUS.md
 
-Ostatnia aktualizacja: 2026-01-20  
-Właściciel procesu: Patryk  
-Tryb pracy: **1 post = 1 ticket** (asystent) → raport → weryfikacja → następny ticket
+Ostatnia aktualizacja: 2026-01-21  
+Wlasciciel procesu: Patryk  
+Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepny ticket
 
 ---
 
@@ -96,7 +96,8 @@ Tryb pracy: **1 post = 1 ticket** (asystent) → raport → weryfikacja → nast
 
 #### C3 - Rollout Treeview na pozostale planery (DONE)
 - Treeview podpiety do: Ammonia, ELW, HMC, Exomastery, Riches.
-- LP tylko dla tras (schema.show_lp), brak LP dla list wynikow.
+- LP dodane we wszystkich tabelach (tak jak w Neutron).
+- Testy smoke: backend + journal PASS.
 
 ---
 
@@ -104,6 +105,7 @@ Tryb pracy: **1 post = 1 ticket** (asystent) → raport → weryfikacja → nast
 
 - Wejścia w plannerach: spójne labelki + jednostki, spójny układ opcji, wspólna siatka layoutu.
 - Tabele: nagłówki PL + jednostki; sticky header + autosize kolumn.
+- Tabele (Treeview): sort, LP i column picker pod flagami.
 - Wyniki: menu kontekstowe (prawy klik) pod flaga `features.ui.results_context_menu`.
 - Trade: walidacja “Stacja wymagana”; autocomplete stacji działa offline z cache (bez gry cache może być puste), online lookup opcjonalny pod flagą.
 - Debug: debug panel i logger utwardzone, throttling ogranicza spam.
@@ -124,6 +126,9 @@ Tryb pracy: **1 post = 1 ticket** (asystent) → raport → weryfikacja → nast
   - `features.ui.tabs.galaxy_enabled`
 - UI (wyniki):
   - `features.ui.results_context_menu`
+- Tabele:
+  - `features.tables.column_picker_enabled`
+  - `features.tables.treeview_enabled`
 - Trade (online lookup):
   - `features.trade.station_lookup_online` / `features.providers.system_lookup_online` (wg realnych kluczy w config)
 
@@ -163,13 +168,12 @@ Tryb pracy: **1 post = 1 ticket** (asystent) → raport → weryfikacja → nast
 ## 7) NEXT (priorytety)
 
 ### P1 - nastepny ticket
-**C1/C2 - tabelki pro (Treeview renderer + wybor kolumn)**
+**M-03 - Centralny "busy" + blokada multi-clicka**
 
 ### Kolejne
-- C1/C2: tabelki “pro” (Treeview renderer + wybór kolumn)
+- M-04: panel bledow + ostatnie zapytanie SPANSH
 - D1: EDSM helpery (online provider)
-- SCI/TTS/AI/i18n później
-
+- SCI/TTS/AI/i18n pozniej
 ### Roadmapa - Cel Renaty (glos i UX)
 - Cel: pokladowy asystent Elite Dangerous (journal events, akcje w GUI, spojny glos, brak spamu i cooldowny).
 - STT offline: whisper.cpp (base/small) + intent offline (reguly/regex) -> kontrola, zero kosztow.

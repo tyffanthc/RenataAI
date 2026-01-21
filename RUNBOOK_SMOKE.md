@@ -35,6 +35,7 @@ Wymaga uruchomionego GUI.
 - [ ] Stany: po kliknięciu “Wyznacz trasę” widać czytelny stan “busy” i potem wynik/komunikat
 - [ ] Lista Via: chipsy nie rozpychają layoutu, usuwanie działa i Reverse odwraca kolejność
 - [ ] Tabele wyników: nagłówki widoczne, przewijanie OK, [SKOPIOWANO] nie rozwala szerokości
+- [ ] Treeview: sort po kliknieciu naglowka, LP widoczne, column picker zmienia widoczne kolumny (pod flagami)
 
 ## 3.1) Clipboard / NEXT_HOP — UX smoke
 Pre-conditions:

@@ -2,6 +2,13 @@
 
 Dokument oparty o analizę kodu w `c:\Users\Patryk\Desktop\RenataAI` (bez uruchamiania GUI i bez połączeń sieciowych).
 
+## Update 2026-01-21 (recent changes)
+- Results tables: Treeview renderer + sort + LP + column picker (flags).
+- Treeview rollout to all Spansh planners with table results.
+- Results context menu (copy/start/goal/CSV/TSV) under flag.
+- Trade Market Age slider + datetime (flagged).
+
+
 ## A) Executive summary
 
 ### Co Renata robi (10–15 punktów)
@@ -34,6 +41,7 @@ Dokument oparty o analizę kodu w `c:\Users\Patryk\Desktop\RenataAI` (bez urucha
 - Uzależnienie od SPANSH i zewnętrznych źródeł danych bez trybu offline.
 
 ### Co poprawić “na już” (top 10 quick wins UX/UI)
+Note: several items below are already done (labels, required fields, placeholders, tables).
 1) Ujednolicić nazwy i język etykiet w Spansh (PL lub EN, ale konsekwentnie) – `gui/tabs/spansh/*.py`.
 2) Dodać wizualny znacznik pól wymaganych (np. Trade: Station) – `gui/tabs/spansh/trade.py`.
 3) Usunąć / ukryć placeholdery tabów albo oznaczyć je jako „nieaktywne” – `gui/tabs/spansh/__init__.py`, `gui/app.py`.
@@ -147,7 +155,7 @@ Dokument oparty o analizę kodu w `c:\Users\Patryk\Desktop\RenataAI` (bez urucha
 ### Via / reverse / table wyniki / [SKOPIOWANO]
 - Via: walidacja duplikatów i długości w `logic/neutron_via.py`, UI w `gui/tabs/spansh/neutron.py`.
 - Reverse: tylko w Neutron (zamiana Start/Cel + odwrócenie Via).
-- Wyniki: renderowane albo jako „schema table” (`gui/table_schemas.py` + `gui/common.py`) albo jako proste listy tekstowe.
+- Wyniki: renderowane jako Treeview (pod flagami) lub proste listy tekstowe.
 - [SKOPIOWANO]: marker kopii wiersza i w overlay (auto‑schowek) w `gui/common.py`.
 
 ## C) Architektura i przepływ danych (dev view)
