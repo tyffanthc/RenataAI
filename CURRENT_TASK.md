@@ -10,6 +10,7 @@ M-03: Centralny "busy" + blokada multi-clicka w plannerach.
 - C2 Treeview renderer + sort (flagged).
 - C2.1 Treeview UX polish (LP, alignment, sort indicator).
 - C3 Treeview rollout to remaining planners.
+- C4 Treeview polish (no separators, hover, header alignment).
 
 ## Do not forget
 - Keep `user_settings.json` untracked.

@@ -99,6 +99,12 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - LP dodane we wszystkich tabelach (tak jak w Neutron).
 - Testy smoke: backend + journal PASS.
 
+#### C4 - Treeview UX polish & decyzje wizualne (DONE)
+- Separatory w naglowkach usuniete (mniej ciezaru wizualnego).
+- Header i dane maja spojne wyrownania.
+- Hover row dodany dla czytelnego feedbacku.
+- Testy smoke: backend + journal PASS.
+
 ---
 
 ## 3) Aktualny UX stan (skrót)

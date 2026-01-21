@@ -5,6 +5,7 @@
 - C2: Treeview renderer + sort (Neutron + Trade).
 - C2.1: Treeview UX polish (LP, alignment, sort indicator).
 - C3: Treeview rollout (Ammonia/ELW/HMC/Exomastery/Riches) + LP everywhere.
+- C4: Treeview UX polish (no separators, header alignment, hover row).
 - B2: Trade Market Age slider + datetime (flagged).
 - B3: Results context menu (flagged).
 

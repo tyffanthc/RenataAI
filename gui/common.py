@@ -14,6 +14,7 @@ from logic.route_clipboard import (
 # --- delikatny, neutronowy kolor pod skopiowany wiersz
 COPIED_BG = "#CFE8FF"   # jasny niebieski, subtelny
 COPIED_FG = "#000000"
+HOVER_BG = "#273241"
 
 _LAST_ROUTE_TEXT = ""
 _LAST_ROUTE_SIG = None
@@ -161,6 +162,7 @@ def stworz_tabele_trasy(parent, title="Plan Lotu"):
     sc.config(command=tree.yview)
     tree.configure(yscrollcommand=sc.set)
 
+    _attach_treeview_hover(tree)
     tree._renata_header_bar = header_bar  # type: ignore[attr-defined]
     tree._renata_columns_button = columns_button  # type: ignore[attr-defined]
     tree._renata_table_schema = None  # type: ignore[attr-defined]
@@ -455,7 +457,7 @@ def render_table_treeview(tree, schema_id: str, rows: list[dict]) -> None:
             lp_key,
             text=_format_treeview_header(tree, lp_key, "LP"),
             command=lambda key=lp_key: _sort_treeview(tree, schema_id, key),
-            anchor="center",
+            anchor="e",
         )
     for col in columns:
         width_px = max(60, int(widths.get(col.key, 8) * 8))
@@ -470,7 +472,7 @@ def render_table_treeview(tree, schema_id: str, rows: list[dict]) -> None:
             col.key,
             text=_format_treeview_header(tree, col.key, col.label),
             command=lambda key=col.key: _sort_treeview(tree, schema_id, key),
-            anchor="center",
+            anchor=anchor,
         )
 
     tree.delete(*tree.get_children())
@@ -488,6 +490,7 @@ def render_table_treeview(tree, schema_id: str, rows: list[dict]) -> None:
     tree._renata_tree_rows_by_iid = rows_by_iid  # type: ignore[attr-defined]
     tree._renata_tree_show_lp = show_lp  # type: ignore[attr-defined]
     tree.tag_configure("copied", background=COPIED_BG, foreground=COPIED_FG)
+    tree.tag_configure("hover", background=HOVER_BG)
     _update_treeview_sort_indicators(tree, schema_id)
 
 
@@ -582,7 +585,7 @@ def _update_treeview_sort_indicators(tree, schema_id: str) -> None:
             lp_key,
             text=_format_treeview_header(tree, lp_key, "LP" + (arrow if active == lp_key else "")),
             command=lambda key=lp_key: _sort_treeview(tree, schema_id, key),
-            anchor="center",
+            anchor="e",
         )
     for col in schema.columns:
         label = col.label
@@ -598,18 +601,52 @@ def _update_treeview_sort_indicators(tree, schema_id: str) -> None:
             col.key,
             text=_format_treeview_header(tree, col.key, label),
             command=lambda key=col.key: _sort_treeview(tree, schema_id, key),
-            anchor="center",
+            anchor=anchor,
         )
 
 
 def _format_treeview_header(tree, col_key: str, label: str) -> str:
-    columns = list(tree["columns"] or [])
-    if not columns:
-        return label
-    last_key = columns[-1]
-    left = "| "
-    right = " |"
-    return f"{left}{label}{right}"
+    return label
+
+
+def _attach_treeview_hover(tree) -> None:
+    if getattr(tree, "_renata_hover_bound", False):
+        return
+
+    def _clear_hover(target):
+        prev = getattr(target, "_renata_hover_iid", None)
+        if prev:
+            tags = tuple(tag for tag in (target.item(prev, "tags") or ()) if tag != "hover")
+            target.item(prev, tags=tags)
+        target._renata_hover_iid = None  # type: ignore[attr-defined]
+
+    def _on_motion(event):
+        target = event.widget
+        row_id = target.identify_row(event.y)
+        prev = getattr(target, "_renata_hover_iid", None)
+        if row_id == prev:
+            return
+        if prev:
+            tags = tuple(tag for tag in (target.item(prev, "tags") or ()) if tag != "hover")
+            target.item(prev, tags=tags)
+        if not row_id:
+            target._renata_hover_iid = None  # type: ignore[attr-defined]
+            return
+        tags = list(target.item(row_id, "tags") or ())
+        if "copied" in tags:
+            target._renata_hover_iid = None  # type: ignore[attr-defined]
+            return
+        if "hover" not in tags:
+            tags.append("hover")
+            target.item(row_id, tags=tags)
+        target._renata_hover_iid = row_id  # type: ignore[attr-defined]
+
+    def _on_leave(event):
+        _clear_hover(event.widget)
+
+    tree.bind("<Motion>", _on_motion, add="+")
+    tree.bind("<Leave>", _on_leave, add="+")
+    tree._renata_hover_bound = True  # type: ignore[attr-defined]
 
 
 def _get_treeview_row(tree, row_id: str) -> dict | None:
