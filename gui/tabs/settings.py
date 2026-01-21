@@ -120,7 +120,7 @@ class SettingsTab(ttk.Frame):
         self.var_tables_spansh_schema_enabled = tk.BooleanVar(value=True)
         self.var_tables_normalized_rows_enabled = tk.BooleanVar(value=True)
         self.var_tables_schema_renderer_enabled = tk.BooleanVar(value=True)
-        self.var_tables_column_picker_enabled = tk.BooleanVar(value=True)
+        self.var_tables_column_picker_enabled = tk.BooleanVar(value=False)
         self.var_tables_ui_badges_enabled = tk.BooleanVar(value=True)
         self.var_results_context_menu = tk.BooleanVar(value=False)
         self.tables_visible_columns: Dict[str, list] = {}
@@ -1658,7 +1658,7 @@ class SettingsTab(ttk.Frame):
         self.var_tables_spansh_schema_enabled.set(True)
         self.var_tables_normalized_rows_enabled.set(True)
         self.var_tables_schema_renderer_enabled.set(True)
-        self.var_tables_column_picker_enabled.set(True)
+        self.var_tables_column_picker_enabled.set(False)
         self.var_tables_ui_badges_enabled.set(True)
         self.var_results_context_menu.set(False)
         self.tables_visible_columns = {}

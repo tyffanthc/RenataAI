@@ -88,8 +88,10 @@ def stworz_liste_trasy(parent, title="Plan Lotu"):
     frame = ttk.LabelFrame(parent, text=title)
     frame.pack(side="top", fill="both", expand=True, padx=8, pady=8)
 
+    header_bar = ttk.Frame(frame)
+    header_bar.pack(side="top", fill="x")
     header_label = ttk.Label(
-        frame,
+        header_bar,
         text="",
         font=("Consolas", 10, "bold"),
         anchor="w",
@@ -112,9 +114,19 @@ def stworz_liste_trasy(parent, title="Plan Lotu"):
     lb.pack(side="left", fill="both", expand=True)
 
     sc.config(command=lb.yview)
+    columns_button = ttk.Button(
+        header_bar,
+        text="⚙ Kolumny",
+        command=lambda: _open_columns_picker(lb),
+    )
+    if config.get("features.tables.column_picker_enabled", False):
+        columns_button.pack(side="right", padx=4, pady=(2, 2))
     lb._renata_header_label = header_label  # type: ignore[attr-defined]
     lb._renata_list_frame = list_frame  # type: ignore[attr-defined]
-    header_label.pack_forget()
+    lb._renata_header_bar = header_bar  # type: ignore[attr-defined]
+    lb._renata_columns_button = columns_button  # type: ignore[attr-defined]
+    lb._renata_table_schema = None  # type: ignore[attr-defined]
+    lb._renata_table_rows = []  # type: ignore[attr-defined]
     return lb
 
 
@@ -122,14 +134,10 @@ def _set_list_header(listbox, text: str | None) -> None:
     label = getattr(listbox, "_renata_header_label", None)
     if label is None:
         return
-    list_frame = getattr(listbox, "_renata_list_frame", None)
     if text:
         label.config(text=text)
         if not label.winfo_ismapped():
-            if list_frame is not None:
-                label.pack(side="top", fill="x", padx=4, pady=(2, 2), before=list_frame)
-            else:
-                label.pack(side="top", fill="x", padx=4, pady=(2, 2))
+            label.pack(side="left", fill="x", expand=True, padx=(4, 0))
     else:
         label.config(text="")
         if label.winfo_ismapped():
@@ -292,10 +300,18 @@ def _get_visible_columns(schema_id: str) -> list[str]:
     schema = table_schemas.get_schema(schema_id)
     if schema is None:
         return []
-    visible_cfg = config.get("tables_visible_columns", {})
     visible = []
+    visible_cfg = config.get("tables_visible_columns", {})
     if isinstance(visible_cfg, dict):
         visible = visible_cfg.get(schema_id) or []
+    if not visible:
+        tables_cfg = config.get("tables", {})
+        if isinstance(tables_cfg, dict):
+            schema_cfg = tables_cfg.get(schema_id)
+            if isinstance(schema_cfg, dict):
+                candidate = schema_cfg.get("visible_columns") or []
+                if isinstance(candidate, list):
+                    visible = candidate
     if not isinstance(visible, list) or not visible:
         visible = [col.key for col in schema.columns if col.default_visible]
     if len(visible) < 2:
@@ -369,6 +385,179 @@ def render_table(schema_id: str, rows: list[dict]) -> tuple[str, list[str]]:
 def render_table_lines(schema_id: str, rows: list[dict]) -> list[str]:
     _header, lines = render_table(schema_id, rows)
     return lines
+
+
+def _escape_delimited_value(value: str, sep: str) -> str:
+    text = "" if value is None else str(value)
+    if "\"" in text:
+        text = text.replace("\"", "\"\"")
+    if sep in text or "\n" in text or "\r" in text:
+        return f"\"{text}\""
+    return text
+
+
+def format_row_delimited(schema_id: str, row: dict, sep: str) -> str:
+    try:
+        from gui import table_schemas
+    except Exception:
+        return ""
+    schema = table_schemas.get_schema(schema_id)
+    if schema is None:
+        return ""
+    visible_cols = _get_visible_columns(schema_id)
+    columns = [col for col in schema.columns if col.key in visible_cols]
+    values = []
+    for col in columns:
+        value = _get_value_by_key(row, col.value_path or col.key)
+        text = format_value(value, col.fmt)
+        values.append(_escape_delimited_value(text, sep))
+    return sep.join(values)
+
+
+def copy_text_to_clipboard(text: str, *, context: str = "context_menu") -> bool:
+    if not text:
+        return False
+    result = try_copy_to_clipboard(text, context=context)
+    return bool(result.get("ok"))
+
+
+def _get_default_visible_columns(schema) -> list[str]:
+    defaults = [col.key for col in schema.columns if col.default_visible]
+    if not defaults and schema.columns:
+        defaults = [schema.columns[0].key]
+    return defaults
+
+
+def _sanitize_visible_columns(schema, visible: list[str]) -> list[str]:
+    keys = {col.key for col in schema.columns}
+    return [key for key in visible if key in keys]
+
+
+def _get_saved_visible_columns(schema_id: str) -> list[str] | None:
+    cfg = config.get("tables_visible_columns", {})
+    if not isinstance(cfg, dict):
+        cfg = {}
+    visible = cfg.get(schema_id)
+    if not visible:
+        tables_cfg = config.get("tables", {})
+        if isinstance(tables_cfg, dict):
+            schema_cfg = tables_cfg.get(schema_id)
+            if isinstance(schema_cfg, dict):
+                visible = schema_cfg.get("visible_columns")
+    if isinstance(visible, list):
+        return [str(item) for item in visible if str(item)]
+    return None
+
+
+def _save_visible_columns(schema_id: str, visible: list[str]) -> None:
+    cfg = config.get("tables_visible_columns", {})
+    if not isinstance(cfg, dict):
+        cfg = {}
+    new_cfg = dict(cfg)
+    new_cfg[schema_id] = list(visible)
+    tables_cfg = config.get("tables", {})
+    if not isinstance(tables_cfg, dict):
+        tables_cfg = {}
+    new_tables = dict(tables_cfg)
+    new_tables[schema_id] = {"visible_columns": list(visible)}
+    try:
+        config.save({"tables_visible_columns": new_cfg, "tables": new_tables})
+    except Exception:
+        pass
+
+
+def _refresh_table_listbox(listbox) -> None:
+    schema_id = getattr(listbox, "_renata_table_schema", None)
+    rows = getattr(listbox, "_renata_table_rows", None)
+    if not schema_id or rows is None:
+        return
+    header, lines = render_table(schema_id, rows)
+    try:
+        wypelnij_liste(
+            listbox,
+            lines,
+            copied_index=None,
+            numerate=False,
+            show_copied_suffix=False,
+        )
+    except Exception:
+        pass
+    _set_list_header(listbox, header)
+    if listbox is _ACTIVE_ROUTE_LISTBOX and schema_id == _ACTIVE_ROUTE_TABLE_SCHEMA:
+        globals()["_ACTIVE_ROUTE_TABLE_VISIBLE"] = _get_visible_columns(schema_id)
+        globals()["_ACTIVE_ROUTE_LIST_DATA"] = list(lines)
+
+
+def _open_columns_picker(listbox) -> None:
+    if not config.get("features.tables.column_picker_enabled", False):
+        return
+    schema_id = getattr(listbox, "_renata_table_schema", None)
+    if not schema_id:
+        return
+    try:
+        from gui import table_schemas
+    except Exception:
+        return
+    schema = table_schemas.get_schema(schema_id)
+    if schema is None:
+        return
+
+    existing = getattr(listbox, "_renata_columns_dialog", None)
+    try:
+        if existing is not None and existing.winfo_exists():
+            existing.lift()
+            existing.focus_force()
+            return
+    except Exception:
+        listbox._renata_columns_dialog = None  # type: ignore[attr-defined]
+
+    dialog = tk.Toplevel(listbox)
+    listbox._renata_columns_dialog = dialog  # type: ignore[attr-defined]
+    dialog.title(f"Kolumny: {schema.title}")
+    dialog.resizable(False, False)
+    dialog.transient(listbox.winfo_toplevel())
+
+    visible = _get_saved_visible_columns(schema_id)
+    if visible is None:
+        visible = _get_default_visible_columns(schema)
+    visible = _sanitize_visible_columns(schema, visible)
+    if not visible:
+        visible = _get_default_visible_columns(schema)
+
+    vars_map: dict[str, tk.BooleanVar] = {}
+    updating = {"value": False}
+
+    def _apply_selection() -> None:
+        if updating["value"]:
+            return
+        selected = [col.key for col in schema.columns if vars_map[col.key].get()]
+        if not selected:
+            updating["value"] = True
+            selected = _get_default_visible_columns(schema)
+            for col in schema.columns:
+                vars_map[col.key].set(col.key in selected)
+            updating["value"] = False
+        selected = _sanitize_visible_columns(schema, selected)
+        if not selected:
+            return
+        _save_visible_columns(schema_id, selected)
+        _refresh_table_listbox(listbox)
+
+    for col in schema.columns:
+        var = tk.BooleanVar(value=col.key in visible)
+        vars_map[col.key] = var
+        ttk.Checkbutton(
+            dialog,
+            text=col.label,
+            variable=var,
+            command=_apply_selection,
+        ).pack(anchor="w", padx=10, pady=2)
+
+    ttk.Label(
+        dialog,
+        text="Zmiany sa natychmiastowe.",
+        foreground="#888888",
+    ).pack(anchor="w", padx=10, pady=(6, 8))
 
 
 def _escape_delimited_value(value: str, sep: str) -> str:
@@ -571,6 +760,8 @@ def register_active_route_list(
         _ACTIVE_ROUTE_LIST_NUMERATE = False
         _ACTIVE_ROUTE_LIST_OFFSET = 0
         _set_list_header(listbox, header)
+        listbox._renata_table_schema = schema_id  # type: ignore[attr-defined]
+        listbox._renata_table_rows = list(rows)  # type: ignore[attr-defined]
     else:
         _ACTIVE_ROUTE_TABLE_SCHEMA = None
         _ACTIVE_ROUTE_TABLE_ROWS = []
@@ -582,6 +773,8 @@ def register_active_route_list(
         except Exception:
             _ACTIVE_ROUTE_LIST_OFFSET = 0
         _set_list_header(listbox, None)
+        listbox._renata_table_schema = None  # type: ignore[attr-defined]
+        listbox._renata_table_rows = []  # type: ignore[attr-defined]
     config.STATE["copied_idx"] = None
 
 

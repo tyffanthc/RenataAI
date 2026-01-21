@@ -144,7 +144,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "features.tables.spansh_schema_enabled": True,
     "features.tables.normalized_rows_enabled": True,
     "features.tables.schema_renderer_enabled": True,
-    "features.tables.column_picker_enabled": True,
+    "features.tables.column_picker_enabled": False,
     "features.tables.ui_badges_enabled": True,
     "tables_visible_columns": {},
     "features.ui.neutron_via_compact": True,
