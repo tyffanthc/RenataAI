@@ -600,10 +600,9 @@ def _format_treeview_header(tree, col_key: str, label: str) -> str:
     columns = list(tree["columns"] or [])
     if not columns:
         return label
-    first_key = columns[0]
     last_key = columns[-1]
-    left = "| " if col_key != first_key else ""
-    right = " |" if col_key != last_key else ""
+    left = "| "
+    right = " |"
     return f"{left}{label}{right}"
 
 
