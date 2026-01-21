@@ -600,9 +600,11 @@ def _format_treeview_header(tree, col_key: str, label: str) -> str:
     columns = list(tree["columns"] or [])
     if not columns:
         return label
+    first_key = columns[0]
     last_key = columns[-1]
-    sep = " |" if col_key != last_key else ""
-    return f"{label}{sep}"
+    left = "| " if col_key != first_key else ""
+    right = " |" if col_key != last_key else ""
+    return f"{left}{label}{right}"
 
 
 def _get_treeview_row(tree, row_id: str) -> dict | None:
