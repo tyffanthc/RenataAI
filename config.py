@@ -152,6 +152,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "features.ui.neutron_via_autocomplete": True,
     "features.ui.results_context_menu": False,
     "features.debug.panel": False,
+    "features.debug.spansh_last_request": False,
     "features.ui.tabs.tourist_enabled": False,
     "features.ui.tabs.fleet_carrier_enabled": False,
     "features.ui.tabs.colonisation_enabled": False,

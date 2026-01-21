@@ -111,6 +111,12 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Busy zwalniany w success i error (finally).
 - Testy smoke: backend + journal PASS.
 
+#### M-04 - Panel bledow + ostatnie zapytanie SPANSH (DONE)
+- Status SPANSH: sukces, brak wynikow, blad/timeout (czytelne komunikaty).
+- Ostatnie zapytanie do Spansh jako sekcja zwijana (debug).
+- Flaga: `features.debug.spansh_last_request=false`.
+- Testy smoke: backend + journal PASS.
+
 ---
 
 ## 3) Aktualny UX stan (skrót)
@@ -131,6 +137,7 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Debug:
   - `features.debug.panel`
   - `features.debug.autocomplete` (jeśli istnieje: powinno być default OFF)
+  - `features.debug.spansh_last_request`
 - UI Tabs (beta):
   - `features.ui.tabs.tourist_enabled`
   - `features.ui.tabs.fleet_carrier_enabled`
@@ -180,10 +187,9 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 ## 7) NEXT (priorytety)
 
 ### P1 - nastepny ticket
-**M-04 - Panel bledow + ostatnie zapytanie SPANSH**
+**D1 - EDSM helpery (online provider)**
 
 ### Kolejne
-- M-04: panel bledow + ostatnie zapytanie SPANSH
 - D1: EDSM helpery (online provider)
 - SCI/TTS/AI/i18n pozniej
 ### Roadmapa - Cel Renaty (glos i UX)

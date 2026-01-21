@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import time
 from typing import Any, Dict, List, Optional, Tuple
+import copy
 
 import requests
 import config
@@ -56,6 +57,29 @@ def spansh_error(message: str, gui_ref: Any | None = None, *, context: str | Non
         return
 
     powiedz(message, gui_ref)
+    _emit_spansh_status(message, context=context)
+
+
+def _emit_spansh_status(message: str, *, context: str | None) -> None:
+    if not context:
+        return
+    ui_targets = {
+        "neutron": "neu",
+        "riches": "rtr",
+        "ammonia": "amm",
+        "elw": "rtr",
+        "hmc": "rtr",
+        "exomastery": "rtr",
+        "trade": "trade",
+    }
+    target = ui_targets.get(context)
+    if not target:
+        return
+    text = "Blad zapytania do Spansh."
+    msg = (message or "").lower()
+    if "timeout" in msg or "timed out" in msg:
+        text = "Timeout - sprobuj ponownie."
+    MSG_QUEUE.put((f"status_{target}", (text, "#ff5555")))
 
 
 def resolve_planner_jump_range(
@@ -129,7 +153,14 @@ class SpanshClient:
         self.default_retries: int = 3
         self.default_poll_interval: float = 2.0
         self.cache = CacheStore(namespace="spansh", provider="spansh")
+        self._last_request: Dict[str, Any] = {}
         self._reload_config()
+
+    def get_last_request(self) -> Dict[str, Any]:
+        return copy.deepcopy(self._last_request or {})
+
+    def _set_last_request(self, data: Dict[str, Any]) -> None:
+        self._last_request = dict(data)
 
     # ------------------------------------------------------------------ public
 
@@ -390,6 +421,7 @@ class SpanshClient:
 
         payload_fields = _payload_to_fields(payload)
         norm_payload = [(k, _normalize(v)) for k, v in payload_fields]
+        payload_dict = _fields_to_dict(payload_fields)
         cache_key = make_request_key(
             "spansh",
             path,
@@ -397,11 +429,21 @@ class SpanshClient:
         )
 
         ttl_seconds = 7 * 24 * 3600
+        start_ts = time.monotonic()
         if mode == "trade":
             ttl_seconds = 6 * 3600
 
         hit, cached, _meta = self.cache.get(cache_key)
         if hit:
+            self._set_last_request({
+                "timestamp": time.time(),
+                "mode": mode,
+                "endpoint": path,
+                "url": url,
+                "payload": payload_dict,
+                "status": "CACHE_HIT",
+                "response_ms": 0,
+            })
             return cached
 
         # --- Job request ------------------------------------------------------
@@ -485,9 +527,42 @@ class SpanshClient:
         try:
             result = run_deduped(cache_key, _do_request)
         except Exception:
+            self._set_last_request({
+                "timestamp": time.time(),
+                "mode": mode,
+                "endpoint": path,
+                "url": url,
+                "payload": payload_dict,
+                "status": "ERROR",
+                "response_ms": int((time.monotonic() - start_ts) * 1000),
+            })
+            return None
+
+        if result is None:
+            self._set_last_request({
+                "timestamp": time.time(),
+                "mode": mode,
+                "endpoint": path,
+                "url": url,
+                "payload": payload_dict,
+                "status": "ERROR",
+                "response_ms": int((time.monotonic() - start_ts) * 1000),
+            })
             return None
 
         if result is not None:
+            status = "SUCCESS"
+            if isinstance(result, list) and not result:
+                status = "EMPTY"
+            self._set_last_request({
+                "timestamp": time.time(),
+                "mode": mode,
+                "endpoint": path,
+                "url": url,
+                "payload": payload_dict,
+                "status": status,
+                "response_ms": int((time.monotonic() - start_ts) * 1000),
+            })
             self.cache.set(
                 cache_key,
                 result,

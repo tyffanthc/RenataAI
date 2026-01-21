@@ -1,12 +1,15 @@
 import tkinter as tk
 from tkinter import ttk
 import threading
+import json
+import time
 from itertools import zip_longest
 import config
 from logic import neutron
 from logic import neutron_via
 from logic.rows_normalizer import normalize_neutron_rows
 from logic import utils
+from logic.spansh_client import client as spansh_client
 from gui import common
 from gui import strings as ui
 from gui import ui_layout as layout
@@ -39,6 +42,10 @@ class NeutronTab(ttk.Frame):
         ) and bool(config.get("features.tables.schema_renderer_enabled", True)) and bool(
             config.get("features.tables.normalized_rows_enabled", True)
         )
+        self._last_req_enabled = bool(config.get("features.debug.panel", False)) or bool(
+            config.get("features.debug.spansh_last_request", False)
+        )
+        self._last_req_visible = False
 
         self._build_ui()
         self._range_user_overridden = False
@@ -132,7 +139,7 @@ class NeutronTab(ttk.Frame):
             self.lst_via.pack(side="left", fill="x", expand=True)
             ttk.Button(f_via, text=ui.BUTTON_REMOVE, command=self._remove_via).pack(side="left", padx=6)
 
-        # Pasek akcji + status (tuż nad tabelą)
+        # Pasek akcji + status (tuz nad tabela)
         f_actions = ttk.Frame(fr)
         f_actions.pack(fill="x", pady=(6, 4))
         f_actions.columnconfigure(0, weight=0)
@@ -159,6 +166,8 @@ class NeutronTab(ttk.Frame):
             self._get_results_payload,
             self._get_results_actions,
         )
+        if self._last_req_enabled:
+            self._build_last_request_ui(fr)
 
     # ------------------------------------------------------------------ public
 
@@ -328,20 +337,22 @@ class NeutronTab(ttk.Frame):
                 common.emit_status(
                     "ERROR",
                     "ROUTE_EMPTY",
-                    text="Brak wyników",
+                    text="Brak wynikow",
                     source="spansh.neutron",
                     ui_target="neu",
                 )
-        except Exception as e:  # żeby nie uwalić GUI przy wyjątku w wątku
+        except Exception:  # zeby nie uwalic GUI przy wyjatku w watku
             common.emit_status(
                 "ERROR",
                 "ROUTE_ERROR",
-                text=f"Błąd: {e}",
+                text="Blad zapytania do Spansh.",
                 source="spansh.neutron",
                 ui_target="neu",
             )
 
         finally:
+            if self._last_req_enabled:
+                self.root.after(0, self._render_last_request)
             self.root.after(0, lambda: self._set_busy(False))
 
     def _can_start(self) -> bool:
@@ -363,13 +374,88 @@ class NeutronTab(ttk.Frame):
     def set_status_text(self, text: str | None, color: str | None) -> None:
         raw = (text or "").strip()
         if not raw:
-            raw = "—"
+            raw = "Gotowy"
         if not raw.lower().startswith("status:"):
             raw = f"Status: {raw}"
         if color:
             self.lbl_status.config(text=raw, foreground=color)
         else:
             self.lbl_status.config(text=raw)
+
+    def _build_last_request_ui(self, parent: ttk.Frame) -> None:
+        self.last_req_frame = ttk.Frame(parent)
+        self.last_req_frame.pack(fill="x", pady=(4, 0))
+
+        header = ttk.Frame(self.last_req_frame)
+        header.pack(fill="x")
+        self.btn_last_req = ttk.Button(
+            header,
+            text="Ostatnie zapytanie do Spansh >",
+            command=self._toggle_last_request,
+        )
+        self.btn_last_req.pack(side="left")
+
+        self.last_req_body = ttk.Frame(self.last_req_frame)
+        self.last_req_body.pack(fill="both", expand=True, pady=(2, 0))
+        self.last_req_text = tk.Text(self.last_req_body, height=6, wrap="word")
+        self.last_req_text.pack(fill="both", expand=True)
+        self.last_req_text.configure(state="disabled")
+        self.last_req_body.pack_forget()
+
+    def _toggle_last_request(self) -> None:
+        if not self._last_req_enabled:
+            return
+        self._last_req_visible = not self._last_req_visible
+        if self._last_req_visible:
+            self.last_req_body.pack(fill="both", expand=True, pady=(2, 0))
+            self.btn_last_req.config(text="Ostatnie zapytanie do Spansh v")
+            self._render_last_request()
+        else:
+            self.last_req_body.pack_forget()
+            self.btn_last_req.config(text="Ostatnie zapytanie do Spansh >")
+
+    def _render_last_request(self) -> None:
+        if not self._last_req_enabled:
+            return
+        if not getattr(self, "last_req_text", None):
+            return
+        data = spansh_client.get_last_request()
+        text = self._format_last_request(data)
+        self._set_last_request_text(text)
+
+    def _set_last_request_text(self, text: str) -> None:
+        self.last_req_text.configure(state="normal")
+        self.last_req_text.delete("1.0", tk.END)
+        self.last_req_text.insert("1.0", text)
+        self.last_req_text.configure(state="disabled")
+
+    def _format_last_request(self, data: dict) -> str:
+        if not data:
+            return "Brak danych."
+        ts = data.get("timestamp")
+        ts_text = "-"
+        if isinstance(ts, (int, float)):
+            ts_text = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
+        response_ms = data.get("response_ms")
+        response_text = "-" if response_ms is None else str(response_ms)
+        lines = [
+            f"Status: {data.get('status', '-')}",
+            f"Endpoint: {data.get('endpoint', '-')}",
+            f"Mode: {data.get('mode', '-')}",
+            f"Timestamp: {ts_text}",
+            f"Response ms: {response_text}",
+        ]
+        url = data.get("url")
+        if url:
+            lines.append(f"URL: {url}")
+        payload = data.get("payload")
+        if payload is not None:
+            lines.append("Payload:")
+            try:
+                lines.append(json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True))
+            except Exception:
+                lines.append(str(payload))
+        return "\n".join(lines)
 
     def _get_results_payload(self, row_index, row_text=None) -> dict | None:
         try:
@@ -511,7 +597,7 @@ class NeutronTab(ttk.Frame):
         else:
             self.lst_via.insert(tk.END, value)
         if warn_short:
-            self._emit_via_warning("Via: to wygląda jak literówka.")
+            self._emit_via_warning("Via: to wyglada jak literowka.")
         self.var_via.set("")
         self.e_via.focus_set()
 
