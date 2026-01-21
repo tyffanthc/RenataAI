@@ -155,6 +155,7 @@ class SpanshClient:
         self.cache = CacheStore(namespace="spansh", provider="spansh")
         self._last_request: Dict[str, Any] = {}
         self._reload_config()
+        use_edsm = bool(config.get("features.providers.edsm_enabled", False))
 
     def get_last_request(self) -> Dict[str, Any]:
         return copy.deepcopy(self._last_request or {})
@@ -201,6 +202,12 @@ class SpanshClient:
             except Exception as e:  # noqa: BLE001
                 # Autocomplete traktujemy łagodnie – log tylko do konsoli.
                 print(f"[Spansh] Autocomplete exception ({q!r}): {e}")
+                if use_edsm:
+                    try:
+                        from logic.utils.http_edsm import edsm_systems_suggest
+                        return edsm_systems_suggest(q)
+                    except Exception:
+                        return []
                 return []
 
             if res.status_code == 200:
@@ -233,7 +240,15 @@ class SpanshClient:
                             names.append(str(name))
 
                 print(f"[Spansh] '{q}' → {len(names)} wyników")
-                return names
+                if names:
+                    return names
+                if use_edsm:
+                    try:
+                        from logic.utils.http_edsm import edsm_systems_suggest
+                        return edsm_systems_suggest(q)
+                    except Exception:
+                        return []
+                return []
 
             # inne kody HTTP – dla autocomplete nie robimy retry w nieskończoność
             print(f"[Spansh] HTTP {res.status_code} dla '{q}' (autocomplete)")

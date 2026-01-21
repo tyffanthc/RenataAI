@@ -111,6 +111,12 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Busy zwalniany w success i error (finally).
 - Testy smoke: backend + journal PASS.
 
+#### D1 - EDSM helpery (online provider) (DONE)
+- Opcjonalny provider EDSM (system lookup) pod flaga.
+- Cache + throttling, brak crashy przy bledach/timeout.
+- Flaga: `features.providers.edsm_enabled=false`.
+- Testy smoke: backend + journal PASS.
+
 #### M-04 - Panel bledow + ostatnie zapytanie SPANSH (DONE)
 - Status SPANSH: sukces, brak wynikow, blad/timeout (czytelne komunikaty).
 - Ostatnie zapytanie do Spansh jako sekcja zwijana (debug).
@@ -148,6 +154,8 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Tabele:
   - `features.tables.column_picker_enabled`
   - `features.tables.treeview_enabled`
+- Providerzy (online):
+  - `features.providers.edsm_enabled`
 - Trade (online lookup):
   - `features.trade.station_lookup_online` / `features.providers.system_lookup_online` (wg realnych kluczy w config)
 
@@ -187,10 +195,9 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 ## 7) NEXT (priorytety)
 
 ### P1 - nastepny ticket
-**D1 - EDSM helpery (online provider)**
+**TBD**
 
 ### Kolejne
-- D1: EDSM helpery (online provider)
 - SCI/TTS/AI/i18n pozniej
 ### Roadmapa - Cel Renaty (glos i UX)
 - Cel: pokladowy asystent Elite Dangerous (journal events, akcje w GUI, spojny glos, brak spamu i cooldowny).

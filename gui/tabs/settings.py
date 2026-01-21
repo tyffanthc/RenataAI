@@ -116,6 +116,9 @@ class SettingsTab(ttk.Frame):
         self.var_debug_spansh_payload = tk.BooleanVar(value=False)
         self.var_debug_panel = tk.BooleanVar(value=False)
 
+        # Providers (online)
+        self.var_provider_edsm_enabled = tk.BooleanVar(value=False)
+
         # Tables (Spansh)
         self.var_tables_spansh_schema_enabled = tk.BooleanVar(value=True)
         self.var_tables_normalized_rows_enabled = tk.BooleanVar(value=True)
@@ -1036,8 +1039,18 @@ class SettingsTab(ttk.Frame):
             text="Configure columns...",
             command=self._open_tables_columns_dialog,
         ).grid(row=2, column=1, padx=8, pady=4, sticky="w")
+        lf_providers = ttk.LabelFrame(parent, text=" Providerzy (online) ")
+        lf_providers.grid(row=2, column=0, padx=12, pady=(6, 6), sticky="nsew")
+        lf_providers.columnconfigure(0, weight=1)
+
+        ttk.Checkbutton(
+            lf_providers,
+            text="EDSM provider enabled",
+            variable=self.var_provider_edsm_enabled,
+        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+
         lf_debug = ttk.LabelFrame(parent, text=" Debug ")
-        lf_debug.grid(row=2, column=0, padx=12, pady=(6, 12), sticky="nsew")
+        lf_debug.grid(row=3, column=0, padx=12, pady=(6, 12), sticky="nsew")
         lf_debug.columnconfigure(0, weight=1)
 
         ttk.Checkbutton(
@@ -1264,6 +1277,9 @@ class SettingsTab(ttk.Frame):
                 "features.spansh.debug_payload",
                 self.var_debug_spansh_payload.get(),
             )
+        )
+        self.var_provider_edsm_enabled.set(
+            cfg.get("features.providers.edsm_enabled", self.var_provider_edsm_enabled.get())
         )
 
         # Tables (Spansh)
@@ -1495,6 +1511,7 @@ class SettingsTab(ttk.Frame):
             "debug_next_hop": self.var_debug_next_hop.get(),
             "features.debug.panel": self.var_debug_panel.get(),
             "features.spansh.debug_payload": self.var_debug_spansh_payload.get(),
+            "features.providers.edsm_enabled": self.var_provider_edsm_enabled.get(),
 
             "features.tables.spansh_schema_enabled": self.var_tables_spansh_schema_enabled.get(),
             "features.tables.normalized_rows_enabled": self.var_tables_normalized_rows_enabled.get(),
@@ -1668,6 +1685,7 @@ class SettingsTab(ttk.Frame):
         self.var_jump_range_engine_debug.set(False)
         self.var_fit_resolver_debug.set(False)
         self.var_jump_range_validate_debug.set(False)
+        self.var_provider_edsm_enabled.set(False)
 
         self.var_tables_spansh_schema_enabled.set(True)
         self.var_tables_normalized_rows_enabled.set(True)
