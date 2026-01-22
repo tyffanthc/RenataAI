@@ -217,22 +217,7 @@ def normalize_neutron_rows(details: list[dict]) -> list[dict]:
             if key:
                 coords_cache[key] = coords
             return coords
-
-        if not name:
-            return None
-
-        try:
-            from logic.utils.edsm_provider import lookup_system
-        except Exception:
-            return None
-
-        info = lookup_system(str(name))
-        if not info:
-            return None
-        coords = (float(info.x), float(info.y), float(info.z))
-        if key:
-            coords_cache[key] = coords
-        return coords
+        return None
 
     def _distance_from_coords(
         a: tuple[float, float, float],

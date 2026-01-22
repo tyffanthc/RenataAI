@@ -664,6 +664,7 @@ class SpanshClient:
                                 "distance",
                                 "dist",
                                 "distance_ly",
+                                "distance_jumped",
                                 "distance_to_next",
                                 "distance_to_next_ly",
                                 "distance_to_arrival",
@@ -701,6 +702,9 @@ class SpanshClient:
                                 "jumps_remaining",
                             ],
                         ),
+                        "x": entry.get("x"),
+                        "y": entry.get("y"),
+                        "z": entry.get("z"),
                     }
                 )
             else:
