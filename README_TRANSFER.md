@@ -40,3 +40,12 @@ Key flags:
 ## Gotchas
 - Use `py` on Windows if `python` is not available.
 - `user_settings.json` is local-only; do not commit. If missing, copy `user_settings.example.json` -> `user_settings.json`.
+
+## TTS (Piper, Windows-only)
+- Default engine: `tts.engine=auto` (Piper if available, else pyttsx3).
+- Configure paths in `user_settings.json`:
+  - `tts.piper_bin` (e.g. `tools/piper/piper.exe` or a PATH bin)
+  - `tts.piper_model_path` (e.g. `models/piper/pl_pl.onnx`)
+  - `tts.piper_config_path` (e.g. `models/piper/pl_pl.json`)
+- Download model/config (example):
+  - `py tools/download_piper_model.py --model-url <URL.onnx> --config-url <URL.json> --out-dir models/piper`

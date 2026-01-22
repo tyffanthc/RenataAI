@@ -47,6 +47,12 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
 
     # GŁOS / DŹWIĘK
     "voice_enabled": True,            # globalny TTS
+    "tts.engine": "auto",             # auto | piper | pyttsx3
+    "tts.piper_bin": "tools/piper/piper.exe",
+    "tts.piper_model_path": "models/piper/pl_pl.onnx",
+    "tts.piper_config_path": "models/piper/pl_pl.json",
+    "tts.pyttsx3_rate": 165,
+    "tts.pyttsx3_volume": 1.0,
     "landing_pad_speech": True,       # komunikaty do lądowania
     "route_progress_speech": True,    # 25/50/75% itp.
 

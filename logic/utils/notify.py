@@ -30,16 +30,50 @@ def powiedz(tekst, gui_ref=None, *, message_id=None, context=None):
 
 def _watek_mowy(tekst):
     try:
+        _speak_tts(tekst)
+    except Exception:
+        pass
+
+
+def _speak_tts(tekst: str) -> None:
+    engine = str(config.get("tts.engine", "auto")).strip().lower()
+    if engine not in ("auto", "piper", "pyttsx3"):
+        engine = "auto"
+
+    if engine in ("auto", "piper"):
+        try:
+            from logic.tts import piper_tts
+
+            if piper_tts.speak(tekst):
+                return
+        except Exception:
+            if engine == "piper":
+                return
+
+    _speak_pyttsx3(tekst)
+
+
+def _speak_pyttsx3(tekst: str) -> None:
+    try:
         eng = pyttsx3.init()
         try:
-            eng.setProperty('voice', eng.getProperty('voices')[0].id)
-        except:
+            eng.setProperty("voice", eng.getProperty("voices")[0].id)
+        except Exception:
             pass
-        eng.setProperty('rate', 165)
+        try:
+            rate = int(config.get("tts.pyttsx3_rate", 165))
+        except Exception:
+            rate = 165
+        try:
+            volume = float(config.get("tts.pyttsx3_volume", 1.0))
+        except Exception:
+            volume = 1.0
+        eng.setProperty("rate", rate)
+        eng.setProperty("volume", volume)
         eng.say(tekst)
         eng.runAndWait()
         eng.stop()
-    except:
+    except Exception:
         pass
 
 
