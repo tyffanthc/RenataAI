@@ -708,7 +708,7 @@ class RenataApp:
             return
 
         if not self._debug_panel_visible:
-            self.debug_frame.place(relx=0.0, rely=1.0, x=12, y=-12, anchor="sw")
+            self.debug_frame.place(relx=1.0, rely=1.0, x=-12, y=-12, anchor="se")
             self._debug_panel_visible = True
 
         snapshot = self._build_debug_snapshot()

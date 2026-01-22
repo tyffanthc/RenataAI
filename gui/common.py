@@ -128,6 +128,7 @@ def stworz_liste_trasy(parent, title="Plan Lotu"):
     lb._renata_list_frame = list_frame  # type: ignore[attr-defined]
     lb._renata_header_bar = header_bar  # type: ignore[attr-defined]
     lb._renata_columns_button = columns_button  # type: ignore[attr-defined]
+    lb._renata_state_container = list_frame  # type: ignore[attr-defined]
     lb._renata_table_schema = None  # type: ignore[attr-defined]
     lb._renata_table_rows = []  # type: ignore[attr-defined]
     return lb
@@ -167,6 +168,7 @@ def stworz_tabele_trasy(parent, title="Plan Lotu"):
     _attach_treeview_hover(tree)
     tree._renata_header_bar = header_bar  # type: ignore[attr-defined]
     tree._renata_columns_button = columns_button  # type: ignore[attr-defined]
+    tree._renata_state_container = tree_frame  # type: ignore[attr-defined]
     tree._renata_table_schema = None  # type: ignore[attr-defined]
     tree._renata_table_rows = []  # type: ignore[attr-defined]
     tree._renata_tree_rows_by_iid = {}  # type: ignore[attr-defined]

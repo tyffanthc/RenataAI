@@ -11,6 +11,7 @@ from logic.rows_normalizer import normalize_neutron_rows
 from logic import utils
 from logic.spansh_client import client as spansh_client
 from gui import common
+from gui import empty_state
 from gui import strings as ui
 from gui import ui_layout as layout
 from gui.common_autocomplete import AutocompleteController
@@ -166,6 +167,8 @@ class NeutronTab(ttk.Frame):
             self._get_results_payload,
             self._get_results_actions,
         )
+        title, message = empty_state.get_copy("no_results")
+        empty_state.show_state(self.lst, empty_state.UIState.EMPTY, title, message)
         if self._last_req_enabled:
             self._build_last_request_ui(fr)
 
@@ -216,6 +219,8 @@ class NeutronTab(ttk.Frame):
             self.lst.delete(0, tk.END)
         self._results_rows = []
         self._results_row_offset = 0
+        title, message = empty_state.get_copy("no_results")
+        empty_state.show_state(self.lst, empty_state.UIState.EMPTY, title, message)
 
     def apply_jump_range_from_ship(self, value: float | None) -> None:
         if not config.get("planner_auto_use_ship_jump_range", True):
@@ -326,6 +331,7 @@ class NeutronTab(ttk.Frame):
                     common.register_active_route_list(self.lst, opis, numerate=False, offset=1)
                     common.wypelnij_liste(self.lst, opis, numerate=False)
                 common.handle_route_ready_autoclipboard(self, tr, status_target="neu")
+                empty_state.hide_state(self.lst)
                 common.emit_status(
                     "OK",
                     "ROUTE_FOUND",
@@ -341,6 +347,8 @@ class NeutronTab(ttk.Frame):
                     source="spansh.neutron",
                     ui_target="neu",
                 )
+                title, message = empty_state.get_copy("no_results")
+                empty_state.show_state(self.lst, empty_state.UIState.EMPTY, title, message)
         except Exception:  # zeby nie uwalic GUI przy wyjatku w watku
             common.emit_status(
                 "ERROR",
@@ -349,7 +357,6 @@ class NeutronTab(ttk.Frame):
                 source="spansh.neutron",
                 ui_target="neu",
             )
-
         finally:
             if self._last_req_enabled:
                 self.root.after(0, self._render_last_request)
