@@ -21,14 +21,14 @@ _THROTTLE_MS = 500
 _DEFAULT_TIMEOUT = 3.0
 _CACHE_TTL_SECONDS = 10 * 60
 _CACHE_MAX_ITEMS = 200
-_CACHE: dict[str, tuple[float, list[str]]] = {}
+_CACHE: dict[str, tuple[float, object]] = {}
 
 
 def _normalize_query(query: str) -> str:
     return " ".join((query or "").strip().split()).lower()
 
 
-def _cache_get(key: str) -> list[str] | None:
+def _cache_get(key: str):
     item = _CACHE.get(key)
     if not item:
         return None
@@ -36,11 +36,11 @@ def _cache_get(key: str) -> list[str] | None:
     if time.monotonic() - ts > _CACHE_TTL_SECONDS:
         _CACHE.pop(key, None)
         return None
-    return list(data)
+    return data
 
 
-def _cache_set(key: str, data: list[str]) -> None:
-    _CACHE[key] = (time.monotonic(), list(data))
+def _cache_set(key: str, data) -> None:
+    _CACHE[key] = (time.monotonic(), data)
     if len(_CACHE) <= _CACHE_MAX_ITEMS:
         return
     oldest_key = min(_CACHE.items(), key=lambda kv: kv[1][0])[0]
@@ -60,10 +60,10 @@ def fetch_systems(query: str, *, timeout: float | None = None) -> List[str]:
     q = (query or "").strip()
     if not q:
         return []
-    cache_key = _normalize_query(q)
+    cache_key = f"systems:{_normalize_query(q)}"
     cached = _cache_get(cache_key)
-    if cached is not None:
-        return cached
+    if isinstance(cached, list):
+        return [str(item) for item in cached if item]
     _throttle()
     url = "https://www.edsm.net/api-v1/systems"
     headers = {"User-Agent": "RENATA/1.0", "Accept": "application/json"}
@@ -114,3 +114,53 @@ def fetch_systems(query: str, *, timeout: float | None = None) -> List[str]:
         _cache_set(cache_key, names)
 
     return names
+
+
+def fetch_system_info(query: str, *, timeout: float | None = None) -> dict | None:
+    q = (query or "").strip()
+    if not q:
+        return None
+    cache_key = f"system_info:{_normalize_query(q)}"
+    cached = _cache_get(cache_key)
+    if isinstance(cached, dict):
+        return dict(cached)
+
+    _throttle()
+    url = "https://www.edsm.net/api-v1/system"
+    headers = {"User-Agent": "RENATA/1.0", "Accept": "application/json"}
+    timeout_val = _DEFAULT_TIMEOUT if timeout is None else float(timeout)
+
+    try:
+        res = requests.get(
+            url,
+            params={"systemName": q, "showId": 1, "showCoordinates": 1},
+            headers=headers,
+            timeout=timeout_val,
+        )
+    except requests.Timeout as e:
+        raise Edsmtimeout(str(e)) from e
+    except requests.RequestException as e:
+        raise Edsmunavailable(str(e)) from e
+
+    if res.status_code != 200:
+        raise Edsmunavailable(f"HTTP {res.status_code}")
+
+    try:
+        data = res.json()
+    except Exception as e:
+        raise Edsmbadresponse(str(e)) from e
+
+    if not isinstance(data, dict):
+        raise Edsmbadresponse("Unexpected response")
+
+    name = data.get("name") or data.get("system") or data.get("system_name")
+    coords = data.get("coords") if isinstance(data.get("coords"), dict) else {}
+    info = {
+        "name": name,
+        "x": coords.get("x"),
+        "y": coords.get("y"),
+        "z": coords.get("z"),
+        "edsm_id": data.get("id") or data.get("id64"),
+    }
+    _cache_set(cache_key, dict(info))
+    return info
