@@ -1,6 +1,6 @@
 # RENATA_STATUS.md
 
-Ostatnia aktualizacja: 2026-01-21  
+Ostatnia aktualizacja: 2026-01-22  
 Wlasciciel procesu: Patryk  
 Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepny ticket
 
@@ -117,6 +117,14 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Flaga: `features.providers.edsm_enabled=false`.
 - Testy smoke: backend + journal PASS.
 
+#### D2 - EDSM rollout (DONE)
+- D2a: flaga + zero requestow gdy OFF.
+- D2b: klient HTTP (timeout + kontrolowane bledy).
+- D2c: cache TTL (RAM).
+- D2d: provider lookup_system (offline-first).
+- D2e: pilot UI (AddEntry coords).
+- D2f-1: autocomplete Start/Cel fallback do EDSM.
+
 #### M-05 - Zapamietywanie sortu + ukladu kolumn (DONE)
 - Sort (kolumna + kierunek) zapisywany per schema i odtwarzany po restarcie.
 - Fallback gdy sortowana kolumna ukryta (LP lub pierwsza widoczna).
@@ -145,6 +153,14 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Ostatnie zapytanie do Spansh jako sekcja zwijana (debug).
 - Flaga: `features.debug.spansh_last_request=false`.
 - Testy smoke: backend + journal PASS.
+
+#### M-08 - Empty states + microcopy (DONE)
+- Empty/busy/error w UI bez messageboxow; czytelne komunikaty PL/EN.
+- Brak "martwych" tabel przy 0 wynikach.
+
+#### M-09 - Presety kolumn v2 (per tab) (DONE)
+- Presety per tab; zapis i odtworzenie po restarcie.
+- Zmiana presetu aktualizuje widok bez crashy.
 
 ---
 
@@ -215,11 +231,21 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 ## 7) NEXT (priorytety)
 
 ### P1 - nastepny ticket
-**TBD**
+**D2f-2 — EDSM rollout (kolejne miejsce)**
 
 ### Kolejne
-- D1 (EDSM helpery) - opcjonalnie: Neutron hop distance z coords (EDSM) gdy SPANSH distance=None; online-only pod `features.providers.edsm_enabled`, z cache/throttling; pierwszy wiersz moze zostac 0/-
+- D2f-3 — EDSM rollout (kolejne miejsce, LATER)
 - SCI/TTS/AI/i18n pozniej
+
+### FUTURE / VISION (kierunki zatwierdzone)
+- External Data Helpers (offline-first): helpery jako klasy funkcji (nie zakladki): EDSM (coords/bodies/hotspoty), EDTools/EDMining (mining), Inara (rynek/inventory) pozniej; zawsze pod flagami, OFF domyslnie.
+- Mining Helpers (bez zakladek): Hotspot Helper (najblizsze hotspoty + krokowy clipboard), Mining Sell Assist (ranking zysk/cena/t/dystans/popyt/wiek rynku, doprecyzowanie dialogowe).
+- Route Awareness + Cockpit HUD: milestony 25/50/75/100, status utraty/zakonczenia trasy; minimalistyczny HUD (fake-3D) + TTS, bez per-hop spamu.
+- Pro Actions + Decision Panels: akcje zalezne od typu danych (system/stacja/body) + lekkie panele decyzji (ostrzezenia, "dlaczego").
+- Session Memory & Resume: pamiec ostatniego planner/parametry/route/hop + opcjonalne wznowienie po przerwie; bez auto-run.
+- Captain's Log (voice-assisted): glosowe tworzenie wpisow, notatki i lokalizacje; dane lokalne, prywatne.
+- Instructor Mode (opt-in): kontekstowe podpowiedzi dla nowych graczy; OFF domyslnie; fundament pod przyszla monetyzacje.
+- Symbioza danych (2-way helpers): opt-in upload do EDSM/EDTools; etapy: manual -> auto w tle; brak globalnej bazy Renaty.
 ### Roadmapa - Cel Renaty (glos i UX)
 - Cel: pokladowy asystent Elite Dangerous (journal events, akcje w GUI, spojny glos, brak spamu i cooldowny).
 - STT offline: whisper.cpp (base/small) + intent offline (reguly/regex) -> kontrola, zero kosztow.
@@ -230,6 +256,10 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Sterowanie glosem: push-to-talk na start, mute STT gdy TTS mowi; wake word pozniej.
 - MVP: SpeechManager, Content DB + selector, STT offline + PTT, Intent router, TTS Edge + SSML presets, LoreDB hook po FSDJump.
 - Online helpery moga poprawiac precyzje UX (np. dystanse Neutron z coords), ale zawsze pod flaga i nie wymagane.
+- Helpery danych sa "opcjonalne narzedzia", nie zaleznosci; offline-first zawsze wygrywa.
+- Mining helpers bez zakladek: hotspoty + sprzedaz jako prowadzenie krokowe, bez automatyzacji sterowania gra.
+- Cockpit HUD to minimalny status (route milestones), nie nowa "scena UI"; TTS ma wspierac, nie narrac.
+- Session memory, Captain's Log i Instructor Mode to tryby opt-in, bez spamu i bez auto-wykonan.
 
 ---
 
