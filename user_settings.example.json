@@ -1,0 +1,11 @@
+{
+  "features.tables.column_picker_enabled": false,
+  "features.tables.treeview_enabled": false,
+  "features.tables.persist_sort_enabled": true,
+  "features.tables.ui_badges_enabled": true,
+  "features.ui.results_context_menu": false,
+  "features.providers.edsm_enabled": false,
+  "tables_visible_columns": {},
+  "tables_sort_state": {},
+  "window_positions": {}
+}

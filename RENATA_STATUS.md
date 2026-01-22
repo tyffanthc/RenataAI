@@ -204,15 +204,11 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 ## 6) Known gotchas / zasady repo
 
 ### user_settings.json
-- `user_settings.json` to **lokalny plik** ustawień dev-a.
-- Nie commitować.
-- Jeśli Git pokazuje zmianę po kliknięciu checkboxów:
-  - `git restore user_settings.json` przed commitem
-- Docelowo:
-  - dodać do `.gitignore`
-  - jeśli już trackowany: `git rm --cached user_settings.json` + commit “stop tracking local settings”
-- Jeśli potrzebny template:
-  - `user_settings.example.json`
+- `user_settings.json` to lokalny plik ustawien dev-a.
+- Nie commitowac.
+- Jest ignorowany przez git (`.gitignore`).
+- Start: skopiuj `user_settings.example.json` -> `user_settings.json`.
+- Jesli kiedys byl trackowany: `git rm --cached user_settings.json` + commit.
 
 ---
 

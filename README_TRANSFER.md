@@ -27,7 +27,7 @@ Desktop assistant for Elite Dangerous with Spansh planners, route tools, and UX-
 - UI tabs: `gui/tabs/*`
 - Spansh planners: `gui/tabs/spansh/*`, `logic/spansh_payloads.py`
 - Settings: `gui/tabs/settings.py`
-- Config: `config.py` (user settings in `user_settings.json` - do not commit)
+- Config: `config.py` (user settings in `user_settings.json` - do not commit; copy from `user_settings.example.json`)
 
 ## Flags and settings
 Feature flags live in `config.py` and are surfaced in Settings when user-facing.
@@ -39,4 +39,4 @@ Key flags:
 
 ## Gotchas
 - Use `py` on Windows if `python` is not available.
-- `user_settings.json` is local-only; do not commit.
+- `user_settings.json` is local-only; do not commit. If missing, copy `user_settings.example.json` -> `user_settings.json`.
