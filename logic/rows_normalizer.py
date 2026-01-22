@@ -169,16 +169,31 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
 
 def normalize_neutron_rows(details: list[dict]) -> list[dict]:
     rows: list[dict] = []
+    prev_remaining: float | None = None
     for entry in details or []:
         if not isinstance(entry, dict):
             continue
+        remaining_val = entry.get("remaining") or entry.get("remaining_ly")
+        try:
+            remaining_num = float(remaining_val) if remaining_val is not None else None
+        except Exception:
+            remaining_num = None
+
+        distance_val = entry.get("distance") or entry.get("distance_ly")
+        if distance_val is None and remaining_num is not None and prev_remaining is not None:
+            delta = prev_remaining - remaining_num
+            if delta >= 0:
+                distance_val = delta
+
         rows.append(
             {
                 "system_name": entry.get("system"),
-                "distance_ly": entry.get("distance") or entry.get("distance_ly"),
+                "distance_ly": distance_val,
                 "remaining_ly": entry.get("remaining") or entry.get("remaining_ly"),
                 "neutron": entry.get("neutron"),
                 "jumps": entry.get("jumps"),
             }
         )
+        if remaining_num is not None:
+            prev_remaining = remaining_num
     return rows

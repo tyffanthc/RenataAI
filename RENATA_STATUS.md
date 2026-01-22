@@ -222,6 +222,7 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 **TBD**
 
 ### Kolejne
+- D1 (EDSM helpery) - opcjonalnie: Neutron hop distance z coords (EDSM) gdy SPANSH distance=None; online-only pod `features.providers.edsm_enabled`, z cache/throttling; pierwszy wiersz moze zostac 0/-
 - SCI/TTS/AI/i18n pozniej
 ### Roadmapa - Cel Renaty (glos i UX)
 - Cel: pokladowy asystent Elite Dangerous (journal events, akcje w GUI, spojny glos, brak spamu i cooldowny).
@@ -232,6 +233,7 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Content/Lore DB: warianty wypowiedzi + cooldowny; lore po FSDJump: pytanie 'chcesz ciekawostke?'.
 - Sterowanie glosem: push-to-talk na start, mute STT gdy TTS mowi; wake word pozniej.
 - MVP: SpeechManager, Content DB + selector, STT offline + PTT, Intent router, TTS Edge + SSML presets, LoreDB hook po FSDJump.
+- Online helpery moga poprawiac precyzje UX (np. dystanse Neutron z coords), ale zawsze pod flaga i nie wymagane.
 
 ---
 
