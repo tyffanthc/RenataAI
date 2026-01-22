@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 import time
 import threading
+import re
 import config
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
 from logic import utils
@@ -285,7 +286,10 @@ def _format_number(value, fmt: str) -> str:
             text = value.strip()
             if not text:
                 return "-"
-            text = text.replace(" ", "")
+            text = re.sub(r"\s+", "", text)
+            text = re.sub(r"[^0-9,\.\-]", "", text)
+            if text in ("", "-", ".", "-.", ",", "-,"):
+                return "-"
             if "," in text and "." not in text:
                 text = text.replace(",", ".")
             else:
