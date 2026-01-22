@@ -14,7 +14,7 @@ from gui import common
 from gui import empty_state
 from gui import strings as ui
 from gui import ui_layout as layout
-from gui.common_autocomplete import AutocompleteController
+from gui.common_autocomplete import AutocompleteController, edsm_single_system_lookup
 from app.route_manager import route_manager
 from app.state import app_state
 
@@ -73,8 +73,16 @@ class NeutronTab(ttk.Frame):
         )
 
         # Autocomplete (poprawiona sygnatura)
-        self.ac_start = AutocompleteController(self.root, self.e_start)
-        self.ac_cel = AutocompleteController(self.root, self.e_cel)
+        self.ac_start = AutocompleteController(
+            self.root,
+            self.e_start,
+            fallback_lookup=edsm_single_system_lookup,
+        )
+        self.ac_cel = AutocompleteController(
+            self.root,
+            self.e_cel,
+            fallback_lookup=edsm_single_system_lookup,
+        )
 
         layout.add_labeled_pair(
             f_form,

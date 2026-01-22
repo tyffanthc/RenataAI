@@ -41,16 +41,27 @@ class AutocompleteController:
     _shared_binds_installed = False
     _global_binds_installed = False
     _global_bind_root = None
-    def __init__(self, root_window, entry_widget, min_chars=3, suggest_func=None):
+    def __init__(
+        self,
+        root_window,
+        entry_widget,
+        min_chars=3,
+        suggest_func=None,
+        fallback_lookup=None,
+        on_fallback_hit=None,
+    ):
         self.root = root_window
         self.entry = entry_widget
         self.min_chars = min_chars
         self.suggest_func = suggest_func
+        self.fallback_lookup = fallback_lookup
+        self.on_fallback_hit = on_fallback_hit
         self._req_gen = 0
         self._focus_epoch = 0
         self._programmatic_change = False
         self._suppress_show_until = 0.0
         self._last_chosen_value = None
+        self._fallback_last_query = ""
         AutocompleteController._instances.append(self)
         AutocompleteController._entry_map[self.entry] = self
         if USE_SINGLETON_LISTBOX:
@@ -225,6 +236,7 @@ class AutocompleteController:
                 daemon=True,
             ).start()
         else:
+            self._fallback_last_query = ""
             self.hide()
 
     def _th_suggest(self, t, req_gen, query, focus_epoch):
@@ -232,6 +244,13 @@ class AutocompleteController:
             s = self.suggest_func(t)
         else:
             s = utils.pobierz_sugestie(t)
+        fallback_value = None
+        if not s and self.fallback_lookup is not None and query != self._fallback_last_query:
+            self._fallback_last_query = query
+            try:
+                fallback_value = self.fallback_lookup(t)
+            except Exception:
+                fallback_value = None
 
         def apply():
             if req_gen != self._req_gen:
@@ -251,7 +270,13 @@ class AutocompleteController:
             if self._last_chosen_value is not None and query == self._last_chosen_value:
                 _dbg("RESULT ignored last_chosen_value")
                 return
-            self._show_list(s)
+            if s:
+                self._show_list(s)
+                return
+            if fallback_value:
+                self._apply_fallback_value(fallback_value)
+                return
+            self.hide()
 
         self.root.after(0, apply)
 
@@ -506,3 +531,52 @@ class AutocompleteController:
     def _resume_programmatic_change(self):
         self._programmatic_change = False
         _dbg("CHOOSE end programmatic_change=False")
+
+    def _apply_fallback_value(self, value):
+        raw = (value or "").strip()
+        if not raw:
+            self.hide(reason="fallback_empty")
+            return
+        self._programmatic_change = True
+        self._suppress_show_until = time.monotonic() + 0.6
+        self._req_gen += 1
+        self._last_chosen_value = raw
+        try:
+            self.entry.delete(0, tk.END)
+            self.entry.insert(0, raw)
+            self.entry.icursor(tk.END)
+        except Exception:
+            pass
+        try:
+            self.hide(reason="fallback")
+        finally:
+            try:
+                self.entry.after_idle(self._resume_programmatic_change)
+            except Exception:
+                self._resume_programmatic_change()
+        if self.on_fallback_hit is not None:
+            try:
+                self.on_fallback_hit(raw)
+            except Exception:
+                pass
+
+
+def edsm_single_system_lookup(query: str) -> str | None:
+    raw = (query or "").strip()
+    if raw.startswith("-"):
+        raw = raw[1:].strip()
+    if not raw:
+        return None
+    try:
+        from logic.utils.edsm_provider import lookup_system, register_local_system
+    except Exception:
+        return None
+
+    info = lookup_system(raw)
+    if not info:
+        return None
+    try:
+        register_local_system(info)
+    except Exception:
+        pass
+    return info.name

@@ -7,7 +7,7 @@ from logic import hmc_route
 from gui import common
 from gui import strings as ui
 from gui import ui_layout as layout
-from gui.common_autocomplete import AutocompleteController
+from gui.common_autocomplete import AutocompleteController, edsm_single_system_lookup
 from app.route_manager import route_manager
 from app.state import app_state
 
@@ -58,8 +58,16 @@ class HMCTab(ttk.Frame):
             right_entry_width=layout.ENTRY_W_LONG,
         )
 
-        self.ac = AutocompleteController(self.root, self.e_start)
-        self.ac_c = AutocompleteController(self.root, self.e_cel)
+        self.ac = AutocompleteController(
+            self.root,
+            self.e_start,
+            fallback_lookup=edsm_single_system_lookup,
+        )
+        self.ac_c = AutocompleteController(
+            self.root,
+            self.e_cel,
+            fallback_lookup=edsm_single_system_lookup,
+        )
 
         layout.add_labeled_pair(
             f_form,
