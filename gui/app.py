@@ -796,7 +796,7 @@ class RenataApp:
 
     def _overlay_show_for(self, seconds):
         if not self._overlay_visible:
-            self.overlay_frame.place(relx=1.0, rely=1.0, x=-12, y=-12, anchor="se")
+            self.overlay_frame.place(relx=0.0, rely=1.0, x=12, y=-12, anchor="sw")
             self._overlay_visible = True
         if self._overlay_hide_after_id is not None:
             try:
