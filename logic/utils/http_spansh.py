@@ -1,7 +1,7 @@
 import requests
 import config
 from logic.spansh_client import client as spansh_client
-from logic.utils.http_edsm import edsm_systems_suggest
+from logic.utils.http_edsm import edsm_systems_suggest, is_edsm_enabled
 
 
 HEADERS = {
@@ -85,11 +85,15 @@ def pobierz_sugestie(tekst: str):
         print(f"[Spansh] '{q}' → {len(names)} wyników")
         if names:
             return names
-        return edsm_systems_suggest(q)
+        if is_edsm_enabled():
+            return edsm_systems_suggest(q)
+        return []
 
     except Exception as e:
         print(f"[DEBUG] API Wyjątek: {e}")
-        return edsm_systems_suggest(q)
+        if is_edsm_enabled():
+            return edsm_systems_suggest(q)
+        return []
 
 
 def pobierz_sugestie_stacji(system: str, tekst: str):

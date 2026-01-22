@@ -8,8 +8,12 @@ _CACHE = CacheStore(namespace="edsm", provider="edsm")
 _CACHE_TTL_SECONDS = 60 * 60
 
 
+def is_edsm_enabled() -> bool:
+    return bool(config.get("features.providers.edsm_enabled", False))
+
+
 def edsm_systems_suggest(query: str) -> list[str]:
-    if not config.get("features.providers.edsm_enabled", False):
+    if not is_edsm_enabled():
         return []
 
     q = (query or "").strip()

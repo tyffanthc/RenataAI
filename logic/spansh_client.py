@@ -22,6 +22,7 @@ from logic import spansh_payloads
 from logic.spansh_payloads import SpanshPayload
 
 from logic.utils.notify import powiedz, DEBOUNCER, MSG_QUEUE
+from logic.utils.http_edsm import is_edsm_enabled
 from logic.request_dedup import make_request_key, run_deduped
 
 
@@ -155,7 +156,6 @@ class SpanshClient:
         self.cache = CacheStore(namespace="spansh", provider="spansh")
         self._last_request: Dict[str, Any] = {}
         self._reload_config()
-        use_edsm = bool(config.get("features.providers.edsm_enabled", False))
 
     def get_last_request(self) -> Dict[str, Any]:
         return copy.deepcopy(self._last_request or {})
@@ -187,6 +187,7 @@ class SpanshClient:
             return []
 
         self._reload_config()
+        use_edsm = is_edsm_enabled()
 
         url = f"{self.base_url}/systems"
         headers = self._headers(referer="https://spansh.co.uk")
