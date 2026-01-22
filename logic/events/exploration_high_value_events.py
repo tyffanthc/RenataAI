@@ -65,7 +65,11 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
         and "earth-like" in planet_class
         and has_body_type("earth-like")
     ):
-        powiedz("Wykryto planetę ziemiopodobną. To żyła złota.", gui_ref)
+        powiedz(
+            "Wykryto planetę ziemiopodobną. To żyła złota.",
+            gui_ref,
+            message_id="MSG.ELW_DETECTED",
+        )
         HV_ELW_WARNED = True
         return  # priorytet – nie robimy pozostałych komunikatów dla tego samego skanu
 

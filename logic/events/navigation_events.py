@@ -106,7 +106,12 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
             except Exception:
                 pass
         if typ != "Location":
-            powiedz(f"Skok: {sysname}", gui_ref)
+            powiedz(
+                f"Skok: {sysname}",
+                gui_ref,
+                message_id="MSG.NEXT_HOP",
+                context={"system": sysname},
+            )
             # AUTO-COPY Cel podr+-+-y (tylko w pierwszym bloku, jak w oryginale)
             try:
                 if (gui_ref and hasattr(gui_ref, "state")
@@ -115,7 +120,12 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
                            or getattr(gui_ref.state, "current_body", None))
                     if obj:
                         pyperclip.copy(obj)
-                        powiedz("Skopiowano cel podr+-+-y", gui_ref)
+                        powiedz(
+                            "Skopiowano cel podr+-+-y",
+                            gui_ref,
+                            message_id="MSG.NEXT_HOP_COPIED",
+                            context={"system": obj},
+                        )
                     gui_ref.state.next_travel_target = None
             except Exception:
                 pass
@@ -132,7 +142,12 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
         app_state.set_system(sysname)
         
         if typ != "Location":
-            powiedz(f"Skok: {sysname}", gui_ref)
+            powiedz(
+                f"Skok: {sysname}",
+                gui_ref,
+                message_id="MSG.NEXT_HOP",
+                context={"system": sysname},
+            )
 
 
 def handle_docked(ev: Dict[str, object], gui_ref=None):
@@ -143,7 +158,12 @@ def handle_docked(ev: Dict[str, object], gui_ref=None):
     if st:
         app_state.set_station(st)
         app_state.set_docked(True)
-        powiedz(f"Dokowano w {st}", gui_ref)
+        powiedz(
+            f"Dokowano w {st}",
+            gui_ref,
+            message_id="MSG.DOCKED",
+            context={"station": st},
+        )
     else:
         # nawet je+Ťli z jakiego+Ť powodu brak nazwy stacji, sam event Docked
         # oznacza, +-e jeste+Ťmy zadokowani
@@ -155,4 +175,4 @@ def handle_undocked(ev: Dict[str, object], gui_ref=None):
     Obs+éuga eventu Undocked.
     """
     app_state.set_docked(False)
-    powiedz("Odlot z portu.", gui_ref)
+    powiedz("Odlot z portu.", gui_ref, message_id="MSG.UNDOCKED")

@@ -96,7 +96,11 @@ def handle_status_update(status: dict, gui_ref=None):
             or None
         )
         if DEBOUNCER.can_send("LOW_FUEL", 300, context=system_name):
-            powiedz("Warning. Fuel reserves critical.", gui_ref)
+            powiedz(
+                "Warning. Fuel reserves critical.",
+                gui_ref,
+                message_id="MSG.FUEL_CRITICAL",
+            )
 
     # Jeśli zatankowano powyżej progu resetu – odblokowujemy alarm
     elif not low_fuel and fuel_percent is not None and fuel_percent > RESET_FUEL_PERCENT:

@@ -149,6 +149,8 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
                 powiedz(
                     "Gratulacje. Jesteś pierwszym człowiekiem w tym układzie.",
                     gui_ref,
+                    message_id="MSG.FIRST_DISCOVERY",
+                    context={"system": app_state.current_system},
                 )
                 FIRST_SYS_DISC_WARNED = True
 
@@ -191,4 +193,9 @@ def handle_fss_all_bodies_found(ev: Dict[str, Any], gui_ref=None):
 
         system_name = app_state.current_system or None
         if DEBOUNCER.can_send("FSS_FULL", 120, context=system_name):
-            powiedz("System w pełni przeskanowany.", gui_ref)
+            powiedz(
+                "System w pełni przeskanowany.",
+                gui_ref,
+                message_id="MSG.SYSTEM_FULLY_SCANNED",
+                context={"system": system_name},
+            )

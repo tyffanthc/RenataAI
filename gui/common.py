@@ -1393,6 +1393,16 @@ def _emit_next_hop_status(level: str, code: str, text: str, *, source: str | Non
     if not utils.DEBOUNCER.is_allowed(code, cooldown_sec=2.0, context=source or ""):
         return
     emit_status(level, code, text, source=source, notify_overlay=True)
+    if code == "NEXT_HOP_COPIED":
+        utils.powiedz(
+            text,
+            message_id="MSG.NEXT_HOP_COPIED",
+            context={"system": _ACTIVE_ROUTE_LAST_COPIED_SYSTEM},
+        )
+    elif code == "ROUTE_COMPLETE":
+        utils.powiedz(text, message_id="MSG.ROUTE_COMPLETE")
+    elif code == "ROUTE_DESYNC":
+        utils.powiedz(text, message_id="MSG.ROUTE_DESYNC")
 
 
 def _copy_next_hop_at_index(
@@ -1584,6 +1594,8 @@ def handle_route_ready_autoclipboard(
     sig = compute_route_signature(route)
     set_last_route_data(route, text, sig)
     _set_active_route_data(route, text, sig, source or status_target)
+    if utils.DEBOUNCER.is_allowed("tts_route_found", cooldown_sec=2.0, context=source or status_target):
+        utils.powiedz("Trasa wyznaczona.", message_id="MSG.ROUTE_FOUND")
 
     mode = str(config.get("auto_clipboard_mode", "FULL_ROUTE")).strip().upper()
     if mode == "NEXT_HOP":

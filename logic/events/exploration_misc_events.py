@@ -56,4 +56,8 @@ def handle_first_footfall(ev: Dict[str, Any], gui_ref=None):
         return
 
     FIRST_FOOTFALL_WARNED_BODIES.add(body)
-    powiedz("Zanotowano pierwszy ludzki krok na tej planecie.", gui_ref)
+    powiedz(
+        "Zanotowano pierwszy ludzki krok na tej planecie.",
+        gui_ref,
+        message_id="MSG.FOOTFALL",
+    )

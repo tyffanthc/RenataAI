@@ -3,13 +3,14 @@ import pyttsx3
 import queue
 from datetime import datetime
 import config
+from logic.tts.text_preprocessor import prepare_tts
 
 
 # Globalna kolejka komunikatów dla GUI (Thread-Safe)
 MSG_QUEUE = queue.Queue()
 
 
-def powiedz(tekst, gui_ref=None):
+def powiedz(tekst, gui_ref=None, *, message_id=None, context=None):
     # Zamiast pisać bezpośrednio do gui_ref, wrzucamy do kolejki
     t = datetime.now().strftime("%H:%M:%S")
     full_msg = f"[{t}] {tekst}"
@@ -20,9 +21,11 @@ def powiedz(tekst, gui_ref=None):
     # Wyślij do GUI przez kolejkę
     MSG_QUEUE.put(("log", full_msg))
     
-    # Synteza mowy
-    if config.get("voice_enabled", True):
-        threading.Thread(target=_watek_mowy, args=(tekst,)).start()
+    # Synteza mowy (tylko przez Text Preprocessor)
+    if config.get("voice_enabled", True) and message_id:
+        tts_text = prepare_tts(str(message_id), context=context)
+        if tts_text:
+            threading.Thread(target=_watek_mowy, args=(tts_text,)).start()
 
 
 def _watek_mowy(tekst):
