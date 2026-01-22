@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Iterable, Tuple
 
 
@@ -170,6 +171,77 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
 def normalize_neutron_rows(details: list[dict]) -> list[dict]:
     rows: list[dict] = []
     prev_remaining: float | None = None
+    prev_entry: dict | None = None
+    coords_cache: dict[str, tuple[float, float, float]] = {}
+
+    def _normalize_name(value: Any) -> str:
+        return " ".join(str(value or "").strip().split()).lower()
+
+    def _coerce_float(value: Any) -> float | None:
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except Exception:
+            return None
+
+    def _extract_coords(entry: dict | None) -> tuple[float, float, float] | None:
+        if not isinstance(entry, dict):
+            return None
+        coords = entry.get("coords") if isinstance(entry.get("coords"), dict) else None
+        if coords is None:
+            coords = entry.get("coordinates") if isinstance(entry.get("coordinates"), dict) else None
+        if coords:
+            x = _coerce_float(coords.get("x"))
+            y = _coerce_float(coords.get("y"))
+            z = _coerce_float(coords.get("z"))
+            if x is not None and y is not None and z is not None:
+                return (x, y, z)
+        x = _coerce_float(entry.get("x"))
+        y = _coerce_float(entry.get("y"))
+        z = _coerce_float(entry.get("z"))
+        if x is not None and y is not None and z is not None:
+            return (x, y, z)
+        return None
+
+    def _get_coords(entry: dict | None) -> tuple[float, float, float] | None:
+        if not isinstance(entry, dict):
+            return None
+        name = entry.get("system") or entry.get("system_name")
+        key = _normalize_name(name)
+        if key and key in coords_cache:
+            return coords_cache[key]
+
+        coords = _extract_coords(entry)
+        if coords is not None:
+            if key:
+                coords_cache[key] = coords
+            return coords
+
+        if not name:
+            return None
+
+        try:
+            from logic.utils.edsm_provider import lookup_system
+        except Exception:
+            return None
+
+        info = lookup_system(str(name))
+        if not info:
+            return None
+        coords = (float(info.x), float(info.y), float(info.z))
+        if key:
+            coords_cache[key] = coords
+        return coords
+
+    def _distance_from_coords(
+        a: tuple[float, float, float],
+        b: tuple[float, float, float],
+    ) -> float:
+        dx = b[0] - a[0]
+        dy = b[1] - a[1]
+        dz = b[2] - a[2]
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
     for entry in details or []:
         if not isinstance(entry, dict):
             continue
@@ -180,10 +252,15 @@ def normalize_neutron_rows(details: list[dict]) -> list[dict]:
             remaining_num = None
 
         distance_val = entry.get("distance") or entry.get("distance_ly")
-        if distance_val is None and remaining_num is not None and prev_remaining is not None:
-            delta = prev_remaining - remaining_num
-            if delta >= 0:
-                distance_val = delta
+        if distance_val is None:
+            prev_coords = _get_coords(prev_entry)
+            cur_coords = _get_coords(entry)
+            if prev_coords is not None and cur_coords is not None:
+                distance_val = round(_distance_from_coords(prev_coords, cur_coords), 2)
+            elif remaining_num is not None and prev_remaining is not None:
+                delta = prev_remaining - remaining_num
+                if delta >= 0:
+                    distance_val = delta
 
         rows.append(
             {
@@ -196,4 +273,5 @@ def normalize_neutron_rows(details: list[dict]) -> list[dict]:
         )
         if remaining_num is not None:
             prev_remaining = remaining_num
+        prev_entry = entry
     return rows
