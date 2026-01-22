@@ -175,8 +175,8 @@ def normalize_neutron_rows(details: list[dict]) -> list[dict]:
         rows.append(
             {
                 "system_name": entry.get("system"),
-                "distance_ly": entry.get("distance"),
-                "remaining_ly": entry.get("remaining"),
+                "distance_ly": entry.get("distance") or entry.get("distance_ly"),
+                "remaining_ly": entry.get("remaining") or entry.get("remaining_ly"),
                 "neutron": entry.get("neutron"),
                 "jumps": entry.get("jumps"),
             }

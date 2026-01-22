@@ -129,6 +129,11 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Sort zachowuje fallback po zmianie presetu.
 - Testy smoke: backend + journal PASS.
 
+#### M-06.1 - Popup UX + bug Dystans (DONE)
+- Dystans [ly] formatowany poprawnie (fallback tylko gdy brak danych).
+- Popupy: toggle open/close + zapamietanie pozycji (Kolumny/Progi/Advanced).
+- Testy smoke: backend + journal PASS.
+
 #### M-04 - Panel bledow + ostatnie zapytanie SPANSH (DONE)
 - Status SPANSH: sukces, brak wynikow, blad/timeout (czytelne komunikaty).
 - Ostatnie zapytanie do Spansh jako sekcja zwijana (debug).

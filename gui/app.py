@@ -253,13 +253,18 @@ class RenataApp:
     def _open_settings_window(self) -> None:
         """
         Otwiera nowe okno SettingsWindow jako modalne.
-        Jeśli już jest otwarte – tylko je podnosi.
+        Jeśli już jest otwarte – zamyka je (toggle).
         """
         existing = getattr(self, "_settings_window", None)
         try:
             if existing is not None and existing.winfo_exists():
-                existing.lift()
-                existing.focus_set()
+                try:
+                    existing._on_close()
+                except Exception:
+                    try:
+                        existing.destroy()
+                    except Exception:
+                        pass
                 return
         except Exception:
             # jeśli coś poszło nie tak – traktujemy jakby okna nie było

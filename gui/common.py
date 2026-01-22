@@ -280,6 +280,16 @@ def _format_bool(value) -> str:
 
 def _format_number(value, fmt: str) -> str:
     try:
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return "-"
+            text = text.replace(" ", "")
+            if "," in text and "." not in text:
+                text = text.replace(",", ".")
+            else:
+                text = text.replace(",", "")
+            value = text
         num = float(value)
     except Exception:
         return "-"
@@ -799,6 +809,53 @@ def _save_sort_state(schema_id: str, column: str, desc: bool) -> None:
         pass
 
 
+def _get_popup_positions() -> dict:
+    cfg = config.get("ui.popup_positions", {})
+    if not isinstance(cfg, dict):
+        return {}
+    return cfg
+
+
+def _save_popup_position(key: str, x: int, y: int) -> None:
+    cfg = _get_popup_positions()
+    new_cfg = dict(cfg)
+    new_cfg[key] = {"x": int(x), "y": int(y)}
+    try:
+        config.save({"ui.popup_positions": new_cfg})
+    except Exception:
+        pass
+
+
+def _restore_popup_position(window, key: str) -> None:
+    cfg = _get_popup_positions()
+    pos = cfg.get(key)
+    if not isinstance(pos, dict):
+        return
+    try:
+        x = int(pos.get("x"))
+        y = int(pos.get("y"))
+    except Exception:
+        return
+    window.update_idletasks()
+    sw = window.winfo_screenwidth()
+    sh = window.winfo_screenheight()
+    if x < 0 or y < 0 or x > sw - 40 or y > sh - 40:
+        return
+    window.geometry(f"+{x}+{y}")
+
+
+def _bind_popup_position(window, key: str) -> None:
+    def _on_configure(_event):
+        try:
+            x = window.winfo_x()
+            y = window.winfo_y()
+        except Exception:
+            return
+        _save_popup_position(key, x, y)
+
+    window.bind("<Configure>", _on_configure, add="+")
+
+
 def _get_saved_visible_columns(schema_id: str) -> list[str] | None:
     cfg = config.get("tables_visible_columns", {})
     if not isinstance(cfg, dict):
@@ -879,8 +936,8 @@ def _open_columns_picker(listbox) -> None:
     existing = getattr(listbox, "_renata_columns_dialog", None)
     try:
         if existing is not None and existing.winfo_exists():
-            existing.lift()
-            existing.focus_force()
+            existing.destroy()
+            listbox._renata_columns_dialog = None  # type: ignore[attr-defined]
             return
     except Exception:
         listbox._renata_columns_dialog = None  # type: ignore[attr-defined]
@@ -890,6 +947,8 @@ def _open_columns_picker(listbox) -> None:
     dialog.title(f"Kolumny: {schema.title}")
     dialog.resizable(False, False)
     dialog.transient(listbox.winfo_toplevel())
+    _restore_popup_position(dialog, "column_picker")
+    _bind_popup_position(dialog, "column_picker")
 
     preset_frame = ttk.Frame(dialog)
     preset_frame.pack(fill="x", padx=10, pady=(8, 4))

@@ -53,6 +53,8 @@ class SettingsWindow(tk.Toplevel):
             save_config=self._save_config_wrapper,
         )
         self.settings_tab.pack(fill="both", expand=True)
+        self._restore_popup_position("settings_window")
+        self._bind_popup_position("settings_window")
 
     # ------------------------------------------------------------------ #
     #  Adaptery: SettingsTab -> ConfigManager
@@ -118,3 +120,46 @@ class SettingsWindow(tk.Toplevel):
                 pass
 
         self.destroy()
+
+    def _get_popup_positions(self) -> Dict[str, Any]:
+        cfg = config.get("ui.popup_positions", {})
+        if not isinstance(cfg, dict):
+            return {}
+        return cfg
+
+    def _save_popup_position(self, key: str, x: int, y: int) -> None:
+        cfg = self._get_popup_positions()
+        new_cfg = dict(cfg)
+        new_cfg[key] = {"x": int(x), "y": int(y)}
+        try:
+            config.save({"ui.popup_positions": new_cfg})
+        except Exception:
+            pass
+
+    def _restore_popup_position(self, key: str) -> None:
+        cfg = self._get_popup_positions()
+        pos = cfg.get(key)
+        if not isinstance(pos, dict):
+            return
+        try:
+            x = int(pos.get("x"))
+            y = int(pos.get("y"))
+        except Exception:
+            return
+        self.update_idletasks()
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        if x < 0 or y < 0 or x > sw - 40 or y > sh - 40:
+            return
+        self.geometry(f"+{x}+{y}")
+
+    def _bind_popup_position(self, key: str) -> None:
+        def _on_configure(_event):
+            try:
+                x = self.winfo_x()
+                y = self.winfo_y()
+            except Exception:
+                return
+            self._save_popup_position(key, x, y)
+
+        self.bind("<Configure>", _on_configure, add="+")

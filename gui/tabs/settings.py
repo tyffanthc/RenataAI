@@ -37,6 +37,7 @@ class SettingsTab(ttk.Frame):
         self._get_config = get_config
         self._save_config = save_config
         self._jackpot_dialog = None
+        self._tables_columns_dialog = None
 
         self._create_vars()
         self._build_ui()
@@ -146,6 +147,49 @@ class SettingsTab(ttk.Frame):
         # Status naukowy – StringVar do sekcji Eksploracja
         self.science_status_var = tk.StringVar(value="")
         self.modules_status_var = tk.StringVar(value="")
+
+    def _get_popup_positions(self) -> dict:
+        cfg = config.get("ui.popup_positions", {})
+        if not isinstance(cfg, dict):
+            return {}
+        return cfg
+
+    def _save_popup_position(self, key: str, x: int, y: int) -> None:
+        cfg = self._get_popup_positions()
+        new_cfg = dict(cfg)
+        new_cfg[key] = {"x": int(x), "y": int(y)}
+        try:
+            config.save({"ui.popup_positions": new_cfg})
+        except Exception:
+            pass
+
+    def _restore_popup_position(self, window: tk.Toplevel, key: str) -> None:
+        cfg = self._get_popup_positions()
+        pos = cfg.get(key)
+        if not isinstance(pos, dict):
+            return
+        try:
+            x = int(pos.get("x"))
+            y = int(pos.get("y"))
+        except Exception:
+            return
+        window.update_idletasks()
+        sw = window.winfo_screenwidth()
+        sh = window.winfo_screenheight()
+        if x < 0 or y < 0 or x > sw - 40 or y > sh - 40:
+            return
+        window.geometry(f"+{x}+{y}")
+
+    def _bind_popup_position(self, window: tk.Toplevel, key: str) -> None:
+        def _on_configure(_event):
+            try:
+                x = window.winfo_x()
+                y = window.winfo_y()
+            except Exception:
+                return
+            self._save_popup_position(key, x, y)
+
+        window.bind("<Configure>", _on_configure, add="+")
 
     # ------------------------------------------------------------------ #
     # UI – zakładki
@@ -741,8 +785,8 @@ class SettingsTab(ttk.Frame):
         existing = getattr(self, "_jackpot_dialog", None)
         try:
             if existing is not None and existing.winfo_exists():
-                existing.lift()
-                existing.focus_force()
+                existing.destroy()
+                self._jackpot_dialog = None
                 return
         except Exception:
             self._jackpot_dialog = None
@@ -752,6 +796,8 @@ class SettingsTab(ttk.Frame):
         dialog.title("Progi jackpotów")
         dialog.resizable(False, False)
         dialog.transient(self.winfo_toplevel())
+        self._restore_popup_position(dialog, "jackpot_dialog")
+        self._bind_popup_position(dialog, "jackpot_dialog")
         try:
             dialog.attributes("-topmost", True)
         except Exception:
@@ -818,9 +864,22 @@ class SettingsTab(ttk.Frame):
             messagebox.showinfo("Tables", "Brak zdefiniowanych schematow.")
             return
 
+        existing = getattr(self, "_tables_columns_dialog", None)
+        try:
+            if existing is not None and existing.winfo_exists():
+                existing.destroy()
+                self._tables_columns_dialog = None
+                return
+        except Exception:
+            self._tables_columns_dialog = None
+
         dialog = tk.Toplevel(self)
+        self._tables_columns_dialog = dialog
         dialog.title("Spansh table columns")
         dialog.geometry("520x520")
+        self._restore_popup_position(dialog, "tables_columns_dialog")
+        self._bind_popup_position(dialog, "tables_columns_dialog")
+        dialog.protocol("WM_DELETE_WINDOW", lambda: self._close_tables_columns_dialog())
 
         top = ttk.Frame(dialog)
         top.pack(fill="x", padx=10, pady=10)
@@ -892,13 +951,13 @@ class SettingsTab(ttk.Frame):
             schema_id = schema_var.get()
             schema = table_schemas.get_schema(schema_id)
             if schema is None:
-                dialog.destroy()
+                self._close_tables_columns_dialog()
                 return
 
             if use_default_var.get():
                 if schema_id in self.tables_visible_columns:
                     self.tables_visible_columns.pop(schema_id, None)
-                dialog.destroy()
+                self._close_tables_columns_dialog()
                 return
 
             selected = [k for k, v in col_vars.items() if v.get()]
@@ -906,15 +965,22 @@ class SettingsTab(ttk.Frame):
                 selected = [c.key for c in schema.columns if c.default_visible]
 
             self.tables_visible_columns[schema_id] = selected
-            dialog.destroy()
+            self._close_tables_columns_dialog()
 
         btns = ttk.Frame(dialog)
         btns.pack(fill="x", padx=10, pady=10)
-        ttk.Button(btns, text="Cancel", command=dialog.destroy).pack(side="right")
+        ttk.Button(btns, text="Cancel", command=self._close_tables_columns_dialog).pack(side="right")
         ttk.Button(btns, text="Save", command=_on_save).pack(side="right", padx=6)
-
-        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
         dialog.focus_force()
+
+    def _close_tables_columns_dialog(self) -> None:
+        dialog = getattr(self, "_tables_columns_dialog", None)
+        if dialog is None:
+            return
+        try:
+            dialog.destroy()
+        finally:
+            self._tables_columns_dialog = None
 
     def _build_tab_engineer(self) -> None:
         parent = self._tab_engineer
