@@ -3,6 +3,7 @@ from tkinter import ttk
 import time
 import threading
 import config
+from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
 from logic import utils
 from logic.route_clipboard import (
     compute_route_signature,
@@ -809,53 +810,6 @@ def _save_sort_state(schema_id: str, column: str, desc: bool) -> None:
         pass
 
 
-def _get_popup_positions() -> dict:
-    cfg = config.get("ui.popup_positions", {})
-    if not isinstance(cfg, dict):
-        return {}
-    return cfg
-
-
-def _save_popup_position(key: str, x: int, y: int) -> None:
-    cfg = _get_popup_positions()
-    new_cfg = dict(cfg)
-    new_cfg[key] = {"x": int(x), "y": int(y)}
-    try:
-        config.save({"ui.popup_positions": new_cfg})
-    except Exception:
-        pass
-
-
-def _restore_popup_position(window, key: str) -> None:
-    cfg = _get_popup_positions()
-    pos = cfg.get(key)
-    if not isinstance(pos, dict):
-        return
-    try:
-        x = int(pos.get("x"))
-        y = int(pos.get("y"))
-    except Exception:
-        return
-    window.update_idletasks()
-    sw = window.winfo_screenwidth()
-    sh = window.winfo_screenheight()
-    if x < 0 or y < 0 or x > sw - 40 or y > sh - 40:
-        return
-    window.geometry(f"+{x}+{y}")
-
-
-def _bind_popup_position(window, key: str) -> None:
-    def _on_configure(_event):
-        try:
-            x = window.winfo_x()
-            y = window.winfo_y()
-        except Exception:
-            return
-        _save_popup_position(key, x, y)
-
-    window.bind("<Configure>", _on_configure, add="+")
-
-
 def _get_saved_visible_columns(schema_id: str) -> list[str] | None:
     cfg = config.get("tables_visible_columns", {})
     if not isinstance(cfg, dict):
@@ -936,6 +890,7 @@ def _open_columns_picker(listbox) -> None:
     existing = getattr(listbox, "_renata_columns_dialog", None)
     try:
         if existing is not None and existing.winfo_exists():
+            save_window_geometry(existing, "column_picker", include_size=False)
             existing.destroy()
             listbox._renata_columns_dialog = None  # type: ignore[attr-defined]
             return
@@ -947,8 +902,17 @@ def _open_columns_picker(listbox) -> None:
     dialog.title(f"Kolumny: {schema.title}")
     dialog.resizable(False, False)
     dialog.transient(listbox.winfo_toplevel())
-    _restore_popup_position(dialog, "column_picker")
-    _bind_popup_position(dialog, "column_picker")
+    restore_window_geometry(dialog, "column_picker", include_size=False)
+    bind_window_geometry(dialog, "column_picker", include_size=False)
+
+    def _close_dialog() -> None:
+        save_window_geometry(dialog, "column_picker", include_size=False)
+        try:
+            dialog.destroy()
+        finally:
+            listbox._renata_columns_dialog = None  # type: ignore[attr-defined]
+
+    dialog.protocol("WM_DELETE_WINDOW", _close_dialog)
 
     preset_frame = ttk.Frame(dialog)
     preset_frame.pack(fill="x", padx=10, pady=(8, 4))

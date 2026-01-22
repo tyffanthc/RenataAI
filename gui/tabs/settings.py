@@ -5,6 +5,7 @@ from tkinter import ttk, filedialog, messagebox
 from typing import Optional, Callable, Dict, Any
 import os
 import config
+from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
 
 
 class SettingsTab(ttk.Frame):
@@ -147,49 +148,6 @@ class SettingsTab(ttk.Frame):
         # Status naukowy – StringVar do sekcji Eksploracja
         self.science_status_var = tk.StringVar(value="")
         self.modules_status_var = tk.StringVar(value="")
-
-    def _get_popup_positions(self) -> dict:
-        cfg = config.get("ui.popup_positions", {})
-        if not isinstance(cfg, dict):
-            return {}
-        return cfg
-
-    def _save_popup_position(self, key: str, x: int, y: int) -> None:
-        cfg = self._get_popup_positions()
-        new_cfg = dict(cfg)
-        new_cfg[key] = {"x": int(x), "y": int(y)}
-        try:
-            config.save({"ui.popup_positions": new_cfg})
-        except Exception:
-            pass
-
-    def _restore_popup_position(self, window: tk.Toplevel, key: str) -> None:
-        cfg = self._get_popup_positions()
-        pos = cfg.get(key)
-        if not isinstance(pos, dict):
-            return
-        try:
-            x = int(pos.get("x"))
-            y = int(pos.get("y"))
-        except Exception:
-            return
-        window.update_idletasks()
-        sw = window.winfo_screenwidth()
-        sh = window.winfo_screenheight()
-        if x < 0 or y < 0 or x > sw - 40 or y > sh - 40:
-            return
-        window.geometry(f"+{x}+{y}")
-
-    def _bind_popup_position(self, window: tk.Toplevel, key: str) -> None:
-        def _on_configure(_event):
-            try:
-                x = window.winfo_x()
-                y = window.winfo_y()
-            except Exception:
-                return
-            self._save_popup_position(key, x, y)
-
-        window.bind("<Configure>", _on_configure, add="+")
 
     # ------------------------------------------------------------------ #
     # UI – zakładki
@@ -785,6 +743,7 @@ class SettingsTab(ttk.Frame):
         existing = getattr(self, "_jackpot_dialog", None)
         try:
             if existing is not None and existing.winfo_exists():
+                save_window_geometry(existing, "jackpot_dialog", include_size=False)
                 existing.destroy()
                 self._jackpot_dialog = None
                 return
@@ -796,8 +755,8 @@ class SettingsTab(ttk.Frame):
         dialog.title("Progi jackpotów")
         dialog.resizable(False, False)
         dialog.transient(self.winfo_toplevel())
-        self._restore_popup_position(dialog, "jackpot_dialog")
-        self._bind_popup_position(dialog, "jackpot_dialog")
+        restore_window_geometry(dialog, "jackpot_dialog", include_size=False)
+        bind_window_geometry(dialog, "jackpot_dialog", include_size=False)
         try:
             dialog.attributes("-topmost", True)
         except Exception:
@@ -815,6 +774,7 @@ class SettingsTab(ttk.Frame):
             row += 1
 
         def _on_close():
+            save_window_geometry(dialog, "jackpot_dialog", include_size=False)
             try:
                 dialog.grab_release()
             except Exception:
@@ -867,6 +827,7 @@ class SettingsTab(ttk.Frame):
         existing = getattr(self, "_tables_columns_dialog", None)
         try:
             if existing is not None and existing.winfo_exists():
+                save_window_geometry(existing, "tables_columns_dialog", include_size=True)
                 existing.destroy()
                 self._tables_columns_dialog = None
                 return
@@ -877,8 +838,8 @@ class SettingsTab(ttk.Frame):
         self._tables_columns_dialog = dialog
         dialog.title("Spansh table columns")
         dialog.geometry("520x520")
-        self._restore_popup_position(dialog, "tables_columns_dialog")
-        self._bind_popup_position(dialog, "tables_columns_dialog")
+        restore_window_geometry(dialog, "tables_columns_dialog", include_size=True)
+        bind_window_geometry(dialog, "tables_columns_dialog", include_size=True)
         dialog.protocol("WM_DELETE_WINDOW", lambda: self._close_tables_columns_dialog())
 
         top = ttk.Frame(dialog)
@@ -977,6 +938,7 @@ class SettingsTab(ttk.Frame):
         dialog = getattr(self, "_tables_columns_dialog", None)
         if dialog is None:
             return
+        save_window_geometry(dialog, "tables_columns_dialog", include_size=True)
         try:
             dialog.destroy()
         finally:

@@ -134,6 +134,12 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Popupy: toggle open/close + zapamietanie pozycji (Kolumny/Progi/Advanced).
 - Testy smoke: backend + journal PASS.
 
+#### M-07 - Persistencja pozycji i rozmiaru okien (DONE)
+- Zapamietanie pozycji okien (main/settings/popupy) + bezpieczny fallback poza ekranem.
+- Rozmiar zapisywany tam, gdzie ma sens (main/settings/kolumny).
+- Dane w `window_positions` w user_settings.json.
+- Testy smoke: backend + journal PASS.
+
 #### M-04 - Panel bledow + ostatnie zapytanie SPANSH (DONE)
 - Status SPANSH: sukces, brak wynikow, blad/timeout (czytelne komunikaty).
 - Ostatnie zapytanie do Spansh jako sekcja zwijana (debug).

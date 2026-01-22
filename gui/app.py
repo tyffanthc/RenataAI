@@ -8,6 +8,7 @@ from gui.tabs import pulpit, engineer
 from gui.tabs import spansh
 from gui.menu_bar import RenataMenuBar
 from gui.tabs.settings_window import SettingsWindow
+from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
 from gui.tabs.logbook import LogbookTab
 import webbrowser
 from logic.generate_renata_science_data import generate_science_excel
@@ -25,6 +26,9 @@ class RenataApp:
         self.root = root
         self.root.title("R.E.N.A.T.A.")
         self.root.geometry("1100x700")
+        restore_window_geometry(self.root, "main_window", include_size=True)
+        bind_window_geometry(self.root, "main_window", include_size=True)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_main_close)
         self._ui_thread_id = threading.get_ident()
 
         # ==========================================================
@@ -283,6 +287,16 @@ class RenataApp:
         """Czyścimy referencję, gdy okno ustawień się zamknie."""
         self._settings_window = None
         self.settings_tab = None
+
+    def _on_main_close(self) -> None:
+        save_window_geometry(self.root, "main_window", include_size=True)
+        try:
+            self.root.quit()
+        except Exception:
+            try:
+                self.root.destroy()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------ #
     #   Dane naukowe (Exobiology / Cartography)

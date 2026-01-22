@@ -151,6 +151,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "tables_visible_columns": {},
     "tables_sort_state": {},
     "ui.popup_positions": {},
+    "window_positions": {},
     "features.ui.neutron_via_compact": True,
     "features.ui.neutron_via_autocomplete": True,
     "features.ui.results_context_menu": False,

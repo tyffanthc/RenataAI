@@ -3,6 +3,7 @@ from tkinter import ttk
 import threading
 
 from logic.utils import pobierz_sugestie
+from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
 
 COLOR_BG     = '#0b0c10'
 COLOR_FG     = '#ff7100'
@@ -32,6 +33,8 @@ class AddEntryDialog(tk.Toplevel):
         self._suggest_lock = threading.Lock()
 
         self._create_widgets()
+        restore_window_geometry(self, "add_entry_dialog", include_size=True)
+        bind_window_geometry(self, "add_entry_dialog", include_size=True)
 
     def _create_widgets(self):
         self.columnconfigure(0, weight=0)
@@ -208,8 +211,10 @@ class AddEntryDialog(tk.Toplevel):
             "body": body,
             "coords": coords,
         }
+        save_window_geometry(self, "add_entry_dialog", include_size=True)
         self.destroy()
 
     def _on_cancel(self):
         self.result_data = None
+        save_window_geometry(self, "add_entry_dialog", include_size=True)
         self.destroy()
