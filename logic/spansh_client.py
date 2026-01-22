@@ -11,6 +11,7 @@ Zasady:
 from __future__ import annotations
 
 import time
+import json
 from typing import Any, Dict, List, Optional, Tuple
 import copy
 
@@ -155,6 +156,7 @@ class SpanshClient:
         self.default_poll_interval: float = 2.0
         self.cache = CacheStore(namespace="spansh", provider="spansh")
         self._last_request: Dict[str, Any] = {}
+        self._debug_cache_payloads: Dict[str, Dict[str, Any]] = {}
         self._reload_config()
 
     def get_last_request(self) -> Dict[str, Any]:
@@ -443,6 +445,12 @@ class SpanshClient:
             path,
             {"mode": mode, "payload": norm_payload},
         )
+        debug_payload = None
+        if config.get("debug_cache", False):
+            try:
+                debug_payload = _fields_to_dict(norm_payload)
+            except Exception:
+                debug_payload = None
 
         ttl_seconds = 7 * 24 * 3600
         start_ts = time.monotonic()
@@ -450,6 +458,8 @@ class SpanshClient:
             ttl_seconds = 6 * 3600
 
         hit, cached, _meta = self.cache.get(cache_key)
+        if config.get("debug_cache", False):
+            self._debug_cache_log(mode, path, cache_key, debug_payload, hit)
         if hit:
             self._set_last_request({
                 "timestamp": time.time(),
@@ -814,6 +824,38 @@ class SpanshClient:
         if referer:
             headers["Referer"] = referer
         return headers
+
+    def _debug_cache_log(
+        self,
+        mode: str,
+        path: str,
+        cache_key: str,
+        payload: Dict[str, Any] | None,
+        hit: bool,
+    ) -> None:
+        label = "HIT" if hit else "MISS"
+        try:
+            payload_json = json.dumps(payload or {}, sort_keys=True, ensure_ascii=True)
+        except Exception:
+            payload_json = "{}"
+        print(
+            f"[CACHE] SPANSH {mode} {path} {label} "
+            f"key={cache_key} payload={payload_json}"
+        )
+
+        if payload is None:
+            return
+        debug_key = f"{mode}:{path}"
+        prev = self._debug_cache_payloads.get(debug_key)
+        if prev is not None:
+            diff = []
+            keys = set(prev.keys()) | set(payload.keys())
+            for key in sorted(keys):
+                if prev.get(key) != payload.get(key):
+                    diff.append(f"{key}: {prev.get(key)!r} -> {payload.get(key)!r}")
+            if diff:
+                print(f"[CACHE] SPANSH payload_diff: " + "; ".join(diff))
+        self._debug_cache_payloads[debug_key] = payload
 
 
 # Singleton – prosty, ale wystarczający na potrzeby Renaty v90
