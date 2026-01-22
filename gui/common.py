@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox, simpledialog
 import time
 import threading
 import re
@@ -768,20 +768,52 @@ def _sanitize_visible_columns(schema, visible: list[str]) -> list[str]:
     return [key for key in visible if key in keys]
 
 
-def _get_preset_columns(schema, preset_key: str) -> list[str]:
-    key = (preset_key or "").strip().lower()
-    if key == "pro":
-        return [col.key for col in schema.columns]
-    if key == "default":
-        return _get_default_visible_columns(schema)
-    if key == "minimal":
-        presets = getattr(schema, "column_presets", {}) or {}
-        if isinstance(presets, dict):
-            candidate = presets.get("minimal")
-            if isinstance(candidate, list) and candidate:
-                return candidate
-        return _get_default_visible_columns(schema)
-    return _get_default_visible_columns(schema)
+def _sanitize_preset_columns(schema, columns) -> list[str]:
+    if not isinstance(columns, list):
+        return []
+    cleaned = [str(item) for item in columns if str(item)]
+    return _sanitize_visible_columns(schema, cleaned)
+
+
+def _load_column_presets(schema_id: str, schema, visible_fallback: list[str]) -> tuple[dict[str, list[str]], str]:
+    cfg = config.get("column_presets", {})
+    if not isinstance(cfg, dict):
+        cfg = {}
+    schema_cfg = cfg.get(schema_id)
+    presets = {}
+    active = None
+    if isinstance(schema_cfg, dict):
+        raw_presets = schema_cfg.get("presets")
+        if isinstance(raw_presets, dict):
+            presets = raw_presets
+        active = schema_cfg.get("active")
+    cleaned = {}
+    for name, cols in presets.items():
+        if not isinstance(name, str) or not name.strip():
+            continue
+        normalized = _sanitize_preset_columns(schema, cols)
+        if normalized:
+            cleaned[name.strip()] = normalized
+    if not visible_fallback:
+        visible_fallback = _get_default_visible_columns(schema)
+    if not cleaned:
+        cleaned = {"Default": list(visible_fallback)}
+        active = "Default"
+    if not isinstance(active, str) or active not in cleaned:
+        active = next(iter(cleaned))
+    return cleaned, active
+
+
+def _save_column_presets(schema_id: str, presets: dict[str, list[str]], active: str) -> None:
+    cfg = config.get("column_presets", {})
+    if not isinstance(cfg, dict):
+        cfg = {}
+    new_cfg = dict(cfg)
+    new_cfg[schema_id] = {"active": active, "presets": presets}
+    try:
+        config.save({"column_presets": new_cfg})
+    except Exception:
+        pass
 
 
 def _is_persist_sort_enabled() -> bool:
@@ -920,21 +952,6 @@ def _open_columns_picker(listbox) -> None:
 
     dialog.protocol("WM_DELETE_WINDOW", _close_dialog)
 
-    preset_frame = ttk.Frame(dialog)
-    preset_frame.pack(fill="x", padx=10, pady=(8, 4))
-    ttk.Label(preset_frame, text="Preset:").pack(side="left")
-    preset_labels = ["Minimal", "Domyslny", "Pro"]
-    preset_map = {"Minimal": "minimal", "Domyslny": "default", "Pro": "pro"}
-    preset_var = tk.StringVar(value="Domyslny")
-    preset_combo = ttk.Combobox(
-        preset_frame,
-        textvariable=preset_var,
-        values=preset_labels,
-        state="readonly",
-        width=12,
-    )
-    preset_combo.pack(side="left", padx=6)
-
     visible = _get_saved_visible_columns(schema_id)
     if visible is None:
         visible = _get_default_visible_columns(schema)
@@ -942,10 +959,43 @@ def _open_columns_picker(listbox) -> None:
     if not visible:
         visible = _get_default_visible_columns(schema)
 
+    presets, active_preset = _load_column_presets(schema_id, schema, visible)
+    preset_var = tk.StringVar(value=active_preset)
+
+    preset_frame = ttk.Frame(dialog)
+    preset_frame.pack(fill="x", padx=10, pady=(8, 4))
+    ttk.Label(preset_frame, text="Preset:").pack(side="left")
+    preset_combo = ttk.Combobox(
+        preset_frame,
+        textvariable=preset_var,
+        values=list(presets.keys()),
+        state="readonly",
+        width=16,
+    )
+    preset_combo.pack(side="left", padx=6)
+    ttk.Button(preset_frame, text="Save as...", command=lambda: _save_as_preset()).pack(side="left", padx=(6, 0))
+    ttk.Button(preset_frame, text="Rename", command=lambda: _rename_preset()).pack(side="left", padx=6)
+    ttk.Button(preset_frame, text="Delete", command=lambda: _delete_preset()).pack(side="left")
+
     vars_map: dict[str, tk.BooleanVar] = {}
     updating = {"value": False}
 
+    def _current_selected() -> list[str]:
+        selected = [col.key for col in schema.columns if vars_map[col.key].get()]
+        selected = _sanitize_visible_columns(schema, selected)
+        if not selected:
+            selected = _get_default_visible_columns(schema)
+        return selected
+
+    def _refresh_preset_combo() -> None:
+        nonlocal active_preset
+        preset_combo["values"] = list(presets.keys())
+        if active_preset not in presets:
+            active_preset = next(iter(presets))
+        preset_var.set(active_preset)
+
     def _apply_selection() -> None:
+        nonlocal active_preset
         if updating["value"]:
             return
         selected = [col.key for col in schema.columns if vars_map[col.key].get()]
@@ -959,14 +1009,17 @@ def _open_columns_picker(listbox) -> None:
         if not selected:
             return
         _save_visible_columns(schema_id, selected)
+        if active_preset:
+            presets[active_preset] = list(selected)
+            _save_column_presets(schema_id, presets, active_preset)
         if isinstance(listbox, ttk.Treeview):
             _refresh_table_treeview(listbox)
         else:
             _refresh_table_listbox(listbox)
 
-    def _apply_preset() -> None:
-        key = preset_map.get(preset_var.get(), "default")
-        selected = _get_preset_columns(schema, key)
+    def _apply_preset(name: str) -> None:
+        nonlocal active_preset
+        selected = presets.get(name) or _get_default_visible_columns(schema)
         selected = _sanitize_visible_columns(schema, selected)
         if not selected:
             selected = _get_default_visible_columns(schema)
@@ -974,13 +1027,67 @@ def _open_columns_picker(listbox) -> None:
         for col in schema.columns:
             vars_map[col.key].set(col.key in selected)
         updating["value"] = False
+        active_preset = name
+        _save_column_presets(schema_id, presets, active_preset)
         _apply_selection()
 
-    ttk.Button(
-        preset_frame,
-        text="Zastosuj",
-        command=_apply_preset,
-    ).pack(side="left", padx=(8, 0))
+    def _on_preset_selected(_event=None) -> None:
+        name = preset_var.get()
+        if name not in presets:
+            return
+        _apply_preset(name)
+
+    def _save_as_preset() -> None:
+        nonlocal active_preset
+        name = simpledialog.askstring("Kolumny", "Nazwa presetu:", parent=dialog)
+        if not name:
+            return
+        name = name.strip()
+        if not name:
+            return
+        if name in presets:
+            messagebox.showwarning("Kolumny", "Preset o tej nazwie juz istnieje.", parent=dialog)
+            return
+        presets[name] = _current_selected()
+        active_preset = name
+        _save_column_presets(schema_id, presets, active_preset)
+        _refresh_preset_combo()
+
+    def _rename_preset() -> None:
+        nonlocal active_preset
+        if not active_preset:
+            return
+        name = simpledialog.askstring("Kolumny", "Nowa nazwa presetu:", initialvalue=active_preset, parent=dialog)
+        if not name:
+            return
+        name = name.strip()
+        if not name:
+            return
+        if name in presets and name != active_preset:
+            messagebox.showwarning("Kolumny", "Preset o tej nazwie juz istnieje.", parent=dialog)
+            return
+        if name == active_preset:
+            return
+        presets[name] = presets.pop(active_preset)
+        active_preset = name
+        _save_column_presets(schema_id, presets, active_preset)
+        _refresh_preset_combo()
+
+    def _delete_preset() -> None:
+        nonlocal active_preset
+        if len(presets) <= 1:
+            messagebox.showwarning("Kolumny", "Nie mozna usunac ostatniego presetu.", parent=dialog)
+            return
+        if not messagebox.askyesno("Kolumny", "Usunac aktywny preset?", parent=dialog):
+            return
+        if active_preset in presets:
+            presets.pop(active_preset, None)
+        active_preset = next(iter(presets))
+        _save_column_presets(schema_id, presets, active_preset)
+        _refresh_preset_combo()
+        _apply_preset(active_preset)
+
+    preset_combo.bind("<<ComboboxSelected>>", _on_preset_selected)
 
     for col in schema.columns:
         var = tk.BooleanVar(value=col.key in visible)

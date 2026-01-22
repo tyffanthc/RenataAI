@@ -7,5 +7,6 @@
   "features.providers.edsm_enabled": false,
   "tables_visible_columns": {},
   "tables_sort_state": {},
+  "column_presets": {},
   "window_positions": {}
 }

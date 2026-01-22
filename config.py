@@ -150,6 +150,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "features.tables.persist_sort_enabled": True,
     "tables_visible_columns": {},
     "tables_sort_state": {},
+    "column_presets": {},
     "ui.popup_positions": {},
     "window_positions": {},
     "features.ui.neutron_via_compact": True,
