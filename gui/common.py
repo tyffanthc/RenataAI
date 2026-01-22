@@ -751,6 +751,22 @@ def _sanitize_visible_columns(schema, visible: list[str]) -> list[str]:
     return [key for key in visible if key in keys]
 
 
+def _get_preset_columns(schema, preset_key: str) -> list[str]:
+    key = (preset_key or "").strip().lower()
+    if key == "pro":
+        return [col.key for col in schema.columns]
+    if key == "default":
+        return _get_default_visible_columns(schema)
+    if key == "minimal":
+        presets = getattr(schema, "column_presets", {}) or {}
+        if isinstance(presets, dict):
+            candidate = presets.get("minimal")
+            if isinstance(candidate, list) and candidate:
+                return candidate
+        return _get_default_visible_columns(schema)
+    return _get_default_visible_columns(schema)
+
+
 def _is_persist_sort_enabled() -> bool:
     return bool(config.get("features.tables.persist_sort_enabled", False))
 
@@ -875,6 +891,21 @@ def _open_columns_picker(listbox) -> None:
     dialog.resizable(False, False)
     dialog.transient(listbox.winfo_toplevel())
 
+    preset_frame = ttk.Frame(dialog)
+    preset_frame.pack(fill="x", padx=10, pady=(8, 4))
+    ttk.Label(preset_frame, text="Preset:").pack(side="left")
+    preset_labels = ["Minimal", "Domyslny", "Pro"]
+    preset_map = {"Minimal": "minimal", "Domyslny": "default", "Pro": "pro"}
+    preset_var = tk.StringVar(value="Domyslny")
+    preset_combo = ttk.Combobox(
+        preset_frame,
+        textvariable=preset_var,
+        values=preset_labels,
+        state="readonly",
+        width=12,
+    )
+    preset_combo.pack(side="left", padx=6)
+
     visible = _get_saved_visible_columns(schema_id)
     if visible is None:
         visible = _get_default_visible_columns(schema)
@@ -903,6 +934,24 @@ def _open_columns_picker(listbox) -> None:
             _refresh_table_treeview(listbox)
         else:
             _refresh_table_listbox(listbox)
+
+    def _apply_preset() -> None:
+        key = preset_map.get(preset_var.get(), "default")
+        selected = _get_preset_columns(schema, key)
+        selected = _sanitize_visible_columns(schema, selected)
+        if not selected:
+            selected = _get_default_visible_columns(schema)
+        updating["value"] = True
+        for col in schema.columns:
+            vars_map[col.key].set(col.key in selected)
+        updating["value"] = False
+        _apply_selection()
+
+    ttk.Button(
+        preset_frame,
+        text="Zastosuj",
+        command=_apply_preset,
+    ).pack(side="left", padx=(8, 0))
 
     for col in schema.columns:
         var = tk.BooleanVar(value=col.key in visible)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable
 
 from gui import strings as ui
@@ -22,6 +22,7 @@ class TableSchema:
     title: str
     columns: tuple[TableColumn, ...]
     show_lp: bool = True
+    column_presets: dict[str, list[str]] = field(default_factory=dict)
 
 
 def _cols(items: Iterable[TableColumn]) -> tuple[TableColumn, ...]:
@@ -42,6 +43,9 @@ SCHEMAS: dict[str, TableSchema] = {
             ]
         ),
         show_lp=True,
+        column_presets={
+            "minimal": ["system_name", "distance_ly", "neutron", "jumps"],
+        },
     ),
     "riches": TableSchema(
         schema_id="riches",
@@ -60,6 +64,9 @@ SCHEMAS: dict[str, TableSchema] = {
             ]
         ),
         show_lp=True,
+        column_presets={
+            "minimal": ["system_name", "body_name", "distance_ls", "value_map"],
+        },
     ),
     "ammonia": TableSchema(
         schema_id="ammonia",
@@ -78,6 +85,9 @@ SCHEMAS: dict[str, TableSchema] = {
             ]
         ),
         show_lp=True,
+        column_presets={
+            "minimal": ["system_name", "body_name", "distance_ls", "value_map"],
+        },
     ),
     "elw": TableSchema(
         schema_id="elw",
@@ -96,6 +106,9 @@ SCHEMAS: dict[str, TableSchema] = {
             ]
         ),
         show_lp=True,
+        column_presets={
+            "minimal": ["system_name", "body_name", "distance_ls", "value_map"],
+        },
     ),
     "hmc": TableSchema(
         schema_id="hmc",
@@ -114,6 +127,9 @@ SCHEMAS: dict[str, TableSchema] = {
             ]
         ),
         show_lp=True,
+        column_presets={
+            "minimal": ["system_name", "body_name", "distance_ls", "value_map"],
+        },
     ),
     "exomastery": TableSchema(
         schema_id="exomastery",
@@ -130,6 +146,9 @@ SCHEMAS: dict[str, TableSchema] = {
             ]
         ),
         show_lp=True,
+        column_presets={
+            "minimal": ["system_name", "body_name", "distance_ls", "value_scan"],
+        },
     ),
     "trade": TableSchema(
         schema_id="trade",
@@ -145,6 +164,9 @@ SCHEMAS: dict[str, TableSchema] = {
             ]
         ),
         show_lp=True,
+        column_presets={
+            "minimal": ["from_system", "to_system", "commodity", "profit"],
+        },
     ),
 }
 

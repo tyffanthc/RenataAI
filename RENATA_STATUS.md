@@ -123,6 +123,12 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Flaga: `features.tables.persist_sort_enabled=true`.
 - Testy smoke: backend + journal PASS.
 
+#### M-06 - Presety kolumn (Column Picker) (DONE)
+- Presety: Minimal / Domyslny / Pro per schema (definicje w schemie).
+- Zastosowanie presetu aktualizuje visible_columns i zapisuje ustawienie.
+- Sort zachowuje fallback po zmianie presetu.
+- Testy smoke: backend + journal PASS.
+
 #### M-04 - Panel bledow + ostatnie zapytanie SPANSH (DONE)
 - Status SPANSH: sukces, brak wynikow, blad/timeout (czytelne komunikaty).
 - Ostatnie zapytanie do Spansh jako sekcja zwijana (debug).
