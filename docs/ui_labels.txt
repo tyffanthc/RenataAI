@@ -1,0 +1,334 @@
+### app/status_watchers.py
+- STATUS
+- MARKET
+- CARGO
+
+### gui/app.py
+- Moduł Inara - Wkrótce
+- Moduł EDTools - Wkrótce
+- Next: -
+- Kopiuj
+- Copy next
+- Pokaż szczegóły
+- Ukryj
+- JR: -
+
+### gui/common.py
+- ⚙ Kolumny
+- Preset:
+- Save as...
+- Rename
+- Delete
+- Kolumny
+- Nazwa presetu:
+- Preset o tej nazwie juz istnieje.
+- Nowa nazwa presetu:
+- Nie mozna usunac ostatniego presetu.
+- Usunac aktywny preset?
+- Zmiany sa natychmiastowe.
+
+### gui/dialogs/add_entry.py
+- Tytuł
+- Treść
+- Lokalizacja
+- System:
+- Ciało:
+- Współrzędne:
+- Zapisz
+- Anuluj
+
+### gui/empty_state.py
+
+### gui/menu_bar.py
+- Konfiguracja…
+- Wyjście
+- Plik
+- Zawsze na wierzchu (Overlay Mode)
+- Widok
+- Nawigacja
+- Inara
+- Spansh
+- Coriolis
+- Fuel Rats
+- Baza wiedzy
+- O programie
+- Pomoc
+
+### gui/strings.py
+- Start
+- Cel
+- System
+- Stacja
+- Stacja*
+- Zasieg skoku [ly]
+- Efektywnosc [%]
+- Tryb doladowania
+- Przez
+- Promien [ly]
+- Maks. systemow [szt.]
+- Maks. dystans [ls]
+- Min. wartosc skanu [cr]
+- Min. wartosc landmarku [cr]
+- Kapital [cr]
+- Maks. skok [ly]
+- Ladownosc [t]
+- Maks. skokow [szt.]
+- Maks. wiek rynku [dni]
+- Starsze niz [YYYY-MM-DD HH:MM]
+- Wiek rynku [h]
+- Petla
+- Uzyj mapy
+- Unikaj Thargoidow
+- Wyznacz trase
+- Wyznacz trase handlowa
+- Wyczysc
+- Odwroc
+- Dodaj
+- Usun
+- Duze ladowisko
+- Planetarna
+- Wlasnosc gracza
+- Ograniczony dostep
+- Zakazany dostep
+- Unikaj petli
+- Pozwol na pozwolenia
+- Wykryto
+- Trasa: Neutron
+- Trasa: Handel
+- Trasa: Riches
+- Trasa: Ammonia
+- Trasa: ELW
+- Trasa: HMC / Rocky
+- Trasa: Exomastery
+- Pulpit
+- Spansh
+- Inara
+- EDTools
+- Inzynier
+- Dziennik
+- Neutron
+- Riches
+- Ammonia
+- Earth-like
+- Rocky/HMC
+- Exo
+- Trade
+- Tourist (beta)
+- Fleet Carrier (beta)
+- Colonisation (beta)
+- Galaxy (later)
+- Ogolne
+- Asystenci
+- Eksploracja
+- Handel
+- Zaawansowane
+- Wyk.
+- Cialo
+- Nazwa
+- Typ
+- Terra
+- Dystans [ly]
+- Pozostalo [ly]
+- Dystans [ls]
+- Wartosc skanu [cr]
+- Wartosc mapy [cr]
+- Skoki [szt]
+- Z
+- Do
+- Towar
+- Zysk [cr]
+- Zysk/t [cr]
+- Wkrotce
+- Ta funkcja jest w przygotowaniu.
+- Sledz roadmape lub aktualizacje Renaty.
+- Beta aktywna
+- Funkcja jest wlaczona, ale jeszcze niegotowa.
+- To widok tymczasowy dla wersji dev.
+
+### gui/tabs/engineer.py
+- Wybierz recepturę:
+- Sprawdź Braki (Magazyn)
+
+### gui/tabs/logbook.py
+- Nowy folder
+- Nazwa folderu:
+
+### gui/tabs/pulpit.py
+- R.E.N.A.T.A. SYSTEM ONLINE
+- Obecny system: [Czekam na dane...]
+- Status: [W spoczynku]
+- System: -
+- Ciała: -/-
+- Trasa: -
+- Statek: -
+- Masa: - t
+- Cargo: - t
+- Paliwo: -/- t
+- JR: -
+- Narzędzia naukowe:
+- Generuj arkusze naukowe
+- Generuj dane modułów
+
+### gui/tabs/settings.py
+- Przywróć domyślne
+- Zapisz ustawienia
+-  Interfejs 
+- Język interfejsu:
+- Włącz dźwięki / komunikaty głosowe
+- Ustawienia języka i motywu interfejsu.
+-  Zamknięcie / zachowanie aplikacji 
+- Pytaj o potwierdzenie przed zamknięciem Renaty
+- Ułatwia uniknięcie przypadkowego zamknięcia.
+-  Elite Dangerous – logi 
+- Automatycznie wykryj folder logów Elite Dangerous (wkrótce)
+- Folder logów:
+- Przeglądaj…
+- Ścieżka do Journal logs używana przez backend.
+- Renata spróbuje wykryć folder journali automatycznie (w przyszłości).
+-  Wygląd interfejsu 
+- Użyj systemowego motywu okien
+- Motyw Renaty (kokpit):
+- Zmiana motywu może wymagać ponownego uruchomienia Renaty.
+-  SPANSH / Połączenie 
+- Timeout żądania (s):
+- Liczba ponowień:
+- Dotyczy zapytań do SPANSH oraz pollingu 202.
+-  Statek i zasięg skoku (JR) 
+- Automatycznie wykrywaj zasięg skoku statku
+- Używaj zasięgu statku do obliczeń tras
+- Pozwól ręcznie nadpisać zasięg w zakładce
+- Fallback range (LY):
+- Waliduj zgodność z grą (diagnostyka)
+- Opcje JR wpływają na planery tras i widok zasięgu.
+-  Komunikaty dokowania i stacji 
+- Czytaj numer lądowiska
+- Auto-schowek
+- Smuggler alert – nielegalny towar
+- Ułatwia dokowanie i szybkie kopiowanie celów.
+-  Nawigacja i trasy 
+- Komunikaty o postępie trasy
+- Auto-schowek trasy:
+- Trigger NEXT_HOP:
+- Resync policy:
+- Kopiuj pierwszy hop po wyznaczeniu trasy
+- Zezwol na reczne 'Copy next' w overlay
+- Auto-schowek: NEXT_HOP kopiuje następny punkt po skoku
+- Komunikaty o trasie i postępie lotu.
+-  Paliwo i bezpieczeństwo 
+- Ostrzeżenie o niskim paliwie
+- Próg rezerwy:
+- Pre-flight limpets (wkrótce)
+- High-G Warning
+- Bezpieczeństwo lotu i ostrzeżenia krytyczne.
+-  Eksploracja (FSS / DSS / biologia) 
+- Asystent FSS (postęp skanowania %)
+- Alerty wysokowartościowych planet (ELW/WW/HMC)
+- Asystent DSS (biologia 3+ sygnały)
+- First Discovery / Footfall – komunikaty (wkrótce)
+- Czytaj informacje o systemie po każdym skoku (wkrótce)
+- Opcje eksploracyjne wymagają wygenerowania danych arkuszy naukowych.
+- Generuj arkusze naukowe
+- Generuj dane modułów
+-  Handel (Makler) 
+- Makler PRO – alerty jackpotów
+- Edytuj progi…
+- Mining Accountant (wkrótce)
+- Progi jackpotów wpływają na alerty w handlu.
+- Market Age: suwak + data/czas (beta)
+- Błąd
+- Niepoprawna wartość dla: {k}
+- Wartość nie może być ujemna: {k}
+- Anuluj
+- Zapisz
+- Tables
+- Brak schematow tabel.
+- Brak zdefiniowanych schematow.
+- Schema:
+- Use Spansh default
+- Cancel
+- Save
+-  Inżynier pokładowy / bojowe 
+- Bounty Hunter
+-  Statek i zasięg skoku (JR) - Zaawansowane 
+- Uwzględniaj masę zbiornika rezerwowego paliwa
+- Uwzględniaj modyfikacje inżynierskie FSD
+- Tryb przeliczania:
+- Opcje techniczne JR dla bardziej precyzyjnych obliczen.
+-  Tables (Spansh) 
+- Spansh schemas enabled
+- Normalized rows enabled
+- Schema renderer enabled
+- Column picker enabled
+- Treeview renderer enabled
+- Persist table sort
+- UI badges enabled
+- Results context menu
+- Configure columns...
+-  Providerzy (online) 
+- EDSM provider enabled
+-  Debug 
+- Debug: autocomplete
+- Debug: cache
+- Debug: dedup
+- Debug: ShipState
+- Debug: Next Hop
+- Debug: Panel diagnostyczny
+- Debug: Spansh payload
+- Debug: Jump Range Engine
+- Debug: Fit Resolver
+- Debug: JR Validate
+- Wlacza dodatkowe logi w konsoli i pulpicie.
+- Brak pliku renata_science_data.xlsx – wygeneruj go w menu.
+
+### gui/tabs/spansh/ammonia.py
+- Brak wynikow
+- Laduje...
+- Inny planner juz liczy.
+
+### gui/tabs/spansh/elw.py
+- Gotowy
+- Brak wynikow
+- Laduje...
+- Inny planner juz liczy.
+- Wyczyszczono
+
+### gui/tabs/spansh/exomastery.py
+- Gotowy
+- Brak wynikow
+- Laduje...
+- Inny planner juz liczy.
+- Wyczyszczono
+
+### gui/tabs/spansh/hmc.py
+- Gotowy
+- Brak wynikow
+- Laduje...
+- Inny planner juz liczy.
+- Wyczyszczono
+
+### gui/tabs/spansh/neutron.py
+- Status: Gotowy
+- Brak wynikow
+- Blad zapytania do Spansh.
+- Laduje...
+- Inny planner juz liczy.
+- Ostatnie zapytanie do Spansh >
+- Ostatnie zapytanie do Spansh v
+- x
+
+### gui/tabs/spansh/riches.py
+- Laduje...
+- Inny planner juz liczy.
+- Brak wynikow
+
+### gui/tabs/spansh/trade.py
+- Presety:
+- Gotowy
+- Laduje...
+- Inny planner juz liczy.
+- Wyczyszczono
+
+### logic/spansh_client.py
+- Blad zapytania do Spansh.
+- Timeout - sprobuj ponownie.
+- HIT
