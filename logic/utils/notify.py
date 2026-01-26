@@ -94,7 +94,7 @@ def _should_speak_tts(message_id: str, context: dict | None) -> bool:
     return True
 
 
-def powiedz(tekst, gui_ref=None, *, message_id=None, context=None):
+def powiedz(tekst, gui_ref=None, *, message_id=None, context=None, force: bool = False):
     # Zamiast pisać bezpośrednio do gui_ref, wrzucamy do kolejki
     t = datetime.now().strftime("%H:%M:%S")
     full_msg = f"[{t}] {tekst}"
@@ -107,7 +107,7 @@ def powiedz(tekst, gui_ref=None, *, message_id=None, context=None):
     
     # Synteza mowy (tylko przez Text Preprocessor)
     if config.get("voice_enabled", True) and message_id:
-        if _should_speak_tts(str(message_id), context):
+        if force or _should_speak_tts(str(message_id), context):
             tts_text = prepare_tts(str(message_id), context=context)
             if tts_text:
                 threading.Thread(target=_watek_mowy, args=(tts_text,)).start()

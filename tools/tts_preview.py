@@ -53,10 +53,13 @@ def say(message_id: str, pause: float = 1.2, *, force: bool = False, **context) 
     Speak a single message_id using production notify.powiedz().
     """
     ctx = _ctx(**context)
-    if force:
-        ctx["force_tts"] = True
     # powiedz requires a text for logging; we keep it minimal.
-    powiedz(f"TTS_PREVIEW {message_id}", message_id=message_id, context=ctx)
+    powiedz(
+        f"TTS_PREVIEW {message_id}",
+        message_id=message_id,
+        context=ctx,
+        force=force,
+    )
     time.sleep(pause)
 
 
@@ -66,6 +69,12 @@ def main() -> None:
         "--force",
         action="store_true",
         help="Ignore cooldowns and silence rules for preview.",
+    )
+    parser.add_argument(
+        "--pause",
+        type=float,
+        default=1.2,
+        help="Pause between lines (seconds).",
     )
     args = parser.parse_args()
 
@@ -77,25 +86,25 @@ def main() -> None:
     print("Tip: run multiple times while tuning rate/pauses.\n")
 
     # --- Core route / nav ---
-    say(MSG.ROUTE_FOUND, pause=1.6, force=args.force)
-    say(MSG.NEXT_HOP, system="PSR J1752-2806", force=args.force)
-    say(MSG.NEXT_HOP_COPIED, force=args.force)
-    say(MSG.DOCKED, station="Jameson Memorial", force=args.force)
-    say(MSG.UNDOCKED, pause=1.6, force=args.force)
+    say(MSG.ROUTE_FOUND, pause=args.pause, force=args.force)
+    say(MSG.NEXT_HOP, system="PSR J1752-2806", pause=args.pause, force=args.force)
+    say(MSG.NEXT_HOP_COPIED, pause=args.pause, force=args.force)
+    say(MSG.DOCKED, station="Jameson Memorial", pause=args.pause, force=args.force)
+    say(MSG.UNDOCKED, pause=args.pause, force=args.force)
 
     # --- Exploration highlights ---
     time.sleep(0.8)
-    say(MSG.ELW_DETECTED, pause=1.4, force=args.force)
-    say(MSG.SYSTEM_FULLY_SCANNED, pause=1.4, force=args.force)
-    say(MSG.FIRST_DISCOVERY, pause=1.4, force=args.force)
-    say(MSG.FOOTFALL, pause=1.6, force=args.force)
+    say(MSG.ELW_DETECTED, pause=args.pause, force=args.force)
+    say(MSG.SYSTEM_FULLY_SCANNED, pause=args.pause, force=args.force)
+    say(MSG.FIRST_DISCOVERY, pause=args.pause, force=args.force)
+    say(MSG.FOOTFALL, pause=args.pause, force=args.force)
 
     # --- Alerts ---
     time.sleep(0.8)
-    say(MSG.FUEL_CRITICAL, pause=1.8, force=args.force)
+    say(MSG.FUEL_CRITICAL, pause=args.pause, force=args.force)
 
     # --- End ---
-    say(MSG.ROUTE_COMPLETE, pause=1.4, force=args.force)
+    say(MSG.ROUTE_COMPLETE, pause=args.pause, force=args.force)
 
     print("\n=== END ===")
 
