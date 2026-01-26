@@ -66,6 +66,18 @@ def speak(text: str) -> bool:
     cmd = [bin_path, "-m", model_path, "-f", wav_path]
     if config_path:
         cmd.extend(["-c", config_path])
+    try:
+        length_scale = float(config.get("tts.piper_length_scale", 1.0))
+        if length_scale > 0:
+            cmd.extend(["--length_scale", str(length_scale)])
+    except Exception:
+        pass
+    try:
+        sentence_silence = float(config.get("tts.piper_sentence_silence", 0.2))
+        if sentence_silence >= 0:
+            cmd.extend(["--sentence_silence", str(sentence_silence)])
+    except Exception:
+        pass
 
     try:
         result = subprocess.run(

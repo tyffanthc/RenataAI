@@ -9,6 +9,88 @@ from logic.tts.text_preprocessor import prepare_tts
 # Globalna kolejka komunikatów dla GUI (Thread-Safe)
 MSG_QUEUE = queue.Queue()
 
+_TTS_CATEGORY_MAP = {
+    "MSG.NEXT_HOP": "nav",
+    "MSG.NEXT_HOP_COPIED": "nav",
+    "MSG.ROUTE_FOUND": "route",
+    "MSG.ROUTE_COMPLETE": "route",
+    "MSG.ROUTE_DESYNC": "route",
+    "MSG.FUEL_CRITICAL": "alert",
+    "MSG.DOCKED": "info",
+    "MSG.UNDOCKED": "info",
+    "MSG.FIRST_DISCOVERY": "explore",
+    "MSG.SYSTEM_FULLY_SCANNED": "explore",
+    "MSG.ELW_DETECTED": "explore",
+    "MSG.FOOTFALL": "explore",
+}
+
+_TTS_DEFAULT_COOLDOWNS = {
+    "nav": 20.0,
+    "route": 15.0,
+    "alert": 15.0,
+    "explore": 30.0,
+    "info": 20.0,
+}
+
+
+def _tts_category(message_id: str) -> str:
+    return _TTS_CATEGORY_MAP.get(message_id, "info")
+
+
+def _get_category_cooldown(category: str) -> float:
+    cfg_key = f"tts.cooldown_{category}_sec"
+    try:
+        return float(config.get(cfg_key, _TTS_DEFAULT_COOLDOWNS.get(category, 20.0)))
+    except Exception:
+        return _TTS_DEFAULT_COOLDOWNS.get(category, 20.0)
+
+
+def _intent_context(context: dict | None) -> str | None:
+    if not context:
+        return None
+    for key in ("system", "station", "body", "target"):
+        value = context.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _is_transit_mode() -> bool:
+    try:
+        from app.route_manager import route_manager  # type: ignore
+
+        return bool(getattr(route_manager, "route", []))
+    except Exception:
+        return False
+
+
+def _should_speak_tts(message_id: str, context: dict | None) -> bool:
+    ctx = context or {}
+    if ctx.get("suppress_tts"):
+        return False
+    confidence = str(ctx.get("confidence", "")).strip().lower()
+    if confidence in ("low", "mid", "uncertain", "maybe"):
+        return False
+    if ctx.get("in_transit"):
+        return False
+    if _is_transit_mode() and _tts_category(message_id) == "nav":
+        return False
+    try:
+        global_cd = float(config.get("tts.cooldown_global_sec", 8))
+    except Exception:
+        global_cd = 8.0
+    if not DEBOUNCER.can_send("TTS_GLOBAL", global_cd):
+        return False
+    category = _tts_category(message_id)
+    intent_cd = _get_category_cooldown(category)
+    if not DEBOUNCER.can_send(
+        f"TTS_INTENT:{message_id}",
+        intent_cd,
+        context=_intent_context(ctx),
+    ):
+        return False
+    return True
+
 
 def powiedz(tekst, gui_ref=None, *, message_id=None, context=None):
     # Zamiast pisać bezpośrednio do gui_ref, wrzucamy do kolejki
@@ -23,9 +105,10 @@ def powiedz(tekst, gui_ref=None, *, message_id=None, context=None):
     
     # Synteza mowy (tylko przez Text Preprocessor)
     if config.get("voice_enabled", True) and message_id:
-        tts_text = prepare_tts(str(message_id), context=context)
-        if tts_text:
-            threading.Thread(target=_watek_mowy, args=(tts_text,)).start()
+        if _should_speak_tts(str(message_id), context):
+            tts_text = prepare_tts(str(message_id), context=context)
+            if tts_text:
+                threading.Thread(target=_watek_mowy, args=(tts_text,)).start()
 
 
 def _watek_mowy(tekst):
@@ -61,9 +144,9 @@ def _speak_pyttsx3(tekst: str) -> None:
         except Exception:
             pass
         try:
-            rate = int(config.get("tts.pyttsx3_rate", 165))
+            rate = int(config.get("tts.pyttsx3_rate", 155))
         except Exception:
-            rate = 165
+            rate = 155
         try:
             volume = float(config.get("tts.pyttsx3_volume", 1.0))
         except Exception:

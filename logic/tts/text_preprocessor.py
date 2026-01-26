@@ -44,6 +44,16 @@ def _normalize_station_name(value: Any) -> str:
     return text
 
 
+def _finalize_tts(text: str) -> str:
+    text = text.replace("?", ".").replace("!", ".").replace(",", ".")
+    text = re.sub(r"\.{2,}", ".", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s*\.\s*", ". ", text).strip()
+    if not text.endswith("."):
+        text += "."
+    return text
+
+
 def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Optional[str]:
     if not message_id or message_id not in ALLOWED_MESSAGES:
         return None
@@ -53,45 +63,45 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         system = _normalize_system_name(ctx.get("system"))
         if not system:
             return None
-        return f"Nastepny skok. {system}."
+        return _finalize_tts(f"Nastepny skok. {system}.")
 
     if message_id == "MSG.NEXT_HOP_COPIED":
         system = _normalize_system_name(ctx.get("system"))
         if system:
-            return f"Nastepny cel skopiowany. {system}."
-        return "Nastepny cel skopiowany."
+            return _finalize_tts(f"Nastepny cel skopiowany. {system}.")
+        return _finalize_tts("Nastepny cel skopiowany.")
 
     if message_id == "MSG.ROUTE_COMPLETE":
-        return "Trasa zakonczona."
+        return _finalize_tts("Trasa zakonczona.")
 
     if message_id == "MSG.ROUTE_DESYNC":
-        return "Jestes poza trasa."
+        return _finalize_tts("Jestes poza trasa.")
 
     if message_id == "MSG.FUEL_CRITICAL":
-        return "Uwaga. Niskie paliwo."
+        return _finalize_tts("Uwaga. Niskie paliwo.")
 
     if message_id == "MSG.DOCKED":
         station = _normalize_station_name(ctx.get("station"))
         if station:
-            return f"Zadokowano w {station}."
-        return "Zadokowano."
+            return _finalize_tts(f"Zadokowano w {station}.")
+        return _finalize_tts("Zadokowano.")
 
     if message_id == "MSG.UNDOCKED":
-        return "Odlot z portu."
+        return _finalize_tts("Odlot z portu.")
 
     if message_id == "MSG.FIRST_DISCOVERY":
-        return "Gratulacje. Pierwszy czlowiek w tym ukladzie."
+        return _finalize_tts("Gratulacje. Pierwszy czlowiek w tym ukladzie.")
 
     if message_id == "MSG.SYSTEM_FULLY_SCANNED":
-        return "System w pelni przeskanowany."
+        return _finalize_tts("System w pelni przeskanowany.")
 
     if message_id == "MSG.ELW_DETECTED":
-        return "Wykryto planete ziemiopodobna."
+        return _finalize_tts("Wykryto planete ziemiopodobna.")
 
     if message_id == "MSG.FOOTFALL":
-        return "Pierwszy ludzki krok na tej planecie."
+        return _finalize_tts("Pierwszy ludzki krok na tej planecie.")
 
     if message_id == "MSG.ROUTE_FOUND":
-        return "Trasa wyznaczona."
+        return _finalize_tts("Trasa wyznaczona.")
 
     return None
