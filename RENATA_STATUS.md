@@ -228,17 +228,33 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 
 ---
 
+## FREE RELEASE — BLOCKERS (P0)
+
+- TTS-01 — Text preprocessor (glos Renaty)
+- TTS-02 — Parametry glosu (tempo, pauzy)
+- TTS-03 — Scenariusze FREE (co Renata mowi / czego nie)
+- UX-SETTINGS-01 — FREE Settings Profile (ukrycie opcji)
+- FREE release nie wychodzi, dopoki powyzsze nie sa DONE.
+- FREE = tylko PL (EN po FREE).
+
+---
+
 ## 7) NEXT (priorytety)
 
-### P1 - nastepny ticket
-**D2f-2 — EDSM rollout (kolejne miejsce)**
+### P0
+- TTS-01 — Text preprocessor (glos Renaty)
 
-### Kolejne
-- D2f-3 — EDSM rollout (kolejne miejsce, LATER)
-- SCI/TTS/AI/i18n pozniej
+### P1
+- TTS-02 — Parametry glosu (tempo, pauzy)
+- TTS-03 — Scenariusze FREE (co Renata mowi / czego nie)
+
+### P2
+- UX-SETTINGS-01 — FREE Settings Profile (ukrycie opcji)
 
 ### FUTURE / VISION (kierunki zatwierdzone)
 - External Data Helpers (offline-first): helpery jako klasy funkcji (nie zakladki): EDSM (coords/bodies/hotspoty), EDTools/EDMining (mining), Inara (rynek/inventory) pozniej; zawsze pod flagami, OFF domyslnie.
+- D2f-2/D2f-3 — dalszy rollout EDSM (po FREE).
+- Jezyk EN = P2 / po FREE (nie blocker).
 - Mining Helpers (bez zakladek): Hotspot Helper (najblizsze hotspoty + krokowy clipboard), Mining Sell Assist (ranking zysk/cena/t/dystans/popyt/wiek rynku, doprecyzowanie dialogowe).
 - Route Awareness + Cockpit HUD: milestony 25/50/75/100, status utraty/zakonczenia trasy; minimalistyczny HUD (fake-3D) + TTS, bez per-hop spamu.
 - Pro Actions + Decision Panels: akcje zalezne od typu danych (system/stacja/body) + lekkie panele decyzji (ostrzezenia, "dlaczego").
@@ -248,8 +264,9 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Symbioza danych (2-way helpers): opt-in upload do EDSM/EDTools; etapy: manual -> auto w tle; brak globalnej bazy Renaty.
 ### Roadmapa - Cel Renaty (glos i UX)
 - Cel: pokladowy asystent Elite Dangerous (journal events, akcje w GUI, spojny glos, brak spamu i cooldowny).
-- STT offline: whisper.cpp (base/small) + intent offline (reguly/regex) -> kontrola, zero kosztow.
 - TTS: edge-tts (jakosc/komplikacja) + kolejka, krotkie wypowiedzi, retry/backoff.
+- TTS jest blockerem FREE i definiuje tozsamosc Renaty.
+- STT pojawia sie po FREE, po feedbacku uzytkownikow (nie blocker).
 - Speech Manager: kolejka + priorytety (ALERT>ACK>STATUS>LORE), cancel lore na alert, anti-repeat/cooldown.
 - Policy layer: tryb minimalny w stresie, lore opt-in, brak recytowania parametrow trasy.
 - Content/Lore DB: warianty wypowiedzi + cooldowny; lore po FSDJump: pytanie 'chcesz ciekawostke?'.

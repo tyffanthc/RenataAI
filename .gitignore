@@ -7,3 +7,7 @@ __pycache__/
 # Runtime config
 user_settings.json
 config.json
+
+# Piper TTS (local binaries/models)
+tools/piper/
+models/piper/
