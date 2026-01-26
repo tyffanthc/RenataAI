@@ -198,3 +198,33 @@ Przykłady:
 3. Memory Anchors: nazwa planety tylko w MUST-LAND/top i max 2/sesję.
 4. Decision Confirmation: max 2/sesję lub cooldown 30 min.
 5. Test odsłuchowy: 10 minut eksploracji bez irytacji, bez powtórek.
+
+---
+
+## Absolute Silence (twarde reguły ciszy)
+
+Renata NIE mówi, jeśli:
+- wniosek nie jest wyraźny (LOW/MID graniczne),
+- cooldown globalny lub kategorii jest aktywny,
+- komunikat byłby powtórzeniem tej samej intencji,
+- użytkownik jest w trybie przelotowym (aktywna trasa, neutron run),
+- dane wejściowe są niepełne lub niepewne.
+
+W razie wątpliwości → cisza.
+
+---
+
+## Tone & Delivery (TTS-02 prep)
+
+- tempo: spokojne, lekko wolniejsze niż default
+- pauzy: po myśli, nie po przecinku
+- brak akcentowania emocjonalnego
+- intonacja neutralna, informacyjna
+- brak pytajników (Renata nie pyta, Renata stwierdza)
+
+---
+
+## Variants (not in scope)
+
+Warianty wypowiedzi (różne formy tej samej intencji) są celowo wyłączone
+na tym etapie i pojawią się dopiero po stabilizacji TTS-02.

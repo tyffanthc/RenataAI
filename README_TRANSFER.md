@@ -47,5 +47,6 @@ Key flags:
   - `tts.piper_bin` (e.g. `tools/piper/piper.exe` or a PATH bin)
   - `tts.piper_model_path` (e.g. `models/piper/pl_pl.onnx`)
   - `tts.piper_config_path` (e.g. `models/piper/pl_pl.json`)
+- `tools/piper/` and `models/piper/` are local-only and gitignored.
 - Download model/config (example):
   - `py tools/download_piper_model.py --model-url <URL.onnx> --config-url <URL.json> --out-dir models/piper`
