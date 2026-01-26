@@ -66,6 +66,8 @@ def _is_transit_mode() -> bool:
 
 def _should_speak_tts(message_id: str, context: dict | None) -> bool:
     ctx = context or {}
+    if ctx.get("force_tts"):
+        return True
     if ctx.get("suppress_tts"):
         return False
     confidence = str(ctx.get("confidence", "")).strip().lower()
