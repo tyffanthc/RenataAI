@@ -68,38 +68,38 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
     if message_id == "MSG.NEXT_HOP_COPIED":
         system = _normalize_system_name(ctx.get("system"))
         if system:
-            return _finalize_tts(f"Nastepny cel skopiowany. {system}.")
-        return _finalize_tts("Nastepny cel skopiowany.")
+            return _finalize_tts(f"Cel skopiowany. {system}.")
+        return _finalize_tts("Cel skopiowany.")
 
     if message_id == "MSG.ROUTE_COMPLETE":
         return _finalize_tts("Trasa zakonczona.")
 
     if message_id == "MSG.ROUTE_DESYNC":
-        return _finalize_tts("Jestes poza trasa.")
+        return _finalize_tts("Jestes poza trasa. Wstrzymuje nawigacje.")
 
     if message_id == "MSG.FUEL_CRITICAL":
-        return _finalize_tts("Uwaga. Niskie paliwo.")
+        return _finalize_tts("Uwaga. Paliwo krytyczne.")
 
     if message_id == "MSG.DOCKED":
         station = _normalize_station_name(ctx.get("station"))
         if station:
-            return _finalize_tts(f"Zadokowano w {station}.")
+            return _finalize_tts(f"Zadokowano. {station}.")
         return _finalize_tts("Zadokowano.")
 
     if message_id == "MSG.UNDOCKED":
-        return _finalize_tts("Odlot z portu.")
+        return _finalize_tts("Odlot potwierdzony.")
 
     if message_id == "MSG.FIRST_DISCOVERY":
-        return _finalize_tts("Gratulacje. Pierwszy czlowiek w tym ukladzie.")
+        return _finalize_tts("Pierwsze odkrycie. Uklad zarejestrowany.")
 
     if message_id == "MSG.SYSTEM_FULLY_SCANNED":
-        return _finalize_tts("System w pelni przeskanowany.")
+        return _finalize_tts("Skan systemu zakonczony.")
 
     if message_id == "MSG.ELW_DETECTED":
-        return _finalize_tts("Wykryto planete ziemiopodobna.")
+        return _finalize_tts("Wykryto planete ziemiopodobna. Wysoka wartosc.")
 
     if message_id == "MSG.FOOTFALL":
-        return _finalize_tts("Pierwszy ludzki krok na tej planecie.")
+        return _finalize_tts("Pierwszy krok zarejestrowany.")
 
     if message_id == "MSG.ROUTE_FOUND":
         return _finalize_tts("Trasa wyznaczona.")
