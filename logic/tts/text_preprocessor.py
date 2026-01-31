@@ -63,7 +63,7 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         system = _normalize_system_name(ctx.get("system"))
         if not system:
             return None
-        return _finalize_tts(f"Nastepny skok. {system}.")
+        return _finalize_tts(f"Następny skok. {system}.")
 
     if message_id == "MSG.NEXT_HOP_COPIED":
         system = _normalize_system_name(ctx.get("system"))
@@ -72,10 +72,10 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         return _finalize_tts("Cel skopiowany.")
 
     if message_id == "MSG.ROUTE_COMPLETE":
-        return _finalize_tts("Trasa zakonczona.")
+        return _finalize_tts("Trasa zakończona.")
 
     if message_id == "MSG.ROUTE_DESYNC":
-        return _finalize_tts("Jestes poza trasa. Wstrzymuje nawigacje.")
+        return _finalize_tts("Jesteś poza trasą. Wstrzymuję nawigację.")
 
     if message_id == "MSG.FUEL_CRITICAL":
         return _finalize_tts("Uwaga. Paliwo krytyczne.")
@@ -90,13 +90,13 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         return _finalize_tts("Odlot potwierdzony.")
 
     if message_id == "MSG.FIRST_DISCOVERY":
-        return _finalize_tts("Pierwsze odkrycie. Uklad zarejestrowany.")
+        return _finalize_tts("Pierwsze odkrycie. Układ zarejestrowany.")
 
     if message_id == "MSG.SYSTEM_FULLY_SCANNED":
-        return _finalize_tts("Skan systemu zakonczony.")
+        return _finalize_tts("Skan systemu zakończony.")
 
     if message_id == "MSG.ELW_DETECTED":
-        return _finalize_tts("Wykryto planete ziemiopodobna. Wysoka wartosc.")
+        return _finalize_tts("Wykryto planetę ziemiopodobną. Wysoka wartość.")
 
     if message_id == "MSG.FOOTFALL":
         return _finalize_tts("Pierwszy krok zarejestrowany.")

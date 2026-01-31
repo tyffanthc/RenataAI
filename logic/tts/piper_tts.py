@@ -84,6 +84,7 @@ def speak(text: str) -> bool:
             cmd,
             input=text,
             text=True,
+            encoding="utf-8",
             capture_output=True,
             check=False,
         )

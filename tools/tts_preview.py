@@ -20,6 +20,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 # Production entrypoint
+from logic.utils import notify  # type: ignore
 from logic.utils.notify import powiedz  # type: ignore
 
 
@@ -102,6 +103,11 @@ def main() -> None:
     # --- Alerts ---
     time.sleep(0.8)
     say(MSG.FUEL_CRITICAL, pause=args.pause, force=args.force)
+
+    # --- UTF-8 check ---
+    time.sleep(0.8)
+    notify._speak_tts("Zażółć gęślą jaźń.")
+    time.sleep(args.pause)
 
     # --- End ---
     say(MSG.ROUTE_COMPLETE, pause=args.pause, force=args.force)
