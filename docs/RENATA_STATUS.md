@@ -268,6 +268,7 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 ## 6) Known gotchas / zasady repo
 
 Widocznosc UI dokumentujemy w: `docs/SETTINGS_CHECKBOX.md` i `docs/UI_VISIBILITY.md`.
+Checklist zgodnosci przed release: `docs/COMPLIANCE_CHECKLIST.md`.
 
 
 ### user_settings.json
