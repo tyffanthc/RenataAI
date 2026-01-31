@@ -187,6 +187,12 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Po route_end czyszczenie trasy (koniec trybu przelotowego).
 - Smoke: backend + journal PASS.
 
+#### UX-TABS-01 - FREE: ukryj Inara / EDTools / Inzynier (DONE)
+- FREE ukrywa: Inara, EDTools, Inzynier.
+- Widoczne: Pulpit, Spansh, Dziennik, Settings.
+- Dokumentacja: `docs/UI_VISIBILITY.md`.
+- Smoke: backend + journal PASS.
+
 #### TTS-03 - Scenariusze FREE (DONE)
 - Polityka FREE: critical/context/silent + reguly ciszy.
 - Flaga: `features.tts.free_policy_enabled=true`.
@@ -260,6 +266,9 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 ---
 
 ## 6) Known gotchas / zasady repo
+
+Widocznosc UI dokumentujemy w: `docs/SETTINGS_CHECKBOX.md` i `docs/UI_VISIBILITY.md`.
+
 
 ### user_settings.json
 - `user_settings.json` to lokalny plik ustawien dev-a.

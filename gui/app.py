@@ -145,27 +145,30 @@ class RenataApp:
         self.tab_spansh = spansh.SpanshTab(self.main_nb, self.root)
         self.main_nb.add(self.tab_spansh, text=ui.TAB_MAIN_SPANSH)
 
-        # --- Inara (stub) ---
-        self.tab_inara = ttk.Frame(self.main_nb)
-        self.main_nb.add(self.tab_inara, text=ui.TAB_MAIN_INARA)
-        ttk.Label(
-            self.tab_inara,
-            text="Moduł Inara - Wkrótce",
-            font=("Arial", 14),
-        ).pack(pady=50)
+        # --- Inara / EDTools / Inżynier (ukryte w FREE) ---
+        self.tab_inara = None
+        self.tab_edtools = None
+        self.tab_engi = None
+        free_profile = bool(config.get("features.tts.free_policy_enabled", True))
+        if not free_profile:
+            self.tab_inara = ttk.Frame(self.main_nb)
+            self.main_nb.add(self.tab_inara, text=ui.TAB_MAIN_INARA)
+            ttk.Label(
+                self.tab_inara,
+                text="Moduł Inara - Wkrótce",
+                font=("Arial", 14),
+            ).pack(pady=50)
 
-        # --- EDTools (stub) ---
-        self.tab_edtools = ttk.Frame(self.main_nb)
-        self.main_nb.add(self.tab_edtools, text=ui.TAB_MAIN_EDTOOLS)
-        ttk.Label(
-            self.tab_edtools,
-            text="Moduł EDTools - Wkrótce",
-            font=("Arial", 14),
-        ).pack(pady=50)
+            self.tab_edtools = ttk.Frame(self.main_nb)
+            self.main_nb.add(self.tab_edtools, text=ui.TAB_MAIN_EDTOOLS)
+            ttk.Label(
+                self.tab_edtools,
+                text="Moduł EDTools - Wkrótce",
+                font=("Arial", 14),
+            ).pack(pady=50)
 
-        # --- Inżynier ---
-        self.tab_engi = engineer.EngineerTab(self.main_nb, self)
-        self.main_nb.add(self.tab_engi, text=ui.TAB_MAIN_ENGINEER)
+            self.tab_engi = engineer.EngineerTab(self.main_nb, self)
+            self.main_nb.add(self.tab_engi, text=ui.TAB_MAIN_ENGINEER)
 
         # --- Dziennik ---
         from logic.logbook_manager import LogbookManager
@@ -177,11 +180,14 @@ class RenataApp:
         self._tab_map = {
             "pulpit": self.tab_pulpit,
             "spansh": self.tab_spansh,
-            "inara": self.tab_inara,
-            "edtools": self.tab_edtools,
-            "engineer": self.tab_engi,
             "journal": self.tab_journal,
         }
+        if self.tab_inara is not None:
+            self._tab_map["inara"] = self.tab_inara
+        if self.tab_edtools is not None:
+            self._tab_map["edtools"] = self.tab_edtools
+        if self.tab_engi is not None:
+            self._tab_map["engineer"] = self.tab_engi
 
         # =========================
         # PASEK MENU
@@ -197,10 +203,10 @@ class RenataApp:
             tab_labels={
                 "pulpit": ui.TAB_MAIN_PULPIT,
                 "spansh": ui.TAB_MAIN_SPANSH,
-                "engineer": ui.TAB_MAIN_ENGINEER,
-                "inara": ui.TAB_MAIN_INARA,
-                "edtools": ui.TAB_MAIN_EDTOOLS,
                 "journal": ui.TAB_MAIN_JOURNAL,
+                **({"engineer": ui.TAB_MAIN_ENGINEER} if self.tab_engi is not None else {}),
+                **({"inara": ui.TAB_MAIN_INARA} if self.tab_inara is not None else {}),
+                **({"edtools": ui.TAB_MAIN_EDTOOLS} if self.tab_edtools is not None else {}),
             },
         )
         self.root.config(menu=self.menu_bar)

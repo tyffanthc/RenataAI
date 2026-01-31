@@ -25,6 +25,11 @@ Aktualizowac przy kazdej zmianie widocznosci.
 
 ---
 
+## UI visibility (FREE)
+- [x] Tabs ukryte w FREE: Inara, EDTools, Inzynier (stub/niestabilne)
+
+---
+
 ## Zasady
 - Kazdy checkbox w Settings musi byc na liscie (Widoczne lub Ukryte).
 - Jesli cos znika z UI (FREE), przenies do "Ukryte" i podaj powod.
