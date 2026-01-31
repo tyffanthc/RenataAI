@@ -175,6 +175,10 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Pokladowe, krotkie komunikaty bez emocji i bez wykrzyknikow.
 - Spojne pauzy (kropki) + segmenty kontekstowe.
 
+#### TTS-02c - UTF-8 + mikro-polish (DONE)
+- Naprawione kodowanie UTF-8 w text_preprocessor.
+- Dwie poprawki tekstu: ROUTE_DESYNC + FIRST_DISCOVERY.
+
 #### TTS-03 - Scenariusze FREE (DONE)
 - Polityka FREE: critical/context/silent + reguly ciszy.
 - Flaga: `features.tts.free_policy_enabled=true`.
