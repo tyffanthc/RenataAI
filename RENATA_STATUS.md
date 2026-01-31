@@ -1,6 +1,6 @@
 # RENATA_STATUS.md
 
-Ostatnia aktualizacja: 2026-01-22  
+Ostatnia aktualizacja: 2026-01-26  
 Wlasciciel procesu: Patryk  
 Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepny ticket
 
@@ -162,6 +162,26 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Presety per tab; zapis i odtworzenie po restarcie.
 - Zmiana presetu aktualizuje widok bez crashy.
 
+
+#### TTS-01 - Text Preprocessor (DONE)
+- Message IDs + filtr TTS (mowi tylko kontrolowane komunikaty).
+- Text preprocessor generuje krotkie, mowialne teksty PL.
+
+#### TTS-02 - Strojenie glosu (DONE)
+- Parametry: tempo i pauzy (Piper) + wolniejsze pyttsx3.
+- Twarde reguly ciszy: cooldown globalny i per-kategoria.
+
+#### TTS-02b - Pokladowe microcopy PL (DONE)
+- Pokladowe, krotkie komunikaty bez emocji i bez wykrzyknikow.
+- Spojne pauzy (kropki) + segmenty kontekstowe.
+
+#### BUG-TTS-PL-01 - UTF-8 w Piper (DONE)
+- Wymuszone UTF-8 w piper_tts, pelne polskie znaki.
+- Testowa linia w `tools/tts_preview.py` (Zazolc gesla jazn).
+
+#### TTS-TOOLS - Preview (DONE)
+- `tools/tts_preview.py` z trybem `--force` i `--pause` do strojenia TTS.
+
 ---
 
 ## 3) Aktualny UX stan (skrót)
@@ -230,10 +250,10 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 
 ## FREE RELEASE — BLOCKERS (P0)
 
-- TTS-01 — Text preprocessor (glos Renaty)
-- TTS-02 — Parametry glosu (tempo, pauzy)
-- TTS-03 — Scenariusze FREE (co Renata mowi / czego nie)
-- UX-SETTINGS-01 — FREE Settings Profile (ukrycie opcji)
+- TTS-01 - Text preprocessor (glos Renaty) (DONE)
+- TTS-02 - Parametry glosu (tempo, pauzy) (DONE)
+- TTS-03 - Scenariusze FREE (co Renata mowi / czego nie)
+- UX-SETTINGS-01 - FREE Settings Profile (ukrycie opcji)
 - FREE release nie wychodzi, dopoki powyzsze nie sa DONE.
 - FREE = tylko PL (EN po FREE).
 
@@ -242,14 +262,13 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 ## 7) NEXT (priorytety)
 
 ### P0
-- TTS-01 — Text preprocessor (glos Renaty)
+- TTS-03 - Scenariusze FREE (co Renata mowi / czego nie)
 
 ### P1
-- TTS-02 — Parametry glosu (tempo, pauzy)
-- TTS-03 — Scenariusze FREE (co Renata mowi / czego nie)
+- UX-SETTINGS-01 - FREE Settings Profile (ukrycie opcji)
 
 ### P2
-- UX-SETTINGS-01 — FREE Settings Profile (ukrycie opcji)
+- Jezyk EN (po FREE)
 
 ### FUTURE / VISION (kierunki zatwierdzone)
 - External Data Helpers (offline-first): helpery jako klasy funkcji (nie zakladki): EDSM (coords/bodies/hotspoty), EDTools/EDMining (mining), Inara (rynek/inventory) pozniej; zawsze pod flagami, OFF domyslnie.
