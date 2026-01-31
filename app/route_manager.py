@@ -133,6 +133,10 @@ class RouteManager:
             # clamp + sprawdzenie końca trasy
             if self.current_index >= len(self.route):
                 log_event("PLANNER", "route_end")
+                # reset route state after completion
+                self.route = []
+                self.route_type = None
+                self.current_index = 0
                 return None
 
             next_sys = self.route[self.current_index]
