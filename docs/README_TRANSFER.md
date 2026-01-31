@@ -1,10 +1,14 @@
-# RenataAI - Transfer Summary
+﻿# RenataAI - Transfer Summary
 
 This file is a compact handoff for moving the project to another ChatGPT account.
 It complements existing docs (docs/RENATA_STATUS.md, docs/RUNBOOK_SMOKE.md, docs/*).
 
 ## What this project is
 Desktop assistant for Elite Dangerous with Spansh planners, route tools, and UX-focused UI.
+
+## Attribution / Trademarks
+RenataAI uses third-party services/APIs (Spansh, EDSM, Inara, EDTools) and the Elite Dangerous Journal format.
+All trademarks and brand names belong to their respective owners.
 
 ## How to run
 - GUI: `py main.py`
@@ -38,7 +42,7 @@ Key flags:
 - `features.ui.results_context_menu`
 
 ## FREE Settings Profile
-Settings in FREE mode show a short, safe list of options (5–7 max). Advanced/dev options are hidden.
+Settings in FREE mode show a short, safe list of options (5-7 max). Advanced/dev options are hidden.
 
 ## Gotchas
 - Use `py` on Windows if `python` is not available.
