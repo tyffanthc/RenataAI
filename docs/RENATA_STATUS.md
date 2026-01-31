@@ -175,6 +175,10 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Pokladowe, krotkie komunikaty bez emocji i bez wykrzyknikow.
 - Spojne pauzy (kropki) + segmenty kontekstowe.
 
+#### TTS-03 - Scenariusze FREE (DONE)
+- Polityka FREE: critical/context/silent + reguly ciszy.
+- Flaga: `features.tts.free_policy_enabled=true`.
+
 #### BUG-TTS-PL-01 - UTF-8 w Piper (DONE)
 - Wymuszone UTF-8 w piper_tts, pelne polskie znaki.
 - Testowa linia w `tools/tts_preview.py` (Zazolc gesla jazn).
@@ -252,7 +256,7 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 
 - TTS-01 - Text preprocessor (glos Renaty) (DONE)
 - TTS-02 - Parametry glosu (tempo, pauzy) (DONE)
-- TTS-03 - Scenariusze FREE (co Renata mowi / czego nie)
+- TTS-03 - Scenariusze FREE (co Renata mowi / czego nie) (DONE)
 - UX-SETTINGS-01 - FREE Settings Profile (ukrycie opcji)
 - FREE release nie wychodzi, dopoki powyzsze nie sa DONE.
 - FREE = tylko PL (EN po FREE).
@@ -262,13 +266,13 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 ## 7) NEXT (priorytety)
 
 ### P0
-- TTS-03 - Scenariusze FREE (co Renata mowi / czego nie)
-
-### P1
 - UX-SETTINGS-01 - FREE Settings Profile (ukrycie opcji)
 
-### P2
+### P1
 - Jezyk EN (po FREE)
+
+### P2
+- (puste)
 
 ### FUTURE / VISION (kierunki zatwierdzone)
 - External Data Helpers (offline-first): helpery jako klasy funkcji (nie zakladki): EDSM (coords/bodies/hotspoty), EDTools/EDMining (mining), Inara (rynek/inventory) pozniej; zawsze pod flagami, OFF domyslnie.
