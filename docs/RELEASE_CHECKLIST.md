@@ -12,6 +12,7 @@
 ## Core UI/UX (manual)
 - Start app: `py main.py`
 - Spansh tabs open and render (Neutron, Riches, Ammonia, ELW, HMC, Exo, Trade).
+- FREE tabs: w FREE widoczne tylko Pulpit/Spansh/Dziennik/Settings, brak Inara/EDTools/Inzynier.
 - Treeview tables: headers visible, sort by header works, LP column present.
 - Column Picker: toggle columns, presets apply, restart keeps layout.
 - Context menu on results (if enabled): copy, set Start/Cel, CSV/TSV.
