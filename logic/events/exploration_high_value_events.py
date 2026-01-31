@@ -79,7 +79,12 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
         and "water world" in planet_class
         and has_body_type("water world")
     ):
-        powiedz("Wykryto oceaniczny świat – bardzo wartościowy.", gui_ref)
+        powiedz(
+            "Wykryto oceaniczny świat – bardzo wartościowy.",
+            gui_ref,
+            message_id="MSG.WW_DETECTED",
+            context={"raw_text": "Wykryto oceaniczny świat – bardzo wartościowy."},
+        )
         HV_WW_WARNED = True
         return
 
@@ -91,5 +96,10 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
         and ("terra" in terraform_state)
         and has_body_type("high metal content", terraformable="yes")
     ):
-        powiedz("Wykryto terraformowalny świat.", gui_ref)
+        powiedz(
+            "Wykryto terraformowalny świat.",
+            gui_ref,
+            message_id="MSG.TERRAFORMABLE_DETECTED",
+            context={"raw_text": "Wykryto terraformowalny świat."},
+        )
         HV_HMC_T_WARNED = True

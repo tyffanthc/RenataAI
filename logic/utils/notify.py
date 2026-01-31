@@ -22,6 +22,11 @@ _TTS_INTENT_MAP = {
     "MSG.FOOTFALL": "context",
     "MSG.ELW_DETECTED": "context",
     "MSG.SYSTEM_FULLY_SCANNED": "context",
+    "MSG.SMUGGLER_ILLEGAL_CARGO": "context",
+    "MSG.WW_DETECTED": "context",
+    "MSG.TERRAFORMABLE_DETECTED": "context",
+    "MSG.BIO_SIGNALS_HIGH": "context",
+    "MSG.TRADE_JACKPOT": "context",
 }
 
 _TTS_CATEGORY_MAP = {
@@ -37,6 +42,11 @@ _TTS_CATEGORY_MAP = {
     "MSG.SYSTEM_FULLY_SCANNED": "explore",
     "MSG.ELW_DETECTED": "explore",
     "MSG.FOOTFALL": "explore",
+    "MSG.SMUGGLER_ILLEGAL_CARGO": "alert",
+    "MSG.WW_DETECTED": "explore",
+    "MSG.TERRAFORMABLE_DETECTED": "explore",
+    "MSG.BIO_SIGNALS_HIGH": "explore",
+    "MSG.TRADE_JACKPOT": "info",
 }
 
 _TTS_DEFAULT_COOLDOWNS = {

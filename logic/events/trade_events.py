@@ -108,7 +108,12 @@ def handle_market_data(data: dict, gui_ref=None):
                 f"Komandorze, {name_clean} jest tu wyjątkowo tanie. "
                 f"To świetna okazja. Cena: {buy_price_val} kredytów."
             )
-            powiedz(msg, gui_ref)
+            powiedz(
+                msg,
+                gui_ref,
+                message_id="MSG.TRADE_JACKPOT",
+                context={"raw_text": msg},
+            )
 
             try:
                 utils.MSG_QUEUE.put(

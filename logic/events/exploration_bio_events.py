@@ -60,4 +60,6 @@ def handle_dss_bio_signals(ev: Dict[str, Any], gui_ref=None) -> None:
         powiedz(
             "Potwierdzono liczne sygnały biologiczne. Warto wylądować.",
             gui_ref,
+            message_id="MSG.BIO_SIGNALS_HIGH",
+            context={"raw_text": "Potwierdzono liczne sygnały biologiczne. Warto wylądować."},
         )

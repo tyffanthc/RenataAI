@@ -94,7 +94,12 @@ def handle_smuggler_alert(ev: Dict[str, Any], gui_ref=None):
     SMUGGLER_WARNED_TARGETS.add(target_key)
 
     msg = "Uwaga. Nielegalny ładunek na pokładzie. Zalecam tryb cichego biegu."
-    powiedz(msg, gui_ref)
+    powiedz(
+        msg,
+        gui_ref,
+        message_id="MSG.SMUGGLER_ILLEGAL_CARGO",
+        context={"raw_text": msg},
+    )
 
     # dla czytelności wrzucimy też w log Pulpitu
     try:

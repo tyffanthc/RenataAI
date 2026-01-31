@@ -17,6 +17,11 @@ ALLOWED_MESSAGES = {
     "MSG.ELW_DETECTED",
     "MSG.FOOTFALL",
     "MSG.ROUTE_FOUND",
+    "MSG.SMUGGLER_ILLEGAL_CARGO",
+    "MSG.WW_DETECTED",
+    "MSG.TERRAFORMABLE_DETECTED",
+    "MSG.BIO_SIGNALS_HIGH",
+    "MSG.TRADE_JACKPOT",
 }
 
 
@@ -58,6 +63,17 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
     if not message_id or message_id not in ALLOWED_MESSAGES:
         return None
     ctx = context or {}
+    if message_id in {
+        "MSG.SMUGGLER_ILLEGAL_CARGO",
+        "MSG.WW_DETECTED",
+        "MSG.TERRAFORMABLE_DETECTED",
+        "MSG.BIO_SIGNALS_HIGH",
+        "MSG.TRADE_JACKPOT",
+    }:
+        raw_text = ctx.get("raw_text")
+        if not raw_text:
+            return None
+        return str(raw_text)
 
     if message_id == "MSG.NEXT_HOP":
         system = _normalize_system_name(ctx.get("system"))
