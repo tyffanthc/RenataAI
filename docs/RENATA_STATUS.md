@@ -179,6 +179,14 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Naprawione kodowanie UTF-8 w text_preprocessor.
 - Dwie poprawki tekstu: ROUTE_DESYNC + FIRST_DISCOVERY.
 
+#### BUG-SETTINGS-LOGDIR-01 (DONE)
+- Naprawa zapisu log_dir (strip() + pusty => None).
+- Smoke: backend + journal PASS.
+
+#### BUG-ROUTE-TRANSIT-01 (DONE)
+- Po route_end czyszczenie trasy (koniec trybu przelotowego).
+- Smoke: backend + journal PASS.
+
 #### TTS-03 - Scenariusze FREE (DONE)
 - Polityka FREE: critical/context/silent + reguly ciszy.
 - Flaga: `features.tts.free_policy_enabled=true`.
@@ -243,7 +251,7 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - `python tools/smoke_tests_beckendy.py`
 - `python tools/smoke_tests_journal.py`
 
-**Ostatni wynik smoke:** 2026-01-26 — backend 15/15 OK, journal 5/5 OK
+**Ostatni wynik smoke:** 2026-01-26 ? backend 15/15 OK, journal 5/5 OK
 
 ### Manual (GUI)
 - `py main.py`
