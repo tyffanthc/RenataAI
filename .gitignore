@@ -12,3 +12,7 @@ config.json
 tools/piper/
 models/piper/
 /release/
+/build/
+/dist/
+*.spec
+*.zip
