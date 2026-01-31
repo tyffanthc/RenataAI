@@ -39,6 +39,7 @@ class SettingsTab(ttk.Frame):
         self._save_config = save_config
         self._jackpot_dialog = None
         self._tables_columns_dialog = None
+        self._free_profile = bool(config.get("features.tts.free_policy_enabled", True))
 
         self._create_vars()
         self._build_ui()
@@ -73,6 +74,8 @@ class SettingsTab(ttk.Frame):
         # GŁOS / dźwięk – mapujemy to na voice_enabled
         self.var_enable_sounds = tk.BooleanVar(value=True)
         self.var_confirm_exit = tk.BooleanVar(value=True)
+        self.var_tts_free_policy = tk.BooleanVar(value=True)
+        self.var_online_data_enabled = tk.BooleanVar(value=False)
 
         # --- Asystenci / alerty – te mapujemy na klucze JSON --- #
         self.var_read_landing_pad = tk.BooleanVar(value=True)          # landing_pad_speech
@@ -158,6 +161,13 @@ class SettingsTab(ttk.Frame):
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=True)
 
+        if self._free_profile:
+            self._tab_free = ttk.Frame(self.nb)
+            self.nb.add(self._tab_free, text="Ustawienia")
+            self._build_tab_free()
+            self.nb.select(self._tab_free)
+            return
+
         # Zakładki
         self._tab_general = ttk.Frame(self.nb)
         self._tab_assistants = ttk.Frame(self.nb)
@@ -198,6 +208,58 @@ class SettingsTab(ttk.Frame):
     # ------------------------------------------------------------------ #
     #   Zakładka: OGÓLNE
     # ------------------------------------------------------------------ #
+
+    def _build_tab_free(self) -> None:
+        parent = self._tab_free
+        parent.columnconfigure(0, weight=1)
+
+        lf_free = ttk.LabelFrame(parent, text=" FREE — ustawienia podstawowe ")
+        lf_free.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="nsew")
+        lf_free.columnconfigure(0, weight=1)
+        lf_free.columnconfigure(1, weight=1)
+
+        ttk.Checkbutton(
+            lf_free,
+            text="Minimalny głos (polecane) / Tryb FREE",
+            variable=self.var_tts_free_policy,
+        ).grid(row=0, column=0, columnspan=2, padx=8, pady=(6, 4), sticky="w")
+
+        ttk.Checkbutton(
+            lf_free,
+            text="Włącz głos",
+            variable=self.var_enable_sounds,
+        ).grid(row=1, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_free,
+            text="Auto-schowek",
+            variable=self.var_auto_clipboard,
+        ).grid(row=1, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Label(lf_free, text="Auto-schowek trasy:").grid(
+            row=2, column=0, padx=8, pady=4, sticky="w"
+        )
+        ttk.Combobox(
+            lf_free,
+            textvariable=self.var_auto_clipboard_mode,
+            values=("FULL_ROUTE", "NEXT_HOP"),
+            state="readonly",
+            width=14,
+        ).grid(row=2, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_free,
+            text="Zezwól na dane online",
+            variable=self.var_online_data_enabled,
+        ).grid(row=3, column=0, columnspan=2, padx=8, pady=4, sticky="w")
+
+        ttk.Label(
+            lf_free,
+            text="Tryb FREE pokazuje tylko podstawowe opcje.",
+            foreground="#888888",
+        ).grid(row=4, column=0, columnspan=2, padx=8, pady=(0, 8), sticky="w")
+
+        self._add_save_bar(parent, row=1)
 
     def _build_tab_general(self) -> None:
         parent = self._tab_general
@@ -1173,6 +1235,15 @@ class SettingsTab(ttk.Frame):
 
         # główny TTS / głos
         self.var_enable_sounds.set(cfg.get("voice_enabled", self.var_enable_sounds.get()))
+        self.var_tts_free_policy.set(
+            cfg.get("features.tts.free_policy_enabled", self.var_tts_free_policy.get())
+        )
+        online_enabled = (
+            bool(cfg.get("features.providers.edsm_enabled", False))
+            or bool(cfg.get("features.providers.system_lookup_online", False))
+            or bool(cfg.get("features.trade.station_lookup_online", False))
+        )
+        self.var_online_data_enabled.set(online_enabled)
 
         # logi
         self.var_log_path.set(cfg.get("log_dir", self.var_log_path.get()))
@@ -1497,6 +1568,11 @@ class SettingsTab(ttk.Frame):
             resync_policy = "nearest_forward"
             self.var_auto_clipboard_next_hop_resync_policy.set(resync_policy)
 
+        online_master = self.var_online_data_enabled.get()
+        provider_edsm_enabled = self.var_provider_edsm_enabled.get()
+        if self._free_profile:
+            provider_edsm_enabled = online_master
+
         cfg: Dict[str, Any] = {
             # klucze główne (uzgodnione z backendem)
             "log_dir": self.var_log_path.get().strip(),
@@ -1504,6 +1580,7 @@ class SettingsTab(ttk.Frame):
             "theme": self.var_theme.get() if self.var_theme.get() in ("dark", "ed_orange", "ed_blue", "dark_minimal") else "dark",
 
             "voice_enabled": self.var_enable_sounds.get(),
+            "features.tts.free_policy_enabled": self.var_tts_free_policy.get(),
 
             "landing_pad_speech": self.var_read_landing_pad.get(),
             "auto_clipboard": self.var_auto_clipboard.get(),
@@ -1552,7 +1629,9 @@ class SettingsTab(ttk.Frame):
             "debug_next_hop": self.var_debug_next_hop.get(),
             "features.debug.panel": self.var_debug_panel.get(),
             "features.spansh.debug_payload": self.var_debug_spansh_payload.get(),
-            "features.providers.edsm_enabled": self.var_provider_edsm_enabled.get(),
+            "features.providers.edsm_enabled": provider_edsm_enabled,
+            "features.providers.system_lookup_online": self.var_online_data_enabled.get(),
+            "features.trade.station_lookup_online": self.var_online_data_enabled.get(),
 
             "features.tables.spansh_schema_enabled": self.var_tables_spansh_schema_enabled.get(),
             "features.tables.normalized_rows_enabled": self.var_tables_normalized_rows_enabled.get(),
@@ -1686,6 +1765,8 @@ class SettingsTab(ttk.Frame):
 
         self.var_enable_sounds.set(True)
         self.var_confirm_exit.set(True)
+        self.var_tts_free_policy.set(True)
+        self.var_online_data_enabled.set(False)
 
         # Asystenci – domyślnie włączone jak w DEFAULT_SETTINGS
         self.var_read_landing_pad.set(True)
