@@ -37,6 +37,9 @@ Key flags:
 - `features.tables.treeview_enabled`
 - `features.ui.results_context_menu`
 
+## FREE Settings Profile
+Settings in FREE mode show a short, safe list of options (5–7 max). Advanced/dev options are hidden.
+
 ## Gotchas
 - Use `py` on Windows if `python` is not available.
 - `user_settings.json` is local-only; do not commit. If missing, copy `user_settings.example.json` -> `user_settings.json`.
