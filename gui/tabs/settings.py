@@ -1575,7 +1575,7 @@ class SettingsTab(ttk.Frame):
 
         cfg: Dict[str, Any] = {
             # klucze główne (uzgodnione z backendem)
-            "log_dir": self.var_log_path.get().strip(),
+            "log_dir": self.var_log_path.get().strip() or None,
             "language": self.var_language.get() if self.var_language.get() in ("pl", "en") else "pl",
             "theme": self.var_theme.get() if self.var_theme.get() in ("dark", "ed_orange", "ed_blue", "dark_minimal") else "dark",
 
