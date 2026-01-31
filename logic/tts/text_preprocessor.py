@@ -75,7 +75,7 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         return _finalize_tts("Trasa zakończona.")
 
     if message_id == "MSG.ROUTE_DESYNC":
-        return _finalize_tts("Jesteś poza trasą. Wstrzymuję nawigację.")
+        return _finalize_tts("Poza trasą. Nawigacja wstrzymana.")
 
     if message_id == "MSG.FUEL_CRITICAL":
         return _finalize_tts("Uwaga. Paliwo krytyczne.")
@@ -90,7 +90,7 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         return _finalize_tts("Odlot potwierdzony.")
 
     if message_id == "MSG.FIRST_DISCOVERY":
-        return _finalize_tts("Pierwsze odkrycie. Układ zarejestrowany.")
+        return _finalize_tts("Pierwsze odkrycie. Układ potwierdzony.")
 
     if message_id == "MSG.SYSTEM_FULLY_SCANNED":
         return _finalize_tts("Skan systemu zakończony.")
