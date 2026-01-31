@@ -9,6 +9,21 @@ from logic.tts.text_preprocessor import prepare_tts
 # Globalna kolejka komunikatów dla GUI (Thread-Safe)
 MSG_QUEUE = queue.Queue()
 
+_TTS_INTENT_MAP = {
+    "MSG.FUEL_CRITICAL": "critical",
+    "MSG.ROUTE_DESYNC": "critical",
+    "MSG.ROUTE_FOUND": "critical",
+    "MSG.ROUTE_COMPLETE": "critical",
+    "MSG.NEXT_HOP": "context",
+    "MSG.NEXT_HOP_COPIED": "context",
+    "MSG.DOCKED": "context",
+    "MSG.UNDOCKED": "context",
+    "MSG.FIRST_DISCOVERY": "context",
+    "MSG.FOOTFALL": "context",
+    "MSG.ELW_DETECTED": "context",
+    "MSG.SYSTEM_FULLY_SCANNED": "context",
+}
+
 _TTS_CATEGORY_MAP = {
     "MSG.NEXT_HOP": "nav",
     "MSG.NEXT_HOP_COPIED": "nav",
@@ -35,6 +50,10 @@ _TTS_DEFAULT_COOLDOWNS = {
 
 def _tts_category(message_id: str) -> str:
     return _TTS_CATEGORY_MAP.get(message_id, "info")
+
+
+def _tts_intent(message_id: str) -> str:
+    return _TTS_INTENT_MAP.get(message_id, "silent")
 
 
 def _get_category_cooldown(category: str) -> float:
@@ -73,6 +92,41 @@ def _should_speak_tts(message_id: str, context: dict | None) -> bool:
     confidence = str(ctx.get("confidence", "")).strip().lower()
     if confidence in ("low", "mid", "uncertain", "maybe"):
         return False
+
+    free_policy = bool(config.get("features.tts.free_policy_enabled", True))
+    if not free_policy:
+        return _should_speak_legacy(message_id, ctx)
+
+    intent = _tts_intent(message_id)
+    if intent == "silent":
+        return False
+    if ctx.get("in_transit"):
+        return False
+    if _is_transit_mode() and _tts_category(message_id) == "nav":
+        return False
+
+    try:
+        global_cd = float(config.get("tts.cooldown_global_sec", 8))
+    except Exception:
+        global_cd = 8.0
+    if not DEBOUNCER.can_send("TTS_GLOBAL", global_cd):
+        return False
+
+    if intent == "critical":
+        return True
+
+    category = _tts_category(message_id)
+    intent_cd = _get_category_cooldown(category)
+    if not DEBOUNCER.can_send(
+        f"TTS_INTENT:{message_id}",
+        intent_cd,
+        context=_intent_context(ctx),
+    ):
+        return False
+    return True
+
+
+def _should_speak_legacy(message_id: str, ctx: dict) -> bool:
     if ctx.get("in_transit"):
         return False
     if _is_transit_mode() and _tts_category(message_id) == "nav":
