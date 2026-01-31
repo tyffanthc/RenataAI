@@ -203,7 +203,7 @@ Note: several items below are already done (labels, required fields, placeholder
 - Providerzy: `logic/spansh_client.py`, `logic/utils/http_spansh.py`.
 - Storage/cache: `config.py` (user_settings.json), `logic/cache_store.py` (AppData cache), `logic/logbook_manager.py` (user_logbook.json).
 - Config/flags: `config.py` + `gui/tabs/settings.py`.
-- Testy: `tests/*`, `tools/*`, `RUNBOOK_SMOKE.md`.
+- Testy: `tests/*`, `tools/*`, `docs/RUNBOOK_SMOKE.md`.
 
 ## D) Konfiguracja i feature flags
 

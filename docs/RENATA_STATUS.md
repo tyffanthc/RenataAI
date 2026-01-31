@@ -19,7 +19,7 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - pliki
 - jak testować (komendy + manual)
 
-4) Smoke testy wg `RUNBOOK_SMOKE.md` + dopisany UX smoke (clipboard/overlay/tabele).
+4) Smoke testy wg `docs/RUNBOOK_SMOKE.md` + dopisany UX smoke (clipboard/overlay/tabele).
 
 5) Preferencja: offline-first (online lookup tylko pod flagą).
 
