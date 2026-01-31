@@ -11,3 +11,4 @@ config.json
 # Piper TTS (local binaries/models)
 tools/piper/
 models/piper/
+/release/
