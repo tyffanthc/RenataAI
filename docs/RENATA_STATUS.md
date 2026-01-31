@@ -258,6 +258,7 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - TTS-02 - Parametry glosu (tempo, pauzy) (DONE)
 - TTS-03 - Scenariusze FREE (co Renata mowi / czego nie) (DONE)
 - UX-SETTINGS-01 - FREE Settings Profile (ukrycie opcji)
+  - Dodac checkbox: "Minimalny glos (polecane)" / "Tryb FREE" (kontrola policy)
 - FREE release nie wychodzi, dopoki powyzsze nie sa DONE.
 - FREE = tylko PL (EN po FREE).
 
@@ -267,6 +268,7 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 
 ### P0
 - UX-SETTINGS-01 - FREE Settings Profile (ukrycie opcji)
+  - Dodac checkbox: "Minimalny glos (polecane)" / "Tryb FREE" (kontrola policy)
 
 ### P1
 - Jezyk EN (po FREE)
