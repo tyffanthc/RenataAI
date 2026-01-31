@@ -239,6 +239,8 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - `python tools/smoke_tests_beckendy.py`
 - `python tools/smoke_tests_journal.py`
 
+**Ostatni wynik smoke:** 2026-01-26 — backend 15/15 OK, journal 5/5 OK
+
 ### Manual (GUI)
 - `py main.py`
 - UX smoke: NEXT_HOP (clipboard + overlay), tabele (naglowki, sticky, autosize), Trade required field, menu kontekstowe wynikow.
