@@ -249,15 +249,33 @@ class SettingsTab(ttk.Frame):
 
         ttk.Checkbutton(
             lf_free,
+            text="Alerty jackpotów (Trade)",
+            variable=self.var_trade_jackpot_alerts,
+        ).grid(row=3, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Button(
+            lf_free,
+            text="Progi jackpotów…",
+            command=self._edit_jackpot_thresholds,
+        ).grid(row=3, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Label(
+            lf_free,
+            text="Progi jackpotów wpływają na alerty w handlu.",
+            foreground="#888888",
+        ).grid(row=4, column=0, columnspan=2, padx=8, pady=(0, 6), sticky="w")
+
+        ttk.Checkbutton(
+            lf_free,
             text="Zezwól na dane online",
             variable=self.var_online_data_enabled,
-        ).grid(row=3, column=0, columnspan=2, padx=8, pady=4, sticky="w")
+        ).grid(row=5, column=0, columnspan=2, padx=8, pady=4, sticky="w")
 
         ttk.Label(
             lf_free,
             text="Tryb FREE pokazuje tylko podstawowe opcje.",
             foreground="#888888",
-        ).grid(row=4, column=0, columnspan=2, padx=8, pady=(0, 8), sticky="w")
+        ).grid(row=6, column=0, columnspan=2, padx=8, pady=(0, 8), sticky="w")
 
         self._add_save_bar(parent, row=1)
 
