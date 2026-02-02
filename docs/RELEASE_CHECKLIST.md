@@ -8,6 +8,7 @@
 ## Build and smoke
 - `py tools/smoke_tests_beckendy.py`
 - `py tools/smoke_tests_journal.py`
+- TTS autodetect: voice pack w APPDATA -> log "selected=piper source=appdata".
 
 ## Core UI/UX (manual)
 - Start app: `py main.py`
