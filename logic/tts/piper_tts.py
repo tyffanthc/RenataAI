@@ -57,12 +57,11 @@ def _resolve_config_path() -> Optional[str]:
     return _resolve_path(config.get("tts.piper_config_path"))
 
 
-def _has_user_settings() -> bool:
-    for key in ("tts.piper_bin", "tts.piper_model_path", "tts.piper_config_path"):
-        value = str(config.get(key, "")).strip()
-        if value:
-            return True
-    return False
+def _has_valid_user_paths() -> bool:
+    bin_path = _resolve_piper_bin()
+    model_path = _resolve_model_path()
+    config_path = _resolve_config_path()
+    return bool(bin_path and model_path and config_path)
 
 
 def _resolve_appdata_voicepack() -> Optional[PiperPaths]:
@@ -96,17 +95,13 @@ def _resolve_appdata_voicepack() -> Optional[PiperPaths]:
 
 
 def select_piper_paths(*, use_appdata: bool) -> Optional[PiperPaths]:
-    if _has_user_settings():
-        bin_path = _resolve_piper_bin()
-        model_path = _resolve_model_path()
-        if bin_path and model_path:
-            return PiperPaths(
-                bin_path=bin_path,
-                model_path=model_path,
-                config_path=_resolve_config_path(),
-                source="settings",
-            )
-        return None
+    if _has_valid_user_paths():
+        return PiperPaths(
+            bin_path=_resolve_piper_bin(),
+            model_path=_resolve_model_path(),
+            config_path=_resolve_config_path(),
+            source="settings",
+        )
     if use_appdata:
         return _resolve_appdata_voicepack()
     return None
