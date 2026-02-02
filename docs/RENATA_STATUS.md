@@ -183,6 +183,10 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Naprawa zapisu log_dir (strip() + pusty => None).
 - Smoke: backend + journal PASS.
 
+#### SETTINGS-EXE-01 (DONE)
+- user_settings.json zapisywany w APPDATA (nie w BASE_DIR).
+- Migracja: stary ./user_settings.json -> APPDATA (jednorazowo).
+
 #### BUG-ROUTE-TRANSIT-01 (DONE)
 - Po route_end czyszczenie trasy (koniec trybu przelotowego).
 - Smoke: backend + journal PASS.

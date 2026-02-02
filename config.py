@@ -2,12 +2,39 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from typing import Any, Dict
 
 # --- ŚCIEŻKI / PLIKI ---------------------------------------------------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SETTINGS_FILE = os.path.join(BASE_DIR, "user_settings.json")
+
+
+def _settings_path() -> str:
+    override = os.getenv("RENATA_SETTINGS_PATH")
+    if override:
+        return override
+    appdata = os.getenv("APPDATA") or os.getenv("LOCALAPPDATA")
+    if appdata:
+        return os.path.join(appdata, "RenataAI", "user_settings.json")
+    return os.path.join(BASE_DIR, "user_settings.json")
+
+
+SETTINGS_FILE = _settings_path()
+
+
+def _migrate_settings_if_needed(target_path: str) -> None:
+    try:
+        legacy_path = os.path.join(BASE_DIR, "user_settings.json")
+        if not os.path.isfile(legacy_path):
+            return
+        if os.path.isfile(target_path):
+            return
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        shutil.copy2(legacy_path, target_path)
+        print(f"[CONFIG] Migrated settings to {target_path}")
+    except Exception:
+        pass
 
 
 def _default_log_dir() -> str:
@@ -201,6 +228,7 @@ class ConfigManager:
     def __init__(self, settings_path: str | None = None) -> None:
         self.settings_path = settings_path or SETTINGS_FILE
         self._settings: Dict[str, Any] = DEFAULT_SETTINGS.copy()
+        _migrate_settings_if_needed(self.settings_path)
         self._load()
 
     # --- I/O JSON -----------------------------------------------------------
