@@ -4,9 +4,18 @@ import os
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from typing import Optional
 
 import config
+
+
+@dataclass(frozen=True)
+class PiperPaths:
+    bin_path: str
+    model_path: str
+    config_path: Optional[str]
+    source: str  # "settings" | "appdata"
 
 
 def _resolve_path(path_value: Optional[str]) -> Optional[str]:
@@ -48,16 +57,72 @@ def _resolve_config_path() -> Optional[str]:
     return _resolve_path(config.get("tts.piper_config_path"))
 
 
-def speak(text: str) -> bool:
+def _has_user_settings() -> bool:
+    for key in ("tts.piper_bin", "tts.piper_model_path", "tts.piper_config_path"):
+        value = str(config.get(key, "")).strip()
+        if value:
+            return True
+    return False
+
+
+def _resolve_appdata_voicepack() -> Optional[PiperPaths]:
+    appdata = os.getenv("APPDATA")
+    if not appdata:
+        return None
+    base = os.path.join(appdata, "RenataAI", "voice", "piper")
+    bin_path = os.path.join(base, "piper.exe")
+    models_dir = os.path.join(base, "models")
+    model_path = os.path.join(models_dir, "pl_PL-gosia-medium.onnx")
+    config_path = os.path.join(models_dir, "pl_PL-gosia-medium.json")
+    if os.path.isfile(bin_path) and os.path.isfile(model_path) and os.path.isfile(config_path):
+        return PiperPaths(bin_path=bin_path, model_path=model_path, config_path=config_path, source="appdata")
+    if os.path.isfile(bin_path) and os.path.isdir(models_dir):
+        try:
+            for name in os.listdir(models_dir):
+                if not name.lower().endswith(".onnx"):
+                    continue
+                candidate = os.path.join(models_dir, name)
+                candidate_cfg = os.path.splitext(candidate)[0] + ".json"
+                if os.path.isfile(candidate) and os.path.isfile(candidate_cfg):
+                    return PiperPaths(
+                        bin_path=bin_path,
+                        model_path=candidate,
+                        config_path=candidate_cfg,
+                        source="appdata",
+                    )
+        except Exception:
+            return None
+    return None
+
+
+def select_piper_paths(*, use_appdata: bool) -> Optional[PiperPaths]:
+    if _has_user_settings():
+        bin_path = _resolve_piper_bin()
+        model_path = _resolve_model_path()
+        if bin_path and model_path:
+            return PiperPaths(
+                bin_path=bin_path,
+                model_path=model_path,
+                config_path=_resolve_config_path(),
+                source="settings",
+            )
+        return None
+    if use_appdata:
+        return _resolve_appdata_voicepack()
+    return None
+
+
+def speak(text: str, *, paths: Optional[PiperPaths] = None) -> bool:
     if os.name != "nt":
         return False
 
-    bin_path = _resolve_piper_bin()
-    model_path = _resolve_model_path()
-    if not bin_path or not model_path:
+    selected = paths or select_piper_paths(use_appdata=False)
+    if not selected:
         return False
 
-    config_path = _resolve_config_path()
+    bin_path = selected.bin_path
+    model_path = selected.model_path
+    config_path = selected.config_path
 
     tmp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     tmp_wav.close()

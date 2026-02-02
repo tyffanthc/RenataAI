@@ -184,6 +184,17 @@ def _watek_mowy(tekst):
         pass
 
 
+_TTS_ENGINE_LOGGED = False
+
+
+def _log_tts_engine(line: str) -> None:
+    global _TTS_ENGINE_LOGGED
+    if _TTS_ENGINE_LOGGED:
+        return
+    print(line)
+    _TTS_ENGINE_LOGGED = True
+
+
 def _speak_tts(tekst: str) -> None:
     engine = str(config.get("tts.engine", "auto")).strip().lower()
     if engine not in ("auto", "piper", "pyttsx3"):
@@ -192,12 +203,26 @@ def _speak_tts(tekst: str) -> None:
     if engine in ("auto", "piper"):
         try:
             from logic.tts import piper_tts
-
-            if piper_tts.speak(tekst):
-                return
+            selected = piper_tts.select_piper_paths(use_appdata=(engine == "auto"))
+            if selected:
+                _log_tts_engine(
+                    f"TTS engine selected=piper source={selected.source}"
+                )
+                if piper_tts.speak(tekst, paths=selected):
+                    return
+            else:
+                if engine == "auto":
+                    _log_tts_engine("TTS engine selected=pyttsx3 reason=piper_not_found")
         except Exception:
             if engine == "piper":
                 return
+
+        if engine == "piper":
+            _log_tts_engine("TTS engine selected=pyttsx3 reason=piper_not_found")
+            return
+
+    if engine == "pyttsx3":
+        _log_tts_engine("TTS engine selected=pyttsx3 source=settings")
 
     _speak_pyttsx3(tekst)
 
