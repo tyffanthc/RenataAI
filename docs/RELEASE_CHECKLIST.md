@@ -56,3 +56,4 @@
 ## Release artifacts
 - Verify README/RENATA_STATUS are up to date.
 - Tag build and archive logs if needed.
+- Voice Pack installer: payload present + ISCC build.
