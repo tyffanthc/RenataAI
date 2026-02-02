@@ -1,0 +1,3 @@
+﻿piper.exe
+models/*.onnx
+models/*.json

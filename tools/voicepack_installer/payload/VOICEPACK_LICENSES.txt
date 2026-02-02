@@ -1,0 +1,2 @@
+﻿Piper TTS engine — MIT License (rhasspy/piper)
+Voice model: pl_PL-gosia-medium — CC0 (public domain)

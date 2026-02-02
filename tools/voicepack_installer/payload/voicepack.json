@@ -1,0 +1,11 @@
+﻿{
+  "name": "Renata Voice Pack (Piper PL)",
+  "version": "0.9.0-pl1",
+  "engine": "piper",
+  "model_id": "pl_PL-gosia-medium",
+  "files": {
+    "piper_bin": "piper.exe",
+    "model": "models/pl_PL-gosia-medium.onnx",
+    "config": "models/pl_PL-gosia-medium.json"
+  }
+}
