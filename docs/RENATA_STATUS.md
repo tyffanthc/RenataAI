@@ -218,6 +218,10 @@ Tryb pracy: **1 post = 1 ticket** (asystent) -> raport -> weryfikacja -> nastepn
 - Dodane message_id + raw_text oraz klasyfikacja intent/category w TTS policy.
 - Testy smoke: backend + journal PASS (2026-01-31).
 
+#### VOICEPACK-02c - Full Piper runtime in Voice Pack (DONE)
+- Installer kopiuje pelny runtime Pipera (DLL + data) do APPDATA.
+- piper.exe dziala z APPDATA, Renata wybiera Piper w EXE i main.py.
+
 ---
 
 ## 3) Aktualny UX stan (skrót)

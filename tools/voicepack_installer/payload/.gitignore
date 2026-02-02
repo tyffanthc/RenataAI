@@ -1,3 +1,4 @@
-﻿piper.exe
+﻿piper_runtime/
+piper.exe
 models/*.onnx
 models/*.json

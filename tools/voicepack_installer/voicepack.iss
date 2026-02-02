@@ -14,7 +14,7 @@ SetupIconFile=
 UninstallDisplayIcon=
 
 [Files]
-Source: "payload\piper.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "payload\piper_runtime\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "payload\models\pl_PL-gosia-medium.onnx"; DestDir: "{app}\models"; Flags: ignoreversion
 Source: "payload\models\pl_PL-gosia-medium.json"; DestDir: "{app}\models"; Flags: ignoreversion
 Source: "payload\voicepack.json"; DestDir: "{app}"; Flags: ignoreversion
