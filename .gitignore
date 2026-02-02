@@ -17,3 +17,4 @@ models/piper/
 *.spec
 *.zip
 RenataAI-VoicePack-Piper-PL-*-setup.exe
+tools/voicepack_installer/Output/
