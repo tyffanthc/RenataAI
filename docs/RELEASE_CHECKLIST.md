@@ -57,3 +57,4 @@
 - Verify README/RENATA_STATUS are up to date.
 - Tag build and archive logs if needed.
 - Voice Pack installer: payload present + ISCC build.
+- Voice Pack installer EXE jest osobnym assetem (nie w ZIP).
