@@ -11,6 +11,7 @@ import config
 from logic import trade
 
 from logic import utils
+from logic.utils.http_edsm import edsm_stations_for_system, is_edsm_enabled
 
 from logic.spansh_client import client as spansh_client
 
@@ -63,6 +64,8 @@ class TradeTab(ttk.Frame):
         self.var_start_system = tk.StringVar()
 
         self.var_start_station = tk.StringVar()
+        self._station_hint_text = ""
+        self._station_hint_active = False
 
         self._station_cache = {}
 
@@ -179,6 +182,7 @@ class TradeTab(ttk.Frame):
         # D3c â€“ pierwsze uzupeĹ‚nienie pĂłl z app_state
 
         self.refresh_from_app_state()
+        self._update_station_hint()
 
         self.bind("<Visibility>", self._on_visibility)
 
@@ -187,6 +191,7 @@ class TradeTab(ttk.Frame):
     def _on_visibility(self, _event):
 
         self.refresh_from_app_state()
+        self._update_station_hint()
 
 
 
@@ -265,6 +270,8 @@ class TradeTab(ttk.Frame):
         )
         self.e_station.bind("<FocusIn>", self._on_station_focus, add="+")
         self.e_station.bind("<Button-1>", self._on_station_focus, add="+")
+        self.e_station.bind("<FocusOut>", self._on_station_focus_out, add="+")
+        self.e_station.bind("<KeyPress>", self._on_station_keypress, add="+")
 
 
 
@@ -911,7 +918,7 @@ class TradeTab(ttk.Frame):
 
             self.var_start_system.set(sysname)
 
-        if is_docked and not (self.var_start_station.get() or "").strip() and staname:
+        if is_docked and not self._get_station_input() and staname:
 
             self.var_start_station.set(staname)
 
@@ -992,6 +999,14 @@ class TradeTab(ttk.Frame):
 
 
 
+        if q == "":
+            # pełna lista z EDSM (jeśli dostępny)
+            if is_edsm_enabled():
+                edsm_list = edsm_stations_for_system(raw)
+                if edsm_list:
+                    return edsm_list
+            return []
+
         if not self._station_lookup_online:
 
             return []
@@ -999,18 +1014,9 @@ class TradeTab(ttk.Frame):
 
 
         try:
-            # q=="" -> pobierz pełną listę stacji dla systemu
             results = spansh_client.stations_for_system(raw, q or None)
             if results:
                 return results
-            # fallback: jeśli API nic nie zwróciło, spróbuj recent/cached
-            if q == "":
-                combined = []
-                combined.extend(self._get_cached_stations(raw))
-                combined.extend(self._recent_stations)
-                # unikalne + sort
-                uniq = list(dict.fromkeys([s for s in combined if s]))
-                return self._filter_stations(uniq, q)
             return []
 
         except Exception as e:
@@ -1027,9 +1033,22 @@ class TradeTab(ttk.Frame):
 
             return
 
-        # Pokazuj list? ju? na focus, nawet bez wpisanego tekstu.
+        if self._station_hint_active:
+            try:
+                self.e_station.selection_range(0, tk.END)
+            except Exception:
+                pass
+
+        # Pokazuj listę już na focus, nawet bez wpisanego tekstu.
 
         self.ac_station.trigger_suggest(force=True)
+
+    def _on_station_focus_out(self, _event):
+        self._update_station_hint()
+
+    def _on_station_keypress(self, _event):
+        if self._station_hint_active:
+            self._clear_station_hint()
 
     def _suggest_system(self, tekst: str):
 
@@ -1058,6 +1077,43 @@ class TradeTab(ttk.Frame):
     def _normalize_key(self, value: str) -> str:
 
         return (value or "").strip().lower()
+
+    def _get_station_input(self) -> str:
+        val = (self.var_start_station.get() or "").strip()
+        if self._station_hint_active and val == self._station_hint_text:
+            return ""
+        return val
+
+    def _set_station_hint(self, text: str) -> None:
+        if not text:
+            return
+        # pokazujemy hint tylko gdy pole jest puste (lub już ma hint)
+        current = (self.var_start_station.get() or "").strip()
+        if current and not self._station_hint_active:
+            return
+        self._station_hint_text = text
+        self._station_hint_active = True
+        self.var_start_station.set(text)
+
+    def _clear_station_hint(self) -> None:
+        if not self._station_hint_active:
+            return
+        self._station_hint_active = False
+        self.var_start_station.set("")
+
+    def _update_station_hint(self) -> None:
+        # hinty tylko gdy pole jest puste
+        if self._get_station_input():
+            return
+        if self._station_hint_active and (tekst or "").strip() == self._station_hint_text:
+            tekst = ""
+
+        system = (self.var_start_system.get() or "").strip()
+        if not system:
+            self._set_station_hint("Najpierw wybierz system")
+            return
+        if not is_edsm_enabled():
+            self._set_station_hint("Wpisz 1 literę, aby wyszukać stację…")
 
 
 
@@ -1184,7 +1240,7 @@ class TradeTab(ttk.Frame):
 
         start_system = self.var_start_system.get().strip()
 
-        start_station = self.var_start_station.get().strip()
+        start_station = self._get_station_input()
 
 
 

@@ -4,6 +4,7 @@ from logic.utils.edsm_client import (
     Edsmbadresponse,
     Edsmunavailable,
     Edsmtimeout,
+    fetch_system_stations,
     fetch_systems,
 )
 
@@ -37,6 +38,30 @@ def edsm_systems_suggest(query: str) -> list[str]:
         MSG_QUEUE.put(("log", f"[WARN] EDSM bad response: {e}"))
         return []
     except Exception as e:
+        MSG_QUEUE.put(("log", f"[WARN] EDSM lookup failed: {e}"))
+        return []
+
+
+def edsm_stations_for_system(system_name: str) -> list[str]:
+    if not is_edsm_enabled():
+        return []
+    sys_name = (system_name or "").strip()
+    if not sys_name:
+        return []
+    if not DEBOUNCER.is_allowed("edsm_stations", cooldown_sec=0.8, context=sys_name.lower()):
+        return []
+    try:
+        return fetch_system_stations(sys_name)
+    except Edsmtimeout as e:
+        MSG_QUEUE.put(("log", f"[WARN] EDSM timeout: {e}"))
+        return []
+    except Edsmunavailable as e:
+        MSG_QUEUE.put(("log", f"[WARN] EDSM unavailable: {e}"))
+        return []
+    except Edsmbadresponse as e:
+        MSG_QUEUE.put(("log", f"[WARN] EDSM bad response: {e}"))
+        return []
+    except Exception as e:  # noqa: BLE001
         MSG_QUEUE.put(("log", f"[WARN] EDSM lookup failed: {e}"))
         return []
 

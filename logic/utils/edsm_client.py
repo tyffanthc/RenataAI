@@ -22,6 +22,8 @@ _DEFAULT_TIMEOUT = 3.0
 _CACHE_TTL_SECONDS = 10 * 60
 _CACHE_MAX_ITEMS = 200
 _CACHE: dict[str, tuple[float, object]] = {}
+_STATIONS_CACHE: dict[str, tuple[float, list[str]]] = {}
+_STATIONS_TTL_SECONDS = 24 * 60 * 60
 
 
 def _normalize_query(query: str) -> str:
@@ -45,6 +47,21 @@ def _cache_set(key: str, data) -> None:
         return
     oldest_key = min(_CACHE.items(), key=lambda kv: kv[1][0])[0]
     _CACHE.pop(oldest_key, None)
+
+
+def _stations_cache_get(key: str) -> list[str] | None:
+    item = _STATIONS_CACHE.get(key)
+    if not item:
+        return None
+    ts, data = item
+    if time.monotonic() - ts > _STATIONS_TTL_SECONDS:
+        _STATIONS_CACHE.pop(key, None)
+        return None
+    return list(data)
+
+
+def _stations_cache_set(key: str, data: list[str]) -> None:
+    _STATIONS_CACHE[key] = (time.monotonic(), list(data))
 
 
 def _throttle() -> None:
@@ -164,3 +181,64 @@ def fetch_system_info(query: str, *, timeout: float | None = None) -> dict | Non
     }
     _cache_set(cache_key, dict(info))
     return info
+
+
+def fetch_system_stations(system_name: str, *, timeout: float | None = None) -> List[str]:
+    sys_name = (system_name or "").strip()
+    if not sys_name:
+        return []
+
+    cache_key = f"stations:{_normalize_query(sys_name)}"
+    cached = _stations_cache_get(cache_key)
+    if isinstance(cached, list):
+        return [str(item) for item in cached if item]
+
+    _throttle()
+    url = "https://www.edsm.net/api-system-v1/stations"
+    headers = {"User-Agent": "RENATA/1.0", "Accept": "application/json"}
+    timeout_val = _DEFAULT_TIMEOUT if timeout is None else float(timeout)
+
+    try:
+        res = requests.get(
+            url,
+            params={"systemName": sys_name},
+            headers=headers,
+            timeout=timeout_val,
+        )
+    except requests.Timeout as e:
+        raise Edsmtimeout(str(e)) from e
+    except requests.RequestException as e:
+        raise Edsmunavailable(str(e)) from e
+
+    if res.status_code != 200:
+        raise Edsmunavailable(f"HTTP {res.status_code}")
+
+    try:
+        data = res.json()
+    except Exception as e:
+        raise Edsmbadresponse(str(e)) from e
+
+    if not isinstance(data, dict):
+        raise Edsmbadresponse("Unexpected response")
+
+    items = data.get("stations") or []
+    names: List[str] = []
+    for item in items:
+        name = None
+        if isinstance(item, str):
+            name = item
+        elif isinstance(item, dict):
+            name = item.get("name") or item.get("station") or item.get("stationName")
+        if not name:
+            continue
+        if name not in names:
+            names.append(str(name))
+
+    names = sorted(names, key=lambda item: item.lower())
+    if len(names) > 200:
+        names = names[:200]
+
+    if names:
+        _stations_cache_set(cache_key, names)
+
+    return names
