@@ -263,6 +263,7 @@ class TradeTab(ttk.Frame):
             suggest_func=self._suggest_station,
 
         )
+        self.e_station.bind("<FocusIn>", self._on_station_focus, add="+")
 
 
 
@@ -965,7 +966,7 @@ class TradeTab(ttk.Frame):
 
         q = (tekst or "").strip()
 
-        if not q:
+        if not q and not raw:
 
             return []
 
@@ -1006,6 +1007,16 @@ class TradeTab(ttk.Frame):
             return []
 
 
+
+    def _on_station_focus(self, _event):
+
+        if not getattr(self, "ac_station", None):
+
+            return
+
+        # Pokazuj list? ju? na focus, nawet bez wpisanego tekstu.
+
+        self.ac_station.trigger_suggest(force=True)
 
     def _suggest_system(self, tekst: str):
 

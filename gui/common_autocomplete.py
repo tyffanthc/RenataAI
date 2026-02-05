@@ -399,7 +399,32 @@ class AutocompleteController:
         return
 
     def _on_focus_in(self, _e):
-        pass
+        # domyślnie nie wywołujemy sugestii na focus
+        return
+
+    def trigger_suggest(self, *, query: str | None = None, force: bool = False) -> None:
+        """
+        Ręczne wywołanie sugestii (np. na FocusIn).
+        Jeśli force=True, ignoruje min_chars i pozwala na puste zapytanie.
+        """
+        if self._programmatic_change:
+            return
+        if time.monotonic() < self._suppress_show_until:
+            return
+        t = self.entry.get() if query is None else query
+        t = t or ""
+        if not force and len(t) < self.min_chars:
+            self._fallback_last_query = ""
+            self.hide(reason="trigger_min_chars")
+            return
+        self._req_gen += 1
+        req_gen = self._req_gen
+        focus_epoch = self._focus_epoch
+        threading.Thread(
+            target=self._th_suggest,
+            args=(t, req_gen, t, focus_epoch),
+            daemon=True,
+        ).start()
 
     def _on_list_click(self, e):
         _dbg(
