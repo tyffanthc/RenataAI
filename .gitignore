@@ -7,6 +7,7 @@ __pycache__/
 # Runtime config
 user_settings.json
 config.json
+user_logbook.json
 
 # Piper TTS (local binaries/models)
 tools/piper/
@@ -18,3 +19,4 @@ models/piper/
 *.zip
 RenataAI-VoicePack-Piper-PL-*-setup.exe
 tools/voicepack_installer/Output/
+docs/internal/

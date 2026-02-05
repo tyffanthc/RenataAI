@@ -1,6 +1,6 @@
 {
   "version": "v1",
-  "generated_at": 1768687041.203197,
+  "generated_at": 1770068071.06721,
   "source": {
     "fsd": "https://raw.githubusercontent.com/EDCD/coriolis-data/master/modules/standard/frame_shift_drive.json",
     "booster": "https://raw.githubusercontent.com/EDCD/coriolis-data/master/modules/internal/guardian_fsd_booster.json"

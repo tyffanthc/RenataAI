@@ -32,6 +32,7 @@ All trademarks and brand names belong to their respective owners.
 - Spansh planners: `gui/tabs/spansh/*`, `logic/spansh_payloads.py`
 - Settings: `gui/tabs/settings.py`
 - Config: `config.py` (user settings in `user_settings.json` - do not commit; copy from `user_settings.example.json`)
+- Ustawienia zapisywane są w `%APPDATA%\\RenataAI\\user_settings.json` (lokalny plik obok EXE nie jest używany).
 
 ## Flags and settings
 Feature flags live in `config.py` and are surfaced in Settings when user-facing.

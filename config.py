@@ -54,7 +54,7 @@ def _default_log_dir() -> str:
 # --- DOMYŚLNE PROGI DLA MAKLERA PRO (JACKPOT) -------------------------------
 
 DEFAULT_JACKPOT_THRESHOLDS: Dict[str, int] = {
-    "Gold": 7500,
+    "Gold": 7600,
     "Silver": 4000,
     "Platinum": 20000,
     "Palladium": 9000,
@@ -75,9 +75,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # GŁOS / DŹWIĘK
     "voice_enabled": True,            # globalny TTS
     "tts.engine": "auto",             # auto | piper | pyttsx3
-    "tts.piper_bin": "",
-    "tts.piper_model_path": "",
-    "tts.piper_config_path": "",
+    "tts.piper_bin": "tools/piper/piper.exe",
+    "tts.piper_model_path": "models/piper/pl_PL-gosia-medium.onnx",
+    "tts.piper_config_path": "models/piper/pl_PL-gosia-medium.onnx.json",
     "tts.piper_length_scale": 1.15,
     "tts.piper_sentence_silence": 0.25,
     "tts.pyttsx3_rate": 155,
@@ -93,18 +93,18 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
 
     # SCHOWEK / AUTO-COPY
     "auto_clipboard": True,           # auto-schowek (route)
-    "auto_clipboard_mode": "FULL_ROUTE",
+    "auto_clipboard_mode": "NEXT_HOP",
     "auto_clipboard_next_hop_trigger": "fsdjump",
-    "auto_clipboard_next_hop_copy_on_route_ready": False,
+    "auto_clipboard_next_hop_copy_on_route_ready": True,
     "auto_clipboard_next_hop_resync_policy": "nearest_forward",
     "auto_clipboard_next_hop_allow_manual_advance": True,
     "features.clipboard.next_hop_stepper": True,
-    "debug_next_hop": False,
+    "debug_next_hop": True,
 
     # SPANSH / SIEĆ
     "spansh_timeout": 20,
     "spansh_retries": 3,
-    "features.spansh.debug_payload": False,
+    "features.spansh.debug_payload": True,
     "features.spansh.form_urlencoded_enabled": True,
     "features.spansh.neutron_via_enabled": True,
     "features.spansh.neutron_overcharge_enabled": True,
@@ -150,23 +150,23 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "ship_state_enabled": True,
     "ship_state_use_status_json": True,
     "ship_state_use_cargo_json": True,
-    "ship_state_debug": False,
+    "ship_state_debug": True,
 
     # FIT RESOLVER (JR-3)
     "fit_resolver_enabled": True,
-    "fit_resolver_debug": False,
+    "fit_resolver_debug": True,
     "fit_resolver_fail_on_missing": False,
 
     # JUMP RANGE ENGINE (JR-4)
     "jump_range_engine_enabled": True,
-    "jump_range_engine_debug": False,
+    "jump_range_engine_debug": True,
     "jump_range_rounding": 2,
     "jump_range_include_reservoir_mass": True,
     "jump_range_compute_on": "both",
     "jump_range_engineering_enabled": True,
     "jump_range_engineering_debug": False,
     "jump_range_validate_enabled": False,
-    "jump_range_validate_debug": False,
+    "jump_range_validate_debug": True,
     "jump_range_validate_tolerance_ly": 0.05,
     "jump_range_validate_log_only": True,
 
@@ -185,37 +185,107 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "features.tables.spansh_schema_enabled": True,
     "features.tables.normalized_rows_enabled": True,
     "features.tables.schema_renderer_enabled": True,
-    "features.tables.column_picker_enabled": False,
-    "features.tables.treeview_enabled": False,
+    "features.tables.column_picker_enabled": True,
+    "features.tables.treeview_enabled": True,
     "features.tables.ui_badges_enabled": True,
     "features.tables.persist_sort_enabled": True,
-    "tables_visible_columns": {},
-    "tables_sort_state": {},
-    "column_presets": {},
+    "tables_visible_columns": {
+        "neutron": [
+            "system_name",
+            "distance_ly",
+            "remaining_ly",
+            "neutron",
+            "jumps",
+        ]
+    },
+    "tables_sort_state": {
+        "neutron": {
+            "column": "__lp__",
+            "desc": False,
+        }
+    },
+    "column_presets": {
+        "neutron": {
+            "active": "All",
+            "presets": {
+                "All": [
+                    "system_name",
+                    "distance_ly",
+                    "remaining_ly",
+                    "neutron",
+                    "jumps",
+                ]
+            },
+        }
+    },
     "ui.popup_positions": {},
-    "window_positions": {},
+    "window_positions": {
+        "main_window": {
+            "x": 234,
+            "y": 234,
+            "w": 1100,
+            "h": 673,
+        },
+        "column_picker": {
+            "x": 638,
+            "y": 345,
+        },
+        "settings_window": {
+            "x": 803,
+            "y": 136,
+            "w": 879,
+            "h": 896,
+        },
+        "jackpot_dialog": {
+            "x": 984,
+            "y": 355,
+        },
+    },
     "features.ui.neutron_via_compact": True,
     "features.ui.neutron_via_autocomplete": True,
-    "features.ui.results_context_menu": False,
-    "features.debug.panel": False,
+    "features.ui.results_context_menu": True,
+    "features.debug.panel": True,
     "features.debug.spansh_last_request": False,
     "features.ui.tabs.tourist_enabled": False,
     "features.ui.tabs.fleet_carrier_enabled": False,
     "features.ui.tabs.colonisation_enabled": False,
     "features.ui.tabs.galaxy_enabled": False,
-    "features.providers.edsm_enabled": False,
+    "features.providers.edsm_enabled": True,
     "features.providers.system_lookup_online": False,
     "features.trade.station_autocomplete_by_system": True,
     "features.trade.station_lookup_online": False,
-    "features.trade.market_age_slider": False,
+    "features.trade.market_age_slider": True,
 
     # DEBUG
     "debug_autocomplete": False,
-    "debug_cache": False,
-    "debug_dedup": False,
+    "debug_cache": True,
+    "debug_dedup": True,
 
     # PROGI DLA MAKLERA PRO (backend only – ale też lecą do JSONa)
     "jackpot_thresholds": DEFAULT_JACKPOT_THRESHOLDS,
+
+    # LEGACY / UI ALIASES (utrzymanie zgodnosci)
+    "log_path": "",
+    "enable_sounds": False,
+    "read_landing_pad": True,
+    "route_progress_messages": True,
+    "low_fuel_warning": True,
+    "high_value_planet_alerts": True,
+    "dss_bio3_assistant": True,
+    "trade_jackpot_alerts": True,
+
+    # Tabele (nowy format ustawien per schema)
+    "tables": {
+        "neutron": {
+            "visible_columns": [
+                "system_name",
+                "distance_ly",
+                "remaining_ly",
+                "neutron",
+                "jumps",
+            ]
+        }
+    },
 }
 
 
