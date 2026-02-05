@@ -3,6 +3,7 @@
 from tkinter import ttk
 
 import threading
+import time
 
 from datetime import datetime, timedelta
 
@@ -64,8 +65,9 @@ class TradeTab(ttk.Frame):
         self.var_start_system = tk.StringVar()
 
         self.var_start_station = tk.StringVar()
-        self._station_hint_text = ""
-        self._station_hint_active = False
+        self._station_hint_var = tk.StringVar()
+        self._station_loading = False
+        self._station_last_trigger_ts = 0.0
 
         self._station_cache = {}
 
@@ -183,6 +185,8 @@ class TradeTab(ttk.Frame):
 
         self.refresh_from_app_state()
         self._update_station_hint()
+        self.var_start_system.trace_add("write", lambda *_a: self._update_station_hint())
+        self.var_start_station.trace_add("write", lambda *_a: self._update_station_hint())
 
         self.bind("<Visibility>", self._on_visibility)
 
@@ -238,6 +242,8 @@ class TradeTab(ttk.Frame):
             entry_width=layout.ENTRY_W_LONG,
 
         )
+        self.lbl_station_hint = ttk.Label(f_form, textvariable=self._station_hint_var)
+        self.lbl_station_hint.grid(row=1, column=2, sticky="w", padx=(8, 0))
 
 
 
@@ -1004,7 +1010,9 @@ class TradeTab(ttk.Frame):
             if is_edsm_enabled():
                 edsm_list = edsm_stations_for_system(raw)
                 if edsm_list:
+                    self.root.after(0, lambda: self._finish_station_loading(len(edsm_list)))
                     return edsm_list
+                self.root.after(0, lambda: self._finish_station_loading(0))
             return []
 
         if not self._station_lookup_online:
@@ -1032,12 +1040,16 @@ class TradeTab(ttk.Frame):
         if not getattr(self, "ac_station", None):
 
             return
-
-        if self._station_hint_active:
-            try:
-                self.e_station.selection_range(0, tk.END)
-            except Exception:
-                pass
+        now = time.monotonic()
+        if now - self._station_last_trigger_ts < 0.5:
+            return
+        self._station_last_trigger_ts = now
+        system = (self.var_start_system.get() or "").strip()
+        if system:
+            cached = self._get_cached_stations(system)
+            if not cached and is_edsm_enabled() and not self._get_station_input():
+                self._station_loading = True
+                self._set_station_hint("Ładuję listę stacji…")
 
         # Pokazuj listę już na focus, nawet bez wpisanego tekstu.
 
@@ -1047,8 +1059,7 @@ class TradeTab(ttk.Frame):
         self._update_station_hint()
 
     def _on_station_keypress(self, _event):
-        if self._station_hint_active:
-            self._clear_station_hint()
+        self._update_station_hint()
 
     def _suggest_system(self, tekst: str):
 
@@ -1079,34 +1090,33 @@ class TradeTab(ttk.Frame):
         return (value or "").strip().lower()
 
     def _get_station_input(self) -> str:
-        val = (self.var_start_station.get() or "").strip()
-        if self._station_hint_active and val == self._station_hint_text:
-            return ""
-        return val
+        return (self.var_start_station.get() or "").strip()
+
+    def _finish_station_loading(self, count: int) -> None:
+        self._station_loading = False
+        if self._get_station_input():
+            self._clear_station_hint()
+            return
+        if count > 0:
+            self._clear_station_hint()
+            return
+        if not is_edsm_enabled():
+            self._set_station_hint("Wpisz 1 literę, aby wyszukać stację…")
+            return
+        self._set_station_hint("Brak stacji w EDSM — wpisz 1 literę, aby wyszukać stację…")
 
     def _set_station_hint(self, text: str) -> None:
-        if not text:
-            return
-        # pokazujemy hint tylko gdy pole jest puste (lub już ma hint)
-        current = (self.var_start_station.get() or "").strip()
-        if current and not self._station_hint_active:
-            return
-        self._station_hint_text = text
-        self._station_hint_active = True
-        self.var_start_station.set(text)
+        self._station_hint_var.set(text or "")
 
     def _clear_station_hint(self) -> None:
-        if not self._station_hint_active:
-            return
-        self._station_hint_active = False
-        self.var_start_station.set("")
+        self._station_hint_var.set("")
 
     def _update_station_hint(self) -> None:
-        # hinty tylko gdy pole jest puste
-        if self._get_station_input():
+        if self._station_loading:
             return
-        if self._station_hint_active and (tekst or "").strip() == self._station_hint_text:
-            tekst = ""
+        if self._get_station_input():
+            self._clear_station_hint()
+            return
 
         system = (self.var_start_system.get() or "").strip()
         if not system:
@@ -1114,6 +1124,8 @@ class TradeTab(ttk.Frame):
             return
         if not is_edsm_enabled():
             self._set_station_hint("Wpisz 1 literę, aby wyszukać stację…")
+            return
+        self._clear_station_hint()
 
 
 

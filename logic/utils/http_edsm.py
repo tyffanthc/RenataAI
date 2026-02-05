@@ -49,9 +49,12 @@ def edsm_stations_for_system(system_name: str) -> list[str]:
     if not sys_name:
         return []
     if not DEBOUNCER.is_allowed("edsm_stations", cooldown_sec=0.8, context=sys_name.lower()):
+        MSG_QUEUE.put(("log", f"[EDSM] stations debounce system={sys_name!r}"))
         return []
     try:
-        return fetch_system_stations(sys_name)
+        stations = fetch_system_stations(sys_name)
+        MSG_QUEUE.put(("log", f"[EDSM] stations system={sys_name!r} count={len(stations)}"))
+        return stations
     except Edsmtimeout as e:
         MSG_QUEUE.put(("log", f"[WARN] EDSM timeout: {e}"))
         return []
