@@ -8,6 +8,8 @@ __pycache__/
 user_settings.json
 config.json
 user_logbook.json
+log.txt
+*.log
 
 # Piper TTS (local binaries/models)
 tools/piper/
