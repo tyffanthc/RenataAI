@@ -338,9 +338,10 @@ class SpanshClient:
                     if name not in names:
                         names.append(str(name))
 
-                # Bezpieczny limit – żeby nie zalewać listboxa setkami pozycji
-                if len(names) > 50:
-                    names = names[:50]
+                # Sort + bezpieczny limit – żeby nie zalewać listboxa setkami pozycji
+                names = sorted(names, key=lambda item: item.lower())
+                if len(names) > 200:
+                    names = names[:200]
 
                 print(f"[Spansh] stations '{system}' ('{q}') → {len(names)} wyników")
                 return names

@@ -264,6 +264,7 @@ class TradeTab(ttk.Frame):
 
         )
         self.e_station.bind("<FocusIn>", self._on_station_focus, add="+")
+        self.e_station.bind("<Button-1>", self._on_station_focus, add="+")
 
 
 
@@ -986,6 +987,7 @@ class TradeTab(ttk.Frame):
 
             if cached:
 
+                # q może być puste -> pokaż całą listę
                 return self._filter_stations(cached, q)
 
 
@@ -997,8 +999,19 @@ class TradeTab(ttk.Frame):
 
 
         try:
-
-            return spansh_client.stations_for_system(raw, q)
+            # q=="" -> pobierz pełną listę stacji dla systemu
+            results = spansh_client.stations_for_system(raw, q or None)
+            if results:
+                return results
+            # fallback: jeśli API nic nie zwróciło, spróbuj recent/cached
+            if q == "":
+                combined = []
+                combined.extend(self._get_cached_stations(raw))
+                combined.extend(self._recent_stations)
+                # unikalne + sort
+                uniq = list(dict.fromkeys([s for s in combined if s]))
+                return self._filter_stations(uniq, q)
+            return []
 
         except Exception as e:
 
