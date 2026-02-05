@@ -58,3 +58,7 @@
 - Tag build and archive logs if needed.
 - Voice Pack installer: payload present + ISCC build.
 - Voice Pack installer EXE jest osobnym assetem (nie w ZIP).
+
+## Release notes (must include)
+- Voice Pack (Piper PL) jest opcjonalny.
+- Bez Voice Packa dziala glos systemowy Windows.
