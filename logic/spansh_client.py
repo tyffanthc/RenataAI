@@ -290,6 +290,8 @@ class SpanshClient:
             params["q"] = q
 
         headers = self._headers(referer="https://spansh.co.uk/trade")
+        if config.get("features.spansh.debug_payload", False):
+            print(f"[Spansh] stations request url={url} params={params}")
 
         for attempt in range(max(1, self.default_retries)):
             try:
