@@ -31,8 +31,8 @@ All trademarks and brand names belong to their respective owners.
 - UI tabs: `gui/tabs/*`
 - Spansh planners: `gui/tabs/spansh/*`, `logic/spansh_payloads.py`
 - Settings: `gui/tabs/settings.py`
-- Config: `config.py` (user settings in `user_settings.json` - do not commit; copy from `user_settings.example.json`)
-- Ustawienia zapisywane są w `%APPDATA%\\RenataAI\\user_settings.json` (lokalny plik obok EXE nie jest używany).
+- Config: `config.py` (defaults).
+- Renata stores all user settings in `%APPDATA%\\RenataAI\\user_settings.json`. Local config files next to the application are ignored.
 
 ## Flags and settings
 Feature flags live in `config.py` and are surfaced in Settings when user-facing.
@@ -47,7 +47,7 @@ Settings in FREE mode show a short, safe list of options (5-7 max). Advanced/dev
 
 ## Gotchas
 - Use `py` on Windows if `python` is not available.
-- `user_settings.json` is local-only; do not commit. If missing, copy `user_settings.example.json` -> `user_settings.json`.
+- `user_settings.json` is local-only; do not commit.
 
 ## TTS (Piper, Windows-only)
 - Default engine: `tts.engine=auto` (Piper if available, else pyttsx3).
