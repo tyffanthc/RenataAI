@@ -8,6 +8,7 @@ from typing import Any, Dict
 # --- ŚCIEŻKI / PLIKI ---------------------------------------------------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_SETTINGS_SOURCE_LOGGED = False
 
 
 def _settings_path() -> str:
@@ -20,21 +21,38 @@ def _settings_path() -> str:
     return os.path.join(BASE_DIR, "user_settings.json")
 
 
+def _settings_source() -> str:
+    if os.getenv("RENATA_SETTINGS_PATH"):
+        return "override"
+    if os.getenv("APPDATA") or os.getenv("LOCALAPPDATA"):
+        return "appdata"
+    return "legacy"
+
+
 SETTINGS_FILE = _settings_path()
 
 
-def _migrate_settings_if_needed(target_path: str) -> None:
+def _migrate_settings_if_needed(target_path: str) -> bool:
     try:
         legacy_path = os.path.join(BASE_DIR, "user_settings.json")
         if not os.path.isfile(legacy_path):
-            return
+            return False
         if os.path.isfile(target_path):
-            return
+            return False
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
         shutil.copy2(legacy_path, target_path)
         print(f"[CONFIG] Migrated settings to {target_path}")
+        return True
     except Exception:
-        pass
+        return False
+
+
+def _log_settings_source(source: str) -> None:
+    global _SETTINGS_SOURCE_LOGGED
+    if _SETTINGS_SOURCE_LOGGED:
+        return
+    _SETTINGS_SOURCE_LOGGED = True
+    print(f"[CONFIG] Settings source={source}")
 
 
 def _default_log_dir() -> str:
@@ -241,7 +259,9 @@ class ConfigManager:
     def __init__(self, settings_path: str | None = None) -> None:
         self.settings_path = settings_path or SETTINGS_FILE
         self._settings: Dict[str, Any] = DEFAULT_SETTINGS.copy()
-        _migrate_settings_if_needed(self.settings_path)
+        migrated = _migrate_settings_if_needed(self.settings_path)
+        source = "legacy_migrated" if migrated else _settings_source()
+        _log_settings_source(source)
         self._load()
 
     # --- I/O JSON -----------------------------------------------------------
