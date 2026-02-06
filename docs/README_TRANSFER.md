@@ -1,7 +1,7 @@
 ﻿# RenataAI - Transfer Summary
 
 This file is a compact handoff for moving the project to another ChatGPT account.
-It complements existing docs (docs/RENATA_STATUS.md, docs/RUNBOOK_SMOKE.md, docs/*).
+It complements existing docs in docs/.
 
 ## What this project is
 Desktop assistant for Elite Dangerous with Spansh planners, route tools, and UX-focused UI.
@@ -16,16 +16,17 @@ All trademarks and brand names belong to their respective owners.
 - Smoke (journal): `python tools/smoke_tests_journal.py`
 
 ## Key docs (source of truth)
-- `docs/RENATA_STATUS.md` - current status, flags, workflow
-- `docs/RUNBOOK_SMOKE.md` - smoke procedures
-- `docs/RENATA_OVERVIEW.md` - product overview
-- `docs/RENATA_UX_BACKLOG.md` - UX backlog
-- `docs/RENATA_ARCH.mmd` - architecture sketch
+- `docs/README.md` - what docs/ contains and what it is not
+- `docs/RELEASE_CHECKLIST.md` - release checklist (manual + smoke)
+- `docs/RELEASE_SANITY_CHECK.md` - ZIP clean gate
+- `docs/COMPLIANCE_CHECKLIST.md` - compliance + licenses
+- `docs/README_TRANSFER.md` - handoff summary (this file)
 
-## Recent updates (C1-C3)
-- Column Picker for result tables (flagged).
-- Treeview renderer + sort + LP + header indicators (flagged).
-- Treeview rollout to Ammonia/ELW/HMC/Exomastery/Riches.
+## Recent updates (0.9.1-preview)
+- Settings saved in `%APPDATA%\\RenataAI\\user_settings.json` (EXE-safe).
+- Voice Pack autodetect in APPDATA (tts.engine=auto).
+- Trade station list on focus (EDSM), with loading/status hint.
+- Portable mode starter included in ZIP (`start_renata_portable.bat` + `PORTABLE_MODE.txt`).
 
 ## Where to look in code
 - UI tabs: `gui/tabs/*`
@@ -51,13 +52,9 @@ Settings in FREE mode show a short, safe list of options (5-7 max). Advanced/dev
 
 ## TTS (Piper, Windows-only)
 - Default engine: `tts.engine=auto` (Piper if available, else pyttsx3).
-- Configure paths in `user_settings.json`:
-  - `tts.piper_bin` (e.g. `tools/piper/piper.exe` or a PATH bin)
-  - `tts.piper_model_path` (e.g. `models/piper/pl_pl.onnx`)
-  - `tts.piper_config_path` (e.g. `models/piper/pl_pl.json`)
-- `tools/piper/` and `models/piper/` are local-only and gitignored.
-- Download model/config (example):
-  - `py tools/download_piper_model.py --model-url <URL.onnx> --config-url <URL.json> --out-dir models/piper`
+- Optional Voice Pack in APPDATA is auto-detected when `tts.engine=auto`.
+- If manual paths are used, they live in `user_settings.json`:
+  - `tts.piper_bin`, `tts.piper_model_path`, `tts.piper_config_path`
 
 ### Licencje (TTS / Voice Pack)
 - Piper TTS engine: MIT License (repozytorium rhasspy/piper).

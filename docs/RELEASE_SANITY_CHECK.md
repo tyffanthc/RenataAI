@@ -6,6 +6,15 @@ Before upload, verify the ZIP does NOT contain any of these runtime files:
 - config.json
 - log.txt / *.log
 
+Expected ZIP contents (example):
+- RenataAI.exe
+- README.txt
+- CHANGELOG.txt
+- user_settings.example.json
+- THIRD_PARTY_NOTICES.txt
+- start_renata_portable.bat
+- PORTABLE_MODE.txt
+
 PASS/FAIL:
 - [ ] PASS — ZIP is clean (none of the files above are present)
 - [ ] FAIL — ZIP contains runtime data (do not upload)

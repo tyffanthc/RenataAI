@@ -20,6 +20,7 @@
 - Trade: required field "Stacja*" validation, no request when empty.
 - Trade: "Alerty jackpotow" widoczne w Settings + przycisk progow.
 - Market Age slider (if enabled): slider <-> datetime sync, no auto-run.
+- Trade: stacje na focus (EDSM ON) lub hinty (EDSM OFF).
 
 ## Autocomplete and providers
 - Autocomplete Start/Cel works (offline cache).
@@ -39,10 +40,9 @@
 - fallback: "Wystapil problem, ale aplikacja dziala dalej." / "Sprawdz logi, jesli problem sie powtarza."
 
 ## Exploration voice (manual, if journal available)
-- First discovery: "Gratulacje..." and "To cialo nie ma wczesniejszego odkrywcy."
-- First footfall: "Zanotowano pierwszy ludzki krok..."
+- First discovery / First footfall messages are spoken.
 - FSS milestones: 25/50/75/100% messages.
-- Bio signals: "Potwierdzono liczne sygnaly biologiczne..."
+- Bio signals: "Potwierdzono liczne sygnaly biologiczne..." (if enabled).
 
 ## Debug / observability
 - Logging does not crash app on odd fields.
@@ -54,10 +54,11 @@
 - EDSM ON does not slow Neutron routes (no per-hop lookups).
 
 ## Release artifacts
-- Verify README/RENATA_STATUS are up to date.
+- Verify docs/README_TRANSFER.md + docs/COMPLIANCE_CHECKLIST.md + docs/RELEASE_SANITY_CHECK.md are up to date.
 - Tag build and archive logs if needed.
 - Voice Pack installer: payload present + ISCC build.
 - Voice Pack installer EXE jest osobnym assetem (nie w ZIP).
+- ZIP should contain: RenataAI.exe, README.txt, CHANGELOG.txt, user_settings.example.json, THIRD_PARTY_NOTICES.txt, start_renata_portable.bat, PORTABLE_MODE.txt.
 
 ## Release notes (must include)
 - Voice Pack (Piper PL) jest opcjonalny.

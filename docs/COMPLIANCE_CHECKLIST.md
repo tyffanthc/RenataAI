@@ -29,9 +29,11 @@ Scope: Code, docs, UI text, and third-party services used by RenataAI.
 - [ ] `tools/piper/` and `models/piper/` are gitignored.
 
 ## F) Quick documentation pointers
-- [ ] `docs/RENATA_STATUS.md` reflects current DONE/NEXT/FUTURE.
-- [ ] `docs/SETTINGS_CHECKBOX.md` lists visible/hidden settings for FREE.
-- [ ] `docs/UI_VISIBILITY.md` lists visible/hidden tabs for FREE.
+- [ ] `docs/README.md` explains what docs/ contains (public, not runtime).
+- [ ] `docs/RELEASE_CHECKLIST.md` is up to date for the current release.
+- [ ] `docs/RELEASE_SANITY_CHECK.md` is used before every upload.
+- [ ] `docs/COMPLIANCE_CHECKLIST.md` reflects current release requirements.
+- [ ] `docs/README_TRANSFER.md` reflects current handoff info.
 
 ## G) TTS / Voice Pack (Piper)
 - [x] Piper TTS engine pochodzi z repozytorium rhasspy/piper i jest licencjonowany na MIT License.
