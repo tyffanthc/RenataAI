@@ -9,6 +9,7 @@ from typing import Any, Dict
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _SETTINGS_SOURCE_LOGGED = False
+SCIENCE_EXCEL_PATH = "renata_science_data.xlsx"
 
 
 def _settings_path() -> str:
@@ -158,6 +159,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # MODULES DATA (JR-2)
     "modules_data_enabled": True,
     "modules_data_path": "renata_modules_data.json",
+    "science_data_path": SCIENCE_EXCEL_PATH,
     "modules_data_autogen_enabled": True,
     "modules_data_debug": False,
     "modules_data_sources": {

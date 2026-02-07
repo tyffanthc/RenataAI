@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+import os
 import config
 from logic import utils
 from gui import common
@@ -320,6 +321,9 @@ class RenataApp:
     #   Dane naukowe (Exobiology / Cartography)
     # ------------------------------------------------------------------ #
 
+    def _science_data_path(self) -> str:
+        return str(config.get("science_data_path", config.SCIENCE_EXCEL_PATH) or config.SCIENCE_EXCEL_PATH)
+
     def _try_load_science_data(self) -> None:
         """
         Próbuje wczytać arkusze naukowe z Excela.
@@ -327,7 +331,7 @@ class RenataApp:
         i aktualizuje GUI (SettingsTab), jeśli to możliwe.
         """
         try:
-            self.exobio_df, self.carto_df = load_science_data("renata_science_data.xlsx")
+            self.exobio_df, self.carto_df = load_science_data(self._science_data_path())
             self.science_data_loaded = True
             self.show_status("Dane naukowe załadowane poprawnie.")
         except Exception:
@@ -916,7 +920,7 @@ class RenataApp:
         def worker():
             error = None
             try:
-                generate_science_excel("renata_science_data.xlsx")
+                generate_science_excel(self._science_data_path())
             except Exception as e:
                 error = str(e)
 
@@ -926,7 +930,9 @@ class RenataApp:
 
                 # komunikat końcowy
                 if error is None:
-                    self.show_status("Plik renata_science_data.xlsx wygenerowany poprawnie.")
+                    self.show_status(
+                        f"Plik {os.path.basename(self._science_data_path())} wygenerowany poprawnie."
+                    )
                 else:
                     self.show_status(f"Błąd generowania danych naukowych: {error}")
 

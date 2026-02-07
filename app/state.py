@@ -30,7 +30,8 @@ class AppState:
 
         # --- Próba załadowania danych naukowych ---
         try:
-            exobio_df, carto_df = load_science_data("renata_science_data.xlsx")
+            science_path = str(config.get("science_data_path", config.SCIENCE_EXCEL_PATH) or config.SCIENCE_EXCEL_PATH)
+            exobio_df, carto_df = load_science_data(science_path)
         except Exception as e:
             print("[ERROR] Nie udało się załadować danych naukowych:", e)
             # Fallback: puste DataFrame'y, żeby aplikacja się nie wywalała

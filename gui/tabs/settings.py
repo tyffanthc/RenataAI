@@ -48,10 +48,12 @@ class SettingsTab(ttk.Frame):
     def update_modules_status(self, loaded: bool) -> None:
         if loaded:
             self.modules_status_var.set("Dane modulow zaladowane poprawnie.")
-            self.modules_status_label.configure(foreground="green")
+            if hasattr(self, "modules_status_label"):
+                self.modules_status_label.configure(foreground="green")
         else:
             self.modules_status_var.set("Brak danych modulow - wygeneruj plik.")
-            self.modules_status_label.configure(foreground="red")
+            if hasattr(self, "modules_status_label"):
+                self.modules_status_label.configure(foreground="red")
 
     # ------------------------------------------------------------------ #
     # Zmienne stanu (tk.Variable) – czysto wizualne
@@ -66,6 +68,8 @@ class SettingsTab(ttk.Frame):
         # logi
         self.var_log_path = tk.StringVar(value="")
         self.var_auto_detect_logs = tk.BooleanVar(value=True)
+        self.var_science_data_path = tk.StringVar(value=config.SCIENCE_EXCEL_PATH)
+        self.var_modules_data_path = tk.StringVar(value="renata_modules_data.json")
 
         # SPANSH – nadal frontend only
         self.var_spansh_timeout = tk.StringVar(value="20")
@@ -285,7 +289,99 @@ class SettingsTab(ttk.Frame):
             foreground="#888888",
         ).grid(row=6, column=0, columnspan=2, padx=8, pady=(0, 8), sticky="w")
 
-        self._add_save_bar(parent, row=1)
+        lf_paths = ttk.LabelFrame(parent, text=" Ścieżki i dane ")
+        lf_paths.grid(row=1, column=0, padx=12, pady=(0, 6), sticky="nsew")
+        lf_paths.columnconfigure(1, weight=1)
+
+        ttk.Label(lf_paths, text="Folder logów ED:").grid(
+            row=0, column=0, padx=8, pady=6, sticky="w"
+        )
+        ttk.Entry(lf_paths, textvariable=self.var_log_path).grid(
+            row=0, column=1, padx=8, pady=6, sticky="ew"
+        )
+        ttk.Button(lf_paths, text="Przeglądaj…", command=self._on_browse_logs).grid(
+            row=0, column=2, padx=8, pady=6, sticky="e"
+        )
+
+        ttk.Label(lf_paths, text="Arkusz naukowy (xlsx):").grid(
+            row=1, column=0, padx=8, pady=6, sticky="w"
+        )
+        ttk.Entry(lf_paths, textvariable=self.var_science_data_path).grid(
+            row=1, column=1, padx=8, pady=6, sticky="ew"
+        )
+        ttk.Button(
+            lf_paths,
+            text="Przeglądaj…",
+            command=self._on_browse_science_excel,
+        ).grid(row=1, column=2, padx=8, pady=6, sticky="e")
+
+        ttk.Label(lf_paths, text="Dane modułów (json):").grid(
+            row=2, column=0, padx=8, pady=6, sticky="w"
+        )
+        ttk.Entry(lf_paths, textvariable=self.var_modules_data_path).grid(
+            row=2, column=1, padx=8, pady=6, sticky="ew"
+        )
+        ttk.Button(
+            lf_paths,
+            text="Przeglądaj…",
+            command=self._on_browse_modules_data,
+        ).grid(row=2, column=2, padx=8, pady=6, sticky="e")
+
+        lf_data = ttk.LabelFrame(parent, text=" Generowanie danych ")
+        lf_data.grid(row=2, column=0, padx=12, pady=(0, 6), sticky="nsew")
+        lf_data.columnconfigure(0, weight=1)
+
+        btn_row = ttk.Frame(lf_data)
+        btn_row.grid(row=0, column=0, padx=8, pady=(6, 4), sticky="w")
+
+        self.btn_generate_science = ttk.Button(
+            btn_row,
+            text="Generuj arkusze naukowe",
+            command=self._on_generate_science_excel,
+        )
+        self.btn_generate_science.pack(side="left", padx=(0, 8))
+
+        self.btn_generate_modules = ttk.Button(
+            btn_row,
+            text="Generuj dane modułów",
+            command=self._on_generate_modules_data,
+        )
+        self.btn_generate_modules.pack(side="left")
+        if not config.get("modules_data_autogen_enabled", True):
+            self.btn_generate_modules.state(["disabled"])
+
+        self.science_status_label = ttk.Label(
+            lf_data,
+            textvariable=self.science_status_var,
+            wraplength=620,
+            justify="left",
+        )
+        self.science_status_label.grid(row=1, column=0, padx=8, pady=(0, 2), sticky="w")
+
+        self.modules_status_label = ttk.Label(
+            lf_data,
+            textvariable=self.modules_status_var,
+            wraplength=620,
+            justify="left",
+        )
+        self.modules_status_label.grid(row=2, column=0, padx=8, pady=(0, 6), sticky="w")
+
+        initial_loaded = False
+        if self.controller and hasattr(self.controller, "is_science_data_available"):
+            try:
+                initial_loaded = bool(self.controller.is_science_data_available())
+            except Exception:
+                initial_loaded = False
+        self.update_science_status(initial_loaded)
+        if self.controller and hasattr(self.controller, "is_modules_data_available"):
+            try:
+                self.update_modules_status(bool(self.controller.is_modules_data_available()))
+            except Exception:
+                self.update_modules_status(False)
+        else:
+            self.update_modules_status(False)
+
+        self._add_save_bar(parent, row=3)
 
     def _build_tab_general(self) -> None:
         parent = self._tab_general
@@ -1283,6 +1379,12 @@ class SettingsTab(ttk.Frame):
 
         # logi
         self.var_log_path.set(cfg.get("log_dir", self.var_log_path.get()))
+        self.var_science_data_path.set(
+            cfg.get("science_data_path", self.var_science_data_path.get())
+        )
+        self.var_modules_data_path.set(
+            cfg.get("modules_data_path", self.var_modules_data_path.get())
+        )
         # auto_detect_logs nadal tylko frontendowe – jak jest w JSON, to wczytamy:
         self.var_auto_detect_logs.set(cfg.get("auto_detect_logs", self.var_auto_detect_logs.get()))
 
@@ -1612,6 +1714,8 @@ class SettingsTab(ttk.Frame):
         cfg: Dict[str, Any] = {
             # klucze główne (uzgodnione z backendem)
             "log_dir": self.var_log_path.get().strip() or None,
+            "science_data_path": self.var_science_data_path.get().strip() or config.SCIENCE_EXCEL_PATH,
+            "modules_data_path": self.var_modules_data_path.get().strip() or "renata_modules_data.json",
             "language": self.var_language.get() if self.var_language.get() in ("pl", "en") else "pl",
             "theme": self.var_theme.get() if self.var_theme.get() in ("dark", "ed_orange", "ed_blue", "dark_minimal") else "dark",
 
@@ -1698,12 +1802,17 @@ class SettingsTab(ttk.Frame):
         Sprawdza, czy plik renata_science_data.xlsx istnieje i aktualizuje
         czerwony komunikat pod sekcją Eksploracja.
         """
-        excel_path = getattr(config, "SCIENCE_EXCEL_PATH", "renata_science_data.xlsx")
+        excel_path = self.var_science_data_path.get().strip() or getattr(
+            config, "SCIENCE_EXCEL_PATH", "renata_science_data.xlsx"
+        )
 
         try:
             has_file = os.path.exists(excel_path)
         except Exception:
             has_file = False
+
+        if not hasattr(self, "lbl_exploration_excel_missing"):
+            return
 
         if has_file:
             # Brak komunikatu, jeśli plik istnieje
@@ -1722,10 +1831,12 @@ class SettingsTab(ttk.Frame):
         """
         if loaded:
             self.science_status_var.set("Dane naukowe załadowane poprawnie.")
-            self.science_status_label.configure(foreground="green")
+            if hasattr(self, "science_status_label"):
+                self.science_status_label.configure(foreground="green")
         else:
             self.science_status_var.set("Dane naukowe NIE są dostępne – wygeneruj arkusze.")
-            self.science_status_label.configure(foreground="red")
+            if hasattr(self, "science_status_label"):
+                self.science_status_label.configure(foreground="red")
 
         # Przy każdej zmianie statusu odświeżamy też informację o pliku Excela
         self._update_exploration_excel_hint()
@@ -1744,6 +1855,23 @@ class SettingsTab(ttk.Frame):
         )
         if path:
             self.var_log_path.set(path)
+
+    def _on_browse_science_excel(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Wybierz plik arkusza naukowego",
+            filetypes=[("Excel", "*.xlsx"), ("Wszystkie pliki", "*.*")],
+        )
+        if path:
+            self.var_science_data_path.set(path)
+            self._update_exploration_excel_hint()
+
+    def _on_browse_modules_data(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Wybierz plik danych modułów",
+            filetypes=[("JSON", "*.json"), ("Wszystkie pliki", "*.*")],
+        )
+        if path:
+            self.var_modules_data_path.set(path)
 
     def _on_generate_science_excel(self) -> None:
         """
@@ -1793,6 +1921,12 @@ class SettingsTab(ttk.Frame):
         # domyślny log_dir z backendu (jeśli jest)
         default_log_dir = str(defaults.get("log_dir", "") or "")
         self.var_log_path.set(default_log_dir)
+        self.var_science_data_path.set(
+            str(defaults.get("science_data_path", config.SCIENCE_EXCEL_PATH) or config.SCIENCE_EXCEL_PATH)
+        )
+        self.var_modules_data_path.set(
+            str(defaults.get("modules_data_path", "renata_modules_data.json") or "renata_modules_data.json")
+        )
         self.var_auto_detect_logs.set(bool(defaults.get("auto_detect_logs", True)))
 
         self.var_spansh_timeout.set(str(defaults.get("spansh_timeout", 20)))
