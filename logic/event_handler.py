@@ -93,8 +93,15 @@ class EventHandler:
 
         if typ == "Scan":
             exploration_fss_events.handle_scan(ev, gui_ref)
+            try:
+                from app.state import app_state
+                app_state.system_value_engine.analyze_scan_event(ev)
+            except Exception:
+                pass
         if typ == "SAASignalsFound":
             exploration_bio_events.handle_dss_bio_signals(ev, gui_ref)
+        if typ in ("ScanOrganic", "CodexEntry"):
+            exploration_bio_events.handle_exobio_progress(ev, gui_ref)
 
         # CARGO
         if typ == "Cargo":

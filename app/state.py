@@ -39,6 +39,10 @@ class AppState:
 
         # --- System Value Engine (EPIC 1–4) ---
         self.system_value_engine = SystemValueEngine((exobio_df, carto_df))
+        try:
+            self.system_value_engine.set_current_system(self.current_system)
+        except Exception:
+            pass
 
         # --- Exit Summary Generator (EPIC 2–4) ---
         self.exit_summary = ExitSummaryGenerator(self.system_value_engine)
@@ -69,6 +73,10 @@ class AppState:
         with self.lock:
             self.current_system = system_name
             config.STATE["sys"] = system_name
+            try:
+                self.system_value_engine.set_current_system(system_name)
+            except Exception:
+                pass
         utils.MSG_QUEUE.put(("start_label", system_name))
         log_event_throttled("state.system", 500, "STATE", f"System = {system_name}")
 

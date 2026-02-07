@@ -22,6 +22,8 @@ ALLOWED_MESSAGES = {
     "MSG.TERRAFORMABLE_DETECTED",
     "MSG.BIO_SIGNALS_HIGH",
     "MSG.TRADE_JACKPOT",
+    "MSG.EXOBIO_SAMPLE_LOGGED",
+    "MSG.EXOBIO_NEW_ENTRY",
 }
 
 
@@ -69,6 +71,8 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         "MSG.TERRAFORMABLE_DETECTED",
         "MSG.BIO_SIGNALS_HIGH",
         "MSG.TRADE_JACKPOT",
+        "MSG.EXOBIO_SAMPLE_LOGGED",
+        "MSG.EXOBIO_NEW_ENTRY",
     }:
         raw_text = ctx.get("raw_text")
         if not raw_text:

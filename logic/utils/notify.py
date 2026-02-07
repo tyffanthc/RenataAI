@@ -27,6 +27,8 @@ _TTS_INTENT_MAP = {
     "MSG.TERRAFORMABLE_DETECTED": "context",
     "MSG.BIO_SIGNALS_HIGH": "context",
     "MSG.TRADE_JACKPOT": "context",
+    "MSG.EXOBIO_SAMPLE_LOGGED": "context",
+    "MSG.EXOBIO_NEW_ENTRY": "context",
 }
 
 _TTS_CATEGORY_MAP = {
@@ -47,6 +49,8 @@ _TTS_CATEGORY_MAP = {
     "MSG.TERRAFORMABLE_DETECTED": "explore",
     "MSG.BIO_SIGNALS_HIGH": "explore",
     "MSG.TRADE_JACKPOT": "info",
+    "MSG.EXOBIO_SAMPLE_LOGGED": "explore",
+    "MSG.EXOBIO_NEW_ENTRY": "explore",
 }
 
 _TTS_DEFAULT_COOLDOWNS = {
