@@ -62,6 +62,37 @@ def _current_body(ev: Dict[str, Any]) -> str:
     )
 
 
+def _is_numeric_token(value: str) -> bool:
+    value = _as_text(value)
+    return bool(value and value.isdigit())
+
+
+def _canonical_body_for_key(ev: Dict[str, Any], system_name: str) -> str:
+    """
+    Build a stable body key for exobio tracking.
+    Prefer body name; when ScanOrganic provides only numeric Body/BodyID,
+    reuse last Status body from the same system.
+    """
+    body_raw = _current_body(ev).lower()
+    if body_raw and (not _is_numeric_token(body_raw)):
+        return body_raw
+
+    pos = EXOBIO_LAST_STATUS_POS or {}
+    pos_body = _as_text(pos.get("body")).lower()
+    pos_system = _as_text(pos.get("system")).lower()
+    pos_ts = float(pos.get("ts", 0.0) or 0.0)
+    # Accept recent status body from the same system.
+    if (
+        pos_body
+        and pos_system
+        and system_name.lower() == pos_system
+        and (time.time() - pos_ts) <= 120.0
+    ):
+        return pos_body
+
+    return body_raw
+
+
 def _species_name(ev: Dict[str, Any]) -> str:
     return (
         _as_text(ev.get("Species_Localised"))
@@ -167,14 +198,17 @@ def _spherical_distance_m(
 def _arm_range_tracker(
     key: tuple[str, str, str],
     species: str,
-) -> bool:
+) -> str:
     """
-    Arm real distance tracking from last known status position.
-    Returns True when tracker is armed and ready for distance checks.
+    Arm or queue real distance tracking from last known Status position.
+    Returns one of:
+    - "armed": tracker has baseline position and can measure distance now
+    - "pending": waiting for next valid Status baseline
+    - "unavailable": no species threshold in science data
     """
     threshold_m = _species_minimum_distance(species)
     if threshold_m is None:
-        return False
+        return "unavailable"
 
     pos = EXOBIO_LAST_STATUS_POS or {}
     lat = _as_float(pos.get("lat"))
@@ -184,25 +218,44 @@ def _arm_range_tracker(
     pos_system = _as_text(pos.get("system")).lower()
     key_system, key_body, _ = key
 
-    if lat is None or lon is None or radius_m is None:
-        return False
-    if key_body and pos_body and key_body != pos_body:
-        return False
-    if key_system and pos_system and key_system != pos_system:
-        return False
-    if time.time() - float(pos.get("ts", 0.0) or 0.0) > 30.0:
-        return False
+    tracker = EXOBIO_RANGE_TRACKERS.get(key, {})
+    tracker.update(
+        {
+            "threshold_m": threshold_m,
+            "body": key_body,
+            "system": key_system,
+        }
+    )
 
-    EXOBIO_RANGE_TRACKERS[key] = {
-        "lat": lat,
-        "lon": lon,
-        "radius_m": radius_m,
-        "threshold_m": threshold_m,
-        "body": key_body,
-        "system": key_system,
-    }
+    pos_is_recent = time.time() - float(pos.get("ts", 0.0) or 0.0) <= 30.0
+    body_matches = not (key_body and pos_body and (key_body != pos_body))
+    system_matches = not (key_system and pos_system and (key_system != pos_system))
+
+    if (
+        lat is not None
+        and lon is not None
+        and radius_m is not None
+        and pos_is_recent
+        and body_matches
+        and system_matches
+    ):
+        tracker.update(
+            {
+                "lat": lat,
+                "lon": lon,
+                "radius_m": radius_m,
+                "pending": False,
+            }
+        )
+        EXOBIO_RANGE_TRACKERS[key] = tracker
+        EXOBIO_RANGE_READY_WARNED.discard(key)
+        return "armed"
+
+    # No immediate baseline: queue and wait for next valid status sample.
+    tracker["pending"] = True
+    EXOBIO_RANGE_TRACKERS[key] = tracker
     EXOBIO_RANGE_READY_WARNED.discard(key)
-    return True
+    return "pending"
 
 
 def handle_exobio_status_position(status: Dict[str, Any], gui_ref=None) -> None:
@@ -241,19 +294,37 @@ def handle_exobio_status_position(status: Dict[str, Any], gui_ref=None) -> None:
             continue
 
         key_system, key_body, _ = key
-        if key_body and body and key_body != body:
+        body_mismatch = key_body and body and key_body != body and (not _is_numeric_token(key_body))
+        if body_mismatch:
             continue
         if key_system and system and key_system != system:
             continue
 
+        if tracker.get("pending"):
+            # First valid status sample after ScanOrganic becomes the baseline.
+            tracker["lat"] = lat
+            tracker["lon"] = lon
+            tracker["radius_m"] = radius_m
+            tracker["pending"] = False
+            if (not tracker.get("body")) and body:
+                tracker["body"] = body
+            continue
+
+        t_lat = _as_float(tracker.get("lat"))
+        t_lon = _as_float(tracker.get("lon"))
+        t_radius = _as_float(tracker.get("radius_m"))
+        t_threshold = _as_float(tracker.get("threshold_m"))
+        if t_lat is None or t_lon is None or t_radius is None or t_threshold is None:
+            continue
+
         distance_m = _spherical_distance_m(
-            float(tracker["lat"]),
-            float(tracker["lon"]),
+            t_lat,
+            t_lon,
             lat,
             lon,
-            float(tracker["radius_m"]),
+            t_radius,
         )
-        if distance_m < float(tracker["threshold_m"]):
+        if distance_m < t_threshold:
             continue
 
         EXOBIO_RANGE_READY_WARNED.add(key)
@@ -341,7 +412,7 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
 
     system_name = _current_system(ev)
     species = _species_name(ev)
-    body = _current_body(ev)
+    body = _canonical_body_for_key(ev, system_name)
 
     if typ == "ScanOrganic":
         if not species:
@@ -366,10 +437,10 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
             )
 
         # Real distance tracker based on science data + status position.
-        tracker_armed = _arm_range_tracker(key, species)
+        tracker_state = _arm_range_tracker(key, species)
 
-        # Fallback only when real tracking cannot be armed.
-        if (not tracker_armed) and sample_count == 2 and key not in EXOBIO_RANGE_READY_WARNED:
+        # Legacy fallback only when science data does not provide distance threshold.
+        if tracker_state == "unavailable" and sample_count == 2 and key not in EXOBIO_RANGE_READY_WARNED:
             EXOBIO_RANGE_READY_WARNED.add(key)
             msg = "Odleglosc miedzy probkami potwierdzona. Mozesz skanowac kolejna."
             powiedz(

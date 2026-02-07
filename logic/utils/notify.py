@@ -15,6 +15,7 @@ _TTS_INTENT_MAP = {
     "MSG.ROUTE_FOUND": "critical",
     "MSG.ROUTE_COMPLETE": "critical",
     "MSG.NEXT_HOP": "context",
+    "MSG.JUMPED_SYSTEM": "context",
     "MSG.NEXT_HOP_COPIED": "context",
     "MSG.DOCKED": "context",
     "MSG.UNDOCKED": "context",
@@ -38,6 +39,7 @@ _TTS_INTENT_MAP = {
 
 _TTS_CATEGORY_MAP = {
     "MSG.NEXT_HOP": "nav",
+    "MSG.JUMPED_SYSTEM": "nav",
     "MSG.NEXT_HOP_COPIED": "nav",
     "MSG.ROUTE_FOUND": "route",
     "MSG.ROUTE_COMPLETE": "route",

@@ -108,14 +108,22 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
         if typ != "Location":
             # NAV-NEXT-HOP-SEMANTICS-01:
             # TTS "MSG.NEXT_HOP" should prefer the real next hop from route state.
-            # Fallback to current system keeps legacy behavior when no route is active.
+            # Without active route, announce current jump as "jumped system", not "next hop".
             next_hop = route_manager.get_next_system(str(sysname))
-            powiedz(
-                f"Skok: {sysname}",
-                gui_ref,
-                message_id="MSG.NEXT_HOP",
-                context={"system": next_hop or sysname},
-            )
+            if next_hop:
+                powiedz(
+                    f"Skok: {sysname}",
+                    gui_ref,
+                    message_id="MSG.NEXT_HOP",
+                    context={"system": next_hop},
+                )
+            elif config.get("read_system_after_jump", True):
+                powiedz(
+                    f"Skok: {sysname}",
+                    gui_ref,
+                    message_id="MSG.JUMPED_SYSTEM",
+                    context={"system": sysname},
+                )
             # AUTO-COPY Cel podr+-+-y (tylko w pierwszym bloku, jak w oryginale)
             try:
                 if (gui_ref and hasattr(gui_ref, "state")

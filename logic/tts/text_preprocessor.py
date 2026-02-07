@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import re
 from typing import Any, Dict, Optional
@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 
 ALLOWED_MESSAGES = {
     "MSG.NEXT_HOP",
+    "MSG.JUMPED_SYSTEM",
     "MSG.NEXT_HOP_COPIED",
     "MSG.ROUTE_COMPLETE",
     "MSG.ROUTE_DESYNC",
@@ -91,6 +92,12 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
             return None
         return _finalize_tts(f"Następny skok. {system}.")
 
+    if message_id == "MSG.JUMPED_SYSTEM":
+        system = _normalize_system_name(ctx.get("system"))
+        if not system:
+            return None
+        return _finalize_tts(f"Skok. {system}.")
+
     if message_id == "MSG.NEXT_HOP_COPIED":
         system = _normalize_system_name(ctx.get("system"))
         if system:
@@ -125,7 +132,7 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         return _finalize_tts("25% systemu przeskanowane.")
 
     if message_id == "MSG.FSS_PROGRESS_50":
-        return _finalize_tts("Polowa systemu przeskanowana.")
+        return _finalize_tts("Połowa systemu przeskanowana.")
 
     if message_id == "MSG.FSS_PROGRESS_75":
         return _finalize_tts("75% systemu przeskanowane.")
