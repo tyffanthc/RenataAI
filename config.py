@@ -96,9 +96,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "tts.piper_bin": "",
     "tts.piper_model_path": "",
     "tts.piper_config_path": "",
-    "tts.piper_length_scale": 1.15,
-    "tts.piper_sentence_silence": 0.25,
-    "tts.pyttsx3_rate": 155,
+    # TTS-TUNING-01: calmer "ship AI" voice without sluggish pacing.
+    "tts.piper_length_scale": 0.95,
+    "tts.piper_sentence_silence": 0.12,
+    "tts.pyttsx3_rate": 170,
     "tts.pyttsx3_volume": 1.0,
     "tts.cooldown_global_sec": 8,
     "tts.cooldown_nav_sec": 20,
