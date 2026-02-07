@@ -191,6 +191,10 @@ class NeutronTab(ttk.Frame):
     def clear(self):
         self._clear_results()
         self._set_via_items([])
+        try:
+            app_state.clear_spansh_milestones(source="spansh.neutron.clear")
+        except Exception:
+            pass
         common.emit_status(
             "INFO",
             "ROUTE_CLEARED",
@@ -200,6 +204,41 @@ class NeutronTab(ttk.Frame):
         config.STATE["trasa"] = []
         config.STATE["copied_idx"] = None
         config.STATE["copied_sys"] = None
+
+    @staticmethod
+    def _build_neutron_milestones(route: list[str], details: list[dict]) -> list[str]:
+        def _is_truthy(value) -> bool:
+            if isinstance(value, bool):
+                return value
+            if value is None:
+                return False
+            text = str(value).strip().lower()
+            return text in {"1", "true", "t", "yes", "y"}
+
+        milestones: list[str] = []
+        seen: set[str] = set()
+
+        for system_name, detail in zip_longest(route or [], details or [], fillvalue={}):
+            if not system_name:
+                continue
+            if not isinstance(detail, dict):
+                continue
+            if not _is_truthy(detail.get("neutron")):
+                continue
+            raw = str(system_name).strip()
+            norm = " ".join(raw.split()).casefold()
+            if not raw or norm in seen:
+                continue
+            seen.add(norm)
+            milestones.append(raw)
+
+        # Always include final destination as milestone fallback.
+        if route:
+            last = str(route[-1]).strip()
+            last_norm = " ".join(last.split()).casefold()
+            if last and last_norm not in seen:
+                milestones.append(last)
+        return milestones
 
     def run_neutron(self):
         if not self._can_start():
@@ -296,6 +335,15 @@ class NeutronTab(ttk.Frame):
 
             if tr:
                 route_manager.set_route(tr, "neutron")
+                try:
+                    milestones = self._build_neutron_milestones(tr, details)
+                    app_state.set_spansh_milestones(
+                        milestones,
+                        mode="neutron",
+                        source="spansh.neutron",
+                    )
+                except Exception:
+                    pass
                 if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
                     rows = normalize_neutron_rows(details)
                     self._results_rows = rows

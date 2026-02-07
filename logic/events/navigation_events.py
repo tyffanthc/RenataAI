@@ -86,6 +86,10 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
         # reset FSS + discovery/footfall przy wej+Ťciu do nowego systemu
         reset_fss_progress()
         app_state.set_system(sysname)
+        try:
+            app_state.update_spansh_milestone_on_system(sysname)
+        except Exception:
+            pass
         if not is_bootstrap_replay:
             try:
                 app_state.mark_live_system_event()
