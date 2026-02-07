@@ -22,6 +22,10 @@ class EventHandler:
             fuel_events.handle_status_update(status_data, gui_ref)
         except Exception:
             pass
+        try:
+            exploration_bio_events.handle_exobio_status_position(status_data, gui_ref)
+        except Exception:
+            pass
         if config.get("ship_state_enabled") and config.get("ship_state_use_status_json"):
             try:
                 from app.state import app_state
