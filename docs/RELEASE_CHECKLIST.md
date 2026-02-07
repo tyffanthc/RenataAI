@@ -21,6 +21,7 @@
 - Trade: "Alerty jackpotow" widoczne w Settings + przycisk progow.
 - Market Age slider (if enabled): slider <-> datetime sync, no auto-run.
 - Trade: stacje na focus (EDSM ON) lub hinty (EDSM OFF).
+- Settings: toggles marked `w przygotowaniu` are disabled and clearly labeled.
 
 ## Autocomplete and providers
 - Autocomplete Start/Cel works (offline cache).

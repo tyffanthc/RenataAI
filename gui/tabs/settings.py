@@ -205,6 +205,14 @@ class SettingsTab(ttk.Frame):
         btn_save = ttk.Button(btn_bar, text="Zapisz ustawienia", command=self._on_save)
         btn_save.grid(row=0, column=1, padx=6, pady=4, sticky="e")
 
+    def _disable_ui_only_toggle(self, checkbutton: ttk.Checkbutton, label: str) -> None:
+        """
+        Oznacza przełącznik, który jest już widoczny w UI,
+        ale nie jest jeszcze podpięty do runtime.
+        """
+        checkbutton.configure(text=f"{label} (w przygotowaniu)")
+        checkbutton.state(["disabled"])
+
     # ------------------------------------------------------------------ #
     #   Zakładka: OGÓLNE
     # ------------------------------------------------------------------ #
@@ -500,11 +508,13 @@ class SettingsTab(ttk.Frame):
         lf_docking.columnconfigure(0, weight=1)
         lf_docking.columnconfigure(1, weight=1)
 
-        ttk.Checkbutton(
+        chk_landing_pad = ttk.Checkbutton(
             lf_docking,
             text="Czytaj numer lądowiska",
             variable=self.var_read_landing_pad,
-        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+        )
+        chk_landing_pad.grid(row=0, column=0, padx=8, pady=4, sticky="w")
+        self._disable_ui_only_toggle(chk_landing_pad, "Czytaj numer lądowiska")
 
         ttk.Checkbutton(
             lf_docking,
@@ -530,11 +540,13 @@ class SettingsTab(ttk.Frame):
         lf_navigation.columnconfigure(0, weight=1)
         lf_navigation.columnconfigure(1, weight=1)
 
-        ttk.Checkbutton(
+        chk_route_progress = ttk.Checkbutton(
             lf_navigation,
             text="Komunikaty o postępie trasy",
             variable=self.var_route_progress_messages,
-        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+        )
+        chk_route_progress.grid(row=0, column=0, padx=8, pady=4, sticky="w")
+        self._disable_ui_only_toggle(chk_route_progress, "Komunikaty o postępie trasy")
         ttk.Label(lf_navigation, text="Auto-schowek trasy:").grid(
             row=1, column=0, padx=8, pady=4, sticky="w"
         )
@@ -626,11 +638,13 @@ class SettingsTab(ttk.Frame):
         chk_preflight.state(["disabled"])
         chk_preflight.grid(row=0, column=2, padx=8, pady=4, sticky="w")
 
-        ttk.Checkbutton(
+        chk_high_g = ttk.Checkbutton(
             lf_fuel_safety,
             text="High-G Warning",
             variable=self.var_high_g_warning,
-        ).grid(row=0, column=3, padx=8, pady=4, sticky="w")
+        )
+        chk_high_g.grid(row=0, column=3, padx=8, pady=4, sticky="w")
+        self._disable_ui_only_toggle(chk_high_g, "High-G Warning")
 
         ttk.Label(
             lf_fuel_safety,
@@ -655,17 +669,21 @@ class SettingsTab(ttk.Frame):
         lf_exploration.columnconfigure(1, weight=1)
         lf_exploration.columnconfigure(2, weight=1)
 
-        ttk.Checkbutton(
+        chk_fss = ttk.Checkbutton(
             lf_exploration,
             text="Asystent FSS (postęp skanowania %)",
             variable=self.var_fss_assistant,
-        ).grid(row=0, column=0, padx=8, pady=4, sticky="w")
+        )
+        chk_fss.grid(row=0, column=0, padx=8, pady=4, sticky="w")
+        self._disable_ui_only_toggle(chk_fss, "Asystent FSS (postęp skanowania %)")
 
-        ttk.Checkbutton(
+        chk_high_value = ttk.Checkbutton(
             lf_exploration,
             text="Alerty wysokowartościowych planet (ELW/WW/HMC)",
             variable=self.var_high_value_planet_alerts,
-        ).grid(row=0, column=1, padx=8, pady=4, sticky="w")
+        )
+        chk_high_value.grid(row=0, column=1, padx=8, pady=4, sticky="w")
+        self._disable_ui_only_toggle(chk_high_value, "Alerty wysokowartościowych planet (ELW/WW/HMC)")
 
         ttk.Checkbutton(
             lf_exploration,
@@ -1765,87 +1783,100 @@ class SettingsTab(ttk.Frame):
 
     def _on_reset(self) -> None:
         """Przywrócenie domyślnych wartości UI."""
+        defaults = config.DEFAULT_SETTINGS
+
         # język / wygląd
-        self.var_language.set("pl")
-        self.var_theme.set("dark")
-        self.var_use_system_theme.set(True)
+        self.var_language.set(defaults.get("language", "pl"))
+        self.var_theme.set(defaults.get("theme", "dark"))
+        self.var_use_system_theme.set(bool(defaults.get("use_system_theme", True)))
 
         # domyślny log_dir z backendu (jeśli jest)
-        try:
-            default_log_dir = config.get("log_dir", "")
-        except Exception:
-            default_log_dir = ""
+        default_log_dir = str(defaults.get("log_dir", "") or "")
         self.var_log_path.set(default_log_dir)
-        self.var_auto_detect_logs.set(True)
+        self.var_auto_detect_logs.set(bool(defaults.get("auto_detect_logs", True)))
 
-        self.var_spansh_timeout.set("20")
-        self.var_spansh_retries.set("3")
+        self.var_spansh_timeout.set(str(defaults.get("spansh_timeout", 20)))
+        self.var_spansh_retries.set(str(defaults.get("spansh_retries", 3)))
 
-        self.var_enable_sounds.set(True)
-        self.var_confirm_exit.set(True)
-        self.var_tts_free_policy.set(True)
-        self.var_online_data_enabled.set(False)
+        self.var_enable_sounds.set(bool(defaults.get("voice_enabled", True)))
+        self.var_confirm_exit.set(bool(defaults.get("confirm_exit", True)))
+        self.var_tts_free_policy.set(bool(defaults.get("features.tts.free_policy_enabled", True)))
+        self.var_online_data_enabled.set(
+            bool(defaults.get("features.providers.system_lookup_online", False))
+            or bool(defaults.get("features.trade.station_lookup_online", False))
+            or bool(defaults.get("features.providers.edsm_enabled", False))
+        )
 
         # Asystenci – domyślnie włączone jak w DEFAULT_SETTINGS
-        self.var_read_landing_pad.set(True)
-        self.var_auto_clipboard.set(True)
-        self.var_auto_clipboard_mode.set("FULL_ROUTE")
-        self.var_auto_clipboard_next_hop_trigger.set("fsdjump")
-        self.var_auto_clipboard_next_hop_copy_on_route_ready.set(False)
-        self.var_auto_clipboard_next_hop_resync_policy.set("nearest_forward")
-        self.var_auto_clipboard_next_hop_allow_manual_advance.set(True)
-        self.var_features_clipboard_next_hop_stepper.set(True)
+        self.var_read_landing_pad.set(bool(defaults.get("landing_pad_speech", True)))
+        self.var_auto_clipboard.set(bool(defaults.get("auto_clipboard", True)))
+        self.var_auto_clipboard_mode.set(str(defaults.get("auto_clipboard_mode", "NEXT_HOP")))
+        self.var_auto_clipboard_next_hop_trigger.set(
+            str(defaults.get("auto_clipboard_next_hop_trigger", "fsdjump"))
+        )
+        self.var_auto_clipboard_next_hop_copy_on_route_ready.set(
+            bool(defaults.get("auto_clipboard_next_hop_copy_on_route_ready", True))
+        )
+        self.var_auto_clipboard_next_hop_resync_policy.set(
+            str(defaults.get("auto_clipboard_next_hop_resync_policy", "nearest_forward"))
+        )
+        self.var_auto_clipboard_next_hop_allow_manual_advance.set(
+            bool(defaults.get("auto_clipboard_next_hop_allow_manual_advance", True))
+        )
+        self.var_features_clipboard_next_hop_stepper.set(
+            bool(defaults.get("features.clipboard.next_hop_stepper", True))
+        )
 
-        self.var_route_progress_messages.set(True)
-        self.var_low_fuel_warning.set(True)
-        self.var_low_fuel_threshold.set("15")
-        self.var_fss_assistant.set(True)
-        self.var_high_value_planet_alerts.set(True)
-        self.var_dss_bio3_assistant.set(True)
-        self.var_fdff_notifications.set(True)
+        self.var_route_progress_messages.set(bool(defaults.get("route_progress_speech", True)))
+        self.var_low_fuel_warning.set(bool(defaults.get("fuel_warning", True)))
+        self.var_low_fuel_threshold.set(str(defaults.get("fuel_warning_threshold_pct", 15)))
+        self.var_fss_assistant.set(bool(defaults.get("fss_assistant", True)))
+        self.var_high_value_planet_alerts.set(bool(defaults.get("high_value_planets", True)))
+        self.var_dss_bio3_assistant.set(bool(defaults.get("bio_assistant", True)))
+        self.var_fdff_notifications.set(bool(defaults.get("fdff_notifications", True)))
 
-        self.var_trade_jackpot_alerts.set(True)
-        self.var_smuggler_alert.set(True)
-        self.var_trade_market_age_slider.set(False)
-        self.var_mining_accountant.set(False)
+        self.var_trade_jackpot_alerts.set(bool(defaults.get("trade_jackpot_speech", True)))
+        self.var_smuggler_alert.set(bool(defaults.get("smuggler_alert", True)))
+        self.var_trade_market_age_slider.set(bool(defaults.get("features.trade.market_age_slider", True)))
+        self.var_mining_accountant.set(bool(defaults.get("mining_accountant", False)))
         self.jackpot_thresholds = config.DEFAULT_JACKPOT_THRESHOLDS.copy()
 
-        self.var_bounty_hunter.set(False)
-        self.var_preflight_limpets.set(True)
-        self.var_high_g_warning.set(True)
+        self.var_bounty_hunter.set(bool(defaults.get("bounty_hunter", False)))
+        self.var_preflight_limpets.set(bool(defaults.get("preflight_limpets", True)))
+        self.var_high_g_warning.set(bool(defaults.get("high_g_warning", True)))
 
-        self.var_read_system_after_jump.set(True)
+        self.var_read_system_after_jump.set(bool(defaults.get("read_system_after_jump", True)))
 
-        self.var_debug_autocomplete.set(False)
-        self.var_debug_cache.set(False)
-        self.var_debug_dedup.set(False)
-        self.var_debug_ship_state.set(False)
-        self.var_debug_next_hop.set(False)
-        self.var_debug_panel.set(False)
-        self.var_debug_spansh_payload.set(False)
-        self.var_jump_range_engine_debug.set(False)
-        self.var_fit_resolver_debug.set(False)
-        self.var_jump_range_validate_debug.set(False)
-        self.var_provider_edsm_enabled.set(False)
+        self.var_debug_autocomplete.set(bool(defaults.get("debug_autocomplete", False)))
+        self.var_debug_cache.set(bool(defaults.get("debug_cache", False)))
+        self.var_debug_dedup.set(bool(defaults.get("debug_dedup", False)))
+        self.var_debug_ship_state.set(bool(defaults.get("ship_state_debug", False)))
+        self.var_debug_next_hop.set(bool(defaults.get("debug_next_hop", False)))
+        self.var_debug_panel.set(bool(defaults.get("features.debug.panel", False)))
+        self.var_debug_spansh_payload.set(bool(defaults.get("features.spansh.debug_payload", False)))
+        self.var_jump_range_engine_debug.set(bool(defaults.get("jump_range_engine_debug", False)))
+        self.var_fit_resolver_debug.set(bool(defaults.get("fit_resolver_debug", False)))
+        self.var_jump_range_validate_debug.set(bool(defaults.get("jump_range_validate_debug", False)))
+        self.var_provider_edsm_enabled.set(bool(defaults.get("features.providers.edsm_enabled", True)))
 
-        self.var_tables_spansh_schema_enabled.set(True)
-        self.var_tables_normalized_rows_enabled.set(True)
-        self.var_tables_schema_renderer_enabled.set(True)
-        self.var_tables_column_picker_enabled.set(False)
-        self.var_tables_ui_badges_enabled.set(True)
-        self.var_tables_treeview_enabled.set(False)
-        self.var_tables_persist_sort_enabled.set(True)
-        self.var_results_context_menu.set(False)
+        self.var_tables_spansh_schema_enabled.set(bool(defaults.get("features.tables.spansh_schema_enabled", True)))
+        self.var_tables_normalized_rows_enabled.set(bool(defaults.get("features.tables.normalized_rows_enabled", True)))
+        self.var_tables_schema_renderer_enabled.set(bool(defaults.get("features.tables.schema_renderer_enabled", True)))
+        self.var_tables_column_picker_enabled.set(bool(defaults.get("features.tables.column_picker_enabled", True)))
+        self.var_tables_ui_badges_enabled.set(bool(defaults.get("features.tables.ui_badges_enabled", True)))
+        self.var_tables_treeview_enabled.set(bool(defaults.get("features.tables.treeview_enabled", True)))
+        self.var_tables_persist_sort_enabled.set(bool(defaults.get("features.tables.persist_sort_enabled", True)))
+        self.var_results_context_menu.set(bool(defaults.get("features.ui.results_context_menu", True)))
         self.tables_visible_columns = {}
 
-        self.var_jump_range_engine_enabled.set(True)
-        self.var_planner_auto_use_ship_jump_range.set(True)
-        self.var_planner_allow_manual_range_override.set(True)
-        self.var_planner_fallback_range_ly.set("30.0")
-        self.var_jump_range_validate_enabled.set(False)
-        self.var_jump_range_include_reservoir_mass.set(True)
-        self.var_jump_range_engineering_enabled.set(True)
-        self.var_jump_range_compute_on.set("both")
+        self.var_jump_range_engine_enabled.set(bool(defaults.get("jump_range_engine_enabled", True)))
+        self.var_planner_auto_use_ship_jump_range.set(bool(defaults.get("planner_auto_use_ship_jump_range", True)))
+        self.var_planner_allow_manual_range_override.set(bool(defaults.get("planner_allow_manual_range_override", True)))
+        self.var_planner_fallback_range_ly.set(str(defaults.get("planner_fallback_range_ly", 30.0)))
+        self.var_jump_range_validate_enabled.set(bool(defaults.get("jump_range_validate_enabled", False)))
+        self.var_jump_range_include_reservoir_mass.set(bool(defaults.get("jump_range_include_reservoir_mass", True)))
+        self.var_jump_range_engineering_enabled.set(bool(defaults.get("jump_range_engineering_enabled", True)))
+        self.var_jump_range_compute_on.set(str(defaults.get("jump_range_compute_on", "both")))
 
         # Reset statusu naukowego do stanu „brak danych”
         self.update_science_status(False)

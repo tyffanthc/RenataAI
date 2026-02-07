@@ -43,6 +43,10 @@ Key flags:
 - `features.tables.treeview_enabled`
 - `features.ui.results_context_menu`
 
+## Settings runtime contract
+- Settings marked as `w przygotowaniu` are UI placeholders only (saved in config, not runtime-active yet).
+- Runtime-active toggles have immediate effect and are used directly by event/planner logic.
+
 ## FREE Settings Profile
 Settings in FREE mode show a short, safe list of options (5-7 max). Advanced/dev options are hidden.
 
