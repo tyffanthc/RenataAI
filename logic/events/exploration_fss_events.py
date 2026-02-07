@@ -31,6 +31,50 @@ FIRST_SYS_DISC_WARNED = False           # komunikat o dziewiczym systemie
 FIRST_BODY_DISC_WARNED_BODIES = set()   # ciała, dla których padł komunikat discovery
 
 
+def _wire_exit_summary_to_runtime() -> None:
+    """
+    EXIT-SUMMARY-WIRE-01:
+    Build and publish summary when we know FSS scan is complete.
+
+    We keep this path UI-safe:
+    - no new TTS in this ticket (log/panel only),
+    - one summary snapshot per generated text (dedup),
+    - graceful no-op on missing data.
+    """
+    try:
+        if not bool(getattr(app_state.config, "exit_summary_enabled", True)):
+            return
+    except Exception:
+        return
+
+    system_name = (getattr(app_state, "current_system", "") or "").strip()
+    if not system_name:
+        return
+
+    try:
+        summary_text = app_state.exit_summary.build_and_format(
+            system_name=system_name,
+            scanned_bodies=FSS_DISCOVERED if FSS_DISCOVERED > 0 else None,
+            total_bodies=FSS_TOTAL_BODIES if FSS_TOTAL_BODIES > 0 else None,
+        )
+    except Exception:
+        return
+
+    if not summary_text:
+        return
+
+    previous = getattr(app_state, "last_exit_summary_text", None)
+    if summary_text == previous:
+        return
+
+    app_state.last_exit_summary_text = summary_text
+    for line in summary_text.splitlines():
+        line = str(line).strip()
+        if not line:
+            continue
+        utils.MSG_QUEUE.put(("log", f"[EXIT-SUMMARY] {line}"))
+
+
 def reset_fss_progress() -> None:
     """Reset liczników FSS oraz powiązanych flag discovery.
 
@@ -219,3 +263,4 @@ def handle_fss_all_bodies_found(ev: Dict[str, Any], gui_ref=None):
                 message_id="MSG.SYSTEM_FULLY_SCANNED",
                 context={"system": system_name},
             )
+            _wire_exit_summary_to_runtime()
