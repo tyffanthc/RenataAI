@@ -59,8 +59,8 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
     - FSDJump
     - CarrierJump
 
-    Przeniesione z bloku 'pozycja gracza' w EventHandler.handle_event.
-    Zachowuje nawet podw+-jny reset/powiedz (jak w oryginale), +-eby nie zmienia¦ç zachowania.
+    Przeniesione z bloku "pozycja gracza" w EventHandler.handle_event.
+    NAV-NEXT-HOP-DUPLICATE-01: pojedyncza obsluga komunikatu skoku na event.
     """
     typ = ev.get("event")
 
@@ -133,29 +133,6 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
                     gui_ref.state.next_travel_target = None
             except Exception:
                 pass
-
-    # Oryginalny kod mia+é duplikacj¦Ö tego bloku bez auto-copy;
-    # zachowujemy j¦ů, aby nie zmienia¦ç zachowania (podw+-jny powiedz przy FSDJump/CarrierJump).
-    sysname = (
-        ev.get("StarSystem")
-        or ev.get("SystemName")
-        or ev.get("StarSystemName")
-    )
-    if sysname:
-        reset_fss_progress()
-        app_state.set_system(sysname)
-        
-        if typ != "Location":
-            # NAV-NEXT-HOP-SEMANTICS-01:
-            # mirror the same context mapping in duplicated legacy block
-            next_hop = route_manager.get_next_system(str(sysname))
-            powiedz(
-                f"Skok: {sysname}",
-                gui_ref,
-                message_id="MSG.NEXT_HOP",
-                context={"system": next_hop or sysname},
-            )
-
 
 def handle_docked(ev: Dict[str, object], gui_ref=None):
     """
