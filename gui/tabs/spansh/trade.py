@@ -1010,8 +1010,9 @@ class TradeTab(ttk.Frame):
             if is_edsm_enabled():
                 edsm_list = edsm_stations_for_system(raw)
                 if edsm_list:
+                    self._remember_station_list(raw, edsm_list)
                     self.root.after(0, lambda: self._finish_station_loading(len(edsm_list)))
-                    return edsm_list
+                    return self._filter_stations(self._get_cached_stations(raw), q)
                 self.root.after(0, lambda: self._finish_station_loading(0))
             return []
 
@@ -1098,7 +1099,15 @@ class TradeTab(ttk.Frame):
             self._clear_station_hint()
             return
         if count > 0:
-            self._clear_station_hint()
+            self._set_station_hint("Lista stacji załadowana.")
+            self.root.after(1200, self._update_station_hint)
+            try:
+                focused = str(self.root.focus_get()) == str(self.e_station)
+            except Exception:
+                focused = False
+            if focused and getattr(self, "ac_station", None):
+                # Po pierwszym załadowaniu pokaż listę bez drugiego kliku.
+                self.root.after(10, lambda: self.ac_station.trigger_suggest(query="", force=True))
             return
         if not is_edsm_enabled():
             self._set_station_hint("Wpisz 1 literę, aby wyszukać stację…")
@@ -1154,6 +1163,20 @@ class TradeTab(ttk.Frame):
         recent.insert(0, sta_value)
 
         self._recent_stations = recent[: self._recent_limit]
+
+    def _remember_station_list(self, system: str, stations: list[str]) -> None:
+        sys_value = (system or "").strip()
+        if not sys_value:
+            return
+        key = self._normalize_key(sys_value)
+        bucket = self._station_cache.get(key)
+        if bucket is None:
+            bucket = set()
+            self._station_cache[key] = bucket
+        for station in stations or []:
+            sta_value = (station or "").strip()
+            if sta_value:
+                bucket.add(sta_value)
 
 
 
