@@ -1,6 +1,6 @@
-# RenataAI - Features (v0.9.1-preview)
+# R.E.N.A.T.A. (RenataAI) - Features (v0.9.1-preview)
 
-This file is a concise, code-based overview of what RenataAI currently does.
+This file is a concise, code-based overview of what R.E.N.A.T.A. currently does.
 It reflects the current repository state and default behavior.
 
 ## Core runtime

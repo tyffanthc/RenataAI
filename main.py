@@ -13,7 +13,7 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = RenataApp(root)
 
-    powiedz("Renata v90: startuję pętlę Journal...", app)
+    powiedz("R.E.N.A.T.A. v90: startuję pętlę Journal...", app)
 
     # Ścieżka logów z JSON-a (user_settings.json)
     log_dir = config.get("log_dir")

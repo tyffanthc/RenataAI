@@ -1,4 +1,4 @@
-# Release Checklist - RenataAI
+# Release Checklist - R.E.N.A.T.A. (RenataAI)
 
 ## Scope confirmation
 - Confirm target version and included tickets.

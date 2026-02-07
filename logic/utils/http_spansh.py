@@ -7,7 +7,7 @@ from logic.utils.http_edsm import edsm_systems_suggest, is_edsm_enabled
 HEADERS = {
     "User-Agent": (
         "RENATA/1.0 "
-        "(R.E.N.A.T.A. - Route Engine & Navigation Automated Trade Assistant; "
+        "(R.E.N.A.T.A. - Route, Exploration & Navigation Assistant for Trading & Analysis; "
         "contact: tyffanthc@gmail.com)"
     ),
     "Accept": "application/json",

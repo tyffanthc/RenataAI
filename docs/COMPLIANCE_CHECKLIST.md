@@ -1,7 +1,7 @@
 ﻿# COMPLIANCE_CHECKLIST.md
 
 Purpose: Quick audit to reduce copyright and policy risks before release.
-Scope: Code, docs, UI text, and third-party services used by RenataAI.
+Scope: Code, docs, UI text, and third-party services used by R.E.N.A.T.A. (RenataAI).
 
 ## A) Third-party services and trademarks
 - [ ] All third-party names are used only for identification (Spansh, EDSM, Inara, EDTools, Elite Dangerous).

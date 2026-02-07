@@ -196,7 +196,7 @@ class RenataApp:
             self.root,
             on_quit=self.root.quit,
             on_open_settings=self._open_settings_window,
-            on_show_about=self._show_about_stub,
+            on_show_about=self._show_about_dialog,
             on_switch_tab=self._switch_tab,
             on_toggle_always_on_top=self.on_toggle_always_on_top,
             on_open_link=self.on_open_link,
@@ -248,13 +248,25 @@ class RenataApp:
         if tab is not None:
             self.main_nb.select(tab)
 
-    def _show_about_stub(self):
+    def _show_about_dialog(self):
         import tkinter.messagebox as mbox
-        mbox.showinfo(
-            "O programie",
-            "R.E.N.A.T.A. AI v90\nFrontend cockpit edition.\n"
-            "Ten dialog to tylko placeholder – backend sobie go kiedyś dopieści. :)"
+
+        release_url = "https://github.com/tyffanthc/RenataAI/releases/tag/v0.9.1-preview"
+        text = (
+            "R.E.N.A.T.A. v90\n"
+            "Route, Exploration & Navigation Assistant for Trading & Analysis.\n\n"
+            "Wersja FREE Preview:\n"
+            "- Companion desktop do Elite Dangerous\n"
+            "- Offline-first, bezpieczne fallbacki\n"
+            "- Voice Pack Piper PL jest opcjonalny\n\n"
+            f"Release: {release_url}\n\n"
+            "Otworzyc strone release w przegladarce?"
         )
+        if mbox.askyesno("O programie", text):
+            try:
+                webbrowser.open(release_url)
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------ #
     #   Okno ustawień (Konfiguracja Systemów R.E.N.A.T.A.)

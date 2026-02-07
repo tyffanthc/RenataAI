@@ -32,7 +32,7 @@ from logic.request_dedup import make_request_key, run_deduped
 HEADERS: Dict[str, str] = {
     "User-Agent": (
         "RENATA/1.0 "
-        "(R.E.N.A.T.A. - Route Engine & Navigation Automated Trade Assistant; "
+        "(R.E.N.A.T.A. - Route, Exploration & Navigation Assistant for Trading & Analysis; "
         "contact: tyffanthc@gmail.com)"
     ),
     "Accept": "application/json",

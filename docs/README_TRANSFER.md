@@ -1,10 +1,10 @@
-﻿# RenataAI - Transfer Summary
+﻿# R.E.N.A.T.A. (RenataAI) - Transfer Summary
 
 This file is a compact handoff for moving the project to another ChatGPT account.
 It complements existing docs in docs/.
 
 ## What this project is
-Desktop assistant for Elite Dangerous with Spansh planners, route tools, and UX-focused UI.
+Desktop companion for Elite Dangerous with Spansh planners, route tools, and UX-focused UI.
 
 ## Attribution / Trademarks
 RenataAI uses third-party services/APIs (Spansh, EDSM, Inara, EDTools) and the Elite Dangerous Journal format.
@@ -64,3 +64,4 @@ Settings in FREE mode show a short, safe list of options (5-7 max). Advanced/dev
 - Piper TTS engine: MIT License (repozytorium rhasspy/piper).
 - Model glosu PL: `pl_PL-gosia-medium.onnx` — licencja CC0 (public domain).
 - Voice Pack (Piper + model) jest opcjonalny i dystrybuowany oddzielnie od glownego release.
+
