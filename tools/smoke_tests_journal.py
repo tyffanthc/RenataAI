@@ -27,6 +27,7 @@ from logic.utils import MSG_QUEUE, DEBOUNCER  # type: ignore
 from logic.event_handler import handler  # type: ignore
 from app.state import app_state  # type: ignore
 from app.route_manager import route_manager  # type: ignore
+from gui import common as gui_common  # type: ignore
 
 
 class TestContext:
@@ -359,6 +360,80 @@ def test_route_manager_autoschowek_integration(ctx: TestContext) -> None:
     )
 
 
+def test_nav_symbiosis_guard_and_desync(ctx: TestContext) -> None:
+    """
+    TEST-NAV-SYMBIOSIS-01 (techniczny):
+    - aligned NavRoute + milestone => brak ROUTE_DESYNC,
+    - real off-route => ROUTE_DESYNC (po confirm_jumps),
+    - powrót na trasę => kasuje stan desync.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+
+    cfg = config.config._settings  # type: ignore[attr-defined]
+    original = {
+        "auto_clipboard_mode": cfg.get("auto_clipboard_mode"),
+        "auto_clipboard_next_hop_trigger": cfg.get("auto_clipboard_next_hop_trigger"),
+        "auto_clipboard_next_hop_resync_policy": cfg.get("auto_clipboard_next_hop_resync_policy"),
+        "auto_clipboard_next_hop_desync_confirm_jumps": cfg.get("auto_clipboard_next_hop_desync_confirm_jumps"),
+        "features.clipboard.next_hop_stepper": cfg.get("features.clipboard.next_hop_stepper"),
+        "route_progress_speech": cfg.get("route_progress_speech"),
+    }
+
+    try:
+        cfg["auto_clipboard_mode"] = "NEXT_HOP"
+        cfg["auto_clipboard_next_hop_trigger"] = "fsdjump"
+        cfg["auto_clipboard_next_hop_resync_policy"] = "nearest_forward"
+        cfg["auto_clipboard_next_hop_desync_confirm_jumps"] = 1
+        cfg["features.clipboard.next_hop_stepper"] = True
+        cfg["route_progress_speech"] = True
+
+        route = ["NAV_A", "NAV_B", "NAV_C", "NAV_D", "NAV_E"]
+        gui_common._set_active_route_data(route, "dummy", "sig", "smoke.nav")
+        app_state.set_spansh_milestones(["NAV_E"], mode="neutron", source="smoke.nav")
+        app_state.set_nav_route(endpoint="NAV_E", systems=route, source="smoke.nav")
+
+        # Aligned jump path: no false desync.
+        gui_common.update_next_hop_on_system("NAV_B", "fsdjump", source="smoke.nav")
+        aligned_msgs = ctx.drain_queue()
+        aligned_joined = " | ".join(str(m) for m in aligned_msgs)
+        assert "ROUTE_DESYNC" not in aligned_joined, (
+            "Aligned NavRoute+milestone should not emit ROUTE_DESYNC; "
+            f"got: {aligned_joined}"
+        )
+
+        # Real off-route: should trigger desync.
+        ctx.clear_queue()
+        gui_common.update_next_hop_on_system("NAV_Z", "fsdjump", source="smoke.nav")
+        off_msgs = ctx.drain_queue()
+        off_joined = " | ".join(str(m) for m in off_msgs)
+        assert "ROUTE_DESYNC" in off_joined, (
+            "Real off-route should emit ROUTE_DESYNC; "
+            f"got: {off_joined}"
+        )
+
+        # Return to route clears desync state and resumes progression.
+        ctx.clear_queue()
+        gui_common.update_next_hop_on_system("NAV_C", "fsdjump", source="smoke.nav")
+        back_msgs = ctx.drain_queue()
+        back_joined = " | ".join(str(m) for m in back_msgs)
+        assert "ROUTE_DESYNC" not in back_joined, (
+            "Back on route should not re-emit ROUTE_DESYNC; "
+            f"got: {back_joined}"
+        )
+        assert not bool(getattr(gui_common, "_ACTIVE_ROUTE_DESYNC_ACTIVE", True)), (
+            "Desync flag should be cleared after returning to route"
+        )
+    finally:
+        for key, value in original.items():
+            cfg[key] = value
+        try:
+            app_state.clear_spansh_milestones(source="smoke.nav.cleanup")
+            app_state.clear_nav_route(source="smoke.nav.cleanup")
+        except Exception:
+            pass
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -376,6 +451,7 @@ def run_all_tests() -> int:
         ("test_debouncer_basic", test_debouncer_basic),
         ("test_journal_sequence_no_crash", test_journal_sequence_no_crash),
         ("test_route_manager_autoschowek_integration", test_route_manager_autoschowek_integration),
+        ("test_nav_symbiosis_guard_and_desync", test_nav_symbiosis_guard_and_desync),
     ]
 
     print("=== RenataAI Journal / AppState / Debouncer Tests (T2) ===")
