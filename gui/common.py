@@ -37,6 +37,7 @@ _ACTIVE_MILESTONE_TARGET_RAW: str | None = None
 _ACTIVE_MILESTONE_TARGET_INDEX: int | None = None
 _ACTIVE_MILESTONE_START_INDEX: int = 0
 _ACTIVE_MILESTONE_ANNOUNCED: set[int] = set()
+_ACTIVE_MILESTONE_START_REMAINING: int | None = None
 _ACTIVE_ROUTE_LISTBOX = None
 _ACTIVE_ROUTE_LIST_DATA: list[str] = []
 _ACTIVE_ROUTE_LIST_NUMERATE = True
@@ -1258,7 +1259,7 @@ def _set_active_route_data(route, text, sig, source: str | None) -> None:
     global _ACTIVE_ROUTE_DESYNC_STRIKES, _ACTIVE_ROUTE_DESYNC_ACTIVE
     global _ACTIVE_MILESTONE_TARGET_NORM, _ACTIVE_MILESTONE_TARGET_RAW
     global _ACTIVE_MILESTONE_TARGET_INDEX, _ACTIVE_MILESTONE_START_INDEX
-    global _ACTIVE_MILESTONE_ANNOUNCED
+    global _ACTIVE_MILESTONE_ANNOUNCED, _ACTIVE_MILESTONE_START_REMAINING
 
     systems_raw = _extract_route_systems(route)
     raw_list: list[str] = []
@@ -1289,6 +1290,7 @@ def _set_active_route_data(route, text, sig, source: str | None) -> None:
     _ACTIVE_MILESTONE_TARGET_INDEX = None
     _ACTIVE_MILESTONE_START_INDEX = 0
     _ACTIVE_MILESTONE_ANNOUNCED = set()
+    _ACTIVE_MILESTONE_START_REMAINING = None
 
 
 def get_active_route_next_system() -> str | None:
@@ -1500,6 +1502,48 @@ def _get_navroute_context() -> tuple[str, set[str]]:
     return endpoint, systems_set
 
 
+def _get_navroute_ordered_systems() -> list[str]:
+    try:
+        from app.state import app_state  # type: ignore
+    except Exception:
+        return []
+
+    nav_route = getattr(app_state, "nav_route", None)
+    if not isinstance(nav_route, dict):
+        return []
+
+    systems_raw = nav_route.get("systems")
+    if not isinstance(systems_raw, list):
+        return []
+
+    ordered: list[str] = []
+    for value in systems_raw:
+        norm = normalize_system_name(value)
+        if not norm:
+            continue
+        if ordered and ordered[-1] == norm:
+            continue
+        ordered.append(norm)
+    return ordered
+
+
+def _get_navroute_remaining_to_target(current_norm: str, target_norm: str) -> int | None:
+    if not current_norm or not target_norm:
+        return None
+    ordered = _get_navroute_ordered_systems()
+    if not ordered:
+        return None
+    try:
+        current_idx = ordered.index(current_norm)
+    except ValueError:
+        return None
+    try:
+        target_idx = ordered.index(target_norm, current_idx)
+    except ValueError:
+        return None
+    return max(0, target_idx - current_idx)
+
+
 def _get_active_spansh_milestone_norm() -> str:
     try:
         from app.state import app_state  # type: ignore
@@ -1566,7 +1610,7 @@ def _resolve_active_milestone(current_index: int) -> tuple[str, str, int] | None
 def _maybe_emit_milestone_progress(current_index: int, source: str | None) -> None:
     global _ACTIVE_MILESTONE_TARGET_NORM, _ACTIVE_MILESTONE_TARGET_RAW
     global _ACTIVE_MILESTONE_TARGET_INDEX, _ACTIVE_MILESTONE_START_INDEX
-    global _ACTIVE_MILESTONE_ANNOUNCED
+    global _ACTIVE_MILESTONE_ANNOUNCED, _ACTIVE_MILESTONE_START_REMAINING
 
     if not config.get("route_progress_speech", True):
         return
@@ -1620,6 +1664,7 @@ def _maybe_emit_milestone_progress(current_index: int, source: str | None) -> No
         _ACTIVE_MILESTONE_TARGET_RAW = target_raw
         _ACTIVE_MILESTONE_TARGET_INDEX = target_index
         _ACTIVE_MILESTONE_START_INDEX = max(0, int(current_index))
+        _ACTIVE_MILESTONE_START_REMAINING = None
         _ACTIVE_MILESTONE_ANNOUNCED = set()
 
     if current_index < _ACTIVE_MILESTONE_START_INDEX:
@@ -1655,6 +1700,69 @@ def _maybe_emit_milestone_progress(current_index: int, source: str | None) -> No
             notify_overlay=False,
         )
         return
+
+    utils.powiedz(
+        f"Do boosta. {threshold}% drogi.",
+        message_id="MSG.MILESTONE_PROGRESS",
+        context={"percent": threshold, "target": target_raw, "source": source},
+    )
+    emit_status(
+        "INFO",
+        "MILESTONE_PROGRESS",
+        text=f"Progres do milestone {target_raw}: {threshold}%",
+        source=source,
+        notify_overlay=False,
+    )
+
+
+def _maybe_emit_milestone_progress_from_navroute(current_norm: str, source: str | None) -> None:
+    global _ACTIVE_MILESTONE_TARGET_NORM, _ACTIVE_MILESTONE_TARGET_RAW
+    global _ACTIVE_MILESTONE_TARGET_INDEX, _ACTIVE_MILESTONE_START_INDEX
+    global _ACTIVE_MILESTONE_ANNOUNCED, _ACTIVE_MILESTONE_START_REMAINING
+
+    if not config.get("route_progress_speech", True):
+        return
+    if not current_norm:
+        return
+
+    resolved = _resolve_active_milestone(_ACTIVE_ROUTE_INDEX)
+    if not resolved:
+        return
+    target_norm, target_raw, target_index = resolved
+
+    if (
+        _ACTIVE_MILESTONE_TARGET_NORM != target_norm
+        or _ACTIVE_MILESTONE_TARGET_INDEX != target_index
+        or _ACTIVE_MILESTONE_TARGET_RAW != target_raw
+    ):
+        _ACTIVE_MILESTONE_TARGET_NORM = target_norm
+        _ACTIVE_MILESTONE_TARGET_RAW = target_raw
+        _ACTIVE_MILESTONE_TARGET_INDEX = target_index
+        _ACTIVE_MILESTONE_START_INDEX = max(0, int(_ACTIVE_ROUTE_INDEX))
+        _ACTIVE_MILESTONE_START_REMAINING = None
+        _ACTIVE_MILESTONE_ANNOUNCED = set()
+
+    remaining = _get_navroute_remaining_to_target(current_norm, target_norm)
+    if remaining is None:
+        return
+
+    if _ACTIVE_MILESTONE_START_REMAINING is None:
+        _ACTIVE_MILESTONE_START_REMAINING = max(remaining, 1)
+    elif remaining > _ACTIVE_MILESTONE_START_REMAINING:
+        # Route was replanned/extended; restart progress window for this milestone.
+        _ACTIVE_MILESTONE_START_REMAINING = remaining
+        _ACTIVE_MILESTONE_ANNOUNCED = set()
+
+    total = max(1, int(_ACTIVE_MILESTONE_START_REMAINING))
+    done = max(0, total - int(remaining))
+    progress = int((done * 100) / total)
+    progress = max(0, min(99, progress))
+
+    pending = [p for p in (25, 50, 75) if p <= progress and p not in _ACTIVE_MILESTONE_ANNOUNCED]
+    if not pending:
+        return
+    threshold = max(pending)
+    _ACTIVE_MILESTONE_ANNOUNCED.add(threshold)
 
     utils.powiedz(
         f"Do boosta. {threshold}% drogi.",
@@ -1720,6 +1828,7 @@ def update_next_hop_on_system(current_system: str | None, trigger: str, source: 
         if _is_navroute_aligned_with_active_milestone(current_norm):
             _ACTIVE_ROUTE_DESYNC_STRIKES = 0
             _ACTIVE_ROUTE_DESYNC_ACTIVE = False
+            _maybe_emit_milestone_progress_from_navroute(current_norm, source)
             if config.get("debug_next_hop", False):
                 emit_status(
                     "INFO",
