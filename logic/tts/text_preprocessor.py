@@ -96,7 +96,7 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         system = _normalize_system_name(ctx.get("system"))
         if not system:
             return None
-        return _finalize_tts(f"Skok. {system}.")
+        return _finalize_tts(f"Aktualnie w {system}.")
 
     if message_id == "MSG.NEXT_HOP_COPIED":
         system = _normalize_system_name(ctx.get("system"))
