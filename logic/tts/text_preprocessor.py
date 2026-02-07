@@ -72,6 +72,7 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         return None
     ctx = context or {}
     if message_id in {
+        "MSG.ELW_DETECTED",
         "MSG.SMUGGLER_ILLEGAL_CARGO",
         "MSG.WW_DETECTED",
         "MSG.TERRAFORMABLE_DETECTED",
