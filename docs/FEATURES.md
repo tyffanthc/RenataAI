@@ -1,5 +1,7 @@
 # R.E.N.A.T.A. (RenataAI) - Features (v0.9.1-preview)
 
+R.E.N.A.T.A. = Route, Exploration & Navigation Assistant for Trading & Analysis.
+
 This file is a concise, code-based overview of what R.E.N.A.T.A. currently does.
 It reflects the current repository state and default behavior.
 

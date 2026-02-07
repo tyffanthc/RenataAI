@@ -2,6 +2,7 @@
 
 This file is a compact handoff for moving the project to another ChatGPT account.
 It complements existing docs in docs/.
+R.E.N.A.T.A. = Route, Exploration & Navigation Assistant for Trading & Analysis.
 
 ## What this project is
 Desktop companion for Elite Dangerous with Spansh planners, route tools, and UX-focused UI.
