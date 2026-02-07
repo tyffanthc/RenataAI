@@ -106,6 +106,9 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
             except Exception:
                 pass
         if typ != "Location":
+            is_bootstrap_replay = bool(getattr(app_state, "bootstrap_replay", False))
+            if is_bootstrap_replay:
+                return
             # NAV-NEXT-HOP-SEMANTICS-01:
             # TTS "MSG.NEXT_HOP" should prefer the real next hop from route state.
             # Without active route, announce current jump as "jumped system", not "next hop".

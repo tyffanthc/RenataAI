@@ -66,6 +66,10 @@ class AppState:
         self.milestones = config.STATE.get("milestones", [])
         self.inventory = config.STATE.get("inventory", {})
 
+        # True only while MainLoop replays historical Journal lines at startup.
+        # Used to suppress misleading live-style TTS during bootstrap.
+        self.bootstrap_replay = False
+
     def set_system(self, system_name):
         if not system_name:
             return
