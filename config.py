@@ -121,6 +121,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "auto_clipboard_next_hop_trigger": "fsdjump",
     "auto_clipboard_next_hop_copy_on_route_ready": True,
     "auto_clipboard_next_hop_resync_policy": "nearest_forward",
+    "auto_clipboard_next_hop_desync_confirm_jumps": 2,
     "auto_clipboard_next_hop_allow_manual_advance": True,
     "features.clipboard.next_hop_stepper": True,
     "debug_next_hop": False,

@@ -30,6 +30,8 @@ _ACTIVE_ROUTE_CURRENT_SYSTEM: str | None = None
 _ACTIVE_ROUTE_LAST_COPIED_SYSTEM: str | None = None
 _ACTIVE_ROUTE_LAST_PROGRESS_AT: float | None = None
 _ACTIVE_ROUTE_SOURCE: str | None = None
+_ACTIVE_ROUTE_DESYNC_STRIKES: int = 0
+_ACTIVE_ROUTE_DESYNC_ACTIVE: bool = False
 _ACTIVE_ROUTE_LISTBOX = None
 _ACTIVE_ROUTE_LIST_DATA: list[str] = []
 _ACTIVE_ROUTE_LIST_NUMERATE = True
@@ -1248,6 +1250,7 @@ def _set_active_route_data(route, text, sig, source: str | None) -> None:
     global _ACTIVE_ROUTE_SIG, _ACTIVE_ROUTE_TEXT, _ACTIVE_ROUTE_INDEX
     global _ACTIVE_ROUTE_CURRENT_SYSTEM, _ACTIVE_ROUTE_LAST_COPIED_SYSTEM
     global _ACTIVE_ROUTE_LAST_PROGRESS_AT, _ACTIVE_ROUTE_SOURCE
+    global _ACTIVE_ROUTE_DESYNC_STRIKES, _ACTIVE_ROUTE_DESYNC_ACTIVE
 
     systems_raw = _extract_route_systems(route)
     raw_list: list[str] = []
@@ -1271,6 +1274,8 @@ def _set_active_route_data(route, text, sig, source: str | None) -> None:
     _ACTIVE_ROUTE_LAST_COPIED_SYSTEM = None
     _ACTIVE_ROUTE_LAST_PROGRESS_AT = None
     _ACTIVE_ROUTE_SOURCE = source
+    _ACTIVE_ROUTE_DESYNC_STRIKES = 0
+    _ACTIVE_ROUTE_DESYNC_ACTIVE = False
 
 
 def get_active_route_next_system() -> str | None:
@@ -1518,6 +1523,7 @@ def _is_navroute_aligned_with_active_milestone(current_norm: str) -> bool:
 
 def update_next_hop_on_system(current_system: str | None, trigger: str, source: str | None = None) -> None:
     global _ACTIVE_ROUTE_CURRENT_SYSTEM, _ACTIVE_ROUTE_LAST_PROGRESS_AT, _ACTIVE_ROUTE_INDEX
+    global _ACTIVE_ROUTE_DESYNC_STRIKES, _ACTIVE_ROUTE_DESYNC_ACTIVE
 
     mode = str(config.get("auto_clipboard_mode", "FULL_ROUTE")).strip().upper()
     if mode != "NEXT_HOP":
@@ -1563,6 +1569,8 @@ def update_next_hop_on_system(current_system: str | None, trigger: str, source: 
 
     if pos is None:
         if _is_navroute_aligned_with_active_milestone(current_norm):
+            _ACTIVE_ROUTE_DESYNC_STRIKES = 0
+            _ACTIVE_ROUTE_DESYNC_ACTIVE = False
             if config.get("debug_next_hop", False):
                 emit_status(
                     "INFO",
@@ -1572,10 +1580,34 @@ def update_next_hop_on_system(current_system: str | None, trigger: str, source: 
                     notify_overlay=False,
                 )
             return
-        _emit_next_hop_status("WARN", "ROUTE_DESYNC", STATUS_TEXTS["ROUTE_DESYNC"], source=source)
+
+        try:
+            confirm_jumps = int(config.get("auto_clipboard_next_hop_desync_confirm_jumps", 2))
+        except Exception:
+            confirm_jumps = 2
+        if confirm_jumps < 1:
+            confirm_jumps = 1
+
+        _ACTIVE_ROUTE_DESYNC_STRIKES += 1
+        if _ACTIVE_ROUTE_DESYNC_STRIKES < confirm_jumps:
+            if config.get("debug_next_hop", False):
+                emit_status(
+                    "INFO",
+                    "ROUTE_DESYNC_PENDING",
+                    text=f"Poza trasa: {_ACTIVE_ROUTE_DESYNC_STRIKES}/{confirm_jumps}",
+                    source=source,
+                    notify_overlay=False,
+                )
+            return
+
+        if not _ACTIVE_ROUTE_DESYNC_ACTIVE:
+            _ACTIVE_ROUTE_DESYNC_ACTIVE = True
+            _emit_next_hop_status("WARN", "ROUTE_DESYNC", STATUS_TEXTS["ROUTE_DESYNC"], source=source)
         return
 
     next_index = pos + 1
+    _ACTIVE_ROUTE_DESYNC_STRIKES = 0
+    _ACTIVE_ROUTE_DESYNC_ACTIVE = False
     if next_index >= len(_ACTIVE_ROUTE_SYSTEMS_RAW):
         _ACTIVE_ROUTE_INDEX = len(_ACTIVE_ROUTE_SYSTEMS_RAW)
         _emit_next_hop_status("OK", "ROUTE_COMPLETE", STATUS_TEXTS["ROUTE_COMPLETE"], source=source)
