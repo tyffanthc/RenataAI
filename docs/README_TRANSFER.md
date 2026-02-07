@@ -23,18 +23,26 @@ All trademarks and brand names belong to their respective owners.
 - `docs/COMPLIANCE_CHECKLIST.md` - compliance + licenses
 - `docs/README_TRANSFER.md` - handoff summary (this file)
 
-## Recent updates (0.9.1-preview)
-- Settings saved in `%APPDATA%\\RenataAI\\user_settings.json` (EXE-safe).
-- Voice Pack autodetect in APPDATA (tts.engine=auto).
-- Trade station list on focus (EDSM), with loading/status hint.
-- Portable mode starter included in ZIP (`start_renata_portable.bat` + `PORTABLE_MODE.txt`).
+## Recent updates (0.9.2-preview)
+- Route/nav symbiosis improved: milestone progress 25/50/75/100 per active segment.
+- Desync warnings now use confirmation guard to reduce false positives.
+- NEXT_HOP semantics corrected (real next target instead of current system).
+- FSS flow improved: policy-wired progress messages and full-scan ordering.
+- Exobio flow expanded with real distance checks from `Status.json`.
+- Startup reliability fixes:
+  - restored Start prefill after bootstrap,
+  - calmer watcher JSON/I/O wording,
+  - low-fuel startup transient guards.
+- Piper TTS preflight on Windows to prevent focus-stealing popup.
+- Portable mode starter remains available in ZIP (`start_renata_portable.bat` + `PORTABLE_MODE.txt`).
 
 ## Where to look in code
 - UI tabs: `gui/tabs/*`
 - Spansh planners: `gui/tabs/spansh/*`, `logic/spansh_payloads.py`
 - Settings: `gui/tabs/settings.py`
 - Config: `config.py` (defaults).
-- Renata stores all user settings in `%APPDATA%\\RenataAI\\user_settings.json`. Local config files next to the application are ignored.
+- Renata stores all user settings in `%APPDATA%\\RenataAI\\user_settings.json`.
+- Local config files next to the application are ignored unless `RENATA_SETTINGS_PATH` override is used.
 
 ## Flags and settings
 Feature flags live in `config.py` and are surfaced in Settings when user-facing.

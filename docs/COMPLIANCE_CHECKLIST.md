@@ -20,6 +20,7 @@ Scope: Code, docs, UI text, and third-party services used by R.E.N.A.T.A. (Renat
 
 ## D) User data and privacy
 - [ ] User data stays local by default (settings, logs, logbook).
+- [ ] Default settings location is `%APPDATA%\\RenataAI\\user_settings.json` (or explicit override only).
 - [ ] Upload is opt-in only and clearly labeled (if ever enabled).
 - [ ] No personal data in example files or docs.
 

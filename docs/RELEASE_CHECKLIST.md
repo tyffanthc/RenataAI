@@ -8,59 +8,67 @@
 ## Build and smoke
 - `py tools/smoke_tests_beckendy.py`
 - `py tools/smoke_tests_journal.py`
-- TTS autodetect: voice pack w APPDATA -> log "selected=piper source=appdata".
+- `py -3 -m py_compile main.py config.py gui/common.py logic/events/*.py`
+- TTS autodetect:
+  - voice pack in APPDATA -> `selected=piper source=appdata`
+  - no voice pack -> `selected=pyttsx3 reason=piper_not_found`
 
 ## Core UI/UX (manual)
 - Start app: `py main.py`
 - Spansh tabs open and render (Neutron, Riches, Ammonia, ELW, HMC, Exo, Trade).
-- FREE tabs: w FREE widoczne tylko Pulpit/Spansh/Dziennik/Settings, brak Inara/EDTools/Inzynier.
+- FREE tabs: in FREE mode visible only Pulpit/Spansh/Dziennik/Settings.
 - Treeview tables: headers visible, sort by header works, LP column present.
 - Column Picker: toggle columns, presets apply, restart keeps layout.
 - Context menu on results (if enabled): copy, set Start/Cel, CSV/TSV.
-- Trade: required field "Stacja*" validation, no request when empty.
-- Trade: "Alerty jackpotow" widoczne w Settings + przycisk progow.
-- Market Age slider (if enabled): slider <-> datetime sync, no auto-run.
-- Trade: stacje na focus (EDSM ON) lub hinty (EDSM OFF).
-- Settings: toggles marked `w przygotowaniu` are disabled and clearly labeled.
+- Trade: required field `Stacja*` validation, no request when empty.
+- Trade: station suggestions on focus:
+  - EDSM ON -> list appears after load
+  - EDSM OFF -> clear hint text shown
 
-## Autocomplete and providers
-- Autocomplete Start/Cel works (offline cache).
-- With EDSM ON: fallback accepts unknown system names (no UI errors).
-- With EDSM OFF: no online requests, behavior unchanged.
+## Navigation / route behavior (manual)
+- Plan Neutron route with long in-game segment before first neutron.
+- Following in-game route should NOT spam `poza trasa`.
+- Milestone progress should speak 25/50/75/100 for active segment.
+- On milestone reached:
+  - segment-complete line is spoken once
+  - next target is copied once
+- NEXT_HOP line must refer to real next target.
 
-## Empty state microcopy (PL/EN)
-- no_results: "Brak wynikow dla obecnych ustawien." / "Sprobuj zmienic filtry lub zakres."
-- filters_excluded: "Filtry wykluczyly wszystkie wyniki." / "Poluzuj kryteria filtrowania."
-- no_input: "Brak danych wejsciowych." / "Wybierz punkt startowy i cel."
-- busy_calculating: "Obliczanie trasy..." / "Prosze czekac."
-- waiting_data: "Oczekiwanie na dane..." / ""
-- provider_off: "Dane online sa wylaczone." / "Wlacz providera w ustawieniach."
-- online_error: "Nie udalo sie pobrac danych online." / "Sprawdz polaczenie lub sprobuj ponownie."
-- route_empty: "Trasa jest pusta." / "Brak punktow do wyswietlenia."
-- route_completed: "Trasa zakonczona." / "Brak kolejnych punktow."
-- fallback: "Wystapil problem, ale aplikacja dziala dalej." / "Sprawdz logi, jesli problem sie powtarza."
+## Exploration and event flow (manual)
+- FSS progress 25/50/75/100 works and ordering is sensible.
+- Last-body cue is spoken before full-scan completion, not after.
+- Full scan completion line appears once.
+- High-value DSS hints appear for eligible bodies.
+- Exobio:
+  - second sample cue appears,
+  - real distance readiness cue appears after threshold is passed.
 
-## Exploration voice (manual, if journal available)
-- First discovery / First footfall messages are spoken.
-- FSS milestones: 25/50/75/100% messages.
-- Bio signals: "Potwierdzono liczne sygnaly biologiczne..." (if enabled).
+## Fuel warning sanity (manual)
+- On startup with normal fuel, no false `Fuel reserves critical`.
+- Real low-fuel still triggers warning.
+- Docking or refuel clears warning state.
+
+## Windows focus behavior (manual)
+- While TTS speaks (Piper), no extra console steals focus from game.
 
 ## Debug / observability
 - Logging does not crash app on odd fields.
-- Debug panel (if enabled) updates without errors and no spam.
-- SPANSH last request panel (if enabled) shows payload.
-
-## Cache / performance sanity
-- Repeat same Neutron request -> cache HIT (if `debug_cache=true`).
-- EDSM ON does not slow Neutron routes (no per-hop lookups).
+- Debug panel (if enabled) updates without spam.
+- Watcher startup errors are non-critical and concise.
 
 ## Release artifacts
-- Verify docs/README_TRANSFER.md + docs/COMPLIANCE_CHECKLIST.md + docs/RELEASE_SANITY_CHECK.md are up to date.
-- Tag build and archive logs if needed.
-- Voice Pack installer: payload present + ISCC build.
-- Voice Pack installer EXE jest osobnym assetem (nie w ZIP).
-- ZIP should contain: RenataAI.exe, README.txt, CHANGELOG.txt, user_settings.example.json, THIRD_PARTY_NOTICES.txt, start_renata_portable.bat, PORTABLE_MODE.txt.
+- Verify `docs/README_TRANSFER.md`, `docs/COMPLIANCE_CHECKLIST.md`, `docs/RELEASE_SANITY_CHECK.md` are up to date.
+- Voice Pack installer is a separate asset (not inside app ZIP).
+- ZIP should contain:
+  - `RenataAI.exe`
+  - `README.txt`
+  - `CHANGELOG.txt`
+  - `user_settings.example.json`
+  - `THIRD_PARTY_NOTICES.txt`
+  - `start_renata_portable.bat`
+  - `PORTABLE_MODE.txt`
 
-## Release notes (must include)
-- Voice Pack (Piper PL) jest opcjonalny.
-- Bez Voice Packa dziala glos systemowy Windows.
+## Release notes must include
+- Voice Pack (Piper PL) is optional.
+- Without Voice Pack, system Windows voice fallback is used.
+- If TTS defaults changed, note possible `user_settings.json` refresh requirement.
