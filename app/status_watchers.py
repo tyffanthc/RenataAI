@@ -46,13 +46,13 @@ class BaseWatcher:
         PrĂłbuje wczytaÄ‡ JSON, ale nie robi TTS, jedynie pojedynczy log.
         """
         if not os.path.isfile(self._path):
-            self._log_once(f"Plik nie istnieje: {self._path}")
+            self._log_once("Plik watchera chwilowo niedostepny.")
             return None
 
         try:
             mtime = os.path.getmtime(self._path)
         except Exception as e:
-            self._log_once(f"Nie mogÄ™ pobraÄ‡ mtime: {e}")
+            self._log_once("Plik watchera chwilowo niedostepny (mtime).")
             return None
 
         if self._last_mtime == mtime:
@@ -66,15 +66,15 @@ class BaseWatcher:
         except json.JSONDecodeError as e:
             # Typical transient case: file is currently being rewritten by ED.
             if getattr(e, "pos", None) == 0:
-                self._log_once("Plik chwilowo niegotowy (trwa zapis). Ponawiam odczyt.")
+                self._log_once("Plik chwilowo niegotowy (trwa zapis).")
             else:
-                self._log_once("Niepelny JSON (chwilowy odczyt). Ponawiam odczyt.")
+                self._log_once("Plik chwilowo nieczytelny (niepelny JSON).")
             return None
         except OSError as e:
-            self._log_once(f"Odczyt nieudany (I/O): {e}")
+            self._log_once("Odczyt chwilowo nieudany (I/O).")
             return None
         except Exception as e:
-            self._log_once(f"Niekrytyczny blad odczytu JSON: {e}")
+            self._log_once("Niekrytyczny problem odczytu JSON.")
             return None
 
 
