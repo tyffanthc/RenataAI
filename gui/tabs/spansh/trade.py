@@ -920,12 +920,6 @@ class TradeTab(ttk.Frame):
 
             sysname = ""
 
-        if not live_ready:
-            # Do not expose bootstrap-replayed system as live context.
-            sysname = ""
-
-
-
         if not (self.var_start_system.get() or "").strip() and sysname:
 
             self.var_start_system.set(sysname)

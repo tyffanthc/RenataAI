@@ -41,20 +41,20 @@ class MainLoop:
 
     # ------------------------------------------------------------------ #
     def run(self) -> None:
-        powiedz(f"Podpinam siÄ™ pod logi ED: {self.log_dir}", self.gui_ref)
+        powiedz(f"Podpinam się pod logi ED: {self.log_dir}", self.gui_ref)
 
         while True:
             path = self._find_latest_file()
 
             if not path:
                 powiedz(
-                    "Nie widzÄ™ Journal.*.log w LOG_DIR. Czekam na nowy log...",
+                    "Nie widzę Journal.*.log w LOG_DIR. Czekam na nowy log...",
                     self.gui_ref,
                 )
                 time.sleep(2)
                 continue
 
-            powiedz(f"UĹĽywam logu: {os.path.basename(path)}", self.gui_ref)
+            powiedz(f"Używam logu: {os.path.basename(path)}", self.gui_ref)
 
             self._bootstrap_state(path)
             self._tail_file(path)
@@ -65,7 +65,7 @@ class MainLoop:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 lines = f.readlines()[-max_lines:]
         except FileNotFoundError:
-            self._log_error("Bootstrap: Journal zniknÄ…Ĺ‚ przed odczytem â€“ sprĂłbujÄ™ ponownie.")
+            self._log_error("Bootstrap: Journal zniknął przed odczytem - spróbuję ponownie.")
             return
         except Exception as e:
             self._log_error(f"Bootstrap error: {e}")
@@ -119,7 +119,7 @@ class MainLoop:
                         newer = self._find_latest_file()
                         if newer and newer != path:
                             powiedz(
-                                f"ZnalazĹ‚em nowszy log: {os.path.basename(newer)} â€“ przeĹ‚Ä…czam siÄ™.",
+                                f"Znalazłem nowszy log: {os.path.basename(newer)} - przełączam się.",
                                 self.gui_ref,
                             )
                             return
@@ -136,9 +136,9 @@ class MainLoop:
                     self.cargo_watcher.poll()
 
         except FileNotFoundError:
-            self._log_error("Tail: Journal zostaĹ‚ usuniÄ™ty â€“ szukam nowego pliku.")
+            self._log_error("Tail: Journal został usunięty - szukam nowego pliku.")
         except Exception as e:
-            self._log_error(f"[BĹÄ„D MainLoop/tail] {e}")
+            self._log_error(f"[BŁĄD MainLoop/tail] {e}")
             time.sleep(1)
 
     # ------------------------------------------------------------------ #
@@ -155,7 +155,7 @@ class MainLoop:
             files.sort(key=os.path.getmtime, reverse=True)
             return files[0]
         except Exception as e:
-            self._log_error(f"[Journal] BĹ‚Ä…d wyszukiwania: {e}")
+            self._log_error(f"[Journal] Błąd wyszukiwania: {e}")
             return None
 
     # ------------------------------------------------------------------ #

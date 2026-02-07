@@ -512,8 +512,9 @@ class RenataApp:
 
                 elif msg_type == "start_label":
                     live_ready = bool(getattr(app_state, "has_live_system_event", False))
-                    if live_ready:
-                        self.tab_spansh.update_start_label(content)
+                    # Prefill "Start" should also work after bootstrap replay.
+                    # Live gating remains in places where true live-state is required.
+                    self.tab_spansh.update_start_label(content)
                     try:
                         self.tab_pulpit.set_system_runtime_state(str(content), live_ready=live_ready)
                     except Exception:
