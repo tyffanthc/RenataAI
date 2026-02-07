@@ -1,4 +1,4 @@
-"""
+﻿"""
 Dev tool: quick TTS playback without launching the game.
 
 Goal:
@@ -117,3 +117,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
