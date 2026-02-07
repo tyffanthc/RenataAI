@@ -140,6 +140,15 @@ def speak(text: str, *, paths: Optional[PiperPaths] = None) -> bool:
         pass
 
     try:
+        startupinfo = None
+        creationflags = 0
+        # Keep Piper fully in background on Windows to avoid focus-steal/console popups.
+        if os.name == "nt":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
         result = subprocess.run(
             cmd,
             input=text,
@@ -147,6 +156,8 @@ def speak(text: str, *, paths: Optional[PiperPaths] = None) -> bool:
             encoding="utf-8",
             capture_output=True,
             check=False,
+            startupinfo=startupinfo,
+            creationflags=creationflags,
         )
         if result.returncode != 0 or not os.path.isfile(wav_path):
             return False
