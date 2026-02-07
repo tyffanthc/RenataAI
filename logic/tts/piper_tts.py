@@ -9,6 +9,14 @@ from typing import Optional
 
 import config
 
+_RUNTIME_FILES = (
+    "piper_phonemize.dll",
+    "espeak-ng.dll",
+    "onnxruntime.dll",
+    "onnxruntime_providers_shared.dll",
+)
+_RUNTIME_DIRS = ("espeak-ng-data",)
+
 
 @dataclass(frozen=True)
 class PiperPaths:
@@ -46,6 +54,19 @@ def _resolve_piper_bin() -> Optional[str]:
     return None
 
 
+def _is_runtime_ready(bin_path: Optional[str]) -> bool:
+    if not bin_path or not os.path.isfile(bin_path):
+        return False
+    base = os.path.dirname(bin_path)
+    for filename in _RUNTIME_FILES:
+        if not os.path.isfile(os.path.join(base, filename)):
+            return False
+    for dirname in _RUNTIME_DIRS:
+        if not os.path.isdir(os.path.join(base, dirname)):
+            return False
+    return True
+
+
 def _resolve_model_path() -> Optional[str]:
     model = _resolve_path(config.get("tts.piper_model_path"))
     if model:
@@ -61,7 +82,7 @@ def _has_valid_user_paths() -> bool:
     bin_path = _resolve_piper_bin()
     model_path = _resolve_model_path()
     config_path = _resolve_config_path()
-    return bool(bin_path and model_path and config_path)
+    return bool(bin_path and model_path and config_path and _is_runtime_ready(bin_path))
 
 
 def _resolve_appdata_voicepack() -> Optional[PiperPaths]:
@@ -73,9 +94,13 @@ def _resolve_appdata_voicepack() -> Optional[PiperPaths]:
     models_dir = os.path.join(base, "models")
     model_path = os.path.join(models_dir, "pl_PL-gosia-medium.onnx")
     config_path = os.path.join(models_dir, "pl_PL-gosia-medium.json")
-    if os.path.isfile(bin_path) and os.path.isfile(model_path) and os.path.isfile(config_path):
+    if (
+        _is_runtime_ready(bin_path)
+        and os.path.isfile(model_path)
+        and os.path.isfile(config_path)
+    ):
         return PiperPaths(bin_path=bin_path, model_path=model_path, config_path=config_path, source="appdata")
-    if os.path.isfile(bin_path) and os.path.isdir(models_dir):
+    if _is_runtime_ready(bin_path) and os.path.isdir(models_dir):
         try:
             for name in os.listdir(models_dir):
                 if not name.lower().endswith(".onnx"):
@@ -118,6 +143,8 @@ def speak(text: str, *, paths: Optional[PiperPaths] = None) -> bool:
     bin_path = selected.bin_path
     model_path = selected.model_path
     config_path = selected.config_path
+    if not _is_runtime_ready(bin_path):
+        return False
 
     tmp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     tmp_wav.close()
