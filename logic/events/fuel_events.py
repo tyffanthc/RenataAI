@@ -39,25 +39,6 @@ def handle_status_update(status: dict, gui_ref=None):
         LOW_FUEL_WARNED = False
         return
 
-    # Spróbuj policzyć procent paliwa
-    fuel_percent = None
-    fuel = status.get("Fuel") or {}
-    fuel_main = fuel.get("FuelMain")
-    try:
-        if fuel_main is not None:
-            val = float(fuel_main)
-            # Heurystyka: jeśli 0–1 → traktuj jako 0–100%
-            if 0.0 <= val <= 1.0:
-                fuel_percent = val * 100.0
-            else:
-                # klasyczny poziom / pojemność, jeśli masz FuelCapacity.Main
-                cap = status.get("FuelCapacity") or {}
-                cap_main = cap.get("Main")
-                if cap_main:
-                    fuel_percent = (val / float(cap_main)) * 100.0
-    except Exception:
-        fuel_percent = None
-
     # Flaga z gry
     low_fuel_flag = bool(status.get("LowFuel", False))
     if not low_fuel_flag and "Flags" in status:
@@ -67,6 +48,36 @@ def handle_status_update(status: dict, gui_ref=None):
             low_fuel_flag = bool(flags & LOW_FUEL_BIT)
         except Exception:
             pass
+
+    # Spróbuj policzyć procent paliwa
+    fuel_percent = None
+    fuel = status.get("Fuel") or {}
+    fuel_main = fuel.get("FuelMain")
+    cap = status.get("FuelCapacity") or {}
+    cap_main = cap.get("Main")
+    try:
+        if fuel_main is not None:
+            val = float(fuel_main)
+
+            # Startup/transient guard:
+            # czasem Status.json zwraca chwilowo FuelMain=0 bez FuelCapacity,
+            # mimo że realnie bak nie jest pusty.
+            if (
+                val == 0.0
+                and not low_fuel_flag
+                and not (cap_main and float(cap_main) > 0.0)
+            ):
+                return
+
+            # Heurystyka: jeśli 0–1 → traktuj jako 0–100%
+            if 0.0 <= val <= 1.0:
+                fuel_percent = val * 100.0
+            else:
+                # klasyczny poziom / pojemność, jeśli masz FuelCapacity.Main
+                if cap_main:
+                    fuel_percent = (val / float(cap_main)) * 100.0
+    except Exception:
+        fuel_percent = None
 
     # Stałe progowe — konfigurowalne w ustawieniach
     try:
