@@ -13,14 +13,19 @@ from app.state import app_state
 DSS_BIO_WARNED_BODIES = set()  # BodyName/BodyID, dla ktorych juz padl komunikat bio
 EXOBIO_SCAN_WARNED = set()  # (system, body, species)
 EXOBIO_CODEX_WARNED = set()  # (system, species)
+EXOBIO_SAMPLE_COUNT = {}  # (system, body, species) -> liczba zapisanych probek
+EXOBIO_RANGE_READY_WARNED = set()  # (system, body, species) -> komunikat "kolejna probka" juz byl
 
 
 def reset_bio_flags() -> None:
     """Resetuje lokalne flagi anty-spam dla sygnałów biologicznych."""
     global DSS_BIO_WARNED_BODIES, EXOBIO_SCAN_WARNED, EXOBIO_CODEX_WARNED
+    global EXOBIO_SAMPLE_COUNT, EXOBIO_RANGE_READY_WARNED
     DSS_BIO_WARNED_BODIES = set()
     EXOBIO_SCAN_WARNED = set()
     EXOBIO_CODEX_WARNED = set()
+    EXOBIO_SAMPLE_COUNT = {}
+    EXOBIO_RANGE_READY_WARNED = set()
 
 
 def _as_text(value: Any) -> str:
@@ -155,20 +160,35 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
         if not species:
             return
         key = (system_name.lower(), body.lower(), species.lower())
-        if key in EXOBIO_SCAN_WARNED:
-            return
-        EXOBIO_SCAN_WARNED.add(key)
+        sample_count = int(EXOBIO_SAMPLE_COUNT.get(key, 0)) + 1
+        EXOBIO_SAMPLE_COUNT[key] = sample_count
 
-        if body:
-            msg = f"Probka zapisana. {species}. Kontynuuj badania na {body}."
-        else:
-            msg = f"Probka zapisana. {species}. Kontynuuj badania."
-        powiedz(
-            msg,
-            gui_ref,
-            message_id="MSG.EXOBIO_SAMPLE_LOGGED",
-            context={"raw_text": msg, "system": system_name, "body": body},
-        )
+        # "Probka zapisana..." wypowiadamy tylko raz na gatunek/cialo.
+        if key not in EXOBIO_SCAN_WARNED:
+            EXOBIO_SCAN_WARNED.add(key)
+            if body:
+                msg = f"Probka zapisana. {species}. Kontynuuj badania na {body}."
+            else:
+                msg = f"Probka zapisana. {species}. Kontynuuj badania."
+            powiedz(
+                msg,
+                gui_ref,
+                message_id="MSG.EXOBIO_SAMPLE_LOGGED",
+                context={"raw_text": msg, "system": system_name, "body": body},
+            )
+
+        # EXOBIO-RANGE-01:
+        # Przy drugiej zarejestrowanej probce wiemy, ze wymagany dystans
+        # zostal osiagniety i mozna szukac kolejnej.
+        if sample_count == 2 and key not in EXOBIO_RANGE_READY_WARNED:
+            EXOBIO_RANGE_READY_WARNED.add(key)
+            msg = "Odleglosc miedzy probkami potwierdzona. Mozesz skanowac kolejna."
+            powiedz(
+                msg,
+                gui_ref,
+                message_id="MSG.EXOBIO_RANGE_READY",
+                context={"raw_text": msg, "system": system_name, "body": body},
+            )
         return
 
     if not _is_biology_codex(ev):
