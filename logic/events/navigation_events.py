@@ -106,11 +106,15 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
             except Exception:
                 pass
         if typ != "Location":
+            # NAV-NEXT-HOP-SEMANTICS-01:
+            # TTS "MSG.NEXT_HOP" should prefer the real next hop from route state.
+            # Fallback to current system keeps legacy behavior when no route is active.
+            next_hop = route_manager.get_next_system(str(sysname))
             powiedz(
                 f"Skok: {sysname}",
                 gui_ref,
                 message_id="MSG.NEXT_HOP",
-                context={"system": sysname},
+                context={"system": next_hop or sysname},
             )
             # AUTO-COPY Cel podr+-+-y (tylko w pierwszym bloku, jak w oryginale)
             try:
@@ -142,11 +146,14 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
         app_state.set_system(sysname)
         
         if typ != "Location":
+            # NAV-NEXT-HOP-SEMANTICS-01:
+            # mirror the same context mapping in duplicated legacy block
+            next_hop = route_manager.get_next_system(str(sysname))
             powiedz(
                 f"Skok: {sysname}",
                 gui_ref,
                 message_id="MSG.NEXT_HOP",
-                context={"system": sysname},
+                context={"system": next_hop or sysname},
             )
 
 
