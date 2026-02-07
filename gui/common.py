@@ -1573,10 +1573,42 @@ def _maybe_emit_milestone_progress(current_index: int, source: str | None) -> No
     if not _ACTIVE_ROUTE_SYSTEMS:
         return
 
+    prev_target_norm = _ACTIVE_MILESTONE_TARGET_NORM
+    prev_target_raw = _ACTIVE_MILESTONE_TARGET_RAW
+    prev_target_index = _ACTIVE_MILESTONE_TARGET_INDEX
+
     resolved = _resolve_active_milestone(current_index)
     if not resolved:
         return
     target_norm, target_raw, target_index = resolved
+
+    # If previous milestone has just been reached, emit a clear transition cue.
+    if (
+        prev_target_norm
+        and prev_target_raw
+        and prev_target_index is not None
+        and current_index >= int(prev_target_index)
+        and 100 not in _ACTIVE_MILESTONE_ANNOUNCED
+    ):
+        _ACTIVE_MILESTONE_ANNOUNCED.add(100)
+        next_target = ""
+        if target_norm != prev_target_norm:
+            next_target = target_raw
+        utils.powiedz(
+            f"Cel odcinka osiagniety. {prev_target_raw}.",
+            message_id="MSG.MILESTONE_REACHED",
+            context={"target": prev_target_raw, "next_target": next_target, "source": source},
+        )
+        transition_text = f"Osiagnieto milestone: {prev_target_raw}"
+        if next_target:
+            transition_text += f" -> kolejny cel: {next_target}"
+        emit_status(
+            "INFO",
+            "MILESTONE_REACHED",
+            text=transition_text,
+            source=source,
+            notify_overlay=False,
+        )
 
     # Reset per active milestone.
     if (
@@ -1613,7 +1645,7 @@ def _maybe_emit_milestone_progress(current_index: int, source: str | None) -> No
         utils.powiedz(
             f"Cel odcinka osiagniety. {target_raw}.",
             message_id="MSG.MILESTONE_REACHED",
-            context={"target": target_raw, "source": source},
+            context={"target": target_raw, "next_target": "", "source": source},
         )
         emit_status(
             "INFO",

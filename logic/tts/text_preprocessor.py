@@ -158,7 +158,12 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
 
     if message_id == "MSG.MILESTONE_REACHED":
         target = _normalize_system_name(ctx.get("target"))
+        next_target = _normalize_system_name(ctx.get("next_target"))
         if target:
+            if next_target:
+                return _finalize_tts(
+                    f"Cel odcinka osiagniety. {target}. Przechodze do kolejnego celu. {next_target}."
+                )
             return _finalize_tts(f"Cel odcinka osiagniety. {target}.")
         return _finalize_tts("Cel odcinka osiagniety.")
 
