@@ -109,6 +109,12 @@ class MainLoop:
                     if not line:
                         time.sleep(0.3)
 
+                        # Poll status/market/cargo even when Journal is idle.
+                        # Exobio distance cues depend on live Status.json updates.
+                        self.status_watcher.poll()
+                        self.market_watcher.poll()
+                        self.cargo_watcher.poll()
+
                         newer = self._find_latest_file()
                         if newer and newer != path:
                             powiedz(
