@@ -31,6 +31,7 @@ class MainLoop:
         )
 
         self._last_error_msg = None  # anti-spam
+        self._startup_waiting_logged = False
 
         try:
             if hasattr(handler, "log_dir"):
@@ -95,7 +96,7 @@ class MainLoop:
                 app_state.bootstrap_replay = False
                 return
 
-        powiedz("Bootstrap: nie znalazĹ‚em Location/FSDJump.", self.gui_ref)
+        self._announce_waiting_for_system()
         app_state.bootstrap_replay = False
 
     # ------------------------------------------------------------------ #
@@ -163,3 +164,12 @@ class MainLoop:
             return
         self._last_error_msg = msg
         powiedz(msg, self.gui_ref)
+
+    def _announce_waiting_for_system(self) -> None:
+        if self._startup_waiting_logged:
+            return
+        self._startup_waiting_logged = True
+        powiedz(
+            "Oczekiwanie na dane z gry (Location/FSDJump).",
+            self.gui_ref,
+        )

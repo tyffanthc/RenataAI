@@ -511,7 +511,13 @@ class RenataApp:
                     self._overlay_update_jump_range(content)
 
                 elif msg_type == "start_label":
-                    self.tab_spansh.update_start_label(content)
+                    live_ready = bool(getattr(app_state, "has_live_system_event", False))
+                    if live_ready:
+                        self.tab_spansh.update_start_label(content)
+                    try:
+                        self.tab_pulpit.set_system_runtime_state(str(content), live_ready=live_ready)
+                    except Exception:
+                        pass
 
         except Exception:
             pass

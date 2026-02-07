@@ -901,6 +901,7 @@ class TradeTab(ttk.Frame):
             staname = (getattr(self.app_state, "current_station", "") or "").strip()
 
             is_docked = bool(getattr(self.app_state, "is_docked", False))
+            live_ready = bool(getattr(self.app_state, "has_live_system_event", False))
 
         except Exception:
 
@@ -909,6 +910,7 @@ class TradeTab(ttk.Frame):
             staname = ""
 
             is_docked = False
+            live_ready = False
 
 
 
@@ -916,6 +918,10 @@ class TradeTab(ttk.Frame):
 
         if sysname in ("Unknown", "Nieznany"):
 
+            sysname = ""
+
+        if not live_ready:
+            # Do not expose bootstrap-replayed system as live context.
             sysname = ""
 
 
@@ -957,8 +963,9 @@ class TradeTab(ttk.Frame):
         system = (self.var_start_system.get() or "").strip()
 
         if not system:
-
-            system = (getattr(self.app_state, "current_system", "") or "").strip()
+            live_ready = bool(getattr(self.app_state, "has_live_system_event", False))
+            if live_ready:
+                system = (getattr(self.app_state, "current_system", "") or "").strip()
 
 
 

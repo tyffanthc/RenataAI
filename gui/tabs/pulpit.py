@@ -130,21 +130,15 @@ class PulpitTab(ttk.Frame):
         """
         # System
         system = "-"
+        live_ready = False
         if self._app_state is not None:
             try:
                 system = getattr(self._app_state, "current_system", None) or "-"
+                live_ready = bool(getattr(self._app_state, "has_live_system_event", False))
             except Exception:
                 pass
 
-        self.lbl_status_system.config(text=f"System: {system}")
-
-        # Uaktualnij też nagłówek dashboardu
-        if hasattr(self, "lbl_header_system"):
-            if system == "-" or not system:
-                header_txt = "Obecny system: [Czekam na dane...]"
-            else:
-                header_txt = f"Obecny system: {system}"
-            self.lbl_header_system.config(text=header_txt)
+        self.set_system_runtime_state(system, live_ready=live_ready)
 
         # Ciała - na start mamy tylko ogólny placeholder, bo licznik
         # FSS jest trzymany w event_handlerze
@@ -240,6 +234,18 @@ class PulpitTab(ttk.Frame):
                 except Exception:
                     pass
         self.lbl_status_jr.config(text=txt)
+
+    def set_system_runtime_state(self, system_name: str, live_ready: bool) -> None:
+        system = (system_name or "").strip()
+        if system in ("", "-", "Unknown", "Nieznany"):
+            system = "-"
+
+        if live_ready and system != "-":
+            self.lbl_status_system.config(text=f"System: {system}")
+            self.lbl_header_system.config(text=f"Obecny system: {system}")
+        else:
+            self.lbl_status_system.config(text="System: [Czekam na dane...]")
+            self.lbl_header_system.config(text="Obecny system: [Czekam na dane...]")
 
     # ------------------------------------------------------------
     # AKCJE

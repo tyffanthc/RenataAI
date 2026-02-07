@@ -70,6 +70,9 @@ class AppState:
         # True only while MainLoop replays historical Journal lines at startup.
         # Used to suppress misleading live-style TTS during bootstrap.
         self.bootstrap_replay = False
+        # True only after first live (non-bootstrap) system event from Journal.
+        # Prevents showing stale bootstrap system context as "live" startup state.
+        self.has_live_system_event = False
 
     def set_system(self, system_name):
         if not system_name:
@@ -83,6 +86,10 @@ class AppState:
                 pass
         utils.MSG_QUEUE.put(("start_label", system_name))
         log_event_throttled("state.system", 500, "STATE", f"System = {system_name}")
+
+    def mark_live_system_event(self) -> None:
+        with self.lock:
+            self.has_live_system_event = True
 
     def set_station(self, station_name):
         if not station_name:

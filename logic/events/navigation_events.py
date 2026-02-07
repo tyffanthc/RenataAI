@@ -63,6 +63,7 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
     NAV-NEXT-HOP-DUPLICATE-01: pojedyncza obsluga komunikatu skoku na event.
     """
     typ = ev.get("event")
+    is_bootstrap_replay = bool(getattr(app_state, "bootstrap_replay", False))
 
     # D3c: inicjalizacja docked/station z eventu Location (je+Ťli dost¦Öpne)
     if typ == "Location":
@@ -85,6 +86,11 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
         # reset FSS + discovery/footfall przy wej+Ťciu do nowego systemu
         reset_fss_progress()
         app_state.set_system(sysname)
+        if not is_bootstrap_replay:
+            try:
+                app_state.mark_live_system_event()
+            except Exception:
+                pass
         if typ == "Location":
             try:
                 from gui import common as gui_common  # type: ignore
@@ -106,7 +112,6 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
             except Exception:
                 pass
         if typ != "Location":
-            is_bootstrap_replay = bool(getattr(app_state, "bootstrap_replay", False))
             if is_bootstrap_replay:
                 return
             # NAV-NEXT-HOP-SEMANTICS-01:
