@@ -1458,6 +1458,64 @@ def copy_next_hop_manual(source: str | None = None) -> bool:
     return _copy_next_hop_at_index(_ACTIVE_ROUTE_INDEX, source=source, advance_index=True, allow_duplicate=True)
 
 
+def _get_navroute_context() -> tuple[str, set[str]]:
+    try:
+        from app.state import app_state  # type: ignore
+    except Exception:
+        return "", set()
+
+    nav_route = getattr(app_state, "nav_route", None)
+    if not isinstance(nav_route, dict):
+        return "", set()
+
+    systems_raw = nav_route.get("systems")
+    systems_set: set[str] = set()
+    if isinstance(systems_raw, list):
+        for value in systems_raw:
+            norm = normalize_system_name(value)
+            if norm:
+                systems_set.add(norm)
+
+    endpoint = normalize_system_name(nav_route.get("endpoint"))
+    if not endpoint and isinstance(systems_raw, list) and systems_raw:
+        endpoint = normalize_system_name(systems_raw[-1])
+    return endpoint, systems_set
+
+
+def _get_active_spansh_milestone_norm() -> str:
+    try:
+        from app.state import app_state  # type: ignore
+    except Exception:
+        return ""
+
+    milestone = None
+    try:
+        getter = getattr(app_state, "get_active_spansh_milestone", None)
+        if callable(getter):
+            milestone = getter()
+    except Exception:
+        milestone = None
+
+    if not milestone:
+        milestone = get_active_route_next_system()
+    return normalize_system_name(milestone)
+
+
+def _is_navroute_aligned_with_active_milestone(current_norm: str) -> bool:
+    """
+    Route symbiosis guard:
+    if current system belongs to in-game NavRoute and its endpoint equals
+    active Spansh milestone, do not treat this jump as desync.
+    """
+    endpoint_norm, nav_systems = _get_navroute_context()
+    milestone_norm = _get_active_spansh_milestone_norm()
+    if not endpoint_norm or not milestone_norm:
+        return False
+    if endpoint_norm != milestone_norm:
+        return False
+    return bool(current_norm and current_norm in nav_systems)
+
+
 def update_next_hop_on_system(current_system: str | None, trigger: str, source: str | None = None) -> None:
     global _ACTIVE_ROUTE_CURRENT_SYSTEM, _ACTIVE_ROUTE_LAST_PROGRESS_AT, _ACTIVE_ROUTE_INDEX
 
@@ -1504,6 +1562,16 @@ def update_next_hop_on_system(current_system: str | None, trigger: str, source: 
             pos = None
 
     if pos is None:
+        if _is_navroute_aligned_with_active_milestone(current_norm):
+            if config.get("debug_next_hop", False):
+                emit_status(
+                    "INFO",
+                    "ROUTE_ALIGNED_INGAME",
+                    text="Trasa in-game zgodna z aktywnym milestone.",
+                    source=source,
+                    notify_overlay=False,
+                )
+            return
         _emit_next_hop_status("WARN", "ROUTE_DESYNC", STATUS_TEXTS["ROUTE_DESYNC"], source=source)
         return
 
