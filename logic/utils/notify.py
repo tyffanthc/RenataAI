@@ -35,6 +35,8 @@ _TTS_INTENT_MAP = {
     "MSG.FSS_PROGRESS_50": "context",
     "MSG.FSS_PROGRESS_75": "context",
     "MSG.FSS_LAST_BODY": "context",
+    "MSG.MILESTONE_PROGRESS": "context",
+    "MSG.MILESTONE_REACHED": "context",
 }
 
 _TTS_CATEGORY_MAP = {
@@ -63,6 +65,8 @@ _TTS_CATEGORY_MAP = {
     "MSG.FSS_PROGRESS_50": "explore",
     "MSG.FSS_PROGRESS_75": "explore",
     "MSG.FSS_LAST_BODY": "explore",
+    "MSG.MILESTONE_PROGRESS": "route",
+    "MSG.MILESTONE_REACHED": "route",
 }
 
 _TTS_DEFAULT_COOLDOWNS = {

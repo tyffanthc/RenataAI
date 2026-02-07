@@ -30,6 +30,8 @@ ALLOWED_MESSAGES = {
     "MSG.FSS_PROGRESS_50",
     "MSG.FSS_PROGRESS_75",
     "MSG.FSS_LAST_BODY",
+    "MSG.MILESTONE_PROGRESS",
+    "MSG.MILESTONE_REACHED",
 }
 
 
@@ -140,6 +142,25 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
 
     if message_id == "MSG.FSS_LAST_BODY":
         return _finalize_tts("Ostatnia planeta do skanowania.")
+
+    if message_id == "MSG.MILESTONE_PROGRESS":
+        percent = ctx.get("percent")
+        target = _normalize_system_name(ctx.get("target"))
+        try:
+            percent_i = int(percent)
+        except Exception:
+            percent_i = None
+        if percent_i is None:
+            return _finalize_tts("Trwa lot do kolejnego celu.")
+        if target:
+            return _finalize_tts(f"Do boosta. {percent_i}% drogi. Cel. {target}.")
+        return _finalize_tts(f"Do boosta. {percent_i}% drogi.")
+
+    if message_id == "MSG.MILESTONE_REACHED":
+        target = _normalize_system_name(ctx.get("target"))
+        if target:
+            return _finalize_tts(f"Cel odcinka osiagniety. {target}.")
+        return _finalize_tts("Cel odcinka osiagniety.")
 
     if message_id == "MSG.ELW_DETECTED":
         return _finalize_tts("Wykryto planetę ziemiopodobną. Wysoka wartość.")

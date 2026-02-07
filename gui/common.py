@@ -32,6 +32,11 @@ _ACTIVE_ROUTE_LAST_PROGRESS_AT: float | None = None
 _ACTIVE_ROUTE_SOURCE: str | None = None
 _ACTIVE_ROUTE_DESYNC_STRIKES: int = 0
 _ACTIVE_ROUTE_DESYNC_ACTIVE: bool = False
+_ACTIVE_MILESTONE_TARGET_NORM: str | None = None
+_ACTIVE_MILESTONE_TARGET_RAW: str | None = None
+_ACTIVE_MILESTONE_TARGET_INDEX: int | None = None
+_ACTIVE_MILESTONE_START_INDEX: int = 0
+_ACTIVE_MILESTONE_ANNOUNCED: set[int] = set()
 _ACTIVE_ROUTE_LISTBOX = None
 _ACTIVE_ROUTE_LIST_DATA: list[str] = []
 _ACTIVE_ROUTE_LIST_NUMERATE = True
@@ -1251,6 +1256,9 @@ def _set_active_route_data(route, text, sig, source: str | None) -> None:
     global _ACTIVE_ROUTE_CURRENT_SYSTEM, _ACTIVE_ROUTE_LAST_COPIED_SYSTEM
     global _ACTIVE_ROUTE_LAST_PROGRESS_AT, _ACTIVE_ROUTE_SOURCE
     global _ACTIVE_ROUTE_DESYNC_STRIKES, _ACTIVE_ROUTE_DESYNC_ACTIVE
+    global _ACTIVE_MILESTONE_TARGET_NORM, _ACTIVE_MILESTONE_TARGET_RAW
+    global _ACTIVE_MILESTONE_TARGET_INDEX, _ACTIVE_MILESTONE_START_INDEX
+    global _ACTIVE_MILESTONE_ANNOUNCED
 
     systems_raw = _extract_route_systems(route)
     raw_list: list[str] = []
@@ -1276,6 +1284,11 @@ def _set_active_route_data(route, text, sig, source: str | None) -> None:
     _ACTIVE_ROUTE_SOURCE = source
     _ACTIVE_ROUTE_DESYNC_STRIKES = 0
     _ACTIVE_ROUTE_DESYNC_ACTIVE = False
+    _ACTIVE_MILESTONE_TARGET_NORM = None
+    _ACTIVE_MILESTONE_TARGET_RAW = None
+    _ACTIVE_MILESTONE_TARGET_INDEX = None
+    _ACTIVE_MILESTONE_START_INDEX = 0
+    _ACTIVE_MILESTONE_ANNOUNCED = set()
 
 
 def get_active_route_next_system() -> str | None:
@@ -1521,6 +1534,110 @@ def _is_navroute_aligned_with_active_milestone(current_norm: str) -> bool:
     return bool(current_norm and current_norm in nav_systems)
 
 
+def _resolve_active_milestone(current_index: int) -> tuple[str, str, int] | None:
+    raw_target = None
+    try:
+        from app.state import app_state  # type: ignore
+
+        getter = getattr(app_state, "get_active_spansh_milestone", None)
+        if callable(getter):
+            raw_target = getter()
+    except Exception:
+        raw_target = None
+
+    if not raw_target:
+        raw_target = get_active_route_next_system()
+    norm_target = normalize_system_name(raw_target)
+    if not norm_target:
+        return None
+
+    # Prefer first matching occurrence at/after current route index.
+    for idx in range(max(0, int(current_index)), len(_ACTIVE_ROUTE_SYSTEMS)):
+        if _ACTIVE_ROUTE_SYSTEMS[idx] == norm_target:
+            return norm_target, str(raw_target), idx
+
+    # Fallback: any occurrence in route.
+    for idx, norm_value in enumerate(_ACTIVE_ROUTE_SYSTEMS):
+        if norm_value == norm_target:
+            return norm_target, str(raw_target), idx
+    return None
+
+
+def _maybe_emit_milestone_progress(current_index: int, source: str | None) -> None:
+    global _ACTIVE_MILESTONE_TARGET_NORM, _ACTIVE_MILESTONE_TARGET_RAW
+    global _ACTIVE_MILESTONE_TARGET_INDEX, _ACTIVE_MILESTONE_START_INDEX
+    global _ACTIVE_MILESTONE_ANNOUNCED
+
+    if not config.get("route_progress_speech", True):
+        return
+    if not _ACTIVE_ROUTE_SYSTEMS:
+        return
+
+    resolved = _resolve_active_milestone(current_index)
+    if not resolved:
+        return
+    target_norm, target_raw, target_index = resolved
+
+    # Reset per active milestone.
+    if (
+        _ACTIVE_MILESTONE_TARGET_NORM != target_norm
+        or _ACTIVE_MILESTONE_TARGET_INDEX != target_index
+        or _ACTIVE_MILESTONE_TARGET_RAW != target_raw
+    ):
+        _ACTIVE_MILESTONE_TARGET_NORM = target_norm
+        _ACTIVE_MILESTONE_TARGET_RAW = target_raw
+        _ACTIVE_MILESTONE_TARGET_INDEX = target_index
+        _ACTIVE_MILESTONE_START_INDEX = max(0, int(current_index))
+        _ACTIVE_MILESTONE_ANNOUNCED = set()
+
+    if current_index < _ACTIVE_MILESTONE_START_INDEX:
+        _ACTIVE_MILESTONE_START_INDEX = current_index
+        _ACTIVE_MILESTONE_ANNOUNCED = set()
+
+    start = _ACTIVE_MILESTONE_START_INDEX
+    total = max(0, target_index - start)
+    done = max(0, current_index - start)
+    if total <= 0:
+        progress = 100 if current_index >= target_index else 0
+    else:
+        progress = int((done * 100) / total)
+    progress = max(0, min(100, progress))
+
+    pending = [p for p in (25, 50, 75, 100) if p <= progress and p not in _ACTIVE_MILESTONE_ANNOUNCED]
+    if not pending:
+        return
+    threshold = max(pending)
+    _ACTIVE_MILESTONE_ANNOUNCED.add(threshold)
+
+    if threshold >= 100:
+        utils.powiedz(
+            f"Cel odcinka osiagniety. {target_raw}.",
+            message_id="MSG.MILESTONE_REACHED",
+            context={"target": target_raw, "source": source},
+        )
+        emit_status(
+            "INFO",
+            "MILESTONE_REACHED",
+            text=f"Osiagnieto milestone: {target_raw}",
+            source=source,
+            notify_overlay=False,
+        )
+        return
+
+    utils.powiedz(
+        f"Do boosta. {threshold}% drogi.",
+        message_id="MSG.MILESTONE_PROGRESS",
+        context={"percent": threshold, "target": target_raw, "source": source},
+    )
+    emit_status(
+        "INFO",
+        "MILESTONE_PROGRESS",
+        text=f"Progres do milestone {target_raw}: {threshold}%",
+        source=source,
+        notify_overlay=False,
+    )
+
+
 def update_next_hop_on_system(current_system: str | None, trigger: str, source: str | None = None) -> None:
     global _ACTIVE_ROUTE_CURRENT_SYSTEM, _ACTIVE_ROUTE_LAST_PROGRESS_AT, _ACTIVE_ROUTE_INDEX
     global _ACTIVE_ROUTE_DESYNC_STRIKES, _ACTIVE_ROUTE_DESYNC_ACTIVE
@@ -1614,6 +1731,7 @@ def update_next_hop_on_system(current_system: str | None, trigger: str, source: 
         return
 
     _ACTIVE_ROUTE_INDEX = next_index
+    _maybe_emit_milestone_progress(pos, source)
     if not config.get("auto_clipboard", True):
         if config.get("debug_next_hop", False):
             emit_status("INFO", "AUTO_CLIPBOARD_OFF", source=source, notify_overlay=False)
