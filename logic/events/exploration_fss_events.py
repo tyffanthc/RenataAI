@@ -90,26 +90,46 @@ def _check_fss_thresholds(gui_ref=None):
         # zachowujemy starą logikę flag (jedno odpalenie na próg)
         FSS_25_WARNED = True
         if DEBOUNCER.can_send("FSS_25", 120, context=system_name):
-            powiedz("25% systemu przeskanowane.", gui_ref)
+            powiedz(
+                "25% systemu przeskanowane.",
+                gui_ref,
+                message_id="MSG.FSS_PROGRESS_25",
+                context={"system": system_name},
+            )
 
     # 50%
     if not FSS_50_WARNED and progress >= 0.5:
         FSS_50_WARNED = True
         if DEBOUNCER.can_send("FSS_50", 120, context=system_name):
-            powiedz("Połowa systemu przeskanowana.", gui_ref)
+            powiedz(
+                "Połowa systemu przeskanowana.",
+                gui_ref,
+                message_id="MSG.FSS_PROGRESS_50",
+                context={"system": system_name},
+            )
 
     # 75%
     if not FSS_75_WARNED and progress >= 0.75:
         FSS_75_WARNED = True
         if DEBOUNCER.can_send("FSS_75", 120, context=system_name):
-            powiedz("75% systemu przeskanowane.", gui_ref)
+            powiedz(
+                "75% systemu przeskanowane.",
+                gui_ref,
+                message_id="MSG.FSS_PROGRESS_75",
+                context={"system": system_name},
+            )
 
     # Ostatnia planeta do skanowania
     remaining = FSS_TOTAL_BODIES - FSS_DISCOVERED
     if not FSS_LAST_WARNED and FSS_TOTAL_BODIES > 1 and remaining == 1:
         FSS_LAST_WARNED = True
         if DEBOUNCER.can_send("FSS_LAST", 120, context=system_name):
-            powiedz("Ostatnia planeta do skanowania.", gui_ref)
+            powiedz(
+                "Ostatnia planeta do skanowania.",
+                gui_ref,
+                message_id="MSG.FSS_LAST_BODY",
+                context={"system": system_name},
+            )
 
 
 def handle_scan(ev: Dict[str, Any], gui_ref=None):

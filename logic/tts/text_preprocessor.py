@@ -24,6 +24,10 @@ ALLOWED_MESSAGES = {
     "MSG.TRADE_JACKPOT",
     "MSG.EXOBIO_SAMPLE_LOGGED",
     "MSG.EXOBIO_NEW_ENTRY",
+    "MSG.FSS_PROGRESS_25",
+    "MSG.FSS_PROGRESS_50",
+    "MSG.FSS_PROGRESS_75",
+    "MSG.FSS_LAST_BODY",
 }
 
 
@@ -114,6 +118,18 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
 
     if message_id == "MSG.SYSTEM_FULLY_SCANNED":
         return _finalize_tts("Skan systemu zakończony.")
+
+    if message_id == "MSG.FSS_PROGRESS_25":
+        return _finalize_tts("25% systemu przeskanowane.")
+
+    if message_id == "MSG.FSS_PROGRESS_50":
+        return _finalize_tts("Polowa systemu przeskanowana.")
+
+    if message_id == "MSG.FSS_PROGRESS_75":
+        return _finalize_tts("75% systemu przeskanowane.")
+
+    if message_id == "MSG.FSS_LAST_BODY":
+        return _finalize_tts("Ostatnia planeta do skanowania.")
 
     if message_id == "MSG.ELW_DETECTED":
         return _finalize_tts("Wykryto planetę ziemiopodobną. Wysoka wartość.")

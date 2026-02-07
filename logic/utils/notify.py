@@ -29,6 +29,10 @@ _TTS_INTENT_MAP = {
     "MSG.TRADE_JACKPOT": "context",
     "MSG.EXOBIO_SAMPLE_LOGGED": "context",
     "MSG.EXOBIO_NEW_ENTRY": "context",
+    "MSG.FSS_PROGRESS_25": "context",
+    "MSG.FSS_PROGRESS_50": "context",
+    "MSG.FSS_PROGRESS_75": "context",
+    "MSG.FSS_LAST_BODY": "context",
 }
 
 _TTS_CATEGORY_MAP = {
@@ -51,6 +55,10 @@ _TTS_CATEGORY_MAP = {
     "MSG.TRADE_JACKPOT": "info",
     "MSG.EXOBIO_SAMPLE_LOGGED": "explore",
     "MSG.EXOBIO_NEW_ENTRY": "explore",
+    "MSG.FSS_PROGRESS_25": "explore",
+    "MSG.FSS_PROGRESS_50": "explore",
+    "MSG.FSS_PROGRESS_75": "explore",
+    "MSG.FSS_LAST_BODY": "explore",
 }
 
 _TTS_DEFAULT_COOLDOWNS = {
