@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict
+import config
 
 from logic.utils import powiedz, DEBOUNCER
 from logic import utils
@@ -42,7 +43,7 @@ def _wire_exit_summary_to_runtime() -> None:
     - graceful no-op on missing data.
     """
     try:
-        if not bool(getattr(app_state.config, "exit_summary_enabled", True)):
+        if not bool(config.get("exit_summary_enabled", True)):
             return
     except Exception:
         return

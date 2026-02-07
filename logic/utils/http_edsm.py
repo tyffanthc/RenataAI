@@ -40,6 +40,7 @@ def edsm_systems_suggest(query: str) -> list[str]:
     except Exception as e:
         MSG_QUEUE.put(("log", f"[WARN] EDSM lookup failed: {e}"))
         return []
+    return names
 
 
 def edsm_stations_for_system(system_name: str) -> list[str]:
@@ -67,5 +68,3 @@ def edsm_stations_for_system(system_name: str) -> list[str]:
     except Exception as e:  # noqa: BLE001
         MSG_QUEUE.put(("log", f"[WARN] EDSM lookup failed: {e}"))
         return []
-
-    return names

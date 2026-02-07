@@ -39,7 +39,9 @@ def _migrate_settings_if_needed(target_path: str) -> bool:
             return False
         if os.path.isfile(target_path):
             return False
-        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        target_dir = os.path.dirname(target_path)
+        if target_dir:
+            os.makedirs(target_dir, exist_ok=True)
         shutil.copy2(legacy_path, target_path)
         print(f"[CONFIG] Migrated settings to {target_path}")
         return True
@@ -109,6 +111,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "features.tts.free_policy_enabled": True,
     "landing_pad_speech": True,       # komunikaty do lądowania
     "route_progress_speech": True,    # 25/50/75% itp.
+    "exit_summary_enabled": True,     # podsumowanie po skanowaniu
+    "voice_exit_summary": True,       # glosowe podsumowanie
 
     # SCHOWEK / AUTO-COPY
     "auto_clipboard": True,           # auto-schowek (route)
@@ -297,7 +301,9 @@ class ConfigManager:
         self._settings = merged
 
     def _write_file(self) -> None:
-        os.makedirs(os.path.dirname(self.settings_path), exist_ok=True)
+        settings_dir = os.path.dirname(self.settings_path)
+        if settings_dir:
+            os.makedirs(settings_dir, exist_ok=True)
         with open(self.settings_path, "w", encoding="utf-8") as f:
             json.dump(self._settings, f, indent=4, ensure_ascii=False)
 
@@ -342,6 +348,14 @@ class ConfigManager:
     def LOG_DIR(self) -> str:
         """Alias kompatybilny ze starym kodem (UPPERCASE)."""
         return self.log_dir
+
+    @property
+    def exit_summary_enabled(self) -> bool:
+        return bool(self.get("exit_summary_enabled", True))
+
+    @property
+    def voice_exit_summary(self) -> bool:
+        return bool(self.get("voice_exit_summary", True))
 
 
 # Globalna instancja używana w całej aplikacji:

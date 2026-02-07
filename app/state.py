@@ -3,7 +3,6 @@ import threading
 import pandas as pd
 
 from logic import utils
-from logic.config import RenataConfig
 from logic.science_data import load_science_data
 from logic.system_value_engine import SystemValueEngine
 from logic.exit_summary import ExitSummaryGenerator  
@@ -26,8 +25,8 @@ class AppState:
         # Czy jesteśmy aktualnie zadokowani (runtime'owo)
         self.is_docked = bool(config.STATE.get("is_docked", False))
 
-        # --- Konfiguracja (EPIC 5) ---
-        self.config = RenataConfig()
+        # --- Konfiguracja runtime (centralny ConfigManager) ---
+        self.config = config.config
 
         # --- Próba załadowania danych naukowych ---
         try:
