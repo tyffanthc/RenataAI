@@ -1,4 +1,4 @@
-import os
+﻿import os
 import time
 import json
 
@@ -9,7 +9,7 @@ from logic.utils.renata_log import log_event_throttled
 
 class BaseWatcher:
     """
-    Wspólna logika poll() dla StatusWatcher i MarketWatcher.
+    WspĂłlna logika poll() dla StatusWatcher i MarketWatcher.
     """
     def __init__(self, path, handler, gui_ref, app_state, config, poll_interval, label):
         self._path = path
@@ -43,7 +43,7 @@ class BaseWatcher:
 
     def _load_json_safely(self):
         """
-        Próbuje wczytać JSON, ale nie robi TTS, jedynie pojedynczy log.
+        PrĂłbuje wczytaÄ‡ JSON, ale nie robi TTS, jedynie pojedynczy log.
         """
         if not os.path.isfile(self._path):
             self._log_once(f"Plik nie istnieje: {self._path}")
@@ -52,7 +52,7 @@ class BaseWatcher:
         try:
             mtime = os.path.getmtime(self._path)
         except Exception as e:
-            self._log_once(f"Nie mogę pobrać mtime: {e}")
+            self._log_once(f"Nie mogÄ™ pobraÄ‡ mtime: {e}")
             return None
 
         if self._last_mtime == mtime:
@@ -63,8 +63,18 @@ class BaseWatcher:
         try:
             with open(self._path, "r", encoding="utf-8") as f:
                 return json.load(f)
+        except json.JSONDecodeError as e:
+            # Typical transient case: file is currently being rewritten by ED.
+            if getattr(e, "pos", None) == 0:
+                self._log_once("Plik chwilowo niegotowy (trwa zapis). Ponawiam odczyt.")
+            else:
+                self._log_once("Niepelny JSON (chwilowy odczyt). Ponawiam odczyt.")
+            return None
+        except OSError as e:
+            self._log_once(f"Odczyt nieudany (I/O): {e}")
+            return None
         except Exception as e:
-            self._log_once(f"Błąd JSON/I/O: {e}")
+            self._log_once(f"Niekrytyczny blad odczytu JSON: {e}")
             return None
 
 
@@ -88,7 +98,7 @@ class StatusWatcher(BaseWatcher):
         if data is None:
             return
 
-        # Czyste API → przekazujemy dict
+        # Czyste API â†’ przekazujemy dict
         try:
             self._handler.on_status_update(data, self._gui_ref)
         except Exception:
@@ -145,3 +155,4 @@ class CargoWatcher(BaseWatcher):
             self._handler.on_cargo_update(data, self._gui_ref)
         except Exception:
             pass
+
