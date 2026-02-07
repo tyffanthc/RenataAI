@@ -3,7 +3,7 @@ import time
 import json
 
 from logic.utils import powiedz
-from logic.events.files import status_path, market_path, cargo_path
+from logic.events.files import status_path, market_path, cargo_path, navroute_path
 from logic.utils.renata_log import log_event_throttled
 
 
@@ -153,6 +153,32 @@ class CargoWatcher(BaseWatcher):
 
         try:
             self._handler.on_cargo_update(data, self._gui_ref)
+        except Exception:
+            pass
+
+
+class NavRouteWatcher(BaseWatcher):
+    def __init__(self, handler, gui_ref, app_state, config):
+        super().__init__(
+            path=navroute_path(),
+            handler=handler,
+            gui_ref=gui_ref,
+            app_state=app_state,
+            config=config,
+            poll_interval=config.get("status_poll_interval", 0.5),
+            label="NAVROUTE",
+        )
+
+    def poll(self):
+        if not self._should_poll():
+            return
+
+        data = self._load_json_safely()
+        if data is None:
+            return
+
+        try:
+            self._handler.on_navroute_update(data, self._gui_ref)
         except Exception:
             pass
 

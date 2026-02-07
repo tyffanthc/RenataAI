@@ -48,6 +48,12 @@ class EventHandler:
         except Exception:
             pass
 
+    def on_navroute_update(self, navroute_data: dict, gui_ref=None) -> None:
+        try:
+            navigation_events.handle_navroute_update(navroute_data, gui_ref)
+        except Exception:
+            pass
+
     # ------------------------------------------------------------------ #
     #  STANDARDOWE API (routing journala)
     # ------------------------------------------------------------------ #

@@ -176,3 +176,44 @@ def handle_undocked(ev: Dict[str, object], gui_ref=None):
     """
     app_state.set_docked(False)
     powiedz("Odlot z portu.", gui_ref, message_id="MSG.UNDOCKED")
+
+
+def handle_navroute_update(navroute_data: Dict[str, object], gui_ref=None) -> None:
+    """
+    Ingest NavRoute.json snapshot into app_state.nav_route.
+    This is read-only context for route symbiosis and must not overwrite Spansh route state.
+    """
+    event_name = str(navroute_data.get("event") or "").strip()
+    if event_name in {"NavRouteClear", "ClearRoute"}:
+        app_state.clear_nav_route(source="navroute_clear")
+        return
+
+    route_items = navroute_data.get("Route")
+    if not isinstance(route_items, list):
+        route_items = []
+
+    systems: list[str] = []
+    for row in route_items:
+        if not isinstance(row, dict):
+            continue
+        system_name = (
+            row.get("StarSystem")
+            or row.get("SystemName")
+            or row.get("StarSystemName")
+        )
+        if not system_name:
+            continue
+        system_text = str(system_name).strip()
+        if not system_text:
+            continue
+        if systems and systems[-1].casefold() == system_text.casefold():
+            continue
+        systems.append(system_text)
+
+    endpoint = str(navroute_data.get("EndSystem") or "").strip() or None
+
+    if not systems and event_name in {"NavRoute", "Route"}:
+        app_state.clear_nav_route(source="navroute_empty")
+        return
+
+    app_state.set_nav_route(endpoint=endpoint, systems=systems, source="navroute_json")

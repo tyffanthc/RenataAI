@@ -30,3 +30,9 @@ def cargo_path() -> str:
     Ścieżka do Cargo.json w katalogu journala.
     """
     return os.path.join(get_log_dir(), "Cargo.json")
+
+def navroute_path() -> str:
+    """
+    Sciezka do NavRoute.json w katalogu journala.
+    """
+    return os.path.join(get_log_dir(), "NavRoute.json")

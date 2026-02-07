@@ -1,6 +1,7 @@
 import config
 import threading
 import pandas as pd
+from datetime import datetime
 
 from logic import utils
 from logic.science_data import load_science_data
@@ -65,6 +66,13 @@ class AppState:
         self.route_index = config.STATE.get("idx", 0)
         self.route_details = config.STATE.get("rtr_data", {})
         self.milestones = config.STATE.get("milestones", [])
+        # In-game route snapshot from NavRoute.json.
+        self.nav_route = {
+            "endpoint": None,
+            "systems": [],
+            "updated_at": None,
+            "source": None,
+        }
         self.inventory = config.STATE.get("inventory", {})
 
         # True only while MainLoop replays historical Journal lines at startup.
@@ -112,6 +120,32 @@ class AppState:
         with self.lock:
             self.inventory = inv_dict
             config.STATE["inventory"] = dict(inv_dict)
+
+    def set_nav_route(self, endpoint=None, systems=None, *, source: str = "navroute") -> None:
+        systems_list = list(systems or [])
+        with self.lock:
+            self.nav_route = {
+                "endpoint": endpoint if endpoint else (systems_list[-1] if systems_list else None),
+                "systems": systems_list,
+                "updated_at": datetime.now().isoformat(timespec="seconds"),
+                "source": source,
+            }
+        log_event_throttled(
+            "state.nav_route",
+            1000,
+            "STATE",
+            f"NavRoute loaded: {len(systems_list)} systems endpoint={self.nav_route['endpoint']}",
+        )
+
+    def clear_nav_route(self, *, source: str = "navroute_clear") -> None:
+        with self.lock:
+            self.nav_route = {
+                "endpoint": None,
+                "systems": [],
+                "updated_at": datetime.now().isoformat(timespec="seconds"),
+                "source": source,
+            }
+        log_event_throttled("state.nav_route", 1000, "STATE", "NavRoute cleared")
 
 
 # Globalny stan aplikacji – importowany w innych modułach

@@ -7,7 +7,7 @@ from logic.utils import powiedz
 from app.state import app_state
 import config
 
-from app.status_watchers import StatusWatcher, MarketWatcher, CargoWatcher
+from app.status_watchers import StatusWatcher, MarketWatcher, CargoWatcher, NavRouteWatcher
 
 
 class MainLoop:
@@ -27,6 +27,9 @@ class MainLoop:
             handler, gui_ref, app_state, config
         )
         self.cargo_watcher = CargoWatcher(
+            handler, gui_ref, app_state, config
+        )
+        self.navroute_watcher = NavRouteWatcher(
             handler, gui_ref, app_state, config
         )
 
@@ -115,6 +118,7 @@ class MainLoop:
                         self.status_watcher.poll()
                         self.market_watcher.poll()
                         self.cargo_watcher.poll()
+                        self.navroute_watcher.poll()
 
                         newer = self._find_latest_file()
                         if newer and newer != path:
@@ -134,6 +138,7 @@ class MainLoop:
                     self.status_watcher.poll()
                     self.market_watcher.poll()
                     self.cargo_watcher.poll()
+                    self.navroute_watcher.poll()
 
         except FileNotFoundError:
             self._log_error("Tail: Journal został usunięty - szukam nowego pliku.")
