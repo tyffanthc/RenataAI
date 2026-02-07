@@ -10,6 +10,8 @@ config.json
 user_logbook.json
 log.txt
 *.log
+renata_modules_data.json
+renata_science_data.xlsx
 
 # Piper TTS (local binaries/models)
 tools/piper/

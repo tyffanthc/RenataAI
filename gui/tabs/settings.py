@@ -40,6 +40,7 @@ class SettingsTab(ttk.Frame):
         self._jackpot_dialog = None
         self._tables_columns_dialog = None
         self._free_profile = bool(config.get("features.tts.free_policy_enabled", True))
+        self._scroll_tabs: Dict[tk.Widget, Dict[str, Any]] = {}
 
         self._create_vars()
         self._build_ui()
@@ -169,6 +170,7 @@ class SettingsTab(ttk.Frame):
             self._tab_free = ttk.Frame(self.nb)
             self.nb.add(self._tab_free, text="Ustawienia")
             self._build_tab_free()
+            self._install_scroll_shortcuts_for_tab(self._tab_free)
             self.nb.select(self._tab_free)
             return
 
@@ -190,12 +192,108 @@ class SettingsTab(ttk.Frame):
 
         # Budowa zawartości zakładek
         self._build_tab_general()
+        self._install_scroll_shortcuts_for_tab(self._tab_general)
         self._build_tab_assistants()
+        self._install_scroll_shortcuts_for_tab(self._tab_assistants)
         self._build_tab_exploration()
+        self._install_scroll_shortcuts_for_tab(self._tab_exploration)
         self._build_tab_trade()
+        self._install_scroll_shortcuts_for_tab(self._tab_trade)
         self._build_tab_engineer()
+        self._install_scroll_shortcuts_for_tab(self._tab_engineer)
         self._build_tab_advanced()
+        self._install_scroll_shortcuts_for_tab(self._tab_advanced)
         self.nb.select(self._tab_general)
+
+    def _get_scroll_content(self, tab: ttk.Frame) -> ttk.Frame:
+        existing = self._scroll_tabs.get(tab)
+        if existing is not None:
+            return existing["content"]
+
+        wrapper = ttk.Frame(tab)
+        wrapper.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(wrapper, highlightthickness=0, borderwidth=0)
+        scrollbar = ttk.Scrollbar(wrapper, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        content = ttk.Frame(canvas)
+        window_id = canvas.create_window((0, 0), window=content, anchor="nw")
+
+        def _on_content_configure(_evt=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def _on_canvas_configure(evt):
+            canvas.itemconfigure(window_id, width=evt.width)
+
+        content.bind("<Configure>", _on_content_configure)
+        canvas.bind("<Configure>", _on_canvas_configure)
+        content.after_idle(_on_content_configure)
+
+        self._scroll_tabs[tab] = {
+            "canvas": canvas,
+            "content": content,
+            "bindings_installed": False,
+        }
+        return content
+
+    def _scroll_mousewheel(self, event: tk.Event, canvas: tk.Canvas) -> str:
+        delta = int(getattr(event, "delta", 0))
+        if delta == 0:
+            return "break"
+        step = -1 if delta > 0 else 1
+        canvas.yview_scroll(step, "units")
+        return "break"
+
+    def _scroll_page(self, _event: tk.Event, canvas: tk.Canvas, direction: int) -> str:
+        canvas.yview_scroll(direction, "pages")
+        return "break"
+
+    def _scroll_to(self, _event: tk.Event, canvas: tk.Canvas, fraction: float) -> str:
+        canvas.yview_moveto(fraction)
+        return "break"
+
+    def _bind_scroll_shortcuts_recursive(self, widget: tk.Widget, canvas: tk.Canvas) -> None:
+        widget.bind(
+            "<MouseWheel>",
+            lambda e, c=canvas: self._scroll_mousewheel(e, c),
+            add="+",
+        )
+        widget.bind(
+            "<Prior>",
+            lambda e, c=canvas: self._scroll_page(e, c, -1),
+            add="+",
+        )
+        widget.bind(
+            "<Next>",
+            lambda e, c=canvas: self._scroll_page(e, c, 1),
+            add="+",
+        )
+        widget.bind(
+            "<Control-Home>",
+            lambda e, c=canvas: self._scroll_to(e, c, 0.0),
+            add="+",
+        )
+        widget.bind(
+            "<Control-End>",
+            lambda e, c=canvas: self._scroll_to(e, c, 1.0),
+            add="+",
+        )
+
+        for child in widget.winfo_children():
+            self._bind_scroll_shortcuts_recursive(child, canvas)
+
+    def _install_scroll_shortcuts_for_tab(self, tab: ttk.Frame) -> None:
+        data = self._scroll_tabs.get(tab)
+        if not data:
+            return
+        if data.get("bindings_installed"):
+            return
+        self._bind_scroll_shortcuts_recursive(data["content"], data["canvas"])
+        data["bindings_installed"] = True
 
     def _add_save_bar(self, parent, row: int) -> None:
         btn_bar = ttk.Frame(parent)
@@ -222,7 +320,7 @@ class SettingsTab(ttk.Frame):
     # ------------------------------------------------------------------ #
 
     def _build_tab_free(self) -> None:
-        parent = self._tab_free
+        parent = self._get_scroll_content(self._tab_free)
         parent.columnconfigure(0, weight=1)
 
         lf_free = ttk.LabelFrame(parent, text=" FREE — ustawienia podstawowe ")
@@ -289,8 +387,43 @@ class SettingsTab(ttk.Frame):
             foreground="#888888",
         ).grid(row=6, column=0, columnspan=2, padx=8, pady=(0, 8), sticky="w")
 
+        lf_safe = ttk.LabelFrame(parent, text=" Dodatkowe opcje (bezpieczne) ")
+        lf_safe.grid(row=1, column=0, padx=12, pady=(0, 6), sticky="nsew")
+        lf_safe.columnconfigure(0, weight=1)
+        lf_safe.columnconfigure(1, weight=1)
+
+        ttk.Checkbutton(
+            lf_safe,
+            text="Pytaj o potwierdzenie przed zamknieciem",
+            variable=self.var_confirm_exit,
+        ).grid(row=0, column=0, padx=8, pady=(6, 4), sticky="w")
+
+        ttk.Checkbutton(
+            lf_safe,
+            text="Komunikaty o postepie trasy",
+            variable=self.var_route_progress_messages,
+        ).grid(row=0, column=1, padx=8, pady=(6, 4), sticky="w")
+
+        ttk.Checkbutton(
+            lf_safe,
+            text="Menu kontekstowe wynikow (PPM)",
+            variable=self.var_results_context_menu,
+        ).grid(row=1, column=0, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_safe,
+            text="Market Age w Trade (beta)",
+            variable=self.var_trade_market_age_slider,
+        ).grid(row=1, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Label(
+            lf_safe,
+            text="Opcje odblokowane dla FREE: niskie ryzyko i realny efekt UX.",
+            foreground="#888888",
+        ).grid(row=2, column=0, columnspan=2, padx=8, pady=(0, 8), sticky="w")
+
         lf_paths = ttk.LabelFrame(parent, text=" Ścieżki i dane ")
-        lf_paths.grid(row=1, column=0, padx=12, pady=(0, 6), sticky="nsew")
+        lf_paths.grid(row=2, column=0, padx=12, pady=(0, 6), sticky="nsew")
         lf_paths.columnconfigure(1, weight=1)
 
         ttk.Label(lf_paths, text="Folder logów ED:").grid(
@@ -328,7 +461,7 @@ class SettingsTab(ttk.Frame):
         ).grid(row=2, column=2, padx=8, pady=6, sticky="e")
 
         lf_data = ttk.LabelFrame(parent, text=" Generowanie danych ")
-        lf_data.grid(row=2, column=0, padx=12, pady=(0, 6), sticky="nsew")
+        lf_data.grid(row=3, column=0, padx=12, pady=(0, 6), sticky="nsew")
         lf_data.columnconfigure(0, weight=1)
 
         btn_row = ttk.Frame(lf_data)
@@ -381,10 +514,10 @@ class SettingsTab(ttk.Frame):
         else:
             self.update_modules_status(False)
 
-        self._add_save_bar(parent, row=3)
+        self._add_save_bar(parent, row=4)
 
     def _build_tab_general(self) -> None:
-        parent = self._tab_general
+        parent = self._get_scroll_content(self._tab_general)
         parent.columnconfigure(0, weight=1)
 
         # Sekcja: INTERFEJS
@@ -595,7 +728,7 @@ class SettingsTab(ttk.Frame):
     # ------------------------------------------------------------------ #
 
     def _build_tab_assistants(self) -> None:
-        parent = self._tab_assistants
+        parent = self._get_scroll_content(self._tab_assistants)
         parent.columnconfigure(0, weight=1)
 
         # Komunikaty dokowania i stacji
@@ -755,7 +888,7 @@ class SettingsTab(ttk.Frame):
     # ------------------------------------------------------------------ #
 
     def _build_tab_exploration(self) -> None:
-        parent = self._tab_exploration
+        parent = self._get_scroll_content(self._tab_exploration)
         parent.columnconfigure(0, weight=1)
 
         lf_exploration = ttk.LabelFrame(parent, text=" Eksploracja (FSS / DSS / biologia) ")
@@ -889,7 +1022,7 @@ class SettingsTab(ttk.Frame):
     # ------------------------------------------------------------------ #
 
     def _build_tab_trade(self) -> None:
-        parent = self._tab_trade
+        parent = self._get_scroll_content(self._tab_trade)
         parent.columnconfigure(0, weight=1)
 
         lf_trade = ttk.LabelFrame(parent, text=" Handel (Makler) ")
@@ -1139,7 +1272,7 @@ class SettingsTab(ttk.Frame):
             self._tables_columns_dialog = None
 
     def _build_tab_engineer(self) -> None:
-        parent = self._tab_engineer
+        parent = self._get_scroll_content(self._tab_engineer)
         parent.columnconfigure(0, weight=1)
 
         lf_engineer_combat = ttk.LabelFrame(parent, text=" Inżynier pokładowy / bojowe ")
@@ -1174,7 +1307,7 @@ class SettingsTab(ttk.Frame):
     # ------------------------------------------------------------------ #
 
     def _build_tab_advanced(self) -> None:
-        parent = self._tab_advanced
+        parent = self._get_scroll_content(self._tab_advanced)
         parent.columnconfigure(0, weight=1)
 
         lf_jr_advanced = ttk.LabelFrame(parent, text=" Statek i zasięg skoku (JR) - Zaawansowane ")
