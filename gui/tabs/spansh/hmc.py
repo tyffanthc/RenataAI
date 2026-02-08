@@ -1,22 +1,26 @@
 import tkinter as tk
 from tkinter import ttk
-import threading
-import config
-from logic import utils
-from logic import hmc_route
+
+from app.state import app_state
 from gui import common
 from gui import strings as ui
 from gui import ui_layout as layout
 from gui.common_autocomplete import AutocompleteController, edsm_single_system_lookup
-from app.route_manager import route_manager
-from app.state import app_state
+from gui.tabs.spansh.planner_base import SpanshPlannerBase
+from logic import hmc_route
 
 
-class HMCTab(ttk.Frame):
+class HMCTab(SpanshPlannerBase):
     def __init__(self, parent, root_window):
-        super().__init__(parent)
-        self.root = root_window
-        self.pack(fill="both", expand=1)
+        super().__init__(
+            parent,
+            root_window,
+            mode_key="hmc",
+            schema_id="hmc",
+            status_source="spansh.hmc",
+            status_target="rtr",
+            emit_busy_status=False,
+        )
 
         self.var_start = tk.StringVar()
         self.var_cel = tk.StringVar()
@@ -26,18 +30,9 @@ class HMCTab(ttk.Frame):
         self.var_max_dist = tk.IntVar(value=5000)
         self.var_loop = tk.BooleanVar(value=False)
         self.var_avoid = tk.BooleanVar(value=True)
-        self._busy = False
-
-        self._use_treeview = bool(config.get("features.tables.treeview_enabled", False)) and bool(
-            config.get("features.tables.spansh_schema_enabled", True)
-        ) and bool(config.get("features.tables.schema_renderer_enabled", True)) and bool(
-            config.get("features.tables.normalized_rows_enabled", True)
-        )
 
         self._build_ui()
-        self._range_user_overridden = False
-        self._range_updating = False
-        self.var_range.trace_add("write", self._on_range_changed)
+        self._setup_range_tracking()
 
     def _build_ui(self):
         fr = ttk.Frame(self)
@@ -110,12 +105,6 @@ class HMCTab(ttk.Frame):
         else:
             self.lst = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_HMC)
 
-    # ------------------------------------------------------------------ public
-
-    def hide_suggestions(self):
-        self.ac.hide()
-        self.ac_c.hide()
-
     def run(self):
         if not self._can_start():
             return
@@ -133,143 +122,25 @@ class HMCTab(ttk.Frame):
         avoid = self.var_avoid.get()
 
         args = (start_sys, cel, rng, rad, mx, max_dist, loop, avoid)
-        self._set_busy(True)
-        route_manager.start_route_thread("hmc", self._th, args=args, gui_ref=self.root)
-
-    def apply_jump_range_from_ship(self, value: float | None) -> None:
-        if not config.get("planner_auto_use_ship_jump_range", True):
-            return
-        if self._range_user_overridden:
-            return
-        if value is None:
-            return
-        self._set_range_value(value)
-
-    def _on_range_changed(self, *_args) -> None:
-        if self._range_updating:
-            return
-        if not config.get("planner_allow_manual_range_override", True):
-            return
-        self._range_user_overridden = True
-
-    def _set_range_value(self, value: float) -> None:
-        try:
-            self._range_updating = True
-            self.var_range.set(float(value))
-        except Exception:
-            pass
-        finally:
-            self._range_updating = False
-
-    def _resolve_jump_range(self) -> float:
-        if not config.get("planner_auto_use_ship_jump_range", True):
-            return float(self.var_range.get())
-        if self._range_user_overridden:
-            return float(self.var_range.get())
-
-        jr = getattr(app_state.ship_state, "jump_range_current_ly", None)
-        if jr is not None:
-            self._set_range_value(jr)
-            return float(jr)
-
-        fallback = config.get("planner_fallback_range_ly", 30.0)
-        try:
-            fallback = float(fallback)
-        except Exception:
-            fallback = 30.0
-        self._set_range_value(fallback)
-        if utils.DEBOUNCER.is_allowed("jr_fallback", cooldown_sec=10.0, context="hmc"):
-            common.emit_status(
-                "WARN",
-                "JR_NOT_READY_FALLBACK",
-                source="spansh.hmc",
-                notify_overlay=True,
-            )
-        return fallback
+        self._start_route_thread(self._th, args)
 
     def _th(self, s, cel, rng, rad, mx, max_dist, loop, avoid):
-        try:
-            tr, rows = hmc_route.oblicz_hmc(s, cel, rng, rad, mx, max_dist, loop, avoid)
-
-            if tr:
-                route_manager.set_route(tr, "hmc")
-                if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
-                    if self._use_treeview:
-                        common.render_table_treeview(self.lst, "hmc", rows)
-                        common.register_active_route_list(
-                            self.lst,
-                            [],
-                            numerate=False,
-                            offset=1,
-                            schema_id="hmc",
-                            rows=rows,
-                        )
-                    else:
-                        opis = common.render_table_lines("hmc", rows)
-                        common.register_active_route_list(
-                            self.lst,
-                            opis,
-                            numerate=False,
-                            offset=1,
-                            schema_id="hmc",
-                            rows=rows,
-                        )
-                        common.wypelnij_liste(
-                            self.lst,
-                            opis,
-                            numerate=False,
-                            show_copied_suffix=False,
-                        )
-                else:
-                    counts = {}
-                    for row in rows:
-                        sys_name = row.get("system_name")
-                        if sys_name:
-                            counts[sys_name] = counts.get(sys_name, 0) + 1
-                    opis = [f"{sys} ({counts.get(sys, 0)} cial)" for sys in tr]
-                    common.register_active_route_list(self.lst, opis)
-                    common.wypelnij_liste(self.lst, opis)
-                common.handle_route_ready_autoclipboard(self, tr, status_target="rtr")
-                common.emit_status(
-                    "OK",
-                    "ROUTE_FOUND",
-                    text=f"Znaleziono {len(tr)}",
-                    source="spansh.hmc",
-                    ui_target="rtr",
-                )
-            else:
-                common.emit_status(
-                    "ERROR",
-                    "ROUTE_EMPTY",
-                    text="Brak wynikow",
-                    source="spansh.hmc",
-                    ui_target="rtr",
-                )
-        finally:
-            self.root.after(0, lambda: self._set_busy(False))
-
-    def _can_start(self) -> bool:
-        if self._busy:
-            common.emit_status("WARN", "ROUTE_BUSY", text="Laduje...", source="spansh.hmc", ui_target="rtr")
-            return False
-        if route_manager.is_busy():
-            common.emit_status("WARN", "ROUTE_BUSY", text="Inny planner juz liczy.", source="spansh.hmc", ui_target="rtr")
-            return False
-        return True
-
-    def _set_busy(self, busy: bool) -> None:
-        self._busy = busy
-        if getattr(self, "btn_run", None):
-            self.btn_run.config(state=("disabled" if busy else "normal"))
-        if getattr(self, "lbl_status", None):
-            self.lbl_status.config(text=("Laduje..." if busy else "Gotowy"))
+        self._execute_route_call(
+            hmc_route.oblicz_hmc,
+            (
+                s,
+                cel,
+                rng,
+                rad,
+                mx,
+                max_dist,
+                loop,
+                avoid,
+            ),
+            list_widget=self.lst,
+        )
 
     def clear(self):
-        if isinstance(self.lst, ttk.Treeview):
-            self.lst.delete(*self.lst.get_children())
-        else:
-            self.lst.delete(0, tk.END)
+        self._clear_list_widget(self.lst)
         self.lbl_status.config(text="Wyczyszczono", foreground="grey")
-        config.STATE["rtr_data"] = {}
-        config.STATE["trasa"] = []
-
+        self._reset_shared_route_state()
