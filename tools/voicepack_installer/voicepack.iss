@@ -2,6 +2,7 @@
 AppName=RenataAI Voice Pack (Piper PL)
 AppVersion=0.9.0-pl1
 DefaultDirName={userappdata}\RenataAI\voice\piper
+InfoBeforeFile=payload\INSTALL_INFO.txt
 DefaultGroupName=RenataAI Voice Pack
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
@@ -19,6 +20,7 @@ Source: "payload\models\pl_PL-gosia-medium.onnx"; DestDir: "{app}\models"; Flags
 Source: "payload\models\pl_PL-gosia-medium.json"; DestDir: "{app}\models"; Flags: ignoreversion
 Source: "payload\voicepack.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "payload\VOICEPACK_LICENSES.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "payload\INSTALL_INFO.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"

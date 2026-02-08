@@ -1,0 +1,17 @@
+RenataAI Voice Pack (Piper PL) - install info
+
+Default install path:
+%APPDATA%\RenataAI\voice\piper
+
+Renata auto-detects Piper Voice Pack when installed in APPDATA
+(recommended for standard onefile release).
+
+If you use a portable/onedir build, choose a custom path and install
+the Voice Pack next to RenataAI.exe with this structure:
+
+<Renata folder>\voice\piper\piper.exe
+<Renata folder>\voice\piper\models\pl_PL-gosia-medium.onnx
+<Renata folder>\voice\piper\models\pl_PL-gosia-medium.json
+
+The runtime files (DLL + espeak-ng-data) must remain in the same folder
+as piper.exe.
