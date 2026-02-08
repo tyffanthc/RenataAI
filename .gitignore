@@ -24,3 +24,5 @@ models/piper/
 RenataAI-VoicePack-Piper-PL-*-setup.exe
 tools/voicepack_installer/Output/
 docs/internal/
+docs/flow/private/
+docs/Flow/private/

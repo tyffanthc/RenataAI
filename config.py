@@ -100,7 +100,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "tts.piper_model_path": "",
     "tts.piper_config_path": "",
     # TTS-TUNING-01c: faster cadence with very short pauses.
-    "tts.piper_length_scale": 0.75,
+    "tts.piper_length_scale": 0.80,
     "tts.piper_sentence_silence": 0.05,
     "tts.pyttsx3_rate": 190,
     "tts.pyttsx3_volume": 1.0,

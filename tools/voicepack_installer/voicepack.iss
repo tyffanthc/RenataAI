@@ -1,14 +1,16 @@
 ﻿[Setup]
 AppName=RenataAI Voice Pack (Piper PL)
-AppVersion=0.9.0-pl1
+AppVersion=0.9.2-pl1
 DefaultDirName={userappdata}\RenataAI\voice\piper
+DisableDirPage=no
+UsePreviousAppDir=no
 InfoBeforeFile=payload\INSTALL_INFO.txt
 DefaultGroupName=RenataAI Voice Pack
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
-OutputBaseFilename=Renata-VoicePack-Piper-PL-Installer-0.9.0-pl1
+OutputBaseFilename=Renata-VoicePack-Piper-PL-Installer-0.9.2-pl1
 Compression=lzma
 SolidCompression=yes
 SetupIconFile=

@@ -14,7 +14,7 @@ Folder: tools/voicepack_installer/
 ## Build (Inno Setup)
 ISCC.exe voicepack.iss
 
-Output: Renata-VoicePack-Piper-PL-Installer-0.9.0-pl1.exe
+Output: Renata-VoicePack-Piper-PL-Installer-0.9.2-pl1.exe
 
 ## Install target
 %APPDATA%\RenataAI\voice\piper\
