@@ -9,6 +9,29 @@ from logic.events import exploration_misc_events
 from logic.events import navigation_events
 from logic.events import trade_events
 from logic.events import smuggler_events
+from logic.utils.renata_log import log_event_throttled
+
+
+def _exc_text(exc: Exception) -> str:
+    return f"{type(exc).__name__}: {exc}"
+
+
+def _log_router_fallback(
+    key: str,
+    message: str,
+    exc: Exception,
+    *,
+    interval_ms: int = 5000,
+    **fields,
+) -> None:
+    log_event_throttled(
+        f"EVENT_ROUTER:{key}",
+        interval_ms,
+        "EVENT_ROUTER",
+        message,
+        error=_exc_text(exc),
+        **fields,
+    )
 
 
 class EventHandler:
@@ -20,18 +43,18 @@ class EventHandler:
     def on_status_update(self, status_data: dict, gui_ref=None) -> None:
         try:
             fuel_events.handle_status_update(status_data, gui_ref)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_router_fallback("status.fuel", "status update: fuel handler failed", exc)
         try:
             exploration_bio_events.handle_exobio_status_position(status_data, gui_ref)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_router_fallback("status.exobio", "status update: exobio handler failed", exc)
         if config.get("ship_state_enabled") and config.get("ship_state_use_status_json"):
             try:
                 from app.state import app_state
                 app_state.ship_state.update_from_status_json(status_data)
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_router_fallback("status.ship_state", "status update: ship_state sync failed", exc)
 
     def on_cargo_update(self, cargo_data: dict, gui_ref=None) -> None:
         if not (config.get("ship_state_enabled") and config.get("ship_state_use_cargo_json")):
@@ -39,20 +62,20 @@ class EventHandler:
         try:
             from app.state import app_state
             app_state.ship_state.update_from_cargo_json(cargo_data)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_router_fallback("cargo.ship_state", "cargo update: ship_state sync failed", exc)
 
     def on_market_update(self, market_data: dict, gui_ref=None) -> None:
         try:
             trade_events.handle_market_data(market_data, gui_ref)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_router_fallback("market.trade", "market update: trade handler failed", exc)
 
     def on_navroute_update(self, navroute_data: dict, gui_ref=None) -> None:
         try:
             navigation_events.handle_navroute_update(navroute_data, gui_ref)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_router_fallback("navroute.sync", "navroute update failed", exc)
 
     # ------------------------------------------------------------------ #
     #  STANDARDOWE API (routing journala)
@@ -72,7 +95,15 @@ class EventHandler:
         """
         try:
             ev = json.loads(line)
-        except Exception:
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            preview = str(line or "").strip().replace("\n", "\\n")[:120]
+            _log_router_fallback(
+                "journal.parse",
+                "journal line parse failed",
+                exc,
+                interval_ms=15000,
+                line_preview=preview,
+            )
             return
 
         typ = ev.get("event")
@@ -89,10 +120,14 @@ class EventHandler:
                 try:
                     from app.state import app_state
                     app_state.ship_state.update_from_loadout(ev)
-                except Exception:
+                except Exception as exc:
                     if config.get("fit_resolver_fail_on_missing", False):
                         raise
-                    pass
+                    _log_router_fallback(
+                        "loadout.ship_state",
+                        "loadout sync failed; fallback without fit update",
+                        exc,
+                    )
 
         # FSS
         if typ == "FSSDiscoveryScan":
@@ -106,8 +141,8 @@ class EventHandler:
             try:
                 from app.state import app_state
                 app_state.system_value_engine.analyze_scan_event(ev)
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_router_fallback("scan.value_engine", "scan event value analysis failed", exc)
         if typ == "SAASignalsFound":
             exploration_bio_events.handle_dss_bio_signals(ev, gui_ref)
         if typ in ("ScanOrganic", "CodexEntry"):

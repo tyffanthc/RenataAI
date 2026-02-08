@@ -6,6 +6,7 @@ import config
 from logic.utils import powiedz
 from logic import utils
 from app.state import app_state
+from logic.utils.renata_log import log_event_throttled
 
 # --- MAKLER PRO (S2-LOGIC-06) ---
 JACKPOT_WARNED_STATIONS = set()
@@ -77,7 +78,7 @@ def handle_market_data(data: dict, gui_ref=None):
         # Realna obecność towaru
         try:
             stock_val = int(item.get("Stock") or 0)
-        except Exception:
+        except (TypeError, ValueError):
             stock_val = 0
 
         if stock_val <= 0:
@@ -85,7 +86,7 @@ def handle_market_data(data: dict, gui_ref=None):
 
         try:
             buy_price_val = int(item.get("BuyPrice") or 0)
-        except Exception:
+        except (TypeError, ValueError):
             buy_price_val = 0
 
         if buy_price_val <= 0:
@@ -123,7 +124,15 @@ def handle_market_data(data: dict, gui_ref=None):
                         f"{name_clean} @ {buy_price_val} Cr",
                     )
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                log_event_throttled(
+                    "TRADE:jackpot.log",
+                    10000,
+                    "TRADE",
+                    "failed to write jackpot log to queue",
+                    error=f"{type(exc).__name__}: {exc}",
+                    station=station_name,
+                    commodity=name_clean,
+                )
 
             break

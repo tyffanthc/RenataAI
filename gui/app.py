@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import os
+import queue
 import config
 from logic import utils
 from gui import common
@@ -19,7 +20,30 @@ from app.route_manager import route_manager
 import threading
 from logic.science_data import load_science_data
 from logic.modules_data import load_modules_data
-from logic.utils.renata_log import log_event
+from logic.utils.renata_log import log_event, log_event_throttled
+
+
+def _exc_text(exc: Exception) -> str:
+    return f"{type(exc).__name__}: {exc}"
+
+
+def _log_app_fallback(
+    key: str,
+    message: str,
+    exc: Exception,
+    *,
+    interval_ms: int = 5000,
+    **fields,
+) -> None:
+    payload = {"error": _exc_text(exc)}
+    payload.update(fields)
+    log_event_throttled(
+        f"APP:{key}",
+        interval_ms,
+        "APP",
+        message,
+        **payload,
+    )
 
 
 class RenataApp:
@@ -69,8 +93,8 @@ class RenataApp:
         style = ttk.Style()
         try:
             style.theme_use('clam') # Clam najlepiej przyjmuje kolory
-        except:
-            pass
+        except tk.TclError as exc:
+            _log_app_fallback("style.theme", "ttk theme unavailable", exc, theme="clam")
 
         # Główne elementy
         style.configure("TFrame", background=C_BG)
@@ -266,8 +290,8 @@ class RenataApp:
         if mbox.askyesno("O programie", text):
             try:
                 webbrowser.open(release_url)
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_app_fallback("about.open_release", "failed to open release URL", exc)
 
     # ------------------------------------------------------------------ #
     #   Okno ustawień (Konfiguracja Systemów R.E.N.A.T.A.)
@@ -283,14 +307,23 @@ class RenataApp:
             if existing is not None and existing.winfo_exists():
                 try:
                     existing._on_close()
-                except Exception:
+                except Exception as close_exc:
                     try:
                         existing.destroy()
-                    except Exception:
-                        pass
+                    except Exception as destroy_exc:
+                        _log_app_fallback(
+                            "settings.toggle.destroy",
+                            "failed to destroy existing settings window",
+                            destroy_exc,
+                        )
+                    _log_app_fallback(
+                        "settings.toggle.close",
+                        "settings window close callback failed; forced destroy fallback",
+                        close_exc,
+                    )
                 return
-        except Exception:
-            # jeśli coś poszło nie tak – traktujemy jakby okna nie było
+        except Exception as exc:
+            _log_app_fallback("settings.toggle.probe", "settings window probe failed", exc)
             self._settings_window = None
 
         self._settings_window = SettingsWindow(
@@ -311,11 +344,12 @@ class RenataApp:
         save_window_geometry(self.root, "main_window", include_size=True)
         try:
             self.root.quit()
-        except Exception:
+        except Exception as quit_exc:
+            _log_app_fallback("main_close.quit", "main window quit failed; trying destroy", quit_exc)
             try:
                 self.root.destroy()
-            except Exception:
-                pass
+            except Exception as destroy_exc:
+                _log_app_fallback("main_close.destroy", "main window destroy failed", destroy_exc)
 
     # ------------------------------------------------------------------ #
     #   Dane naukowe (Exobiology / Cartography)
@@ -334,10 +368,11 @@ class RenataApp:
             self.exobio_df, self.carto_df = load_science_data(self._science_data_path())
             self.science_data_loaded = True
             self.show_status("Dane naukowe załadowane poprawnie.")
-        except Exception:
+        except Exception as exc:
             self.exobio_df = None
             self.carto_df = None
             self.science_data_loaded = False
+            _log_app_fallback("science.load", "science data load failed", exc, path=self._science_data_path())
             # łagodny komunikat – szczegół błędu nie musi iść do usera
             self.show_status("Dane naukowe NIE są dostępne – wygeneruj arkusze.")
             # jeśli chcesz debug:
@@ -348,13 +383,21 @@ class RenataApp:
             if hasattr(self.settings_tab, "update_science_status"):
                 try:
                     self.settings_tab.update_science_status(self.science_data_loaded)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log_app_fallback(
+                        "science.status_widget",
+                        "settings science status refresh failed",
+                        exc,
+                    )
             if hasattr(self.settings_tab, "update_modules_status"):
                 try:
                     self.settings_tab.update_modules_status(self.modules_data_loaded)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log_app_fallback(
+                        "modules.status_widget_from_science",
+                        "settings modules status refresh failed",
+                        exc,
+                    )
 
     def _try_load_modules_data(self) -> None:
         """
@@ -367,41 +410,56 @@ class RenataApp:
                 if hasattr(self.settings_tab, "update_modules_status"):
                     try:
                         self.settings_tab.update_modules_status(self.modules_data_loaded)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "modules.status_widget_disabled",
+                            "settings modules status refresh failed",
+                            exc,
+                        )
             return
         try:
             path = config.get("modules_data_path", "renata_modules_data.json")
-        except Exception:
+        except Exception as exc:
+            _log_app_fallback(
+                "modules.path",
+                "failed to resolve modules_data_path; using default",
+                exc,
+                interval_ms=30000,
+            )
             path = "renata_modules_data.json"
 
         try:
             self.modules_data = load_modules_data(path)
             self.modules_data_loaded = True
             self.show_status("Dane modułów załadowane poprawnie.")
-        except Exception:
+        except Exception as exc:
             self.modules_data = None
+            _log_app_fallback("modules.load", "modules data load failed", exc, path=path)
             self.modules_data_loaded = False
             self.show_status("Brak danych modułów — wygeneruj plik.")
 
         try:
             app_state.modules_data = self.modules_data
             app_state.modules_data_loaded = self.modules_data_loaded
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_app_fallback("modules.state_sync", "failed to sync modules data to app_state", exc)
 
         if self.modules_data_loaded:
             try:
                 app_state.ship_state.recompute_jump_range("loadout")
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_app_fallback(
+                    "modules.recompute_jump_range",
+                    "failed to recompute jump range after modules load",
+                    exc,
+                )
 
         if getattr(self, "settings_tab", None) is not None:
             if hasattr(self.settings_tab, "update_modules_status"):
                 try:
                     self.settings_tab.update_modules_status(self.modules_data_loaded)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log_app_fallback("modules.status_widget", "settings modules status refresh failed", exc)
 
     def is_science_data_available(self) -> bool:
         """
@@ -422,13 +480,25 @@ class RenataApp:
         w = None
         try:
             w = self.root.winfo_containing(e.x_root, e.y_root)
-        except Exception:
+        except Exception as exc:
+            _log_app_fallback(
+                "focus.winfo_containing",
+                "failed to resolve clicked widget from coordinates",
+                exc,
+                interval_ms=15000,
+            )
             w = e.widget
         print("[APPDBG] click widget=", w, "class=", w.winfo_class() if w is not None else None)
         try:
             from gui.common_autocomplete import AutocompleteController
             active_owner = AutocompleteController._active_owner
-        except Exception:
+        except Exception as exc:
+            _log_app_fallback(
+                "autocomplete.owner",
+                "failed to resolve autocomplete active owner",
+                exc,
+                interval_ms=15000,
+            )
             active_owner = None
         is_listbox = isinstance(w, tk.Listbox) or getattr(w, "_renata_autocomplete", False)
         is_entry = isinstance(w, (tk.Entry, ttk.Entry))
@@ -444,7 +514,13 @@ class RenataApp:
             from gui.common_autocomplete import AutocompleteController
             shared_listbox = AutocompleteController._shared_listbox
             active_owner = AutocompleteController._active_owner
-        except Exception:
+        except Exception as exc:
+            _log_app_fallback(
+                "autocomplete.shared",
+                "failed to resolve autocomplete shared state",
+                exc,
+                interval_ms=15000,
+            )
             shared_listbox = None
             active_owner = None
         if active_owner is not None:
@@ -502,12 +578,22 @@ class RenataApp:
                 elif msg_type == "ship_state":
                     try:
                         self.tab_pulpit.update_ship_state(content)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.ship_state.pulpit",
+                            "failed to update pulpit ship state widget",
+                            exc,
+                            interval_ms=3000,
+                        )
                     try:
                         self.tab_spansh.update_jump_range(content.get("jump_range_current_ly"))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.ship_state.spansh",
+                            "failed to update spansh jump range widget",
+                            exc,
+                            interval_ms=3000,
+                        )
                     self._overlay_update_jump_range(content)
 
                 elif msg_type == "start_label":
@@ -517,11 +603,18 @@ class RenataApp:
                     self.tab_spansh.update_start_label(content)
                     try:
                         self.tab_pulpit.set_system_runtime_state(str(content), live_ready=live_ready)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.start_label.runtime_state",
+                            "failed to update runtime state label",
+                            exc,
+                            interval_ms=3000,
+                        )
 
-        except Exception:
+        except queue.Empty:
             pass
+        except Exception as exc:
+            _log_app_fallback("queue.loop", "queue processing failed", exc, interval_ms=2000)
         finally:
             self.root.after(100, self.check_queue)
 
@@ -660,23 +753,24 @@ class RenataApp:
             return
         try:
             self.root.after(0, fn)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_app_fallback("ui.dispatch", "failed to dispatch callback to UI thread", exc)
 
     def _schedule_debug_panel_update(self):
         if not self._debug_panel_enabled:
             return
         try:
             self.root.after(self._debug_panel_refresh_ms, self._update_debug_panel)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_app_fallback("debug.schedule", "failed to schedule debug panel refresh", exc)
 
     def _build_debug_snapshot(self) -> dict:
         try:
             system = getattr(app_state, "current_system", None)
             docked = getattr(app_state, "is_docked", False)
             station = getattr(app_state, "current_station", None)
-        except Exception:
+        except Exception as exc:
+            _log_app_fallback("debug.snapshot", "failed to read app_state snapshot for debug panel", exc)
             system = None
             docked = False
             station = None
@@ -783,7 +877,7 @@ class RenataApp:
             return
         try:
             jr_val = float(jr)
-        except Exception:
+        except (TypeError, ValueError):
             self.overlay_jr_label.config(text="JR: -")
             return
         txt = f"JR: {jr_val:.2f} LY"
@@ -796,7 +890,7 @@ class RenataApp:
             if fuel_needed is not None:
                 try:
                     txt += f" fuel:{float(fuel_needed):.2f}t"
-                except Exception:
+                except (TypeError, ValueError):
                     pass
         self.overlay_jr_label.config(text=txt)
 
@@ -830,8 +924,8 @@ class RenataApp:
         if self._overlay_hide_after_id is not None:
             try:
                 self.root.after_cancel(self._overlay_hide_after_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_app_fallback("overlay.cancel_show", "failed to cancel overlay hide timer", exc)
         self._overlay_hide_after_id = None
         if seconds is not None:
             self._overlay_hide_after_id = self.root.after(
@@ -842,8 +936,8 @@ class RenataApp:
         if self._overlay_hide_after_id is not None:
             try:
                 self.root.after_cancel(self._overlay_hide_after_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_app_fallback("overlay.cancel_hide", "failed to cancel overlay hide timer", exc)
             self._overlay_hide_after_id = None
         self.overlay_frame.place_forget()
         self._overlay_visible = False
@@ -876,8 +970,8 @@ class RenataApp:
     def _overlay_show_details(self):
         try:
             self.root.focus_force()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_app_fallback("overlay.focus", "failed to focus main window from overlay", exc)
 
     def _overlay_copy_next(self):
         if not config.get("features.clipboard.next_hop_stepper", True):
@@ -946,7 +1040,12 @@ class RenataApp:
             # wykonujemy done() w głównym wątku Tkintera
             try:
                 self.root.after(0, done)
-            except Exception:
+            except Exception as exc:
+                _log_app_fallback(
+                    "science.generate.callback",
+                    "failed to schedule science generation callback on UI thread",
+                    exc,
+                )
                 done()
 
         threading.Thread(target=worker, daemon=True).start()
@@ -979,7 +1078,12 @@ class RenataApp:
 
             try:
                 self.root.after(0, done)
-            except Exception:
+            except Exception as exc:
+                _log_app_fallback(
+                    "modules.generate.callback",
+                    "failed to schedule modules generation callback on UI thread",
+                    exc,
+                )
                 done()
 
         threading.Thread(target=worker, daemon=True).start()

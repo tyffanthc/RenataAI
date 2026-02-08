@@ -114,6 +114,11 @@ def _level_color(level: str) -> str:
     }
     return colors.get(level, "grey")
 
+
+def _status_log_line(level: str, code: str, text: str, source: str | None) -> str:
+    src = str(source or "unspecified").strip() or "unspecified"
+    return f"[{level}] {code} ({src}): {text}"
+
 def _set_active_route_data(route, text, sig, source: str | None) -> None:
     global _ACTIVE_ROUTE_SYSTEMS, _ACTIVE_ROUTE_SYSTEMS_RAW
     global _ACTIVE_ROUTE_SIG, _ACTIVE_ROUTE_TEXT, _ACTIVE_ROUTE_INDEX
@@ -767,7 +772,7 @@ def emit_status(
     }
     if notify_overlay:
         utils.MSG_QUEUE.put(("status_event", event))
-    utils.MSG_QUEUE.put(("log", f"[{level}] {code}: {text}"))
+    utils.MSG_QUEUE.put(("log", _status_log_line(level, code, text, source)))
     if ui_target:
         color = _level_color(level)
         utils.MSG_QUEUE.put((f"status_{ui_target}", (text, color)))

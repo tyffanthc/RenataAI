@@ -9,6 +9,7 @@ from typing import Any, Dict
 import config
 from app.state import app_state
 from logic.utils import powiedz
+from logic.utils.renata_log import log_event_throttled
 
 
 # --- DSS BIO ASSISTANT ---
@@ -19,6 +20,21 @@ EXOBIO_SAMPLE_COUNT = {}  # (system, body, species) -> number of saved samples
 EXOBIO_RANGE_READY_WARNED = set()  # (system, body, species) -> range-ready already spoken
 EXOBIO_RANGE_TRACKERS = {}  # (system, body, species) -> distance tracker state
 EXOBIO_LAST_STATUS_POS = {}  # last known position from Status.json
+
+
+def _exc_text(exc: Exception) -> str:
+    return f"{type(exc).__name__}: {exc}"
+
+
+def _log_exobio_fallback(key: str, message: str, exc: Exception, *, interval_ms: int = 10000, **fields) -> None:
+    log_event_throttled(
+        f"EXOBIO:{key}",
+        interval_ms,
+        "EXOBIO",
+        message,
+        error=_exc_text(exc),
+        **fields,
+    )
 
 
 def reset_bio_flags() -> None:
@@ -45,7 +61,7 @@ def _as_float(value: Any) -> float | None:
         if value is None:
             return None
         return float(value)
-    except Exception:
+    except (TypeError, ValueError):
         return None
 
 
@@ -113,8 +129,12 @@ def _normalize_species_for_science(raw_name: str) -> str:
             normalized = engine._normalize_species_name(raw_name)  # noqa: SLF001 - internal helper
             if normalized:
                 return str(normalized).strip()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_exobio_fallback(
+            "species.normalize",
+            "failed to normalize species name via SystemValueEngine",
+            exc,
+        )
     return str(raw_name).strip()
 
 
@@ -371,8 +391,8 @@ def handle_dss_bio_signals(ev: Dict[str, Any], gui_ref=None) -> None:
         if "biological" in sig_type:
             try:
                 bio_count += int(s.get("Count") or 0)
-            except Exception:
-                pass
+            except (TypeError, ValueError):
+                continue
 
     if bio_count >= 3:
         DSS_BIO_WARNED_BODIES.add(body)
@@ -399,13 +419,21 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
     # Always update engine, even when TTS is disabled.
     try:
         app_state.system_value_engine.analyze_biology_event(ev)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_exobio_fallback(
+            "engine.analyze_biology",
+            "failed to process biology event in SystemValueEngine",
+            exc,
+        )
     if typ == "CodexEntry":
         try:
             app_state.system_value_engine.analyze_discovery_meta_event(ev)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_exobio_fallback(
+                "engine.analyze_discovery_meta",
+                "failed to process discovery meta event in SystemValueEngine",
+                exc,
+            )
 
     if not config.get("bio_assistant", True):
         return

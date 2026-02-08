@@ -7,10 +7,25 @@ import pyperclip
 
 from logic.utils import powiedz
 from logic import utils
-from logic.utils.renata_log import log_event
+from logic.utils.renata_log import log_event, log_event_throttled
 from app.state import app_state
 from app.route_manager import route_manager
 from logic.events.exploration_fss_events import reset_fss_progress
+
+
+def _exc_text(exc: Exception) -> str:
+    return f"{type(exc).__name__}: {exc}"
+
+
+def _log_nav_fallback(key: str, message: str, exc: Exception, *, interval_ms: int = 5000, **fields) -> None:
+    log_event_throttled(
+        f"NAV:{key}",
+        interval_ms,
+        "NAV",
+        message,
+        error=_exc_text(exc),
+        **fields,
+    )
 
 
 def handle_fsd_jump_autoschowek(ev: Dict[str, object], gui_ref=None):
@@ -48,8 +63,8 @@ def handle_fsd_jump_autoschowek(ev: Dict[str, object], gui_ref=None):
                 "fsdjump",
                 source="auto_clipboard",
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_nav_fallback("next_hop.fsdjump", "auto next-hop update on FSDJump failed", exc)
 
 
 def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
@@ -67,10 +82,7 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
 
     # D3c: inicjalizacja docked/station z eventu Location (je+Ťli dost¦Öpne)
     if typ == "Location":
-        try:
-            docked = bool(ev.get("Docked"))
-        except Exception:
-            docked = False
+        docked = bool(ev.get("Docked"))
         app_state.set_docked(docked)
         if docked:
             st = ev.get("StationName")
@@ -88,13 +100,13 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
         app_state.set_system(sysname)
         try:
             app_state.update_spansh_milestone_on_system(sysname)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_nav_fallback("milestone.update", "failed to update active spansh milestone", exc)
         if not is_bootstrap_replay:
             try:
                 app_state.mark_live_system_event()
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_nav_fallback("live_event.mark", "failed to mark live system event", exc)
         if typ == "Location":
             try:
                 from gui import common as gui_common  # type: ignore
@@ -113,8 +125,8 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
                         "location",
                         source="auto_clipboard",
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_nav_fallback("next_hop.location", "auto next-hop update on Location failed", exc)
         if typ != "Location":
             if is_bootstrap_replay:
                 return
@@ -151,8 +163,13 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
                             context={"system": obj},
                         )
                     gui_ref.state.next_travel_target = None
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_nav_fallback(
+                    "travel_target.copy",
+                    "failed to copy travel target after jump",
+                    exc,
+                    interval_ms=7000,
+                )
 
 def handle_docked(ev: Dict[str, object], gui_ref=None):
     """

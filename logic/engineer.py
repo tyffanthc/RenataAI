@@ -3,6 +3,7 @@ import json
 import glob
 import config
 from logic.utils import powiedz
+from logic.utils.renata_log import log_event_throttled
 
 def sprawdz_magazyn(nazwa_receptury, gui_ref):
     rec = config.RECEPTURY.get(nazwa_receptury)
@@ -32,5 +33,12 @@ def znajdz_ostatni_system():
         with open(naj, 'r', encoding='utf-8') as f:
             for line in reversed(f.readlines()):
                 if "StarSystem" in line: return json.loads(line)["StarSystem"]
-    except: pass
+    except Exception as exc:
+        log_event_throttled(
+            "ENGINEER:last_system",
+            15000,
+            "ENGINEER",
+            "failed to resolve last system from log",
+            error=f"{type(exc).__name__}: {exc}",
+        )
     return "Nieznany"

@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 from logic.utils import powiedz
 from logic import utils
+from logic.utils.renata_log import log_event_throttled
 
 
 # --- SMUGGLER ALERT (S2-LOGIC-07) ---
@@ -106,5 +107,12 @@ def handle_smuggler_alert(ev: Dict[str, Any], gui_ref=None):
         utils.MSG_QUEUE.put(
             ("log", f"[SMUGGLER ALERT] {target_label} — wykryto nielegalny ładunek na pokładzie.")
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        log_event_throttled(
+            "SMUGGLER:alert.log",
+            10000,
+            "SMUGGLER",
+            "failed to write smuggler alert log to queue",
+            error=f"{type(exc).__name__}: {exc}",
+            target=target_label,
+        )
