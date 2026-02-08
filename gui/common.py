@@ -71,11 +71,11 @@ STATUS_TEXTS = {
     "DEDUP_WAIT": "Dedup wait",
     "JR_READY": "Jump range obliczony.",
     "JR_WAITING_DATA": "Jump range: czekam na dane.",
-    "JR_COMPUTE_FAIL": "Jump range: b‘'Žd oblicze‘'.",
+    "JR_COMPUTE_FAIL": "Jump range: blad obliczen.",
     "JR_VALIDATE_OK": "Jump range: walidacja OK.",
-    "JR_VALIDATE_DELTA": "Jump range: odchy‘'ka od gry.",
+    "JR_VALIDATE_DELTA": "Jump range: odchylka od gry.",
     "JR_ENGINEERING_APPLIED": "Jump range: zastosowano engineering.",
-    "JR_NOT_READY_FALLBACK": "Jump range: brak danych, u‘•ywam fallback.",
+    "JR_NOT_READY_FALLBACK": "Jump range: brak danych, uzywam fallback.",
     "AUTO_CLIPBOARD_OFF": "Auto-schowek wyłączony.",
 }
 
@@ -1112,40 +1112,6 @@ def _open_columns_picker(listbox) -> None:
         text="Zmiany sa natychmiastowe.",
         foreground="#888888",
     ).pack(anchor="w", padx=10, pady=(6, 8))
-
-
-def _escape_delimited_value(value: str, sep: str) -> str:
-    text = "" if value is None else str(value)
-    if "\"" in text:
-        text = text.replace("\"", "\"\"")
-    if sep in text or "\n" in text or "\r" in text:
-        return f"\"{text}\""
-    return text
-
-
-def format_row_delimited(schema_id: str, row: dict, sep: str) -> str:
-    try:
-        from gui import table_schemas
-    except Exception:
-        return ""
-    schema = table_schemas.get_schema(schema_id)
-    if schema is None:
-        return ""
-    visible_cols = _get_visible_columns(schema_id)
-    columns = [col for col in schema.columns if col.key in visible_cols]
-    values = []
-    for col in columns:
-        value = _get_value_by_key(row, col.value_path or col.key)
-        text = format_value(value, col.fmt)
-        values.append(_escape_delimited_value(text, sep))
-    return sep.join(values)
-
-
-def copy_text_to_clipboard(text: str, *, context: str = "context_menu") -> bool:
-    if not text:
-        return False
-    result = try_copy_to_clipboard(text, context=context)
-    return bool(result.get("ok"))
 
 
 def attach_results_context_menu(

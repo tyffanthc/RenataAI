@@ -1,70 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import config
 from logic.utils import powiedz, MSG_QUEUE
 from logic.spansh_client import client, spansh_error
 from logic import spansh_payloads
 from logic.rows_normalizer import normalize_trade_rows
-
-
-def _build_payload_trade(
-    system: str,
-    station: str,
-    capital: int,
-    max_hop: float,
-    cargo: int,
-    max_hops: int,
-    max_dta: int,
-    max_age: float,
-    flags: Dict[str, Any],
-) -> Dict[str, Any]:
-    """
-    Buduje payload do SPANSH /api/trade/route na podstawie danych z GUI.
-
-    Parametry:
-        system      – nazwa systemu startowego
-        station     – nazwa stacji startowej (wymagana przez SPANSH Trade)
-        capital     – kapitał [Cr]
-        max_hop     – maksymalny zasięg pojedynczego skoku [LY]
-        cargo       – ładowność [t]
-        max_hops    – maksymalna liczba skoków
-        max_dta     – maksymalna odległość do stacji [ls]
-        max_age     – maksymalny wiek danych [dni] (Maximum Market Age)
-        flags       – słownik z checkboxów z GUI:
-                      large_pad, planetary, player_owned,
-                      restricted, prohibited, avoid_loops, allow_permits
-    """
-    # Bezpieczne wyciągnięcie flag – domyślnie False
-    large_pad = bool(flags.get("large_pad"))
-    planetary = bool(flags.get("planetary"))
-    player_owned = bool(flags.get("player_owned"))
-    restricted = bool(flags.get("restricted"))
-    prohibited = bool(flags.get("prohibited"))
-    avoid_loops = bool(flags.get("avoid_loops"))
-    allow_permits = bool(flags.get("allow_permits"))
-
-    payload: Dict[str, Any] = {
-        "max_hops": int(max_hops),
-        "max_hop_distance": float(max_hop),
-        "system": system,
-        "station": station,
-        "starting_capital": int(capital),
-        "max_cargo": int(cargo),
-        "max_system_distance": int(max_dta),
-        "requires_large_pad": int(large_pad),
-        "allow_prohibited": int(prohibited),
-        "allow_planetary": int(planetary),
-        "allow_player_owned": int(player_owned),
-        "allow_restricted_access": int(restricted),
-        # "unique" – SPANSH traktuje to jako „unikalne trasy / unikaj pętli”
-        "unique": int(avoid_loops),
-        # "permit" – czy dopuszczać systemy na pozwolenie
-        "permit": int(allow_permits),
-    }
-
-    return payload
 
 
 def oblicz_trade(

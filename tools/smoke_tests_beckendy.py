@@ -34,13 +34,7 @@ from logic.events import trade_events  # type: ignore
 from logic.events import exploration_fss_events as fss_events  # type: ignore
 from logic.events import exploration_bio_events as bio_events  # type: ignore
 from logic.events import exploration_misc_events as misc_events  # type: ignore
-from logic import ammonia as ammonia_logic  # type: ignore
-from logic import exomastery as exomastery_logic  # type: ignore
 from logic import spansh_payloads
-from logic import riches as riches_logic  # type: ignore
-from logic import elw_route as elw_logic  # type: ignore
-from logic import hmc_route as hmc_logic  # type: ignore
-from logic import trade as trade_logic  # type: ignore
 from logic import spansh_client as spansh_client_logic  # type: ignore
 
 
@@ -85,6 +79,29 @@ class TestContext:
         except Exception:
             # Smoke-test: nie panikujemy jeśli coś pójdzie nie tak
             pass
+
+
+# --- POMOCNICZE FUNKCJE PAYLOAD ----------------------------------------------
+
+
+def _payload_fields(payload: object) -> dict[str, object]:
+    """
+    Zwraca slownik pol payloadu.
+
+    Dla kluczy wielokrotnych (np. body_types) zachowuje liste wartosci.
+    """
+    fields: dict[str, object] = {}
+    form_fields = getattr(payload, "form_fields", []) or []
+    for key, value in form_fields:
+        if key in fields:
+            current = fields[key]
+            if isinstance(current, list):
+                current.append(value)
+            else:
+                fields[key] = [current, value]
+        else:
+            fields[key] = value
+    return fields
 
 
 # --- POMOCNICZE FUNKCJE KONFIGURACJI -----------------------------------------
@@ -351,21 +368,22 @@ def test_bio_signals_basic(ctx: TestContext) -> None:
 
 
 def test_ammonia_payload_snapshot(_ctx: TestContext) -> None:
-    payload = ammonia_logic._build_payload(  # type: ignore[attr-defined]
+    payload = spansh_payloads.build_ammonia_payload(
         start="Sol",
         cel="Colonia",
         jump_range=42.5,
         radius=50,
         max_sys=25,
         max_dist=5000,
-        min_scan=250000,
+        min_value=250000,
         loop=True,
         avoid_tharg=False,
     )
+    fields = _payload_fields(payload)
 
-    assert payload.get("min_value") == 250000, "min_value should come from min_scan"
-    assert payload.get("loop") is True, "loop should map to loop flag"
-    assert payload.get("avoid_thargoids") is False, "avoid_thargoids should map to avoid flag"
+    assert fields.get("min_value") == "1", "min_value should be fixed for ammonia payload"
+    assert fields.get("loop") == "1", "loop should map to loop flag"
+    assert fields.get("avoid_thargoids") == "0", "avoid_thargoids should map to avoid flag"
 
 
 def test_exomastery_payload_snapshot(_ctx: TestContext) -> None:
@@ -388,67 +406,70 @@ def test_exomastery_payload_snapshot(_ctx: TestContext) -> None:
 
 
 def test_riches_payload_snapshot(_ctx: TestContext) -> None:
-    payload = riches_logic._build_payload(  # type: ignore[attr-defined]
+    payload = spansh_payloads.build_riches_payload(
         start="Sol",
         cel="Colonia",
         jump_range=42.5,
         radius=50,
         max_sys=25,
         max_dist=5000,
-        min_scan=250000,
+        min_value=250000,
         loop=True,
         use_map=True,
         avoid_tharg=False,
     )
+    fields = _payload_fields(payload)
 
-    assert payload.get("min_value") == 250000, "min_value should map to min_scan"
-    assert payload.get("use_mapping_value") is True, "use_mapping_value should map to use_map"
-    assert payload.get("avoid_thargoids") is False, "avoid_thargoids should map to avoid_tharg"
+    assert fields.get("min_value") == "250000", "min_value should map to min_scan"
+    assert fields.get("use_mapping_value") == "1", "use_mapping_value should map to use_map"
+    assert fields.get("avoid_thargoids") == "0", "avoid_thargoids should map to avoid_tharg"
 
 
 def test_elw_payload_snapshot(_ctx: TestContext) -> None:
-    payload = elw_logic._build_payload(  # type: ignore[attr-defined]
+    payload = spansh_payloads.build_elw_payload(
         start="Sol",
         cel="Colonia",
         jump_range=42.5,
         radius=50,
         max_sys=25,
         max_dist=5000,
-        min_scan=250000,
+        min_value=250000,
         loop=True,
         avoid_tharg=False,
     )
+    fields = _payload_fields(payload)
 
-    assert payload.get("body_types") == "Earth-like world", "body_types should be ELW"
-    assert payload.get("min_value") == 250000, "min_value should map to min_scan"
-    assert payload.get("avoid_thargoids") is False, "avoid_thargoids should map to avoid_tharg"
+    assert fields.get("body_types") == "Earth-like world", "body_types should be ELW"
+    assert fields.get("min_value") == "1", "min_value should be fixed for ELW payload"
+    assert fields.get("avoid_thargoids") == "0", "avoid_thargoids should map to avoid_tharg"
 
 
 def test_hmc_payload_snapshot(_ctx: TestContext) -> None:
-    payload = hmc_logic._build_payload(  # type: ignore[attr-defined]
+    payload = spansh_payloads.build_hmc_payload(
         start="Sol",
         cel="Colonia",
         jump_range=42.5,
         radius=50,
         max_sys=25,
         max_dist=5000,
-        min_scan=250000,
+        min_value=250000,
         loop=True,
         avoid_tharg=False,
     )
+    fields = _payload_fields(payload)
 
-    assert payload.get("body_types") == [
+    assert fields.get("body_types") == [
         "Rocky body",
         "High metal content world",
     ], "body_types should include Rocky + HMC"
-    assert payload.get("min_value") == 250000, "min_value should map to min_scan"
-    assert payload.get("avoid_thargoids") is False, "avoid_thargoids should map to avoid_tharg"
+    assert fields.get("min_value") == "1", "min_value should be fixed for HMC payload"
+    assert fields.get("avoid_thargoids") == "0", "avoid_thargoids should map to avoid_tharg"
 
 
 def test_trade_payload_snapshot(_ctx: TestContext) -> None:
-    payload = trade_logic._build_payload_trade(  # type: ignore[attr-defined]
-        system="Sol",
-        station="Jameson Memorial",
+    payload = spansh_payloads.build_trade_payload(
+        start_system="Sol",
+        start_station="Jameson Memorial",
         capital=1_000_000,
         max_hop=25.5,
         cargo=256,
@@ -465,12 +486,13 @@ def test_trade_payload_snapshot(_ctx: TestContext) -> None:
             "allow_permits": False,
         },
     )
+    fields = _payload_fields(payload)
 
-    assert payload.get("system") == "Sol", "system should map to payload"
-    assert payload.get("station") == "Jameson Memorial", "station should map to payload"
-    assert payload.get("requires_large_pad") == 1, "requires_large_pad should map to large_pad"
-    assert payload.get("allow_prohibited") == 1, "allow_prohibited should map to prohibited"
-    assert payload.get("unique") == 1, "unique should map to avoid_loops"
+    assert fields.get("system") == "Sol", "system should map to payload"
+    assert fields.get("station") == "Jameson Memorial", "station should map to payload"
+    assert fields.get("requires_large_pad") == "1", "requires_large_pad should map to large_pad"
+    assert fields.get("allow_prohibited") == "1", "allow_prohibited should map to prohibited"
+    assert fields.get("unique") == "1", "unique should map to avoid_loops"
 
 
 def test_neutron_payload_snapshot(_ctx: TestContext) -> None:

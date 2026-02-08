@@ -11,60 +11,12 @@ Po D1/D3:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, List, Tuple
 
 from logic.spansh_client import client, spansh_error, resolve_planner_jump_range
 from logic import spansh_payloads
 from logic.utils import powiedz
 from logic.rows_normalizer import normalize_body_rows
-
-
-def _build_payload(
-    start: str,
-    cel: str,
-    jump_range: float,
-    radius: float,
-    max_sys: int,
-    max_dist: int,
-    min_scan: int,
-    loop: bool,
-    use_map: bool,
-    avoid_tharg: bool,
-) -> Dict[str, Any]:
-    """
-    Buduje payload dla SPANSH /riches/route.
-    Nazwy pól są dopasowane do semantyki R2R (2025):
-
-    - from / to
-    - range (LY)
-    - radius (LY)
-    - max_results          – liczba systemów w trasie
-    - max_distance         – max odległość do lądowania (Ls)
-    - min_value            – minimalna wartość skanu (Cr)
-    - use_mapping_value    – czy liczyć mapped czy tylko odkrycie
-    - loop                 – pętla
-    - avoid_thargoids      – omijać systemy Thargoid
-    """
-    start = (start or "").strip()
-    cel = (cel or "").strip()
-
-    payload: Dict[str, Any] = {
-        "from": start,
-        "to": cel or None,
-        "range": float(jump_range) if jump_range is not None else None,
-        "radius": float(radius) if radius is not None else None,
-        "max_results": int(max_sys) if max_sys is not None else None,
-        "max_distance": int(max_dist) if max_dist is not None else None,
-        "min_value": int(min_scan) if min_scan is not None else None,
-        "loop": bool(loop),
-        "use_mapping_value": bool(use_map),
-        "avoid_thargoids": bool(avoid_tharg),
-    }
-
-    if cel:
-        payload["to"] = cel
-    # wywal None, żeby nie wysyłać pustych kluczy
-    return {k: v for k, v in payload.items() if v is not None}
 
 
 def _parse_riches_result(result: Any) -> Tuple[List[str], List[dict]]:

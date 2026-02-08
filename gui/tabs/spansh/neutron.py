@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import ttk
-import threading
 import json
 import time
 from itertools import zip_longest
@@ -14,6 +13,7 @@ from gui import common
 from gui import empty_state
 from gui import strings as ui
 from gui import ui_layout as layout
+from gui.ui_thread import run_on_ui_thread
 from gui.common_autocomplete import AutocompleteController, edsm_single_system_lookup
 from app.route_manager import route_manager
 from app.state import app_state
@@ -322,6 +322,9 @@ class NeutronTab(ttk.Frame):
         return fallback
 
     def _th(self, s, cel, rng, eff, supercharge_mode, via):
+        tr = []
+        details = []
+        worker_error = None
         try:
             tr, details = neutron.oblicz_spansh_with_details(
                 s,
@@ -332,91 +335,122 @@ class NeutronTab(ttk.Frame):
                 supercharge_mode=supercharge_mode,
                 via=via,
             )
-
-            if tr:
-                route_manager.set_route(tr, "neutron")
+        except Exception as exc:
+            worker_error = exc
+        finally:
+            def _apply_result() -> None:
                 try:
-                    milestones = self._build_neutron_milestones(tr, details)
-                    app_state.set_spansh_milestones(
-                        milestones,
-                        mode="neutron",
-                        source="spansh.neutron",
-                    )
-                except Exception:
-                    pass
-                if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
-                    rows = normalize_neutron_rows(details)
-                    self._results_rows = rows
-                    self._results_row_offset = 0
-                    if self._use_treeview:
-                        common.render_table_treeview(self.lst, "neutron", rows)
-                        common.register_active_route_list(
-                            self.lst,
-                            [],
-                            numerate=False,
-                            offset=1,
-                            schema_id="neutron",
-                            rows=rows,
+                    if worker_error is not None:
+                        common.emit_status(
+                            "ERROR",
+                            "ROUTE_ERROR",
+                            text="Blad zapytania do Spansh.",
+                            source="spansh.neutron",
+                            ui_target="neu",
+                        )
+                        return
+
+                    if tr:
+                        route_manager.set_route(tr, "neutron")
+                        try:
+                            milestones = self._build_neutron_milestones(tr, details)
+                            app_state.set_spansh_milestones(
+                                milestones,
+                                mode="neutron",
+                                source="spansh.neutron",
+                            )
+                        except Exception:
+                            pass
+                        if (
+                            config.get("features.tables.spansh_schema_enabled", True)
+                            and config.get("features.tables.schema_renderer_enabled", True)
+                            and config.get("features.tables.normalized_rows_enabled", True)
+                        ):
+                            rows = normalize_neutron_rows(details)
+                            self._results_rows = rows
+                            self._results_row_offset = 0
+                            if self._use_treeview:
+                                common.render_table_treeview(self.lst, "neutron", rows)
+                                common.register_active_route_list(
+                                    self.lst,
+                                    [],
+                                    numerate=False,
+                                    offset=1,
+                                    schema_id="neutron",
+                                    rows=rows,
+                                )
+                            else:
+                                opis = common.render_table_lines("neutron", rows)
+                                common.register_active_route_list(
+                                    self.lst,
+                                    opis,
+                                    numerate=False,
+                                    offset=1,
+                                    schema_id="neutron",
+                                    rows=rows,
+                                )
+                                common.wypelnij_liste(
+                                    self.lst,
+                                    opis,
+                                    numerate=False,
+                                    show_copied_suffix=False,
+                                )
+                        else:
+                            self._results_rows = normalize_neutron_rows(details)
+                            self._results_row_offset = 1
+                            header = "{:<30} {:>9} {:>9} {:>5} {:>4}".format(
+                                "System",
+                                "Dist(LY)",
+                                "Rem(LY)",
+                                "Neut",
+                                "Jmp",
+                            )
+                            opis = [header]
+                            for sys_name, detail in zip_longest(tr, details, fillvalue={}):
+                                if not sys_name:
+                                    continue
+                                opis.append(self._format_jump_row(sys_name, detail))
+
+                            common.register_active_route_list(
+                                self.lst,
+                                opis,
+                                numerate=False,
+                                offset=1,
+                            )
+                            common.wypelnij_liste(self.lst, opis, numerate=False)
+                        common.handle_route_ready_autoclipboard(self, tr, status_target="neu")
+                        empty_state.hide_state(self.lst)
+                        common.emit_status(
+                            "OK",
+                            "ROUTE_FOUND",
+                            text=f"Znaleziono {len(tr)}",
+                            source="spansh.neutron",
+                            ui_target="neu",
                         )
                     else:
-                        opis = common.render_table_lines("neutron", rows)
-                        common.register_active_route_list(
-                            self.lst,
-                            opis,
-                            numerate=False,
-                            offset=1,
-                            schema_id="neutron",
-                            rows=rows,
+                        common.emit_status(
+                            "ERROR",
+                            "ROUTE_EMPTY",
+                            text="Brak wynikow",
+                            source="spansh.neutron",
+                            ui_target="neu",
                         )
-                        common.wypelnij_liste(
-                            self.lst,
-                            opis,
-                            numerate=False,
-                            show_copied_suffix=False,
-                        )
-                else:
-                    self._results_rows = normalize_neutron_rows(details)
-                    self._results_row_offset = 1
-                    header = "{:<30} {:>9} {:>9} {:>5} {:>4}".format("System", "Dist(LY)", "Rem(LY)", "Neut", "Jmp")
-                    opis = [header]
-                    for sys_name, detail in zip_longest(tr, details, fillvalue={}):
-                        if not sys_name:
-                            continue
-                        opis.append(self._format_jump_row(sys_name, detail))
+                        title, message = empty_state.get_copy("no_results")
+                        empty_state.show_state(self.lst, empty_state.UIState.EMPTY, title, message)
+                except Exception:
+                    common.emit_status(
+                        "ERROR",
+                        "ROUTE_ERROR",
+                        text="Blad zapytania do Spansh.",
+                        source="spansh.neutron",
+                        ui_target="neu",
+                    )
+                finally:
+                    if self._last_req_enabled:
+                        self._render_last_request()
+                    self._set_busy(False)
 
-                    common.register_active_route_list(self.lst, opis, numerate=False, offset=1)
-                    common.wypelnij_liste(self.lst, opis, numerate=False)
-                common.handle_route_ready_autoclipboard(self, tr, status_target="neu")
-                empty_state.hide_state(self.lst)
-                common.emit_status(
-                    "OK",
-                    "ROUTE_FOUND",
-                    text=f"Znaleziono {len(tr)}",
-                    source="spansh.neutron",
-                    ui_target="neu",
-                )
-            else:
-                common.emit_status(
-                    "ERROR",
-                    "ROUTE_EMPTY",
-                    text="Brak wynikow",
-                    source="spansh.neutron",
-                    ui_target="neu",
-                )
-                title, message = empty_state.get_copy("no_results")
-                empty_state.show_state(self.lst, empty_state.UIState.EMPTY, title, message)
-        except Exception:  # zeby nie uwalic GUI przy wyjatku w watku
-            common.emit_status(
-                "ERROR",
-                "ROUTE_ERROR",
-                text="Blad zapytania do Spansh.",
-                source="spansh.neutron",
-                ui_target="neu",
-            )
-        finally:
-            if self._last_req_enabled:
-                self.root.after(0, self._render_last_request)
-            self.root.after(0, lambda: self._set_busy(False))
+            run_on_ui_thread(self.root, _apply_result)
 
     def _can_start(self) -> bool:
         if self._busy:

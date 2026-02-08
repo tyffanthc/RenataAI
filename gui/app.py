@@ -953,12 +953,12 @@ class RenataApp:
 
     def on_generate_modules_data(self):
         """
-        Wywo‘'ywane z GUI: generuje renata_modules_data.json i od‘>wie‘•a status.
+        Wywolywane z GUI: generuje renata_modules_data.json i odswieza status.
         """
         if not config.get("modules_data_autogen_enabled", True):
-            self.show_status("Generator danych modułów jest wyłączony w ustawieniach.")
+            self.show_status("Generator danych modulow jest wylaczony w ustawieniach.")
             return
-        self.show_status("GenerujŽt dane modu‘'Æˆw (FSD + booster)...")
+        self.show_status("Generuje dane modulow (FSD + booster)...")
 
         def worker():
             error = None
@@ -975,7 +975,7 @@ class RenataApp:
                 if error is None:
                     self.show_status("Plik renata_modules_data.json wygenerowany poprawnie.")
                 else:
-                    self.show_status(f"B‘'Žd generowania danych modu‘'Æˆw: {error}")
+                    self.show_status(f"Blad generowania danych modulow: {error}")
 
             try:
                 self.root.after(0, done)

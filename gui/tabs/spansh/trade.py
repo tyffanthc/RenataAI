@@ -2,7 +2,6 @@
 
 from tkinter import ttk
 
-import threading
 import time
 
 from datetime import datetime, timedelta
@@ -21,6 +20,7 @@ from gui import common
 from gui import strings as ui
 
 from gui import ui_layout as layout
+from gui.ui_thread import run_on_ui_thread
 
 from gui.common_autocomplete import AutocompleteController
 
@@ -1558,6 +1558,9 @@ class TradeTab(ttk.Frame):
         """
         Watek roboczy: wywoluje logike trade.oblicz_trade i wypelnia liste.
         """
+        tr = []
+        rows = []
+        worker_error = None
         try:
             tr, rows = trade.oblicz_trade(
                 start_system,
@@ -1571,66 +1574,80 @@ class TradeTab(ttk.Frame):
                 flags,
                 self.root,
             )
+        except Exception as exc:
+            worker_error = exc
+        finally:
+            def _apply_result() -> None:
+                try:
+                    if worker_error is not None:
+                        common.emit_status(
+                            "ERROR",
+                            "TRADE_ERROR",
+                            text=f"Blad: {worker_error}",
+                            source="spansh.trade",
+                            ui_target="trade",
+                        )
+                        return
 
-            if rows:
-                self._results_rows = rows
-                self._results_row_offset = 0
-                route_manager.set_route(tr, "trade")
-                if config.get("features.tables.spansh_schema_enabled", True) and config.get("features.tables.schema_renderer_enabled", True) and config.get("features.tables.normalized_rows_enabled", True):
-                    if self._use_treeview:
-                        common.render_table_treeview(self.lst_trade, "trade", rows)
-                        common.register_active_route_list(
-                            self.lst_trade,
-                            [],
-                            numerate=False,
-                            offset=1,
-                            schema_id="trade",
-                            rows=rows,
+                    if rows:
+                        self._results_rows = rows
+                        self._results_row_offset = 0
+                        route_manager.set_route(tr, "trade")
+                        if (
+                            config.get("features.tables.spansh_schema_enabled", True)
+                            and config.get("features.tables.schema_renderer_enabled", True)
+                            and config.get("features.tables.normalized_rows_enabled", True)
+                        ):
+                            if self._use_treeview:
+                                common.render_table_treeview(self.lst_trade, "trade", rows)
+                                common.register_active_route_list(
+                                    self.lst_trade,
+                                    [],
+                                    numerate=False,
+                                    offset=1,
+                                    schema_id="trade",
+                                    rows=rows,
+                                )
+                            else:
+                                opis = common.render_table_lines("trade", rows)
+                                common.register_active_route_list(
+                                    self.lst_trade,
+                                    opis,
+                                    numerate=False,
+                                    offset=1,
+                                    schema_id="trade",
+                                    rows=rows,
+                                )
+                                common.wypelnij_liste(
+                                    self.lst_trade,
+                                    opis,
+                                    numerate=False,
+                                    show_copied_suffix=False,
+                                )
+                        else:
+                            opis = [
+                                f"{row.get('from_system', '')} -> {row.get('to_system', '')}"
+                                for row in rows
+                            ]
+                            common.register_active_route_list(self.lst_trade, opis)
+                            common.wypelnij_liste(self.lst_trade, opis)
+                        common.handle_route_ready_autoclipboard(self, tr, status_target="trade")
+                        common.emit_status(
+                            "OK",
+                            "TRADE_FOUND",
+                            text=f"Znaleziono {len(rows)} propozycji.",
+                            source="spansh.trade",
+                            ui_target="trade",
                         )
                     else:
-                        opis = common.render_table_lines("trade", rows)
-                        common.register_active_route_list(
-                            self.lst_trade,
-                            opis,
-                            numerate=False,
-                            offset=1,
-                            schema_id="trade",
-                            rows=rows,
+                        common.emit_status(
+                            "ERROR",
+                            "TRADE_NO_RESULTS",
+                            source="spansh.trade",
+                            ui_target="trade",
                         )
-                        common.wypelnij_liste(
-                            self.lst_trade,
-                            opis,
-                            numerate=False,
-                            show_copied_suffix=False,
-                        )
-                else:
-                    opis = [f"{row.get('from_system', '')} -> {row.get('to_system', '')}" for row in rows]
-                    common.register_active_route_list(self.lst_trade, opis)
-                    common.wypelnij_liste(self.lst_trade, opis)
-                common.handle_route_ready_autoclipboard(self, tr, status_target="trade")
-                common.emit_status(
-                    "OK",
-                    "TRADE_FOUND",
-                    text=f"Znaleziono {len(rows)} propozycji.",
-                    source="spansh.trade",
-                    ui_target="trade",
-                )
-            else:
-                common.emit_status(
-                    "ERROR",
-                    "TRADE_NO_RESULTS",
-                    source="spansh.trade",
-                    ui_target="trade",
-                )
+                finally:
+                    self._set_busy(False)
 
-        except Exception as e:
-            common.emit_status(
-                "ERROR",
-                "TRADE_ERROR",
-                text=f"Blad: {e}",
-                source="spansh.trade",
-                ui_target="trade",
-            )
-        finally:
-            self.root.after(0, lambda: self._set_busy(False))
+            run_on_ui_thread(self.root, _apply_result)
 
