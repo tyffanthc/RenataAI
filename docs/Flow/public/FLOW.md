@@ -35,6 +35,7 @@
 - [UX: Decision Cards](docs/ux/UX_DECISION_CARDS.md)
 - [Polityka: Global Risk Policy](docs/policies/GLOBAL_RISK_POLICY.md)
 - [Polityka: VaR (Value at Risk)](docs/policies/GLOBAL_VALUE_AT_RISK.md)
+- [Status: Refaktor](docs/REFAKTOR_STATUS.md)
 
 - [Akcje](docs/actions)
 
