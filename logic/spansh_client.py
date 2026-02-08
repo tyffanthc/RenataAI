@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import time
 import json
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 import copy
 
@@ -38,6 +39,19 @@ HEADERS: Dict[str, str] = {
     "Accept": "application/json",
     "From": "tyffanthc@gmail.com",
 }
+
+
+@dataclass(frozen=True)
+class _RouteRequestContext:
+    mode: str
+    endpoint_path: str
+    url: str
+    headers: Dict[str, str]
+    payload_fields: List[Tuple[str, Any]]
+    payload_dict: Dict[str, Any]
+    cache_key: str
+    ttl_seconds: int
+    debug_payload: Dict[str, Any] | None
 
 
 # --- Wspólny helper do obsługi błędów SPANSH --------------------------------
@@ -220,27 +234,11 @@ class SpanshClient:
                     print(f"[Spansh] Autocomplete JSON error ({q!r}): {e}")
                     return []
 
-                names: List[str] = []
-
-                # Spansh historycznie zwracał zarówno listy dictów jak i inne formaty.
-                if isinstance(data, list):
-                    for item in data:
-                        if isinstance(item, dict):
-                            name = item.get("name") or item.get("system")
-                        else:
-                            name = str(item)
-                        if name and name not in names:
-                            names.append(str(name))
-                elif isinstance(data, dict):
-                    # e.g. {"systems": [...]} – na wszelki wypadek
-                    systems = data.get("systems") or data.get("result") or []
-                    for item in systems:
-                        if isinstance(item, dict):
-                            name = item.get("name") or item.get("system")
-                        else:
-                            name = str(item)
-                        if name and name not in names:
-                            names.append(str(name))
+                names = self._extract_name_list(
+                    data,
+                    container_keys=("systems", "result"),
+                    name_keys=("name", "system"),
+                )
 
                 print(f"[Spansh] '{q}' → {len(names)} wyników")
                 if names:
@@ -312,38 +310,13 @@ class SpanshClient:
                     print(f"[Spansh] Stations JSON error ({system!r}, {q!r}): {e}")
                     return []
 
-                names: List[str] = []
-
-                # Spansh może zwracać listę dictów lub dict z polem 'stations' / 'result'
-                if isinstance(data, list):
-                    items = data
-                elif isinstance(data, dict):
-                    items = data.get("stations") or data.get("result") or data.get("bodies") or []
-                else:
-                    items = []
-
-                for item in items:
-                    name: Optional[str] = None
-                    if isinstance(item, str):
-                        name = item
-                    elif isinstance(item, dict):
-                        name = (
-                            item.get("name")
-                            or item.get("station")
-                            or item.get("body")
-                            or item.get("label")
-                        )
-
-                    if not name:
-                        continue
-
-                    if name not in names:
-                        names.append(str(name))
-
-                # Sort + bezpieczny limit – żeby nie zalewać listboxa setkami pozycji
-                names = sorted(names, key=lambda item: item.lower())
-                if len(names) > 200:
-                    names = names[:200]
+                names = self._extract_name_list(
+                    data,
+                    container_keys=("stations", "result", "bodies"),
+                    name_keys=("name", "station", "body", "label"),
+                    sort_names=True,
+                    limit=200,
+                )
 
                 print(f"[Spansh] stations '{system}' ('{q}') → {len(names)} wyników")
                 return names
@@ -355,6 +328,59 @@ class SpanshClient:
                 break
 
         return []
+
+    def _extract_name_list(
+        self,
+        data: Any,
+        *,
+        container_keys: tuple[str, ...],
+        name_keys: tuple[str, ...],
+        sort_names: bool = False,
+        limit: int | None = None,
+    ) -> List[str]:
+        if isinstance(data, list):
+            items = data
+        elif isinstance(data, dict):
+            items = []
+            for key in container_keys:
+                candidate = data.get(key)
+                if isinstance(candidate, list):
+                    items = candidate
+                    break
+        else:
+            items = []
+
+        names: List[str] = []
+        seen: set[str] = set()
+        for item in items:
+            name: Optional[str] = None
+            if isinstance(item, str):
+                name = item
+            elif isinstance(item, dict):
+                for key in name_keys:
+                    value = item.get(key)
+                    if value is not None and value != "":
+                        name = str(value)
+                        break
+            else:
+                name = str(item)
+
+            if not name:
+                continue
+            name = str(name).strip()
+            if not name:
+                continue
+            key = name.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            names.append(name)
+
+        if sort_names:
+            names = sorted(names, key=lambda item: item.lower())
+        if limit is not None and limit > 0:
+            names = names[:limit]
+        return names
 
     def route(
         self,
@@ -374,232 +400,287 @@ class SpanshClient:
         Zwraca js.get("result", ...) lub None jeśli błąd.
         """
         self._reload_config()
+        try:
+            poll_seconds = float(poll_seconds) if poll_seconds is not None else float(self.default_poll_interval)
+        except Exception:
+            poll_seconds = float(self.default_poll_interval)
+        if poll_seconds <= 0:
+            poll_seconds = float(self.default_poll_interval)
 
-        poll_seconds = poll_seconds or self.default_poll_interval
-        polls = polls or 60
+        try:
+            polls = int(polls) if polls is not None else 60
+        except Exception:
+            polls = 60
+        if polls <= 0:
+            polls = 60
 
-        def _payload_to_fields(data: Any) -> List[Tuple[str, Any]]:
-            if isinstance(data, SpanshPayload):
-                return list(data.form_fields)
-            if isinstance(data, list):
-                return list(data)
-            if isinstance(data, dict):
-                fields: List[Tuple[str, Any]] = []
-                for key, value in data.items():
-                    if value is None:
-                        continue
-                    if isinstance(value, list):
-                        for item in value:
-                            if item is None:
-                                continue
-                            fields.append((key, item))
-                    else:
-                        fields.append((key, value))
-                return fields
-            return []
+        ctx = self._build_route_context(mode, payload, referer, endpoint_path=endpoint_path)
+        start_ts = time.monotonic()
 
-        def _fields_to_dict(fields: List[Tuple[str, Any]]) -> Dict[str, Any]:
-            out: Dict[str, Any] = {}
-            for key, value in fields:
-                if key not in out:
-                    out[key] = value
-                else:
-                    current = out[key]
-                    if isinstance(current, list):
-                        current.append(value)
-                    else:
-                        out[key] = [current, value]
-            return out
+        hit, cached = self._route_cache_lookup(ctx)
+        if hit:
+            self._record_route_telemetry(ctx, status="CACHE_HIT", start_ts=start_ts, response_ms=0)
+            return cached
 
-        # neutron plotter ma inny path niż pozostałe
-        if isinstance(payload, SpanshPayload):
-            endpoint_path = payload.endpoint_path
+        try:
+            result = run_deduped(
+                ctx.cache_key,
+                lambda: self._run_route_pipeline(
+                    ctx,
+                    gui_ref=gui_ref,
+                    poll_seconds=poll_seconds,
+                    polls=polls,
+                ),
+            )
+        except Exception:
+            self._record_route_telemetry(ctx, status="ERROR", start_ts=start_ts)
+            return None
 
-        if endpoint_path:
-            if not endpoint_path.startswith("/"):
-                endpoint_path = f"/{endpoint_path}"
-            path = endpoint_path
-        elif mode in ("neutron", "route"):
-            path = "/route"
-        else:
-            path = f"/{mode}/route"
+        if result is None:
+            self._record_route_telemetry(ctx, status="ERROR", start_ts=start_ts)
+            return None
 
+        status = "SUCCESS"
+        if isinstance(result, list) and not result:
+            status = "EMPTY"
+        self._record_route_telemetry(ctx, status=status, start_ts=start_ts)
+        self._route_cache_store(ctx, result)
+        return result
+
+    def _build_route_context(
+        self,
+        mode: str,
+        payload: Any,
+        referer: str,
+        *,
+        endpoint_path: str | None,
+    ) -> _RouteRequestContext:
+        path = self._resolve_route_endpoint_path(mode, payload, endpoint_path=endpoint_path)
         url = f"{self.base_url}{path}"
+
         headers = self._headers(referer=referer)
         if config.get("features.spansh.form_urlencoded_enabled", True):
             headers["Content-Type"] = "application/x-www-form-urlencoded"
 
-        def _normalize(value: Any) -> Any:
-            if isinstance(value, float):
-                return round(value, 4)
-            if isinstance(value, dict):
-                return {k: _normalize(value[k]) for k in sorted(value.keys())}
-            if isinstance(value, list):
-                return [_normalize(v) for v in value]
-            if isinstance(value, str):
-                return value.strip()
-            return value
+        payload_fields = self._payload_to_fields(payload)
+        payload_dict = self._fields_to_dict(payload_fields)
+        norm_payload = [(k, self._normalize_payload_value(v)) for k, v in payload_fields]
+        cache_key = make_request_key("spansh", path, {"mode": mode, "payload": norm_payload})
 
-        payload_fields = _payload_to_fields(payload)
-        norm_payload = [(k, _normalize(v)) for k, v in payload_fields]
-        payload_dict = _fields_to_dict(payload_fields)
-        cache_key = make_request_key(
-            "spansh",
-            path,
-            {"mode": mode, "payload": norm_payload},
-        )
         debug_payload = None
         if config.get("debug_cache", False):
             try:
-                debug_payload = _fields_to_dict(norm_payload)
+                debug_payload = self._fields_to_dict(norm_payload)
             except Exception:
                 debug_payload = None
 
-        ttl_seconds = 7 * 24 * 3600
-        start_ts = time.monotonic()
-        if mode == "trade":
-            ttl_seconds = 6 * 3600
+        ttl_seconds = 6 * 3600 if mode == "trade" else 7 * 24 * 3600
+        return _RouteRequestContext(
+            mode=mode,
+            endpoint_path=path,
+            url=url,
+            headers=headers,
+            payload_fields=payload_fields,
+            payload_dict=payload_dict,
+            cache_key=cache_key,
+            ttl_seconds=ttl_seconds,
+            debug_payload=debug_payload,
+        )
 
-        hit, cached, _meta = self.cache.get(cache_key)
-        if config.get("debug_cache", False):
-            self._debug_cache_log(mode, path, cache_key, debug_payload, hit)
-        if hit:
-            self._set_last_request({
-                "timestamp": time.time(),
-                "mode": mode,
-                "endpoint": path,
-                "url": url,
-                "payload": payload_dict,
-                "status": "CACHE_HIT",
-                "response_ms": 0,
-            })
-            return cached
+    def _resolve_route_endpoint_path(
+        self,
+        mode: str,
+        payload: Any,
+        *,
+        endpoint_path: str | None,
+    ) -> str:
+        resolved = endpoint_path
+        if isinstance(payload, SpanshPayload):
+            resolved = payload.endpoint_path
+        if resolved:
+            if not resolved.startswith("/"):
+                resolved = f"/{resolved}"
+            return resolved
+        if mode in ("neutron", "route"):
+            return "/route"
+        return f"/{mode}/route"
 
-        # --- Job request ------------------------------------------------------
-        # SPANSH oczekuje form-data (application/x-www-form-urlencoded),
-        # a nie JSON. Dodatkowo niektóre pola (np. body_types) mogą
-        # występować wielokrotnie — wtedy payload trzymamy jako listę.
-
-        def _do_request() -> Optional[Any]:
-            # Anti-spam dla tras — jeżeli ktoś spamuje przyciskiem,
-            # nie odpalamy wielu jobów naraz.
-            if not DEBOUNCER.is_allowed("spansh_route", cooldown_sec=1.0, context=mode):
-                spansh_error("Odczekaj chwilę przed kolejnym zapytaniem SPANSH.", gui_ref, context=mode)
-                return None
-
-            try:
-                if config.get("features.spansh.form_urlencoded_enabled", True):
-                    r = requests.post(
-                        url,
-                        data=payload_fields,
-                        headers=headers,
-                        timeout=self.default_timeout,
-                    )
+    def _payload_to_fields(self, data: Any) -> List[Tuple[str, Any]]:
+        if isinstance(data, SpanshPayload):
+            return list(data.form_fields)
+        if isinstance(data, list):
+            return list(data)
+        if isinstance(data, dict):
+            fields: List[Tuple[str, Any]] = []
+            for key, value in data.items():
+                if value is None:
+                    continue
+                if isinstance(value, list):
+                    for item in value:
+                        if item is None:
+                            continue
+                        fields.append((key, item))
                 else:
-                    r = requests.post(
-                        url,
-                        json=_fields_to_dict(payload_fields),
-                        headers=headers,
-                        timeout=self.default_timeout,
-                    )
-            except Exception as e:  # noqa: BLE001
-                spansh_error(
-                    f"{mode.upper()}: wyjątek HTTP przy wysyłaniu joba ({e})",
-                    gui_ref,
-                    context=mode,
+                    fields.append((key, value))
+            return fields
+        return []
+
+    def _fields_to_dict(self, fields: List[Tuple[str, Any]]) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        for key, value in fields:
+            if key not in out:
+                out[key] = value
+                continue
+            current = out[key]
+            if isinstance(current, list):
+                current.append(value)
+            else:
+                out[key] = [current, value]
+        return out
+
+    def _normalize_payload_value(self, value: Any) -> Any:
+        if isinstance(value, float):
+            return round(value, 4)
+        if isinstance(value, dict):
+            return {k: self._normalize_payload_value(value[k]) for k in sorted(value.keys())}
+        if isinstance(value, list):
+            return [self._normalize_payload_value(v) for v in value]
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    def _route_cache_lookup(self, ctx: _RouteRequestContext) -> tuple[bool, Any]:
+        hit, cached, _meta = self.cache.get(ctx.cache_key)
+        if config.get("debug_cache", False):
+            self._debug_cache_log(
+                ctx.mode,
+                ctx.endpoint_path,
+                ctx.cache_key,
+                ctx.debug_payload,
+                hit,
+            )
+        return bool(hit), cached
+
+    def _run_route_pipeline(
+        self,
+        ctx: _RouteRequestContext,
+        *,
+        gui_ref: Any | None,
+        poll_seconds: float,
+        polls: int,
+    ) -> Optional[Any]:
+        if not DEBOUNCER.is_allowed("spansh_route", cooldown_sec=1.0, context=ctx.mode):
+            spansh_error("Odczekaj chwilę przed kolejnym zapytaniem SPANSH.", gui_ref, context=ctx.mode)
+            return None
+
+        job = self._request_route_job(ctx, gui_ref=gui_ref)
+        if not job:
+            return None
+
+        js = self._poll_results(
+            job,
+            mode=ctx.mode,
+            gui_ref=gui_ref,
+            poll_seconds=poll_seconds,
+            polls=polls,
+        )
+        if js is None:
+            return None
+        return self._extract_route_result(js)
+
+    def _request_route_job(self, ctx: _RouteRequestContext, *, gui_ref: Any | None) -> str | None:
+        try:
+            if config.get("features.spansh.form_urlencoded_enabled", True):
+                response = requests.post(
+                    ctx.url,
+                    data=ctx.payload_fields,
+                    headers=ctx.headers,
+                    timeout=self.default_timeout,
                 )
-                return None
-
-            if r.status_code not in (200, 202):
-                # prosty debug do loga konsoli — widzimy treść błędu z SPANSH
-                try:
-                    print(f"[Spansh] {mode} HTTP {r.status_code} body: {r.text}")
-                except Exception:
-                    pass
-
-                spansh_error(
-                    f"{mode.upper()}: HTTP {r.status_code} przy wysyłaniu joba.",
-                    gui_ref,
-                    context=mode,
+            else:
+                response = requests.post(
+                    ctx.url,
+                    json=self._fields_to_dict(ctx.payload_fields),
+                    headers=ctx.headers,
+                    timeout=self.default_timeout,
                 )
-                return None
+        except Exception as e:  # noqa: BLE001
+            spansh_error(
+                f"{ctx.mode.upper()}: wyjątek HTTP przy wysyłaniu joba ({e})",
+                gui_ref,
+                context=ctx.mode,
+            )
+            return None
 
+        if response.status_code not in (200, 202):
             try:
-                job = r.json().get("job")
-            except Exception as e:  # noqa: BLE001
-                spansh_error(
-                    f"{mode.upper()}: niepoprawny JSON przy tworzeniu joba ({e}).",
-                    gui_ref,
-                    context=mode,
-                )
-                return None
-
-            if not job:
-                spansh_error(
-                    f"{mode.upper()}: brak job ID w odpowiedzi.",
-                    gui_ref,
-                    context=mode,
-                )
-                return None
-
-            # --- Polling ---------------------------------------------------------
-
-            js = self._poll_results(job, mode=mode, gui_ref=gui_ref, poll_seconds=poll_seconds, polls=polls)
-            if js is None:
-                return None
-
-            # Standard: w JSON-ie jest pole "result"
-            if isinstance(js, dict):
-                return js.get("result", [])
-            return js
+                print(f"[Spansh] {ctx.mode} HTTP {response.status_code} body: {response.text}")
+            except Exception:
+                pass
+            spansh_error(
+                f"{ctx.mode.upper()}: HTTP {response.status_code} przy wysyłaniu joba.",
+                gui_ref,
+                context=ctx.mode,
+            )
+            return None
 
         try:
-            result = run_deduped(cache_key, _do_request)
-        except Exception:
-            self._set_last_request({
-                "timestamp": time.time(),
-                "mode": mode,
-                "endpoint": path,
-                "url": url,
-                "payload": payload_dict,
-                "status": "ERROR",
-                "response_ms": int((time.monotonic() - start_ts) * 1000),
-            })
-            return None
-
-        if result is None:
-            self._set_last_request({
-                "timestamp": time.time(),
-                "mode": mode,
-                "endpoint": path,
-                "url": url,
-                "payload": payload_dict,
-                "status": "ERROR",
-                "response_ms": int((time.monotonic() - start_ts) * 1000),
-            })
-            return None
-
-        if result is not None:
-            status = "SUCCESS"
-            if isinstance(result, list) and not result:
-                status = "EMPTY"
-            self._set_last_request({
-                "timestamp": time.time(),
-                "mode": mode,
-                "endpoint": path,
-                "url": url,
-                "payload": payload_dict,
-                "status": status,
-                "response_ms": int((time.monotonic() - start_ts) * 1000),
-            })
-            self.cache.set(
-                cache_key,
-                result,
-                ttl_seconds,
-                meta={"provider": "spansh", "endpoint": path, "mode": mode},
+            body = response.json()
+            if not isinstance(body, dict):
+                raise ValueError("response is not an object")
+            job = body.get("job")
+        except Exception as e:  # noqa: BLE001
+            spansh_error(
+                f"{ctx.mode.upper()}: niepoprawny JSON przy tworzeniu joba ({e}).",
+                gui_ref,
+                context=ctx.mode,
             )
+            return None
 
-        return result
+        if not job:
+            spansh_error(
+                f"{ctx.mode.upper()}: brak job ID w odpowiedzi.",
+                gui_ref,
+                context=ctx.mode,
+            )
+            return None
+        return str(job)
+
+    @staticmethod
+    def _extract_route_result(js: Any) -> Any:
+        if isinstance(js, dict):
+            return js.get("result", [])
+        return js
+
+    def _record_route_telemetry(
+        self,
+        ctx: _RouteRequestContext,
+        *,
+        status: str,
+        start_ts: float,
+        response_ms: int | None = None,
+    ) -> None:
+        if response_ms is None:
+            response_ms = int((time.monotonic() - start_ts) * 1000)
+        self._set_last_request(
+            {
+                "timestamp": time.time(),
+                "mode": ctx.mode,
+                "endpoint": ctx.endpoint_path,
+                "url": ctx.url,
+                "payload": ctx.payload_dict,
+                "status": status,
+                "response_ms": response_ms,
+            }
+        )
+
+    def _route_cache_store(self, ctx: _RouteRequestContext, result: Any) -> None:
+        self.cache.set(
+            ctx.cache_key,
+            result,
+            ctx.ttl_seconds,
+            meta={"provider": "spansh", "endpoint": ctx.endpoint_path, "mode": ctx.mode},
+        )
 
     def neutron_route(
         self,
