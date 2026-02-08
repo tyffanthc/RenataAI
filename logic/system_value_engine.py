@@ -492,6 +492,21 @@ class SystemValueEngine:
         key_generic = ("Planet Type", terraformable)
         return self._carto_map.get(key_generic)
 
+    def _is_high_value_target(self, body_type: str, terraformable: str) -> bool:
+        """
+        Lightweight classification for high-value bodies in system summary.
+        """
+        body_norm = str(body_type or "").strip().lower()
+        terra_norm = str(terraformable or "").strip().lower()
+
+        if body_norm in {"earth-like world", "water world", "ammonia world"}:
+            return True
+
+        if body_norm in {"high metal content planet", "high metal content world"}:
+            return terra_norm == "yes"
+
+        return False
+
     # --- Exobiology helpers --------------------------------------------------
 
     def _normalize_species_name(self, raw_name: str) -> Optional[str]:

@@ -36,6 +36,13 @@ from logic.events import exploration_bio_events as bio_events  # type: ignore
 from logic.events import exploration_misc_events as misc_events  # type: ignore
 from logic import spansh_payloads
 from logic import spansh_client as spansh_client_logic  # type: ignore
+from logic import neutron as neutron_logic  # type: ignore
+from logic import riches as riches_logic  # type: ignore
+from logic import ammonia as ammonia_logic  # type: ignore
+from logic import elw_route as elw_logic  # type: ignore
+from logic import hmc_route as hmc_logic  # type: ignore
+from logic import exomastery as exomastery_logic  # type: ignore
+from logic import trade as trade_logic  # type: ignore
 
 
 # --- POMOCNICZY KONTEKST TESTÓW ----------------------------------------------
@@ -567,6 +574,207 @@ def test_resolve_planner_jump_range_auto(_ctx: TestContext) -> None:
             cfg[key] = value
 
 
+def test_route_planner_modules_smoke(_ctx: TestContext) -> None:
+    """
+    Scenariusz:
+    - plannerowe moduły logic/* działają na stubowanym kliencie SPANSH,
+    - parsery zwracają niepuste route/rows bez sieci i bez pełnego GUI.
+    """
+
+    class DummyClient:
+        def route(self, mode, payload, referer=None, gui_ref=None, **_kwargs):
+            if mode == "trade":
+                return [
+                    {
+                        "from_system": "SMOKE_TRADE_A",
+                        "to_system": "SMOKE_TRADE_B",
+                        "commodity": "Gold",
+                        "profit": 12000,
+                        "profit_per_tonne": 250,
+                        "jumps": 2,
+                    }
+                ]
+            if mode == "exobiology":
+                return [
+                    {
+                        "system": "SMOKE_EXO_A",
+                        "landmarks": [
+                            {
+                                "body": "SMOKE_EXO_A 1",
+                                "species": "Aleoida Arcus",
+                                "distance": 300,
+                                "value": 700000,
+                            }
+                        ],
+                    }
+                ]
+            return [
+                {
+                    "system": "SMOKE_ROUTE_A",
+                    "jumps": 1,
+                    "bodies": [
+                        {
+                            "name": "SMOKE_ROUTE_A 1",
+                            "subtype": "Water world",
+                            "distance": 1200,
+                            "value": 123456,
+                            "mapping_value": 223456,
+                        }
+                    ],
+                }
+            ]
+
+        def neutron_route(
+            self,
+            start,
+            cel,
+            zasieg,
+            eff,
+            gui_ref=None,
+            return_details=False,
+            supercharge_mode=None,
+            via=None,
+        ):
+            systems = ["SMOKE_NEU_A", "SMOKE_NEU_B", "SMOKE_NEU_C"]
+            details = [
+                {"system": "SMOKE_NEU_A", "distance": 10.0, "remaining": 30.0, "neutron": True, "jumps": 2},
+                {"system": "SMOKE_NEU_B", "distance": 20.0, "remaining": 10.0, "neutron": False, "jumps": 1},
+                {"system": "SMOKE_NEU_C", "distance": 10.0, "remaining": 0.0, "neutron": False, "jumps": 0},
+            ]
+            if return_details:
+                return systems, details
+            return systems
+
+    dummy = DummyClient()
+    originals = {
+        "riches": riches_logic.client,
+        "ammonia": ammonia_logic.client,
+        "elw": elw_logic.client,
+        "hmc": hmc_logic.client,
+        "exo": exomastery_logic.client,
+        "trade": trade_logic.client,
+        "neutron": neutron_logic.client,
+    }
+
+    try:
+        riches_logic.client = dummy
+        ammonia_logic.client = dummy
+        elw_logic.client = dummy
+        hmc_logic.client = dummy
+        exomastery_logic.client = dummy
+        trade_logic.client = dummy
+        neutron_logic.client = dummy
+
+        route_riches, rows_riches = riches_logic.oblicz_rtr(
+            start="Sol",
+            cel="Colonia",
+            jump_range=42.0,
+            radius=50,
+            max_sys=10,
+            max_dist=5000,
+            min_scan=250000,
+            loop=False,
+            use_map=True,
+            avoid_tharg=True,
+            gui_ref=None,
+        )
+        assert route_riches and rows_riches, "RICHES planner should return rows"
+
+        route_amm, rows_amm = ammonia_logic.oblicz_ammonia(
+            start="Sol",
+            cel="Colonia",
+            jump_range=42.0,
+            radius=50,
+            max_sys=10,
+            max_dist=5000,
+            loop=False,
+            avoid_tharg=True,
+            gui_ref=None,
+        )
+        assert route_amm and rows_amm, "AMMONIA planner should return rows"
+
+        route_elw, rows_elw = elw_logic.oblicz_elw(
+            start="Sol",
+            cel="Colonia",
+            jump_range=42.0,
+            radius=50,
+            max_sys=10,
+            max_dist=5000,
+            loop=False,
+            avoid_tharg=True,
+            gui_ref=None,
+        )
+        assert route_elw and rows_elw, "ELW planner should return rows"
+
+        route_hmc, rows_hmc = hmc_logic.oblicz_hmc(
+            start="Sol",
+            cel="Colonia",
+            jump_range=42.0,
+            radius=50,
+            max_sys=10,
+            max_dist=5000,
+            loop=False,
+            avoid_tharg=True,
+            gui_ref=None,
+        )
+        assert route_hmc and rows_hmc, "HMC planner should return rows"
+
+        route_exo, rows_exo = exomastery_logic.oblicz_exomastery(
+            start="Sol",
+            cel="Colonia",
+            jump_range=42.0,
+            radius=50,
+            max_sys=10,
+            max_dist=5000,
+            min_landmark_value=200000,
+            loop=False,
+            avoid_tharg=True,
+            gui_ref=None,
+        )
+        assert route_exo and rows_exo, "EXOMASTERY planner should return rows"
+
+        route_trade, rows_trade = trade_logic.oblicz_trade(
+            start_system="Sol",
+            start_station="Jameson Memorial",
+            capital=1_000_000,
+            max_hop=25.0,
+            cargo=64,
+            max_hops=4,
+            max_dta=1000,
+            max_age=7,
+            flags={"avoid_loops": True},
+            gui_ref=None,
+        )
+        assert route_trade and rows_trade, "TRADE planner should return rows"
+
+        neutron_route = neutron_logic.oblicz_spansh(
+            start="Sol",
+            cel="Colonia",
+            zasieg=42.0,
+            eff=60.0,
+            gui_ref=None,
+        )
+        assert neutron_route, "NEUTRON planner should return route"
+
+        neutron_route2, neutron_details = neutron_logic.oblicz_spansh_with_details(
+            start="Sol",
+            cel="Colonia",
+            zasieg=42.0,
+            eff=60.0,
+            gui_ref=None,
+        )
+        assert neutron_route2 and neutron_details, "NEUTRON planner details should be returned"
+
+    finally:
+        riches_logic.client = originals["riches"]
+        ammonia_logic.client = originals["ammonia"]
+        elw_logic.client = originals["elw"]
+        hmc_logic.client = originals["hmc"]
+        exomastery_logic.client = originals["exo"]
+        trade_logic.client = originals["trade"]
+        neutron_logic.client = originals["neutron"]
+
+
 # --- TESTY: FIRST FOOTFALL ---------------------------------------------------
 
 
@@ -653,6 +861,7 @@ def run_all_tests() -> int:
         ("test_neutron_payload_snapshot", test_neutron_payload_snapshot),
         ("test_start_system_fallback_source", test_start_system_fallback_source),
         ("test_resolve_planner_jump_range_auto", test_resolve_planner_jump_range_auto),
+        ("test_route_planner_modules_smoke", test_route_planner_modules_smoke),
     ]
 
     print("=== RenataAI Backend Smoke Tests (T1) ===")
