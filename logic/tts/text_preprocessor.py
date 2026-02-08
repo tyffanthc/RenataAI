@@ -32,6 +32,7 @@ ALLOWED_MESSAGES = {
     "MSG.FSS_LAST_BODY",
     "MSG.MILESTONE_PROGRESS",
     "MSG.MILESTONE_REACHED",
+    "MSG.STARTUP_SYSTEMS",
 }
 
 
@@ -175,5 +176,11 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
 
     if message_id == "MSG.ROUTE_FOUND":
         return _finalize_tts("Trasa wyznaczona.")
+
+    if message_id == "MSG.STARTUP_SYSTEMS":
+        version = str(ctx.get("version", "")).strip()
+        if version:
+            return _finalize_tts(f"Renata. {version}. Startuje wszystkie systemy.")
+        return _finalize_tts("Renata. Startuje wszystkie systemy.")
 
     return None

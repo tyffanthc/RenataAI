@@ -254,7 +254,7 @@ class RenataApp:
 
         release_url = "https://github.com/tyffanthc/RenataAI/releases/tag/v0.9.1-preview"
         text = (
-            "R.E.N.A.T.A. v90\n"
+            f"R.E.N.A.T.A. {config.APP_VERSION}\n"
             "Route, Exploration & Navigation Assistant for Trading & Analysis.\n\n"
             "Wersja FREE Preview:\n"
             "- Companion desktop do Elite Dangerous\n"

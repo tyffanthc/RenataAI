@@ -10,6 +10,7 @@ from typing import Any, Dict
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _SETTINGS_SOURCE_LOGGED = False
 SCIENCE_EXCEL_PATH = "renata_science_data.xlsx"
+APP_VERSION = "v0.9.2"
 
 
 def _settings_path() -> str:

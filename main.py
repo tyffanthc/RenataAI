@@ -1,11 +1,11 @@
-# main.py (v90 - OPERACJA KABEL)
+# main.py (v0.9.2 - OPERACJA KABEL)
 
-import tkinter as tk
 import threading
+import tkinter as tk
 
-from config import config        # <- bierzemy instancję ConfigManagera
-from gui import RenataApp
 from app.main_loop import MainLoop
+from config import APP_VERSION, config
+from gui import RenataApp
 from logic.utils import powiedz
 
 
@@ -13,9 +13,16 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = RenataApp(root)
 
-    powiedz("R.E.N.A.T.A. v90: startuję pętlę Journal...", app)
+    startup_text = f"Renata {APP_VERSION}: startuje wszystkie systemy."
+    powiedz(
+        startup_text,
+        app,
+        message_id="MSG.STARTUP_SYSTEMS",
+        context={"version": APP_VERSION},
+        force=True,
+    )
 
-    # Ścieżka logów z JSON-a (user_settings.json)
+    # Sciezka logow z JSON-a (user_settings.json)
     log_dir = config.get("log_dir")
 
     th = threading.Thread(
