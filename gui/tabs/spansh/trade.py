@@ -563,6 +563,7 @@ class TradeTab(ttk.Frame):
 
         )
         self._results_widget = self.lst_trade
+        common.enable_results_checkboxes(self.lst_trade, enabled=True)
 
 
 
@@ -976,61 +977,15 @@ class TradeTab(ttk.Frame):
             actions.append({"separator": True})
             actions.append(
                 {
-                    "label": "Kopiuj CSV",
+                    "label": "Kopiuj do Excela",
                     "children": [
                         {
-                            "label": "CSV",
-                            "action": lambda p: self._copy_selected_delimited(
-                                p,
-                                sep=",",
-                                include_header=False,
-                                context="results.csv_selected",
-                            ),
-                            "enabled": selected_exists or row_exists,
-                        },
-                        {
-                            "label": "Naglowki",
-                            "action": lambda p: self._copy_selected_delimited(
-                                p,
-                                sep=",",
-                                include_header=True,
-                                context="results.csv_headers_selected",
-                            ),
-                            "enabled": selected_exists or row_exists,
-                        },
-                        {
-                            "label": "Wiersz",
-                            "action": lambda p: self._copy_clicked_delimited(
-                                p,
-                                sep=",",
-                                include_header=False,
-                                context="results.csv_row",
-                            ),
-                            "enabled": row_exists,
-                        },
-                        {
-                            "label": "Wszystko",
-                            "action": lambda p: self._copy_all_delimited(
-                                sep=",",
-                                include_header=False,
-                                context="results.csv_all",
-                            ),
-                            "enabled": all_exists,
-                        },
-                    ],
-                }
-            )
-            actions.append(
-                {
-                    "label": "Kopiuj TSV",
-                    "children": [
-                        {
-                            "label": "TSV",
+                            "label": "Zaznaczone",
                             "action": lambda p: self._copy_selected_delimited(
                                 p,
                                 sep="\t",
                                 include_header=False,
-                                context="results.tsv_selected",
+                                context="results.excel_selected",
                             ),
                             "enabled": selected_exists or row_exists,
                         },
@@ -1040,7 +995,7 @@ class TradeTab(ttk.Frame):
                                 p,
                                 sep="\t",
                                 include_header=True,
-                                context="results.tsv_headers_selected",
+                                context="results.excel_headers_selected",
                             ),
                             "enabled": selected_exists or row_exists,
                         },
@@ -1050,7 +1005,7 @@ class TradeTab(ttk.Frame):
                                 p,
                                 sep="\t",
                                 include_header=False,
-                                context="results.tsv_row",
+                                context="results.excel_row",
                             ),
                             "enabled": row_exists,
                         },
@@ -1059,7 +1014,7 @@ class TradeTab(ttk.Frame):
                             "action": lambda p: self._copy_all_delimited(
                                 sep="\t",
                                 include_header=False,
-                                context="results.tsv_all",
+                                context="results.excel_all",
                             ),
                             "enabled": all_exists,
                         },
@@ -1086,6 +1041,13 @@ class TradeTab(ttk.Frame):
         widget = self._results_widget
         if widget is None:
             return []
+        checked = common.get_checked_internal_indices(
+            widget,
+            row_offset=self._results_row_offset,
+            rows_len=len(self._results_rows),
+        )
+        if checked:
+            return checked
         indices: list[int] = []
         if isinstance(widget, ttk.Treeview):
             selected_ids = set(str(item) for item in (widget.selection() or ()))
@@ -1786,6 +1748,7 @@ class TradeTab(ttk.Frame):
         else:
 
             self.lst_trade.delete(0, tk.END)
+        common.clear_results_checkboxes(self.lst_trade)
 
         self.lbl_status.config(text="Wyczyszczono", foreground="grey")
 
@@ -2122,6 +2085,7 @@ class TradeTab(ttk.Frame):
                         return
 
                     if rows:
+                        common.clear_results_checkboxes(self.lst_trade)
                         self._results_rows = rows
                         self._results_row_offset = 0
                         route_manager.set_route(tr, "trade")

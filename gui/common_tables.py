@@ -10,6 +10,8 @@ from gui.window_positions import restore_window_geometry, bind_window_geometry, 
 COPIED_BG = "#CFE8FF"   # jasny niebieski, subtelny
 COPIED_FG = "#000000"
 HOVER_BG = "#273241"
+CHECKBOX_OFF = "[ ]"
+CHECKBOX_ON = "[x]"
 
 
 _LISTBOX_REFRESH_OBSERVER = None
@@ -82,6 +84,182 @@ def resolve_copy_system_value(
     return _clean_system_candidate(fallback), False
 
 
+def _strip_checkbox_prefix(text: str) -> str:
+    raw = str(text or "")
+    for prefix in (f"{CHECKBOX_OFF} ", f"{CHECKBOX_ON} "):
+        if raw.startswith(prefix):
+            return raw[len(prefix):]
+    return raw
+
+
+def enable_results_checkboxes(widget, *, enabled: bool = True) -> None:
+    state = bool(enabled)
+    try:
+        widget._renata_checkbox_mode = state  # type: ignore[attr-defined]
+    except Exception:
+        return
+    if isinstance(widget, ttk.Treeview):
+        if not state:
+            widget._renata_checked_iids = set()  # type: ignore[attr-defined]
+            _refresh_table_treeview(widget)
+        return
+    if isinstance(widget, tk.Listbox):
+        if not state:
+            widget._renata_checked_indices = set()  # type: ignore[attr-defined]
+        _refresh_listbox_checkbox_view(widget)
+
+
+def clear_results_checkboxes(widget) -> None:
+    if isinstance(widget, ttk.Treeview):
+        widget._renata_checked_iids = set()  # type: ignore[attr-defined]
+        _refresh_treeview_checkbox_view(widget)
+        return
+    if isinstance(widget, tk.Listbox):
+        widget._renata_checked_indices = set()  # type: ignore[attr-defined]
+        _refresh_listbox_checkbox_view(widget)
+
+
+def get_checked_internal_indices(widget, *, row_offset: int = 0, rows_len: int | None = None) -> list[int]:
+    if not bool(getattr(widget, "_renata_checkbox_mode", False)):
+        return []
+    limit = int(rows_len or 0)
+    offset = int(row_offset or 0)
+    out: list[int] = []
+    if isinstance(widget, ttk.Treeview):
+        checked = set(str(i) for i in getattr(widget, "_renata_checked_iids", set()))
+        if not checked:
+            return []
+        for iid in widget.get_children():
+            if str(iid) not in checked:
+                continue
+            try:
+                idx = int(str(iid)) - offset
+            except Exception:
+                continue
+            if idx < 0:
+                continue
+            if limit and idx >= limit:
+                continue
+            out.append(idx)
+        return out
+
+    if isinstance(widget, tk.Listbox):
+        checked = set()
+        for item in getattr(widget, "_renata_checked_indices", set()):
+            try:
+                checked.add(int(item))
+            except Exception:
+                continue
+        for row_id in sorted(checked):
+            idx = row_id - offset
+            if idx < 0:
+                continue
+            if limit and idx >= limit:
+                continue
+            out.append(idx)
+    return out
+
+
+def _on_treeview_checkbox_click(event):
+    tree = event.widget
+    if not isinstance(tree, ttk.Treeview):
+        return None
+    if not bool(getattr(tree, "_renata_checkbox_mode", False)):
+        return None
+    if "__sel__" not in list(tree["columns"] or ()):
+        return None
+    row_id = tree.identify_row(event.y)
+    if not row_id:
+        return None
+    col = tree.identify_column(event.x)
+    if col != "#1":
+        return None
+    checked = set(str(i) for i in getattr(tree, "_renata_checked_iids", set()))
+    row_key = str(row_id)
+    if row_key in checked:
+        checked.remove(row_key)
+    else:
+        checked.add(row_key)
+    tree._renata_checked_iids = checked  # type: ignore[attr-defined]
+    _refresh_treeview_checkbox_view(tree)
+    return "break"
+
+
+def _on_listbox_checkbox_click(event):
+    lb = event.widget
+    if not isinstance(lb, tk.Listbox):
+        return None
+    if not bool(getattr(lb, "_renata_checkbox_mode", False)):
+        return None
+    if event.x > 30:
+        return None
+    try:
+        row_id = lb.nearest(event.y)
+    except Exception:
+        return None
+    try:
+        size = int(lb.size())
+    except Exception:
+        return None
+    if row_id is None or row_id < 0 or row_id >= size:
+        return None
+    checked = set()
+    for item in getattr(lb, "_renata_checked_indices", set()):
+        try:
+            checked.add(int(item))
+        except Exception:
+            continue
+    if row_id in checked:
+        checked.remove(row_id)
+    else:
+        checked.add(row_id)
+    lb._renata_checked_indices = checked  # type: ignore[attr-defined]
+    _refresh_listbox_checkbox_view(lb)
+    try:
+        lb.activate(row_id)
+    except Exception:
+        pass
+    return "break"
+
+
+def _refresh_treeview_checkbox_view(tree) -> None:
+    if not isinstance(tree, ttk.Treeview):
+        return
+    if "__sel__" not in list(tree["columns"] or ()):
+        return
+    checked = set(str(i) for i in getattr(tree, "_renata_checked_iids", set()))
+    for iid in tree.get_children():
+        values = list(tree.item(iid, "values") or ())
+        if not values:
+            continue
+        values[0] = CHECKBOX_ON if str(iid) in checked else CHECKBOX_OFF
+        tree.item(iid, values=values)
+
+
+def _refresh_listbox_checkbox_view(lb) -> None:
+    if not isinstance(lb, tk.Listbox):
+        return
+    if not bool(getattr(lb, "_renata_checkbox_mode", False)):
+        return
+    raw_lines = list(getattr(lb, "_renata_raw_lines", []))
+    checked = set()
+    for item in getattr(lb, "_renata_checked_indices", set()):
+        try:
+            checked.add(int(item))
+        except Exception:
+            continue
+    try:
+        lb.delete(0, tk.END)
+    except Exception:
+        return
+    for idx, raw_line in enumerate(raw_lines):
+        prefix = CHECKBOX_ON if idx in checked else CHECKBOX_OFF
+        try:
+            lb.insert(tk.END, f"{prefix} {raw_line}")
+        except Exception:
+            continue
+
+
 def set_listbox_refresh_observer(observer) -> None:
     global _LISTBOX_REFRESH_OBSERVER
     _LISTBOX_REFRESH_OBSERVER = observer
@@ -134,6 +312,10 @@ def stworz_liste_trasy(parent, title="Plan Lotu"):
     lb._renata_state_container = list_frame  # type: ignore[attr-defined]
     lb._renata_table_schema = None  # type: ignore[attr-defined]
     lb._renata_table_rows = []  # type: ignore[attr-defined]
+    lb._renata_checkbox_mode = False  # type: ignore[attr-defined]
+    lb._renata_checked_indices = set()  # type: ignore[attr-defined]
+    lb._renata_raw_lines = []  # type: ignore[attr-defined]
+    lb.bind("<Button-1>", _on_listbox_checkbox_click, add="+")
     return lb
 
 def stworz_tabele_trasy(parent, title="Plan Lotu"):
@@ -175,6 +357,9 @@ def stworz_tabele_trasy(parent, title="Plan Lotu"):
     tree._renata_table_rows = []  # type: ignore[attr-defined]
     tree._renata_tree_rows_by_iid = {}  # type: ignore[attr-defined]
     tree._renata_tree_sort = {"column": None, "desc": False}  # type: ignore[attr-defined]
+    tree._renata_checkbox_mode = False  # type: ignore[attr-defined]
+    tree._renata_checked_iids = set()  # type: ignore[attr-defined]
+    tree.bind("<Button-1>", _on_treeview_checkbox_click, add="+")
     return tree
 
 def _set_list_header(listbox, text: str | None) -> None:
@@ -212,15 +397,36 @@ def wypelnij_liste(
     """
     lb.delete(0, tk.END)
 
+    checkbox_mode = bool(getattr(lb, "_renata_checkbox_mode", False))
+    checked_indices = set()
+    for item in getattr(lb, "_renata_checked_indices", set()):
+        try:
+            checked_indices.add(int(item))
+        except Exception:
+            continue
+    raw_lines: list[str] = []
+
     if copied_index is None:
         copied_index = config.STATE.get("copied_idx", None)
 
     for i, it in enumerate(dane):
         suffix = "  [SKOPIOWANO]" if show_copied_suffix and copied_index == i else ""
         if numerate:
-            lb.insert(tk.END, f"{i+1}. {it}{suffix}")
+            line = f"{i+1}. {it}{suffix}"
         else:
-            lb.insert(tk.END, f"{it}{suffix}")
+            line = f"{it}{suffix}"
+        raw_lines.append(line)
+        if checkbox_mode:
+            prefix = CHECKBOX_ON if i in checked_indices else CHECKBOX_OFF
+            lb.insert(tk.END, f"{prefix} {line}")
+        else:
+            lb.insert(tk.END, line)
+
+    lb._renata_raw_lines = raw_lines  # type: ignore[attr-defined]
+    if checkbox_mode:
+        lb._renata_checked_indices = {  # type: ignore[attr-defined]
+            i for i in checked_indices if 0 <= i < len(raw_lines)
+        }
 
     # --- jeżeli mamy skopiowany index, stylujemy i ustawiamy focus
     if copied_index is not None and 0 <= copied_index < len(dane):
@@ -440,11 +646,21 @@ def render_table_treeview(tree, schema_id: str, rows: list[dict]) -> None:
         columns = list(schema.columns)
 
     show_lp = bool(getattr(schema, "show_lp", True))
+    show_checkbox = bool(getattr(tree, "_renata_checkbox_mode", False))
     lp_key = "__lp__"
-    tree["columns"] = ([lp_key] if show_lp else []) + [col.key for col in columns]
+    sel_key = "__sel__"
+    existing_checked = set(str(i) for i in getattr(tree, "_renata_checked_iids", set()))
+    tree["columns"] = (
+        ([sel_key] if show_checkbox else [])
+        + ([lp_key] if show_lp else [])
+        + [col.key for col in columns]
+    )
     tree["show"] = "headings"
 
     widths = _compute_column_widths(columns, rows)
+    if show_checkbox:
+        tree.column(sel_key, width=36, anchor="center", stretch=False)
+        tree.heading(sel_key, text="", anchor="center")
     if show_lp:
         tree.column(lp_key, width=40, anchor="e", stretch=False)
         tree.heading(
@@ -471,9 +687,17 @@ def render_table_treeview(tree, schema_id: str, rows: list[dict]) -> None:
 
     tree.delete(*tree.get_children())
     rows_by_iid = {}
+    checked_now = set()
     for idx, row in enumerate(rows):
         iid = str(idx)
-        values = [str(idx + 1)] if show_lp else []
+        values = []
+        if show_checkbox:
+            is_checked = iid in existing_checked
+            values.append(CHECKBOX_ON if is_checked else CHECKBOX_OFF)
+            if is_checked:
+                checked_now.add(iid)
+        if show_lp:
+            values.append(str(idx + 1))
         for col in columns:
             value = _get_value_by_key(row, col.value_path or col.key)
             values.append(format_value(value, col.fmt))
@@ -483,6 +707,8 @@ def render_table_treeview(tree, schema_id: str, rows: list[dict]) -> None:
     tree._renata_table_rows = list(rows)  # type: ignore[attr-defined]
     tree._renata_tree_rows_by_iid = rows_by_iid  # type: ignore[attr-defined]
     tree._renata_tree_show_lp = show_lp  # type: ignore[attr-defined]
+    tree._renata_tree_show_checkbox = show_checkbox  # type: ignore[attr-defined]
+    tree._renata_checked_iids = checked_now  # type: ignore[attr-defined]
     tree.tag_configure("copied", background=COPIED_BG, foreground=COPIED_FG)
     tree.tag_configure("hover", background=HOVER_BG)
     _apply_saved_sort(tree, schema_id, columns, show_lp)
@@ -527,12 +753,14 @@ def _sort_treeview(tree, schema_id: str, col_key: str) -> None:
 def _update_treeview_lp(tree) -> None:
     if "__lp__" not in list(tree["columns"] or []):
         return
+    lp_index = 0
+    if "__sel__" in list(tree["columns"] or []):
+        lp_index = 1
     for idx, iid in enumerate(tree.get_children()):
         values = list(tree.item(iid, "values") or [])
-        if not values:
-            values = [str(idx + 1)]
-        else:
-            values[0] = str(idx + 1)
+        while len(values) <= lp_index:
+            values.append("")
+        values[lp_index] = str(idx + 1)
         tree.item(iid, values=values)
 
 def _apply_treeview_sort(tree, schema_id: str, col_key: str, *, desc: bool, persist: bool) -> None:
@@ -1138,6 +1366,7 @@ def attach_results_context_menu(
                 row_text = widget.get(row_id)
             except Exception:
                 row_text = None
+            row_text = _strip_checkbox_prefix(row_text)
 
         payload = _get_payload(row_id, row_text)
         if not payload:

@@ -904,6 +904,8 @@ def test_spansh_copy_mode_actions(_ctx: TestContext) -> None:
             content = f.read()
         for label in required_labels:
             assert label in content, f"Missing '{label}' action in {rel_path}"
+        assert "enable_results_checkboxes(" in content, f"Missing checkbox-mode enable in {rel_path}"
+        assert "get_checked_internal_indices(" in content, f"Missing checkbox selection source in {rel_path}"
 
     common_tables_path = os.path.join(ROOT_DIR, "gui/common_tables.py")
     with open(common_tables_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -911,6 +913,16 @@ def test_spansh_copy_mode_actions(_ctx: TestContext) -> None:
     assert table_content.count('selectmode="extended"') >= 2, (
         "Expected extended multi-select for listbox and treeview"
     )
+    for symbol in (
+        "CHECKBOX_OFF",
+        "CHECKBOX_ON",
+        "def enable_results_checkboxes(",
+        "def get_checked_internal_indices(",
+        "def _on_treeview_checkbox_click(",
+        "def _on_listbox_checkbox_click(",
+        "__sel__",
+    ):
+        assert symbol in table_content, f"Missing checkbox support symbol: {symbol}"
     assert "selection_includes" in table_content, "Expected listbox right-click selection guard"
     assert "current_selection = set(widget.selection())" in table_content, (
         "Expected treeview right-click selection guard"
@@ -924,10 +936,8 @@ def test_spansh_export_actions_and_formats(_ctx: TestContext) -> None:
         "gui/tabs/spansh/trade.py",
     ]
     required_labels = [
-        "Kopiuj CSV",
-        "Kopiuj TSV",
-        "CSV",
-        "TSV",
+        "Kopiuj do Excela",
+        "Zaznaczone",
         "Naglowki",
         "Wiersz",
         "Wszystko",
@@ -938,6 +948,8 @@ def test_spansh_export_actions_and_formats(_ctx: TestContext) -> None:
             content = f.read()
         for label in required_labels:
             assert label in content, f"Missing '{label}' export option in {rel_path}"
+        assert "Kopiuj CSV" not in content, f"Deprecated CSV menu still present in {rel_path}"
+        assert "Kopiuj TSV" not in content, f"Deprecated TSV menu still present in {rel_path}"
         assert "Kopiuj jako Exel" not in content, f"Deprecated Excel label in {rel_path}"
 
     row = {
@@ -1232,7 +1244,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
     planner_base_path = os.path.join(ROOT_DIR, "gui/tabs/spansh/planner_base.py")
     with open(planner_base_path, "r", encoding="utf-8", errors="ignore") as f:
         planner_base = f.read()
-    for label in ("Kopiuj wiersze", "Kopiuj CSV", "Kopiuj TSV"):
+    for label in ("Kopiuj wiersze", "Kopiuj do Excela"):
         assert label in planner_base, f"Missing '{label}' in planner base menu source"
 
     # 2) All planner-base tabs must attach the same context menu parity.
@@ -1257,7 +1269,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         path = os.path.join(ROOT_DIR, rel_path)
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
-        for label in ("Kopiuj wiersze", "Kopiuj CSV", "Kopiuj TSV"):
+        for label in ("Kopiuj wiersze", "Kopiuj do Excela"):
             assert label in content, f"{rel_path}: missing '{label}' action"
 
     # 4) Verify the key feedback-regression tests are present in this smoke module.
