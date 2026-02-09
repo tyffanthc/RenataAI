@@ -46,6 +46,7 @@ from logic import trade as trade_logic  # type: ignore
 from logic.rows_normalizer import normalize_trade_rows
 from logic.tts.text_preprocessor import prepare_tts
 from gui import common_tables  # type: ignore
+from gui.tabs.spansh.trade import TradeTab  # type: ignore
 
 
 # --- POMOCNICZY KONTEKST TESTÓW ----------------------------------------------
@@ -1119,6 +1120,63 @@ def test_exobio_sample_progress_sequence(_ctx: TestContext) -> None:
         while not MSG_QUEUE.empty():
             MSG_QUEUE.get_nowait()
 
+
+def test_trade_station_state_reset_on_system_change(_ctx: TestContext) -> None:
+    class DummyVar:
+        def __init__(self, value: str = "") -> None:
+            self._value = value
+
+        def get(self) -> str:
+            return self._value
+
+        def set(self, value: str) -> None:
+            self._value = value
+
+    class DummyAuto:
+        def __init__(self) -> None:
+            self.hidden = False
+
+        def hide(self) -> None:
+            self.hidden = True
+
+    class DummyTrade:
+        def __init__(self, start_system: str, start_station: str, last_key: str | None) -> None:
+            self.var_start_system = DummyVar(start_system)
+            self.var_start_station = DummyVar(start_station)
+            self.ac_station = DummyAuto()
+            self._start_system_last_key = last_key
+            self.hint_updates = 0
+
+        def _normalize_key(self, value: str) -> str:
+            return str(value or "").strip().lower()
+
+        def _get_station_input(self) -> str:
+            return (self.var_start_station.get() or "").strip()
+
+        def _clear_station_hint(self) -> None:
+            return None
+
+        def _update_station_hint(self) -> None:
+            self.hint_updates += 1
+
+    # No real system change -> station stays.
+    same = DummyTrade(start_system="Sol ", start_station="Jameson Memorial", last_key="sol")
+    TradeTab._on_start_system_changed(same)
+    assert same.var_start_station.get() == "Jameson Memorial", "Station should stay when system key is unchanged"
+    assert not same.ac_station.hidden, "Autocomplete should not hide when system key is unchanged"
+
+    # Real system change -> station resets + suggestions hidden.
+    changed = DummyTrade(start_system="Achenar", start_station="Jameson Memorial", last_key="sol")
+    TradeTab._on_start_system_changed(changed)
+    assert changed.var_start_station.get() == "", "Station should reset on real system change"
+    assert changed.ac_station.hidden, "Autocomplete suggestions should hide after system change"
+    assert changed._start_system_last_key == "achenar", "Last normalized system key should update"
+
+    # Initial trace with unknown previous key -> no forced reset.
+    initial = DummyTrade(start_system="Shinrarta Dezhra", start_station="Jameson Memorial", last_key=None)
+    TradeTab._on_start_system_changed(initial)
+    assert initial.var_start_station.get() == "Jameson Memorial", "Initial trace should not clear prefilled station"
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1143,6 +1201,7 @@ def run_all_tests() -> int:
         ("test_trade_station_name_normalization", test_trade_station_name_normalization),
         ("test_tts_polish_diacritics_global", test_tts_polish_diacritics_global),
         ("test_exobio_sample_progress_sequence", test_exobio_sample_progress_sequence),
+        ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

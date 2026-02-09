@@ -186,7 +186,8 @@ class TradeTab(ttk.Frame):
 
         self.refresh_from_app_state()
         self._update_station_hint()
-        self.var_start_system.trace_add("write", lambda *_a: self._update_station_hint())
+        self._start_system_last_key = self._normalize_key(self.var_start_system.get() or "")
+        self.var_start_system.trace_add("write", self._on_start_system_changed)
         self.var_start_station.trace_add("write", lambda *_a: self._update_station_hint())
 
         self.bind("<Visibility>", self._on_visibility)
@@ -1314,6 +1315,32 @@ class TradeTab(ttk.Frame):
     def _normalize_key(self, value: str) -> str:
 
         return (value or "").strip().lower()
+
+    def _on_start_system_changed(self, *_args) -> None:
+        current_key = self._normalize_key(self.var_start_system.get() or "")
+        previous_key = getattr(self, "_start_system_last_key", None)
+        self._start_system_last_key = current_key
+
+        # Pierwszy trace po starcie nie powinien kasowac juz ustawionej stacji.
+        if previous_key is None:
+            self._update_station_hint()
+            return
+
+        if current_key == previous_key:
+            self._update_station_hint()
+            return
+
+        if self._get_station_input():
+            self.var_start_station.set("")
+
+        try:
+            if hasattr(self, "ac_station"):
+                self.ac_station.hide()
+        except Exception:
+            pass
+
+        self._clear_station_hint()
+        self._update_station_hint()
 
     def _get_station_input(self) -> str:
         return (self.var_start_station.get() or "").strip()
