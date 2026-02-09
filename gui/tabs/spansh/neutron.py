@@ -562,25 +562,28 @@ class NeutronTab(ttk.Frame):
         if idx < 0 or idx >= len(self._results_rows):
             return None
         row = self._results_rows[idx]
+        system, has_system = common.resolve_copy_system_value("neutron", row, row_text)
         return {
             "row_index": idx,
             "row_text": row_text,
             "schema_id": "neutron",
             "row": row,
-            "system": row.get("system_name"),
+            "system": system,
+            "has_system": has_system,
         }
 
     def _get_results_actions(self, payload: dict) -> list[dict]:
         actions = []
         system = (payload.get("system") or "").strip()
+        has_system = bool(payload.get("has_system", False))
 
-        if system:
-            actions.append(
-                {
-                    "label": "Kopiuj system",
-                    "action": lambda p: common.copy_text_to_clipboard(system, context="results.system"),
-                }
-            )
+        actions.append(
+            {
+                "label": "Kopiuj system",
+                "action": lambda p: common.copy_text_to_clipboard(system, context="results.system"),
+            }
+        )
+        if has_system:
             actions.append({"separator": True})
             actions.append(
                 {

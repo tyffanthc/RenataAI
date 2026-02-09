@@ -3,7 +3,6 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 from typing import Any, Callable
-import re
 
 import config
 from app.route_manager import route_manager
@@ -72,33 +71,6 @@ class SpanshPlannerBase(ttk.Frame):
         self._results_rows = []
         self._results_row_offset = 0
 
-    @staticmethod
-    def _extract_system_from_text(row_text: str | None) -> str:
-        text = (row_text or "").strip()
-        if not text:
-            return ""
-        text = re.sub(r"^\d+\.\s*", "", text)
-        if "->" in text:
-            text = text.split("->", 1)[-1].strip()
-        parts = [part.strip() for part in text.split("  ") if part.strip()]
-        if parts:
-            text = parts[0]
-        return text.split(" (", 1)[0].strip()
-
-    def _extract_row_system(self, row: dict[str, Any]) -> str:
-        candidates = (
-            row.get("system_name"),
-            row.get("to_system"),
-            row.get("from_system"),
-            row.get("system"),
-            row.get("name"),
-        )
-        for candidate in candidates:
-            value = str(candidate or "").strip()
-            if value:
-                return value
-        return ""
-
     def _attach_default_results_context_menu(self, list_widget: Any) -> None:
         common.attach_results_context_menu(
             list_widget,
@@ -117,9 +89,7 @@ class SpanshPlannerBase(ttk.Frame):
         row = None
         if idx < len(self._results_rows):
             row = self._results_rows[idx]
-        system = self._extract_row_system(row or {})
-        if not system:
-            system = self._extract_system_from_text(row_text)
+        system, has_system = common.resolve_copy_system_value(self._schema_id, row or {}, row_text)
 
         return {
             "row_index": idx,
@@ -127,19 +97,21 @@ class SpanshPlannerBase(ttk.Frame):
             "schema_id": self._schema_id,
             "row": row or {},
             "system": system,
+            "has_system": has_system,
         }
 
     def _get_results_actions(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
         actions: list[dict[str, Any]] = []
         system = str(payload.get("system") or "").strip()
+        has_system = bool(payload.get("has_system", False))
 
-        if system:
-            actions.append(
-                {
-                    "label": "Kopiuj system",
-                    "action": lambda p: common.copy_text_to_clipboard(system, context="results.system"),
-                }
-            )
+        actions.append(
+            {
+                "label": "Kopiuj system",
+                "action": lambda p: common.copy_text_to_clipboard(system, context="results.system"),
+            }
+        )
+        if has_system:
             actions.append({"separator": True})
             actions.append(
                 {

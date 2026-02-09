@@ -43,6 +43,7 @@ from logic import elw_route as elw_logic  # type: ignore
 from logic import hmc_route as hmc_logic  # type: ignore
 from logic import exomastery as exomastery_logic  # type: ignore
 from logic import trade as trade_logic  # type: ignore
+from gui import common_tables  # type: ignore
 
 
 # --- POMOCNICZY KONTEKST TESTÓW ----------------------------------------------
@@ -834,6 +835,42 @@ def test_table_schemas_basic(_ctx: TestContext) -> None:
         assert all(l for l in labels), f"Schema {schema_id} has empty column label"
         assert len(set(keys)) == len(keys), f"Schema {schema_id} has duplicate column keys"
 
+
+def test_spansh_system_copy_mapping(_ctx: TestContext) -> None:
+    body_schemas = ["ammonia", "elw", "hmc", "exomastery", "riches", "neutron"]
+    for schema_id in body_schemas:
+        value, is_real = common_tables.resolve_copy_system_value(
+            schema_id,
+            {"system_name": "SMOKE_SYS_A"},
+            None,
+        )
+        assert is_real, f"{schema_id}: expected real system from system_name"
+        assert value == "SMOKE_SYS_A", f"{schema_id}: wrong mapped system"
+
+    trade_value, trade_real = common_tables.resolve_copy_system_value(
+        "trade",
+        {"to_system": "SMOKE_TRADE_TARGET", "from_system": "SMOKE_TRADE_SOURCE"},
+        None,
+    )
+    assert trade_real, "trade: expected real system from trade row"
+    assert trade_value == "SMOKE_TRADE_TARGET", "trade: expected to_system priority"
+
+    txt_value, txt_real = common_tables.resolve_copy_system_value(
+        "trade",
+        {},
+        "SMOKE_A -> SMOKE_B",
+    )
+    assert txt_real, "trade text fallback should resolve system"
+    assert txt_value == "SMOKE_B", "trade text fallback should use target system"
+
+    missing_value, missing_real = common_tables.resolve_copy_system_value(
+        "riches",
+        {},
+        "",
+    )
+    assert not missing_real, "empty payload should not be marked as real system"
+    assert missing_value == "brak nazwy systemu", "fallback copy text mismatch"
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -852,6 +889,7 @@ def run_all_tests() -> int:
         ("test_bio_signals_basic", test_bio_signals_basic),
         ("test_first_footfall_basic", test_first_footfall_basic),
         ("test_table_schemas_basic", test_table_schemas_basic),
+        ("test_spansh_system_copy_mapping", test_spansh_system_copy_mapping),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

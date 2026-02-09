@@ -13,6 +13,73 @@ HOVER_BG = "#273241"
 
 
 _LISTBOX_REFRESH_OBSERVER = None
+_SYSTEM_COPY_FALLBACK = "brak nazwy systemu"
+
+
+_SYSTEM_KEYS_BY_SCHEMA = {
+    "trade": (
+        "to_system",
+        "from_system",
+        "system_name",
+        "system",
+        "name",
+    ),
+    "neutron": (
+        "system_name",
+        "system",
+        "name",
+        "to_system",
+        "from_system",
+    ),
+}
+
+
+def _clean_system_candidate(value) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return " ".join(text.split())
+
+
+def _extract_system_from_row_text(row_text: str | None) -> str:
+    text = str(row_text or "").strip()
+    if not text:
+        return ""
+    text = re.sub(r"^\d+\.\s*", "", text)
+    if "->" in text:
+        text = text.split("->", 1)[1].strip()
+    if re.search(r"\(\d+\s+cial\)\s*$", text):
+        text = re.sub(r"\(\d+\s+cial\)\s*$", "", text).strip()
+    return _clean_system_candidate(text)
+
+
+def resolve_copy_system_value(
+    schema_id: str,
+    row: dict | None,
+    row_text: str | None,
+    *,
+    fallback: str = _SYSTEM_COPY_FALLBACK,
+) -> tuple[str, bool]:
+    candidate_keys = _SYSTEM_KEYS_BY_SCHEMA.get(
+        schema_id,
+        (
+            "system_name",
+            "system",
+            "name",
+            "to_system",
+            "from_system",
+        ),
+    )
+    row_dict = row if isinstance(row, dict) else {}
+    for key in candidate_keys:
+        value = _clean_system_candidate(row_dict.get(key))
+        if value:
+            return value, True
+
+    value = _extract_system_from_row_text(row_text)
+    if value:
+        return value, True
+    return _clean_system_candidate(fallback), False
 
 
 def set_listbox_refresh_observer(observer) -> None:

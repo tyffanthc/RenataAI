@@ -49,6 +49,7 @@ from gui.common_tables import (
     render_table,
     render_table_lines,
     render_table_treeview,
+    resolve_copy_system_value,
     set_listbox_refresh_observer,
     stworz_liste_trasy,
     stworz_tabele_trasy,

@@ -737,6 +737,7 @@ class TradeTab(ttk.Frame):
             return None
 
         row = self._results_rows[idx]
+        system, has_system = common.resolve_copy_system_value("trade", row, row_text)
 
         return {
 
@@ -747,6 +748,8 @@ class TradeTab(ttk.Frame):
             "schema_id": "trade",
 
             "row": row,
+            "system": system,
+            "has_system": has_system,
 
             "from_system": row.get("from_system"),
 
@@ -762,27 +765,23 @@ class TradeTab(ttk.Frame):
 
         actions = []
 
+        system = (payload.get("system") or "").strip()
+        has_system = bool(payload.get("has_system", False))
         from_system = (payload.get("from_system") or "").strip()
-
-        to_system = (payload.get("to_system") or "").strip()
 
         station = (payload.get("station") or "").strip()
 
+        actions.append(
 
+            {
 
-        if to_system:
+                "label": "Kopiuj system",
 
-            actions.append(
+                "action": lambda p: common.copy_text_to_clipboard(system, context="results.system"),
 
-                {
+            }
 
-                    "label": "Kopiuj system",
-
-                    "action": lambda p: common.copy_text_to_clipboard(to_system, context="results.system"),
-
-                }
-
-            )
+        )
 
         if station:
 
