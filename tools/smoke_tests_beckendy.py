@@ -1210,6 +1210,57 @@ def test_trade_station_picker_candidates_and_wiring(_ctx: TestContext) -> None:
     assert "Wybierz stacje..." in content, "Missing station picker button label"
     assert "<Control-space>" in content, "Missing station picker keyboard shortcut binding"
 
+
+def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
+    # 1) Copy/export matrix source of truth is in planner_base.
+    planner_base_path = os.path.join(ROOT_DIR, "gui/tabs/spansh/planner_base.py")
+    with open(planner_base_path, "r", encoding="utf-8", errors="ignore") as f:
+        planner_base = f.read()
+    for label in ("Kopiuj wiersze", "Kopiuj CSV", "Kopiuj TSV"):
+        assert label in planner_base, f"Missing '{label}' in planner base menu source"
+
+    # 2) All planner-base tabs must attach the same context menu parity.
+    parity_tabs = [
+        "gui/tabs/spansh/ammonia.py",
+        "gui/tabs/spansh/elw.py",
+        "gui/tabs/spansh/hmc.py",
+        "gui/tabs/spansh/exomastery.py",
+        "gui/tabs/spansh/riches.py",
+    ]
+    for rel_path in parity_tabs:
+        path = os.path.join(ROOT_DIR, rel_path)
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        assert "SpanshPlannerBase" in content, f"{rel_path}: expected SpanshPlannerBase inheritance"
+        assert "_attach_default_results_context_menu(" in content, (
+            f"{rel_path}: missing default results context menu attach"
+        )
+
+    # 3) Dedicated tabs (neutron/trade) must still expose explicit copy/export actions.
+    for rel_path in ("gui/tabs/spansh/neutron.py", "gui/tabs/spansh/trade.py"):
+        path = os.path.join(ROOT_DIR, rel_path)
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        for label in ("Kopiuj wiersze", "Kopiuj CSV", "Kopiuj TSV"):
+            assert label in content, f"{rel_path}: missing '{label}' action"
+
+    # 4) Verify the key feedback-regression tests are present in this smoke module.
+    this_file = os.path.join(ROOT_DIR, "tools/smoke_tests_beckendy.py")
+    with open(this_file, "r", encoding="utf-8", errors="ignore") as f:
+        self_content = f.read()
+    required_tests = [
+        "test_spansh_system_copy_mapping",
+        "test_spansh_copy_mode_actions",
+        "test_spansh_export_actions_and_formats",
+        "test_trade_station_name_normalization",
+        "test_tts_polish_diacritics_global",
+        "test_exobio_sample_progress_sequence",
+        "test_trade_station_state_reset_on_system_change",
+        "test_trade_station_picker_candidates_and_wiring",
+    ]
+    for test_name in required_tests:
+        assert f"def {test_name}(" in self_content, f"Missing regression test function: {test_name}"
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1236,6 +1287,7 @@ def run_all_tests() -> int:
         ("test_exobio_sample_progress_sequence", test_exobio_sample_progress_sequence),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
         ("test_trade_station_picker_candidates_and_wiring", test_trade_station_picker_candidates_and_wiring),
+        ("test_spansh_feedback_smoke_pack_coverage", test_spansh_feedback_smoke_pack_coverage),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),
