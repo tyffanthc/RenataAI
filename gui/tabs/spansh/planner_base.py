@@ -194,26 +194,27 @@ class SpanshPlannerBase(ttk.Frame):
         row_exists = 0 <= row_idx < len(self._results_rows)
         selected_exists = bool(self._selected_internal_indices())
         all_exists = bool(self._results_rows)
-
+        actions.append({"separator": True})
         actions.append(
             {
-                "label": "Kopiuj wiersz",
-                "action": lambda p: self._copy_clicked_row(p),
-                "enabled": row_exists,
-            }
-        )
-        actions.append(
-            {
-                "label": "Kopiuj zaznaczone",
-                "action": lambda p: self._copy_selected_rows(p),
-                "enabled": selected_exists or row_exists,
-            }
-        )
-        actions.append(
-            {
-                "label": "Kopiuj wszystkie",
-                "action": lambda p: self._copy_all_rows(),
-                "enabled": all_exists,
+                "label": "Kopiuj wiersze",
+                "children": [
+                    {
+                        "label": "Kopiuj wiersz",
+                        "action": lambda p: self._copy_clicked_row(p),
+                        "enabled": row_exists,
+                    },
+                    {
+                        "label": "Kopiuj zaznaczone",
+                        "action": lambda p: self._copy_selected_rows(p),
+                        "enabled": selected_exists or row_exists,
+                    },
+                    {
+                        "label": "Kopiuj wszystko",
+                        "action": lambda p: self._copy_all_rows(),
+                        "enabled": all_exists,
+                    },
+                ],
             }
         )
         if has_system:
@@ -243,44 +244,44 @@ class SpanshPlannerBase(ttk.Frame):
             tsv_text = ""
             tsv_with_header = ""
 
+        export_children: list[dict[str, Any]] = []
         if tsv_with_header:
-            actions.append(
+            export_children.append(
                 {
-                    "label": "Kopiuj do Excela (TSV + naglowki)",
+                    "label": "Kopiuj jako Exel",
                     "action": lambda p: common.copy_text_to_clipboard(tsv_with_header, context="results.excel"),
                 }
             )
-        export_children: list[dict[str, Any]] = []
         if csv_text:
             export_children.append(
                 {
-                    "label": "Kopiuj jako CSV",
+                    "label": "CSV",
                     "action": lambda p: common.copy_text_to_clipboard(csv_text, context="results.csv"),
                 }
             )
         if csv_with_header:
             export_children.append(
                 {
-                    "label": "Kopiuj jako CSV (naglowki)",
+                    "label": "CSV (naglowki)",
                     "action": lambda p: common.copy_text_to_clipboard(csv_with_header, context="results.csv_headers"),
                 }
             )
         if tsv_text:
             export_children.append(
                 {
-                    "label": "Kopiuj jako TSV",
+                    "label": "TSV",
                     "action": lambda p: common.copy_text_to_clipboard(tsv_text, context="results.tsv"),
                 }
             )
         if tsv_with_header:
             export_children.append(
                 {
-                    "label": "Kopiuj jako TSV (naglowki)",
+                    "label": "TSV (naglowki)",
                     "action": lambda p: common.copy_text_to_clipboard(tsv_with_header, context="results.tsv_headers"),
                 }
             )
 
-        if tsv_with_header or export_children:
+        if export_children:
             actions.append({"separator": True})
         if export_children:
             actions.append(

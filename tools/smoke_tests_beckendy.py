@@ -873,7 +873,7 @@ def test_spansh_system_copy_mapping(_ctx: TestContext) -> None:
 
 
 def test_spansh_copy_mode_actions(_ctx: TestContext) -> None:
-    required_labels = ["Kopiuj wiersz", "Kopiuj zaznaczone", "Kopiuj wszystkie"]
+    required_labels = ["Kopiuj wiersze", "Kopiuj wiersz", "Kopiuj zaznaczone", "Kopiuj wszystko"]
     files = [
         "gui/tabs/spansh/planner_base.py",
         "gui/tabs/spansh/neutron.py",
@@ -905,12 +905,12 @@ def test_spansh_export_actions_and_formats(_ctx: TestContext) -> None:
         "gui/tabs/spansh/trade.py",
     ]
     required_labels = [
-        "Kopiuj do Excela (TSV + naglowki)",
+        "Kopiuj jako Exel",
         "Kopiuj jako",
-        "Kopiuj jako CSV",
-        "Kopiuj jako CSV (naglowki)",
-        "Kopiuj jako TSV",
-        "Kopiuj jako TSV (naglowki)",
+        "CSV",
+        "CSV (naglowki)",
+        "TSV",
+        "TSV (naglowki)",
     ]
     for rel_path in files:
         path = os.path.join(ROOT_DIR, rel_path)
