@@ -633,21 +633,53 @@ class NeutronTab(ttk.Frame):
 
         row = payload.get("row") or {}
         csv_text = common.format_row_delimited("neutron", row, ",")
+        csv_with_header = common.format_row_delimited_with_header("neutron", row, ",")
         tsv_text = common.format_row_delimited("neutron", row, "	")
-        if csv_text or tsv_text:
-            actions.append({"separator": True})
-        if csv_text:
+        tsv_with_header = common.format_row_delimited_with_header("neutron", row, "	")
+        if tsv_with_header:
             actions.append(
+                {
+                    "label": "Kopiuj do Excela (TSV + naglowki)",
+                    "action": lambda p: common.copy_text_to_clipboard(tsv_with_header, context="results.excel"),
+                }
+            )
+
+        export_children = []
+        if csv_text:
+            export_children.append(
                 {
                     "label": "Kopiuj jako CSV",
                     "action": lambda p: common.copy_text_to_clipboard(csv_text, context="results.csv"),
                 }
             )
+        if csv_with_header:
+            export_children.append(
+                {
+                    "label": "Kopiuj jako CSV (naglowki)",
+                    "action": lambda p: common.copy_text_to_clipboard(csv_with_header, context="results.csv_headers"),
+                }
+            )
         if tsv_text:
-            actions.append(
+            export_children.append(
                 {
                     "label": "Kopiuj jako TSV",
                     "action": lambda p: common.copy_text_to_clipboard(tsv_text, context="results.tsv"),
+                }
+            )
+        if tsv_with_header:
+            export_children.append(
+                {
+                    "label": "Kopiuj jako TSV (naglowki)",
+                    "action": lambda p: common.copy_text_to_clipboard(tsv_with_header, context="results.tsv_headers"),
+                }
+            )
+        if tsv_with_header or export_children:
+            actions.append({"separator": True})
+        if export_children:
+            actions.append(
+                {
+                    "label": "Kopiuj jako",
+                    "children": export_children,
                 }
             )
 

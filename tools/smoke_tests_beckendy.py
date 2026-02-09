@@ -897,6 +897,44 @@ def test_spansh_copy_mode_actions(_ctx: TestContext) -> None:
         "Expected treeview right-click selection guard"
     )
 
+
+def test_spansh_export_actions_and_formats(_ctx: TestContext) -> None:
+    files = [
+        "gui/tabs/spansh/planner_base.py",
+        "gui/tabs/spansh/neutron.py",
+        "gui/tabs/spansh/trade.py",
+    ]
+    required_labels = [
+        "Kopiuj do Excela (TSV + naglowki)",
+        "Kopiuj jako",
+        "Kopiuj jako CSV",
+        "Kopiuj jako CSV (naglowki)",
+        "Kopiuj jako TSV",
+        "Kopiuj jako TSV (naglowki)",
+    ]
+    for rel_path in files:
+        path = os.path.join(ROOT_DIR, rel_path)
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        for label in required_labels:
+            assert label in content, f"Missing '{label}' export option in {rel_path}"
+
+    row = {
+        "from_system": "SOL",
+        "to_system": "COLONIA",
+        "commodity": "Gold",
+        "profit": 12000,
+        "profit_per_ton": 250,
+        "jumps": 2,
+    }
+    csv_body = common_tables.format_row_delimited("trade", row, ",")
+    csv_head = common_tables.format_row_delimited_with_header("trade", row, ",")
+    tsv_head = common_tables.format_row_delimited_with_header("trade", row, "\t")
+    assert csv_body and "SOL" in csv_body and "COLONIA" in csv_body, "CSV body export missing values"
+    assert "\n" in csv_head, "CSV with headers should include header line"
+    assert "\n" in tsv_head and "\t" in tsv_head, "TSV with headers should include tabs and header line"
+    assert csv_head.count(",") >= 2, "CSV with headers should not be empty separators only"
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -917,6 +955,7 @@ def run_all_tests() -> int:
         ("test_table_schemas_basic", test_table_schemas_basic),
         ("test_spansh_system_copy_mapping", test_spansh_system_copy_mapping),
         ("test_spansh_copy_mode_actions", test_spansh_copy_mode_actions),
+        ("test_spansh_export_actions_and_formats", test_spansh_export_actions_and_formats),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

@@ -234,24 +234,59 @@ class SpanshPlannerBase(ttk.Frame):
         row = payload.get("row") or {}
         if row:
             csv_text = common.format_row_delimited(self._schema_id, row, ",")
+            csv_with_header = common.format_row_delimited_with_header(self._schema_id, row, ",")
             tsv_text = common.format_row_delimited(self._schema_id, row, "\t")
+            tsv_with_header = common.format_row_delimited_with_header(self._schema_id, row, "\t")
         else:
             csv_text = ""
+            csv_with_header = ""
             tsv_text = ""
-        if csv_text or tsv_text:
-            actions.append({"separator": True})
-        if csv_text:
+            tsv_with_header = ""
+
+        if tsv_with_header:
             actions.append(
+                {
+                    "label": "Kopiuj do Excela (TSV + naglowki)",
+                    "action": lambda p: common.copy_text_to_clipboard(tsv_with_header, context="results.excel"),
+                }
+            )
+        export_children: list[dict[str, Any]] = []
+        if csv_text:
+            export_children.append(
                 {
                     "label": "Kopiuj jako CSV",
                     "action": lambda p: common.copy_text_to_clipboard(csv_text, context="results.csv"),
                 }
             )
+        if csv_with_header:
+            export_children.append(
+                {
+                    "label": "Kopiuj jako CSV (naglowki)",
+                    "action": lambda p: common.copy_text_to_clipboard(csv_with_header, context="results.csv_headers"),
+                }
+            )
         if tsv_text:
-            actions.append(
+            export_children.append(
                 {
                     "label": "Kopiuj jako TSV",
                     "action": lambda p: common.copy_text_to_clipboard(tsv_text, context="results.tsv"),
+                }
+            )
+        if tsv_with_header:
+            export_children.append(
+                {
+                    "label": "Kopiuj jako TSV (naglowki)",
+                    "action": lambda p: common.copy_text_to_clipboard(tsv_with_header, context="results.tsv_headers"),
+                }
+            )
+
+        if tsv_with_header or export_children:
+            actions.append({"separator": True})
+        if export_children:
+            actions.append(
+                {
+                    "label": "Kopiuj jako",
+                    "children": export_children,
                 }
             )
 

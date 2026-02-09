@@ -713,6 +713,28 @@ def format_row_delimited(schema_id: str, row: dict, sep: str) -> str:
         values.append(_escape_delimited_value(text, sep))
     return sep.join(values)
 
+
+def format_header_delimited(schema_id: str, sep: str) -> str:
+    try:
+        from gui import table_schemas
+    except Exception:
+        return ""
+    schema = table_schemas.get_schema(schema_id)
+    if schema is None:
+        return ""
+    visible_cols = _get_visible_columns(schema_id)
+    columns = [col for col in schema.columns if col.key in visible_cols]
+    labels = [_escape_delimited_value(col.label, sep) for col in columns]
+    return sep.join(labels)
+
+
+def format_row_delimited_with_header(schema_id: str, row: dict, sep: str) -> str:
+    header = format_header_delimited(schema_id, sep)
+    body = format_row_delimited(schema_id, row, sep)
+    if header and body:
+        return f"{header}\n{body}"
+    return body or header
+
 def _get_default_visible_columns(schema) -> list[str]:
     defaults = [col.key for col in schema.columns if col.default_visible]
     if not defaults and schema.columns:
@@ -1128,24 +1150,42 @@ def attach_results_context_menu(
             menu = tk.Menu(widget, tearoff=0)
             widget._renata_ctx_menu = menu  # type: ignore[attr-defined]
         menu.delete(0, tk.END)
-        has_action = False
-        for item in actions:
-            if not item:
-                continue
-            if item.get("separator"):
-                menu.add_separator()
-                continue
-            label = item.get("label")
-            action = item.get("action")
-            if not label or not callable(action):
-                continue
-            enabled = item.get("enabled", True)
-            menu.add_command(
-                label=label,
-                command=lambda fn=action: fn(payload),
-                state=("normal" if enabled else "disabled"),
-            )
-            has_action = True
+        submenus = []
+
+        def _append_items(target_menu, items):
+            has_any = False
+            for item in items:
+                if not item:
+                    continue
+                if item.get("separator"):
+                    target_menu.add_separator()
+                    has_any = True
+                    continue
+                label = item.get("label")
+                if not label:
+                    continue
+                children = item.get("children")
+                if isinstance(children, list) and children:
+                    sub = tk.Menu(target_menu, tearoff=0)
+                    child_has_any = _append_items(sub, children)
+                    if child_has_any:
+                        target_menu.add_cascade(label=label, menu=sub)
+                        submenus.append(sub)
+                        has_any = True
+                    continue
+                action = item.get("action")
+                if not callable(action):
+                    continue
+                enabled = item.get("enabled", True)
+                target_menu.add_command(
+                    label=label,
+                    command=lambda fn=action: fn(payload),
+                    state=("normal" if enabled else "disabled"),
+                )
+                has_any = True
+            return has_any
+
+        has_action = _append_items(menu, actions)
         if not has_action:
             return
         try:
