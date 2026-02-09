@@ -928,6 +928,16 @@ class TradeTab(ttk.Frame):
                         "enabled": row_exists,
                     },
                     {
+                        "label": "Kopiuj z naglowkiem",
+                        "action": lambda p: self._copy_clicked_delimited(
+                            p,
+                            sep="\t",
+                            include_header=True,
+                            context="results.row_with_header",
+                        ),
+                        "enabled": row_exists,
+                    },
+                    {
                         "label": "Kopiuj zaznaczone",
                         "action": lambda p: self._copy_selected_rows(p),
                         "enabled": selected_exists or row_exists,
@@ -990,7 +1000,7 @@ class TradeTab(ttk.Frame):
                             "enabled": selected_exists or row_exists,
                         },
                         {
-                            "label": "Naglowki",
+                            "label": "Z naglowkiem",
                             "action": lambda p: self._copy_selected_delimited(
                                 p,
                                 sep="\t",

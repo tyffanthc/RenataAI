@@ -892,7 +892,13 @@ def test_spansh_system_copy_mapping(_ctx: TestContext) -> None:
 
 
 def test_spansh_copy_mode_actions(_ctx: TestContext) -> None:
-    required_labels = ["Kopiuj wiersze", "Kopiuj wiersz", "Kopiuj zaznaczone", "Kopiuj wszystko"]
+    required_labels = [
+        "Kopiuj wiersze",
+        "Kopiuj wiersz",
+        "Kopiuj z naglowkiem",
+        "Kopiuj zaznaczone",
+        "Kopiuj wszystko",
+    ]
     files = [
         "gui/tabs/spansh/planner_base.py",
         "gui/tabs/spansh/neutron.py",
@@ -938,7 +944,7 @@ def test_spansh_export_actions_and_formats(_ctx: TestContext) -> None:
     required_labels = [
         "Kopiuj do Excela",
         "Zaznaczone",
-        "Naglowki",
+        "Z naglowkiem",
         "Wiersz",
         "Wszystko",
     ]
