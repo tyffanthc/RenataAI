@@ -1,4 +1,4 @@
-# main.py (v0.9.2 - OPERACJA KABEL)
+# main.py (v0.9.3 - FEEDBACK LOOP)
 
 import threading
 import tkinter as tk
