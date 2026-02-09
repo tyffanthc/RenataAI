@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk
@@ -303,42 +303,6 @@ class SpanshPlannerBase(ttk.Frame):
 
         if all_exists:
             actions.append({"separator": True})
-            actions.append(
-                {
-                    "label": "Kopiuj do Excela",
-                    "children": [
-                        {
-                            "label": "Wiersz",
-                            "action": lambda p: self._copy_clicked_delimited(
-                                p,
-                                sep="\t",
-                                include_header=True,
-                                context="results.excel_row",
-                            ),
-                            "enabled": row_exists,
-                        },
-                        {
-                            "label": "Zaznaczone",
-                            "action": lambda p: self._copy_selected_delimited(
-                                p,
-                                sep="\t",
-                                include_header=True,
-                                context="results.excel_selected",
-                            ),
-                            "enabled": selected_exists or row_exists,
-                        },
-                        {
-                            "label": "Wszystko",
-                            "action": lambda p: self._copy_all_delimited(
-                                sep="\t",
-                                include_header=True,
-                                context="results.excel_all",
-                            ),
-                            "enabled": all_exists,
-                        },
-                    ],
-                }
-            )
             actions.append(
                 {
                     "label": "Kopiuj CSV",
@@ -664,3 +628,4 @@ class SpanshPlannerBase(ttk.Frame):
                 self.root,
                 lambda: self._apply_route_result(list_widget, route, rows, worker_error),
             )
+

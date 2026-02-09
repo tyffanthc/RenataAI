@@ -1,4 +1,4 @@
-import tkinter as tk
+﻿import tkinter as tk
 from tkinter import ttk
 import json
 import time
@@ -637,42 +637,6 @@ class NeutronTab(ttk.Frame):
             actions.append({"separator": True})
             actions.append(
                 {
-                    "label": "Kopiuj do Excela",
-                    "children": [
-                        {
-                            "label": "Wiersz",
-                            "action": lambda p: self._copy_clicked_delimited(
-                                p,
-                                sep="\t",
-                                include_header=True,
-                                context="results.excel_row",
-                            ),
-                            "enabled": row_exists,
-                        },
-                        {
-                            "label": "Zaznaczone",
-                            "action": lambda p: self._copy_selected_delimited(
-                                p,
-                                sep="\t",
-                                include_header=True,
-                                context="results.excel_selected",
-                            ),
-                            "enabled": selected_exists or row_exists,
-                        },
-                        {
-                            "label": "Wszystko",
-                            "action": lambda p: self._copy_all_delimited(
-                                sep="\t",
-                                include_header=True,
-                                context="results.excel_all",
-                            ),
-                            "enabled": all_exists,
-                        },
-                    ],
-                }
-            )
-            actions.append(
-                {
                     "label": "Kopiuj CSV",
                     "children": [
                         {
@@ -1117,3 +1081,4 @@ class NeutronTab(ttk.Frame):
             return
         self.via_canvas.itemconfigure(self.via_window, width=event.width)
         self._render_via_chips()
+

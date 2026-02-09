@@ -848,42 +848,6 @@ class TradeTab(ttk.Frame):
             actions.append({"separator": True})
             actions.append(
                 {
-                    "label": "Kopiuj do Excela",
-                    "children": [
-                        {
-                            "label": "Wiersz",
-                            "action": lambda p: self._copy_clicked_delimited(
-                                p,
-                                sep="\t",
-                                include_header=True,
-                                context="results.excel_row",
-                            ),
-                            "enabled": row_exists,
-                        },
-                        {
-                            "label": "Zaznaczone",
-                            "action": lambda p: self._copy_selected_delimited(
-                                p,
-                                sep="\t",
-                                include_header=True,
-                                context="results.excel_selected",
-                            ),
-                            "enabled": selected_exists or row_exists,
-                        },
-                        {
-                            "label": "Wszystko",
-                            "action": lambda p: self._copy_all_delimited(
-                                sep="\t",
-                                include_header=True,
-                                context="results.excel_all",
-                            ),
-                            "enabled": all_exists,
-                        },
-                    ],
-                }
-            )
-            actions.append(
-                {
                     "label": "Kopiuj CSV",
                     "children": [
                         {
@@ -1896,4 +1860,5 @@ class TradeTab(ttk.Frame):
                     self._set_busy(False)
 
             run_on_ui_thread(self.root, _apply_result)
+
 

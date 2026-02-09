@@ -905,7 +905,6 @@ def test_spansh_export_actions_and_formats(_ctx: TestContext) -> None:
         "gui/tabs/spansh/trade.py",
     ]
     required_labels = [
-        "Kopiuj do Excela",
         "Kopiuj CSV",
         "Kopiuj TSV",
         "CSV",
