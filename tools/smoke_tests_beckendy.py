@@ -43,6 +43,7 @@ from logic import elw_route as elw_logic  # type: ignore
 from logic import hmc_route as hmc_logic  # type: ignore
 from logic import exomastery as exomastery_logic  # type: ignore
 from logic import trade as trade_logic  # type: ignore
+from logic.rows_normalizer import normalize_trade_rows
 from gui import common_tables  # type: ignore
 
 
@@ -937,6 +938,50 @@ def test_spansh_export_actions_and_formats(_ctx: TestContext) -> None:
     assert "\n" in tsv_head and "\t" in tsv_head, "TSV with headers should include tabs and header line"
     assert csv_head.count(",") >= 2, "CSV with headers should not be empty separators only"
 
+
+def test_trade_station_name_normalization(_ctx: TestContext) -> None:
+    sample = {
+        "result": [
+            {
+                "from_system": "SOL",
+                "to_system": "COLONIA",
+                "from_station": "Jameson Memorial",
+                "to_station": "Jaques Station",
+                "commodity": "Gold",
+                "profit": 12000,
+            },
+            {
+                "from": {"system": "LHS 20", "station": "Ohm City"},
+                "to": {"system": "Shinrarta Dezhra", "station_name": "Jameson Memorial"},
+                "commodity": {"name": "Palladium"},
+                "profit_per_tonne": 3333,
+            },
+            {
+                "from_system": "A",
+                "to_system": "B",
+                "commodity": "Silver",
+            },
+        ]
+    }
+    route, rows = normalize_trade_rows(sample)
+    assert route, "Expected non-empty route from trade normalization"
+    assert len(rows) == 3, f"Expected 3 trade rows, got {len(rows)}"
+
+    r0 = rows[0]
+    assert r0.get("from_station") == "Jameson Memorial", "Flat from_station mapping failed"
+    assert r0.get("to_station") == "Jaques Station", "Flat to_station mapping failed"
+
+    r1 = rows[1]
+    assert r1.get("from_system") == "LHS 20", "Nested from.system mapping failed"
+    assert r1.get("to_system") == "Shinrarta Dezhra", "Nested to.system mapping failed"
+    assert r1.get("from_station") == "Ohm City", "Nested from.station mapping failed"
+    assert r1.get("to_station") == "Jameson Memorial", "Nested to.station_name mapping failed"
+    assert r1.get("commodity") == "Palladium", "Nested commodity.name mapping failed"
+
+    r2 = rows[2]
+    assert r2.get("from_station") == "UNKNOWN_STATION", "Missing from_station should use UNKNOWN_STATION"
+    assert r2.get("to_station") == "UNKNOWN_STATION", "Missing to_station should use UNKNOWN_STATION"
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -958,6 +1003,7 @@ def run_all_tests() -> int:
         ("test_spansh_system_copy_mapping", test_spansh_system_copy_mapping),
         ("test_spansh_copy_mode_actions", test_spansh_copy_mode_actions),
         ("test_spansh_export_actions_and_formats", test_spansh_export_actions_and_formats),
+        ("test_trade_station_name_normalization", test_trade_station_name_normalization),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

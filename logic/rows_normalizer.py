@@ -120,6 +120,97 @@ def normalize_body_rows(
 
 
 def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
+    def _clean_text(value: Any) -> str:
+        return " ".join(str(value or "").strip().split())
+
+    def _pick_text(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            for key in (
+                "value",
+                "label",
+                "name",
+                "system",
+                "system_name",
+                "station",
+                "station_name",
+                "stationName",
+            ):
+                nested = _clean_text(value.get(key))
+                if nested:
+                    return nested
+            return None
+        text = _clean_text(value)
+        return text or None
+
+    def _pick_trade_field(entry: dict, keys: Iterable[str]) -> str | None:
+        for key in keys:
+            if key not in entry:
+                continue
+            value = _pick_text(entry.get(key))
+            if value:
+                return value
+        return None
+
+    def _pick_endpoint(entry: dict, endpoint_keys: Iterable[str]) -> dict:
+        for key in endpoint_keys:
+            value = entry.get(key)
+            if isinstance(value, dict):
+                return value
+        return {}
+
+    def _pick_endpoint_system(endpoint: dict) -> str | None:
+        return _pick_trade_field(
+            endpoint,
+            (
+                "system",
+                "system_name",
+                "from_system",
+                "to_system",
+                "source_system",
+                "destination_system",
+                "star_system",
+                "name",
+            ),
+        )
+
+    def _pick_endpoint_station(endpoint: dict) -> str | None:
+        station = _pick_trade_field(
+            endpoint,
+            (
+                "station",
+                "station_name",
+                "from_station",
+                "to_station",
+                "source_station",
+                "destination_station",
+                "market",
+                "market_name",
+                "stationName",
+            ),
+        )
+        if station:
+            return station
+
+        has_explicit_system = bool(
+            _pick_trade_field(
+                endpoint,
+                (
+                    "system",
+                    "system_name",
+                    "from_system",
+                    "to_system",
+                    "source_system",
+                    "destination_system",
+                    "star_system",
+                ),
+            )
+        )
+        if has_explicit_system:
+            return None
+        return _pick_trade_field(endpoint, ("name",))
+
     route: list[str] = []
     rows: list[dict] = []
 
@@ -142,9 +233,82 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
     for leg in core:
         if not isinstance(leg, dict):
             continue
-        from_sys = pick_value(leg, ("from_system", "from", "source_system"))
-        to_sys = pick_value(leg, ("to_system", "to", "destination_system"))
-        commodity = pick_value(leg, ("commodity", "item", "name"))
+        from_endpoint = _pick_endpoint(leg, ("from", "source", "origin", "buy", "start"))
+        to_endpoint = _pick_endpoint(leg, ("to", "destination", "target", "sell", "end"))
+
+        from_sys = _pick_trade_field(
+            leg,
+            (
+                "from_system",
+                "source_system",
+                "origin_system",
+                "start_system",
+                "fromSystem",
+                "sourceSystem",
+            ),
+        )
+        if not from_sys and not from_endpoint:
+            from_sys = _pick_trade_field(leg, ("from", "source", "origin"))
+        if not from_sys:
+            from_sys = _pick_endpoint_system(from_endpoint)
+
+        to_sys = _pick_trade_field(
+            leg,
+            (
+                "to_system",
+                "destination_system",
+                "target_system",
+                "end_system",
+                "toSystem",
+                "destinationSystem",
+            ),
+        )
+        if not to_sys and not to_endpoint:
+            to_sys = _pick_trade_field(leg, ("to", "destination", "target"))
+        if not to_sys:
+            to_sys = _pick_endpoint_system(to_endpoint)
+
+        from_station = _pick_trade_field(
+            leg,
+            (
+                "from_station",
+                "source_station",
+                "origin_station",
+                "start_station",
+                "buy_station",
+                "fromStation",
+                "sourceStation",
+            ),
+        )
+        if not from_station:
+            from_station = _pick_endpoint_station(from_endpoint)
+
+        to_station = _pick_trade_field(
+            leg,
+            (
+                "to_station",
+                "destination_station",
+                "target_station",
+                "end_station",
+                "sell_station",
+                "toStation",
+                "destinationStation",
+            ),
+        )
+        if not to_station:
+            to_station = _pick_endpoint_station(to_endpoint)
+
+        commodity = _pick_trade_field(
+            leg,
+            (
+                "commodity",
+                "commodity_name",
+                "item",
+                "item_name",
+                "name",
+                "good",
+            ),
+        )
         profit = pick_value(leg, ("profit", "estimated_profit"))
         profit_per_ton = pick_value(leg, ("profit_per_tonne", "profit_per_ton"))
         jumps = pick_value(leg, ("jumps", "jump_count"))
@@ -154,10 +318,17 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
         if to_sys:
             route.append(str(to_sys))
 
+        from_station_final = from_station or "UNKNOWN_STATION"
+        to_station_final = to_station or "UNKNOWN_STATION"
+        station_for_copy = from_station or to_station or "UNKNOWN_STATION"
+
         rows.append(
             {
                 "from_system": from_sys,
                 "to_system": to_sys,
+                "from_station": from_station_final,
+                "to_station": to_station_final,
+                "station": station_for_copy,
                 "commodity": commodity,
                 "profit": profit,
                 "profit_per_ton": profit_per_ton,

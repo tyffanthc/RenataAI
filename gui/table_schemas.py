@@ -156,7 +156,9 @@ SCHEMAS: dict[str, TableSchema] = {
         columns=_cols(
             [
                 TableColumn("from_system", ui.TABLE_HDR_FROM, width=20),
+                TableColumn("from_station", ui.TABLE_HDR_FROM_STATION, width=22),
                 TableColumn("to_system", ui.TABLE_HDR_TO, width=20),
+                TableColumn("to_station", ui.TABLE_HDR_TO_STATION, width=22),
                 TableColumn("commodity", ui.TABLE_HDR_COMMODITY, width=18),
                 TableColumn("profit", ui.TABLE_HDR_PROFIT, fmt="cr", align="right", width=12),
                 TableColumn("profit_per_ton", ui.TABLE_HDR_PROFIT_TON, fmt="cr", align="right", width=12),
@@ -165,7 +167,7 @@ SCHEMAS: dict[str, TableSchema] = {
         ),
         show_lp=True,
         column_presets={
-            "minimal": ["from_system", "to_system", "commodity", "profit"],
+            "minimal": ["from_system", "from_station", "to_system", "to_station", "commodity", "profit"],
         },
     ),
 }

@@ -740,6 +740,20 @@ class TradeTab(ttk.Frame):
 
         row = self._results_rows[idx]
         system, has_system = common.resolve_copy_system_value("trade", row, row_text)
+        from_station = (row.get("from_station") or "").strip()
+        to_station = (row.get("to_station") or "").strip()
+        unknown_station = "UNKNOWN_STATION"
+        station_values = [
+            val
+            for val in (from_station, to_station)
+            if val and val != unknown_station
+        ]
+        if len(station_values) >= 2 and station_values[0].casefold() != station_values[1].casefold():
+            station_value = f"{station_values[0]} -> {station_values[1]}"
+        elif station_values:
+            station_value = station_values[0]
+        else:
+            station_value = unknown_station
 
         return {
 
@@ -757,7 +771,7 @@ class TradeTab(ttk.Frame):
 
             "to_system": row.get("to_system"),
 
-            "station": row.get("station") or row.get("from_station") or row.get("to_station"),
+            "station": station_value,
 
         }
 
@@ -1836,7 +1850,10 @@ class TradeTab(ttk.Frame):
                                 )
                         else:
                             opis = [
-                                f"{row.get('from_system', '')} -> {row.get('to_system', '')}"
+                                (
+                                    f"{row.get('from_system', '')} ({row.get('from_station', 'UNKNOWN_STATION')})"
+                                    f" -> {row.get('to_system', '')} ({row.get('to_station', 'UNKNOWN_STATION')})"
+                                )
                                 for row in rows
                             ]
                             common.register_active_route_list(self.lst_trade, opis)
