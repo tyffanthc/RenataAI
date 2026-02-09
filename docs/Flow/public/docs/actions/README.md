@@ -1,12 +1,12 @@
-# ACTIONS
+﻿# ACTIONS (Public)
 
-### Cel
+## Cel
 Publiczny katalog akcji Renaty wspierajacych decyzje pilota.
 
-### Aktualny zakres
+## Aktualny zakres publiczny
 - Route Awareness & Route Intent
 - Sell Assist
 
-### Notatka
-Ten katalog zawiera tylko publiczny opis kierunku i granic akcji.
-Szczegoly implementacyjne i heurystyki pozostaja poza dokumentacja publiczna.
+## Granica
+- Ten katalog opisuje tylko kierunek funkcjonalny i granice produktu.
+- Szczegoly implementacyjne, heurystyki i wewnetrzne kontrakty sa poza public docs.

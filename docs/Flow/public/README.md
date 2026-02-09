@@ -1,13 +1,20 @@
-# Flow / Public
+﻿# Flow / Public
 
-Publiczna dokumentacja Renaty:
-- filozofia i granice projektu,
+Publiczna dokumentacja Renaty.
+
+## Zakres
+- filozofia i granice produktu,
 - zasady UX (TTS, Insight Alerts, Decision Cards),
-- zaufanie do danych,
+- zasady zaufania do danych,
 - polityki ryzyka (Risk i VaR),
-- status refaktoru (publiczny, high-level).
+- publiczny status refaktoru (high-level).
 
-Dokumenty startowe:
+## Granica publikacji
+- Ten katalog nie zawiera informacji z dokumentacji wewnetrznej.
+- Brak tu szczegolow implementacyjnych, heurystyk, progow i dokumentow operacyjnych.
+- Brak linkow do dokumentacji wewnetrznej.
+
+## Dokumenty startowe
 - [FLOW.md](FLOW.md)
 - [Data Trust and Freshness](docs/data/DATA_TRUST_AND_FRESHNESS.md)
 - [UX TTS Policy](docs/ux/UX_TTS_POLICY.md)
@@ -15,7 +22,5 @@ Dokumenty startowe:
 - [UX Decision Cards](docs/ux/UX_DECISION_CARDS.md)
 - [Global Risk Policy](docs/policies/GLOBAL_RISK_POLICY.md)
 - [Global Value at Risk](docs/policies/GLOBAL_VALUE_AT_RISK.md)
+- [Actions (public scope)](docs/actions/README.md)
 - [Refaktor Status](docs/REFAKTOR_STATUS.md)
-
-Moze byc publikowana w repo GitHub.
-Nie zawiera heurystyk, progow ani planow PRO.
