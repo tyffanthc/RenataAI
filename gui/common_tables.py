@@ -114,7 +114,7 @@ def stworz_liste_trasy(parent, title="Plan Lotu"):
         yscrollcommand=sc.set,
         font=("Consolas", 10),
         activestyle="none",
-        selectmode="browse",
+        selectmode="extended",
         exportselection=False
     )
     lb.pack(side="left", fill="both", expand=True)
@@ -161,7 +161,7 @@ def stworz_tabele_trasy(parent, title="Plan Lotu"):
         tree_frame,
         columns=(),
         show="headings",
-        selectmode="browse",
+        selectmode="extended",
     )
     tree.pack(side="left", fill="both", expand=True)
     sc.config(command=tree.yview)
@@ -1080,7 +1080,9 @@ def attach_results_context_menu(
             if not row_id:
                 return
             try:
-                widget.selection_set(row_id)
+                current_selection = set(widget.selection())
+                if row_id not in current_selection:
+                    widget.selection_set(row_id)
             except Exception:
                 pass
             try:
@@ -1104,8 +1106,9 @@ def attach_results_context_menu(
             except Exception:
                 return
             try:
-                widget.selection_clear(0, tk.END)
-                widget.selection_set(row_id)
+                if not widget.selection_includes(row_id):
+                    widget.selection_clear(0, tk.END)
+                    widget.selection_set(row_id)
                 widget.activate(row_id)
             except Exception:
                 pass

@@ -871,6 +871,32 @@ def test_spansh_system_copy_mapping(_ctx: TestContext) -> None:
     assert not missing_real, "empty payload should not be marked as real system"
     assert missing_value == "brak nazwy systemu", "fallback copy text mismatch"
 
+
+def test_spansh_copy_mode_actions(_ctx: TestContext) -> None:
+    required_labels = ["Kopiuj wiersz", "Kopiuj zaznaczone", "Kopiuj wszystkie"]
+    files = [
+        "gui/tabs/spansh/planner_base.py",
+        "gui/tabs/spansh/neutron.py",
+        "gui/tabs/spansh/trade.py",
+    ]
+    for rel_path in files:
+        path = os.path.join(ROOT_DIR, rel_path)
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        for label in required_labels:
+            assert label in content, f"Missing '{label}' action in {rel_path}"
+
+    common_tables_path = os.path.join(ROOT_DIR, "gui/common_tables.py")
+    with open(common_tables_path, "r", encoding="utf-8", errors="ignore") as f:
+        table_content = f.read()
+    assert table_content.count('selectmode="extended"') >= 2, (
+        "Expected extended multi-select for listbox and treeview"
+    )
+    assert "selection_includes" in table_content, "Expected listbox right-click selection guard"
+    assert "current_selection = set(widget.selection())" in table_content, (
+        "Expected treeview right-click selection guard"
+    )
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -890,6 +916,7 @@ def run_all_tests() -> int:
         ("test_first_footfall_basic", test_first_footfall_basic),
         ("test_table_schemas_basic", test_table_schemas_basic),
         ("test_spansh_system_copy_mapping", test_spansh_system_copy_mapping),
+        ("test_spansh_copy_mode_actions", test_spansh_copy_mode_actions),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

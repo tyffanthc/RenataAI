@@ -48,6 +48,7 @@ class SpanshPlannerBase(ttk.Frame):
         self._range_updating = False
         self._results_rows: list[dict[str, Any]] = []
         self._results_row_offset = 0
+        self._results_widget: Any | None = None
 
     # ------------------------------------------------------------------ UI helpers
 
@@ -72,11 +73,89 @@ class SpanshPlannerBase(ttk.Frame):
         self._results_row_offset = 0
 
     def _attach_default_results_context_menu(self, list_widget: Any) -> None:
+        self._results_widget = list_widget
         common.attach_results_context_menu(
             list_widget,
             self._get_results_payload,
             self._get_results_actions,
         )
+
+    def _format_result_line(self, row: dict[str, Any], row_text: str | None = None) -> str:
+        try:
+            rendered = common.render_table_lines(self._schema_id, [row])
+            if rendered:
+                return str(rendered[0]).strip()
+        except Exception:
+            pass
+        return str(row_text or "").strip()
+
+    def _selected_internal_indices(self) -> list[int]:
+        widget = self._results_widget
+        if widget is None:
+            return []
+        indices: list[int] = []
+        if isinstance(widget, ttk.Treeview):
+            selected_ids = set(str(item) for item in (widget.selection() or ()))
+            if not selected_ids:
+                return []
+            for iid in widget.get_children():
+                if str(iid) not in selected_ids:
+                    continue
+                try:
+                    idx = int(str(iid)) - int(self._results_row_offset)
+                except Exception:
+                    continue
+                if 0 <= idx < len(self._results_rows):
+                    indices.append(idx)
+            return indices
+
+        try:
+            selected = list(widget.curselection())
+        except Exception:
+            selected = []
+        for item in selected:
+            try:
+                idx = int(item) - int(self._results_row_offset)
+            except Exception:
+                continue
+            if 0 <= idx < len(self._results_rows):
+                indices.append(idx)
+        return indices
+
+    def _copy_indices_to_clipboard(self, indices: list[int], *, context: str) -> None:
+        lines: list[str] = []
+        for idx in indices:
+            if idx < 0 or idx >= len(self._results_rows):
+                continue
+            row = self._results_rows[idx]
+            line = self._format_result_line(row)
+            if line:
+                lines.append(line)
+        text = "\n".join(lines).strip()
+        if not text:
+            return
+        common.copy_text_to_clipboard(text, context=context)
+
+    def _copy_clicked_row(self, payload: dict[str, Any]) -> None:
+        idx = int(payload.get("row_index", -1))
+        if idx < 0 or idx >= len(self._results_rows):
+            return
+        self._copy_indices_to_clipboard([idx], context="results.row")
+
+    def _copy_selected_rows(self, payload: dict[str, Any]) -> None:
+        indices = self._selected_internal_indices()
+        if not indices:
+            idx = int(payload.get("row_index", -1))
+            if idx >= 0:
+                indices = [idx]
+        if not indices:
+            return
+        self._copy_indices_to_clipboard(indices, context="results.rows_selected")
+
+    def _copy_all_rows(self) -> None:
+        if not self._results_rows:
+            return
+        self._copy_indices_to_clipboard(list(range(len(self._results_rows))), context="results.rows_all")
 
     def _get_results_payload(self, row_index, row_text=None) -> dict[str, Any] | None:
         try:
@@ -111,6 +190,32 @@ class SpanshPlannerBase(ttk.Frame):
                 "action": lambda p: common.copy_text_to_clipboard(system, context="results.system"),
             }
         )
+        row_idx = int(payload.get("row_index", -1))
+        row_exists = 0 <= row_idx < len(self._results_rows)
+        selected_exists = bool(self._selected_internal_indices())
+        all_exists = bool(self._results_rows)
+
+        actions.append(
+            {
+                "label": "Kopiuj wiersz",
+                "action": lambda p: self._copy_clicked_row(p),
+                "enabled": row_exists,
+            }
+        )
+        actions.append(
+            {
+                "label": "Kopiuj zaznaczone",
+                "action": lambda p: self._copy_selected_rows(p),
+                "enabled": selected_exists or row_exists,
+            }
+        )
+        actions.append(
+            {
+                "label": "Kopiuj wszystkie",
+                "action": lambda p: self._copy_all_rows(),
+                "enabled": all_exists,
+            }
+        )
         if has_system:
             actions.append({"separator": True})
             actions.append(
@@ -123,16 +228,6 @@ class SpanshPlannerBase(ttk.Frame):
                 {
                     "label": "Ustaw jako Cel",
                     "action": lambda p: self._set_var_if_present("var_cel", system),
-                }
-            )
-
-        row_text = str(payload.get("row_text") or "").strip()
-        if row_text:
-            actions.append({"separator": True})
-            actions.append(
-                {
-                    "label": "Kopiuj caly wiersz",
-                    "action": lambda p: common.copy_text_to_clipboard(row_text, context="results.row"),
                 }
             )
 
