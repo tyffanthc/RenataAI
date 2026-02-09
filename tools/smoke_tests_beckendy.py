@@ -905,12 +905,14 @@ def test_spansh_export_actions_and_formats(_ctx: TestContext) -> None:
         "gui/tabs/spansh/trade.py",
     ]
     required_labels = [
-        "Kopiuj jako Exel",
-        "Kopiuj jako",
+        "Kopiuj do Excela",
+        "Kopiuj CSV",
+        "Kopiuj TSV",
         "CSV",
-        "CSV (naglowki)",
         "TSV",
-        "TSV (naglowki)",
+        "Naglowki",
+        "Wiersz",
+        "Wszystko",
     ]
     for rel_path in files:
         path = os.path.join(ROOT_DIR, rel_path)
@@ -918,6 +920,7 @@ def test_spansh_export_actions_and_formats(_ctx: TestContext) -> None:
             content = f.read()
         for label in required_labels:
             assert label in content, f"Missing '{label}' export option in {rel_path}"
+        assert "Kopiuj jako Exel" not in content, f"Deprecated Excel label in {rel_path}"
 
     row = {
         "from_system": "SOL",

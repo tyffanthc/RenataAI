@@ -844,60 +844,134 @@ class TradeTab(ttk.Frame):
 
             )
 
-        row = payload.get("row") or {}
-
-        csv_text = common.format_row_delimited("trade", row, ",")
-        csv_with_header = common.format_row_delimited_with_header("trade", row, ",")
-
-        tsv_text = common.format_row_delimited("trade", row, "	")
-        tsv_with_header = common.format_row_delimited_with_header("trade", row, "	")
-
-        export_children = []
-        if tsv_with_header:
-            export_children.append(
-                {
-                    "label": "Kopiuj jako Exel",
-                    "action": lambda p: common.copy_text_to_clipboard(tsv_with_header, context="results.excel"),
-                }
-            )
-        if csv_text:
-            export_children.append(
-                {
-                    "label": "CSV",
-                    "action": lambda p: common.copy_text_to_clipboard(csv_text, context="results.csv"),
-                }
-            )
-        if csv_with_header:
-            export_children.append(
-                {
-                    "label": "CSV (naglowki)",
-                    "action": lambda p: common.copy_text_to_clipboard(csv_with_header, context="results.csv_headers"),
-                }
-            )
-        if tsv_text:
-            export_children.append(
-                {
-                    "label": "TSV",
-                    "action": lambda p: common.copy_text_to_clipboard(tsv_text, context="results.tsv"),
-                }
-            )
-        if tsv_with_header:
-            export_children.append(
-                {
-                    "label": "TSV (naglowki)",
-                    "action": lambda p: common.copy_text_to_clipboard(tsv_with_header, context="results.tsv_headers"),
-                }
-            )
-
-        if export_children:
-
+        if all_exists:
             actions.append({"separator": True})
-
-        if export_children:
             actions.append(
                 {
-                    "label": "Kopiuj jako",
-                    "children": export_children,
+                    "label": "Kopiuj do Excela",
+                    "children": [
+                        {
+                            "label": "Wiersz",
+                            "action": lambda p: self._copy_clicked_delimited(
+                                p,
+                                sep="\t",
+                                include_header=True,
+                                context="results.excel_row",
+                            ),
+                            "enabled": row_exists,
+                        },
+                        {
+                            "label": "Zaznaczone",
+                            "action": lambda p: self._copy_selected_delimited(
+                                p,
+                                sep="\t",
+                                include_header=True,
+                                context="results.excel_selected",
+                            ),
+                            "enabled": selected_exists or row_exists,
+                        },
+                        {
+                            "label": "Wszystko",
+                            "action": lambda p: self._copy_all_delimited(
+                                sep="\t",
+                                include_header=True,
+                                context="results.excel_all",
+                            ),
+                            "enabled": all_exists,
+                        },
+                    ],
+                }
+            )
+            actions.append(
+                {
+                    "label": "Kopiuj CSV",
+                    "children": [
+                        {
+                            "label": "CSV",
+                            "action": lambda p: self._copy_selected_delimited(
+                                p,
+                                sep=",",
+                                include_header=False,
+                                context="results.csv_selected",
+                            ),
+                            "enabled": selected_exists or row_exists,
+                        },
+                        {
+                            "label": "Naglowki",
+                            "action": lambda p: self._copy_selected_delimited(
+                                p,
+                                sep=",",
+                                include_header=True,
+                                context="results.csv_headers_selected",
+                            ),
+                            "enabled": selected_exists or row_exists,
+                        },
+                        {
+                            "label": "Wiersz",
+                            "action": lambda p: self._copy_clicked_delimited(
+                                p,
+                                sep=",",
+                                include_header=False,
+                                context="results.csv_row",
+                            ),
+                            "enabled": row_exists,
+                        },
+                        {
+                            "label": "Wszystko",
+                            "action": lambda p: self._copy_all_delimited(
+                                sep=",",
+                                include_header=False,
+                                context="results.csv_all",
+                            ),
+                            "enabled": all_exists,
+                        },
+                    ],
+                }
+            )
+            actions.append(
+                {
+                    "label": "Kopiuj TSV",
+                    "children": [
+                        {
+                            "label": "TSV",
+                            "action": lambda p: self._copy_selected_delimited(
+                                p,
+                                sep="\t",
+                                include_header=False,
+                                context="results.tsv_selected",
+                            ),
+                            "enabled": selected_exists or row_exists,
+                        },
+                        {
+                            "label": "Naglowki",
+                            "action": lambda p: self._copy_selected_delimited(
+                                p,
+                                sep="\t",
+                                include_header=True,
+                                context="results.tsv_headers_selected",
+                            ),
+                            "enabled": selected_exists or row_exists,
+                        },
+                        {
+                            "label": "Wiersz",
+                            "action": lambda p: self._copy_clicked_delimited(
+                                p,
+                                sep="\t",
+                                include_header=False,
+                                context="results.tsv_row",
+                            ),
+                            "enabled": row_exists,
+                        },
+                        {
+                            "label": "Wszystko",
+                            "action": lambda p: self._copy_all_delimited(
+                                sep="\t",
+                                include_header=False,
+                                context="results.tsv_all",
+                            ),
+                            "enabled": all_exists,
+                        },
+                    ],
                 }
             )
 
@@ -983,6 +1057,74 @@ class TradeTab(ttk.Frame):
         if not self._results_rows:
             return
         self._copy_indices_to_clipboard(list(range(len(self._results_rows))), context="results.rows_all")
+
+    def _copy_indices_delimited_to_clipboard(
+        self,
+        indices: list[int],
+        *,
+        sep: str,
+        include_header: bool,
+        context: str,
+    ) -> None:
+        rows: list[dict] = []
+        for idx in indices:
+            if idx < 0 or idx >= len(self._results_rows):
+                continue
+            row = self._results_rows[idx]
+            if isinstance(row, dict):
+                rows.append(row)
+        if not rows:
+            return
+
+        lines: list[str] = []
+        if include_header:
+            header = common.format_header_delimited("trade", sep)
+            if header:
+                lines.append(header)
+        for row in rows:
+            line = common.format_row_delimited("trade", row, sep)
+            if line:
+                lines.append(line)
+        text = "\n".join(lines).strip()
+        if not text:
+            return
+        common.copy_text_to_clipboard(text, context=context)
+
+    def _copy_clicked_delimited(self, payload: dict, *, sep: str, include_header: bool, context: str) -> None:
+        idx = int(payload.get("row_index", -1))
+        if idx < 0 or idx >= len(self._results_rows):
+            return
+        self._copy_indices_delimited_to_clipboard(
+            [idx],
+            sep=sep,
+            include_header=include_header,
+            context=context,
+        )
+
+    def _copy_selected_delimited(self, payload: dict, *, sep: str, include_header: bool, context: str) -> None:
+        indices = self._selected_internal_indices()
+        if not indices:
+            idx = int(payload.get("row_index", -1))
+            if idx >= 0:
+                indices = [idx]
+        if not indices:
+            return
+        self._copy_indices_delimited_to_clipboard(
+            indices,
+            sep=sep,
+            include_header=include_header,
+            context=context,
+        )
+
+    def _copy_all_delimited(self, *, sep: str, include_header: bool, context: str) -> None:
+        if not self._results_rows:
+            return
+        self._copy_indices_delimited_to_clipboard(
+            list(range(len(self._results_rows))),
+            sep=sep,
+            include_header=include_header,
+            context=context,
+        )
 
 
 
