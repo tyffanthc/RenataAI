@@ -1007,6 +1007,118 @@ def test_tts_polish_diacritics_global(_ctx: TestContext) -> None:
     for marker in ("Ã", "Ä", "Å", "Ĺ", "â€"):
         assert marker not in repaired, f"Unexpected mojibake marker '{marker}' in repaired text"
 
+
+def test_exobio_sample_progress_sequence(_ctx: TestContext) -> None:
+    # Preserve original helpers patched for deterministic threshold/value.
+    orig_min_distance = bio_events._species_minimum_distance  # type: ignore[attr-defined]
+    orig_estimate_value = bio_events._estimate_collected_species_value  # type: ignore[attr-defined]
+    try:
+        bio_events.reset_bio_flags()
+        app_state.current_system = "SMOKE_EXOBIO_SYS"
+
+        bio_events._species_minimum_distance = lambda _species: 100.0  # type: ignore[attr-defined]
+        bio_events._estimate_collected_species_value = (  # type: ignore[attr-defined]
+            lambda _ev, _species: (12345.0, False)
+        )
+
+        # Baseline position for tracker.
+        bio_events.handle_exobio_status_position(
+            {
+                "Latitude": 0.0,
+                "Longitude": 0.0,
+                "PlanetRadius": 6_371_000.0,
+                "BodyName": "SMOKE_BODY",
+            },
+            gui_ref=None,
+        )
+
+        # 1/3
+        ev_sample = {
+            "event": "ScanOrganic",
+            "StarSystem": "SMOKE_EXOBIO_SYS",
+            "BodyName": "SMOKE_BODY",
+            "Species_Localised": "Aleoida Arcus",
+        }
+        bio_events.handle_exobio_progress(ev_sample, gui_ref=None)
+        msgs_1 = [str(m) for m in MSG_QUEUE.queue]
+        joined_1 = " | ".join(msgs_1)
+        assert "Pierwsza próbka Aleoida Arcus pobrana." in joined_1, "Missing first sample progress callout"
+        while not MSG_QUEUE.empty():
+            MSG_QUEUE.get_nowait()
+
+        # Gate after 1/3.
+        bio_events.handle_exobio_status_position(
+            {
+                "Latitude": 0.0,
+                "Longitude": 0.002,
+                "PlanetRadius": 6_371_000.0,
+                "BodyName": "SMOKE_BODY",
+            },
+            gui_ref=None,
+        )
+        msgs_gate_1 = [str(m) for m in MSG_QUEUE.queue]
+        joined_gate_1 = " | ".join(msgs_gate_1)
+        assert "Osiągnięto odpowiednią odległość. Pobierz kolejną próbkę." in joined_gate_1, (
+            "Missing gate callout after first sample"
+        )
+        while not MSG_QUEUE.empty():
+            MSG_QUEUE.get_nowait()
+
+        # 2/3
+        bio_events.handle_exobio_progress(ev_sample, gui_ref=None)
+        msgs_2 = [str(m) for m in MSG_QUEUE.queue]
+        joined_2 = " | ".join(msgs_2)
+        assert "Druga próbka Aleoida Arcus pobrana." in joined_2, "Missing second sample progress callout"
+        while not MSG_QUEUE.empty():
+            MSG_QUEUE.get_nowait()
+
+        # Gate after 2/3.
+        bio_events.handle_exobio_status_position(
+            {
+                "Latitude": 0.0,
+                "Longitude": 0.0042,
+                "PlanetRadius": 6_371_000.0,
+                "BodyName": "SMOKE_BODY",
+            },
+            gui_ref=None,
+        )
+        msgs_gate_2 = [str(m) for m in MSG_QUEUE.queue]
+        joined_gate_2 = " | ".join(msgs_gate_2)
+        assert "Osiągnięto odpowiednią odległość. Pobierz kolejną próbkę." in joined_gate_2, (
+            "Missing gate callout after second sample"
+        )
+        while not MSG_QUEUE.empty():
+            MSG_QUEUE.get_nowait()
+
+        # 3/3 + value.
+        bio_events.handle_exobio_progress(ev_sample, gui_ref=None)
+        msgs_3 = [str(m) for m in MSG_QUEUE.queue]
+        joined_3 = " | ".join(msgs_3)
+        assert "Mamy wszystko dla Aleoida Arcus." in joined_3, "Missing completion callout at 3/3"
+        assert "12 345 kredytów" in joined_3, "Missing value callout at 3/3"
+        while not MSG_QUEUE.empty():
+            MSG_QUEUE.get_nowait()
+
+        # After completion: no more gate, no more sample spam for same species/body.
+        bio_events.handle_exobio_status_position(
+            {
+                "Latitude": 0.0,
+                "Longitude": 0.0065,
+                "PlanetRadius": 6_371_000.0,
+                "BodyName": "SMOKE_BODY",
+            },
+            gui_ref=None,
+        )
+        bio_events.handle_exobio_progress(ev_sample, gui_ref=None)
+        assert MSG_QUEUE.empty(), "No additional callouts expected after 3/3 completion"
+
+    finally:
+        bio_events._species_minimum_distance = orig_min_distance  # type: ignore[attr-defined]
+        bio_events._estimate_collected_species_value = orig_estimate_value  # type: ignore[attr-defined]
+        bio_events.reset_bio_flags()
+        while not MSG_QUEUE.empty():
+            MSG_QUEUE.get_nowait()
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1030,6 +1142,7 @@ def run_all_tests() -> int:
         ("test_spansh_export_actions_and_formats", test_spansh_export_actions_and_formats),
         ("test_trade_station_name_normalization", test_trade_station_name_normalization),
         ("test_tts_polish_diacritics_global", test_tts_polish_diacritics_global),
+        ("test_exobio_sample_progress_sequence", test_exobio_sample_progress_sequence),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

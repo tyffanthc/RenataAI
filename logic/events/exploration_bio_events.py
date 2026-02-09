@@ -17,6 +17,7 @@ DSS_BIO_WARNED_BODIES = set()  # BodyName/BodyID with spoken bio warning
 EXOBIO_SCAN_WARNED = set()  # (system, body, species)
 EXOBIO_CODEX_WARNED = set()  # (system, species)
 EXOBIO_SAMPLE_COUNT = {}  # (system, body, species) -> number of saved samples
+EXOBIO_SAMPLE_COMPLETE = set()  # (system, body, species) -> sample sequence completed (3/3)
 EXOBIO_RANGE_READY_WARNED = set()  # (system, body, species) -> range-ready already spoken
 EXOBIO_RANGE_TRACKERS = {}  # (system, body, species) -> distance tracker state
 EXOBIO_LAST_STATUS_POS = {}  # last known position from Status.json
@@ -40,11 +41,13 @@ def _log_exobio_fallback(key: str, message: str, exc: Exception, *, interval_ms:
 def reset_bio_flags() -> None:
     """Reset local anti-spam flags for biology helpers."""
     global DSS_BIO_WARNED_BODIES, EXOBIO_SCAN_WARNED, EXOBIO_CODEX_WARNED
-    global EXOBIO_SAMPLE_COUNT, EXOBIO_RANGE_READY_WARNED, EXOBIO_RANGE_TRACKERS, EXOBIO_LAST_STATUS_POS
+    global EXOBIO_SAMPLE_COUNT, EXOBIO_SAMPLE_COMPLETE
+    global EXOBIO_RANGE_READY_WARNED, EXOBIO_RANGE_TRACKERS, EXOBIO_LAST_STATUS_POS
     DSS_BIO_WARNED_BODIES = set()
     EXOBIO_SCAN_WARNED = set()
     EXOBIO_CODEX_WARNED = set()
     EXOBIO_SAMPLE_COUNT = {}
+    EXOBIO_SAMPLE_COMPLETE = set()
     EXOBIO_RANGE_READY_WARNED = set()
     EXOBIO_RANGE_TRACKERS = {}
     EXOBIO_LAST_STATUS_POS = {}
@@ -162,6 +165,73 @@ def _species_minimum_distance(species: str) -> float | None:
         return distance
     except Exception:
         return None
+
+
+def _estimate_collected_species_value(ev: Dict[str, Any], species: str) -> tuple[float | None, bool]:
+    """
+    Estimate collected sample value for a species from science data.
+    Returns (value_cr, includes_first_footfall_bonus).
+    """
+    if not species:
+        return None, False
+    try:
+        engine = getattr(app_state, "system_value_engine", None)
+        if not engine or not hasattr(engine, "_lookup_exobio_row"):
+            return None, False
+
+        species_norm = _normalize_species_for_science(species)
+        if not species_norm:
+            return None, False
+
+        row = engine._lookup_exobio_row(species_norm)  # noqa: SLF001 - internal helper
+        if row is None:
+            return None, False
+
+        base_value = float(_as_float(row.get("Base_Value")) or 0.0)
+        fd_bonus = float(_as_float(row.get("First_Discovery_Bonus")) or 0.0)
+        total_ff = float(_as_float(row.get("Total_First_Footfall")) or 0.0)
+
+        is_first_discovery = bool(
+            ev.get("FirstDiscovery")
+            or ev.get("IsNewSpecies")
+            or ev.get("NewSpecies")
+        )
+        is_first_footfall = bool(
+            ev.get("FirstFootfall")
+            or ev.get("FirstScan")
+        )
+
+        value = base_value
+        if is_first_discovery and fd_bonus > 0:
+            value += fd_bonus
+
+        includes_ff = False
+        if is_first_footfall and total_ff > 0:
+            extra_ff = max(0.0, total_ff - (base_value + fd_bonus))
+            if extra_ff > 0:
+                value += extra_ff
+                includes_ff = True
+
+        if value <= 0:
+            return None, includes_ff
+        return value, includes_ff
+    except Exception as exc:
+        _log_exobio_fallback(
+            "value.estimate",
+            "failed to estimate exobiology sample value",
+            exc,
+        )
+        return None, False
+
+
+def _format_cr(value: float | None) -> str:
+    if value is None:
+        return ""
+    try:
+        rounded = int(round(float(value)))
+    except Exception:
+        return ""
+    return f"{rounded:,}".replace(",", " ")
 
 
 def _status_body_name(status: Dict[str, Any]) -> str:
@@ -310,6 +380,9 @@ def handle_exobio_status_position(status: Dict[str, Any], gui_ref=None) -> None:
     )
 
     for key, tracker in list(EXOBIO_RANGE_TRACKERS.items()):
+        sample_count = int(EXOBIO_SAMPLE_COUNT.get(key, 0) or 0)
+        if sample_count >= 3 or key in EXOBIO_SAMPLE_COMPLETE:
+            continue
         if key in EXOBIO_RANGE_READY_WARNED:
             continue
 
@@ -348,7 +421,7 @@ def handle_exobio_status_position(status: Dict[str, Any], gui_ref=None) -> None:
             continue
 
         EXOBIO_RANGE_READY_WARNED.add(key)
-        msg = "Odległość między próbkami potwierdzona. Możesz skanować kolejną."
+        msg = "Osiągnięto odpowiednią odległość. Pobierz kolejną próbkę."
         powiedz(
             msg,
             gui_ref,
@@ -447,36 +520,62 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
             return
 
         key = (system_name.lower(), body.lower(), species.lower())
-        sample_count = int(EXOBIO_SAMPLE_COUNT.get(key, 0)) + 1
+        if key in EXOBIO_SAMPLE_COMPLETE:
+            return
+
+        previous_count = int(EXOBIO_SAMPLE_COUNT.get(key, 0) or 0)
+        if previous_count >= 3:
+            EXOBIO_SAMPLE_COMPLETE.add(key)
+            return
+
+        sample_count = previous_count + 1
         EXOBIO_SAMPLE_COUNT[key] = sample_count
 
-        # "Sample logged" only once per species/body.
-        if key not in EXOBIO_SCAN_WARNED:
-            EXOBIO_SCAN_WARNED.add(key)
-            if body:
-                msg = f"Próbka zapisana. {species}. Kontynuuj badania na {body}."
-            else:
-                msg = f"Próbka zapisana. {species}. Kontynuuj badania."
+        subject = species or body or "obiektu biologicznego"
+
+        if sample_count == 1:
+            msg = f"Pierwsza próbka {subject} pobrana."
             powiedz(
                 msg,
                 gui_ref,
                 message_id="MSG.EXOBIO_SAMPLE_LOGGED",
                 context={"raw_text": msg, "system": system_name, "body": body},
             )
-
-        # Real distance tracker based on science data + status position.
-        tracker_state = _arm_range_tracker(key, species)
-
-        # Legacy fallback only when science data does not provide distance threshold.
-        if tracker_state == "unavailable" and sample_count == 2 and key not in EXOBIO_RANGE_READY_WARNED:
-            EXOBIO_RANGE_READY_WARNED.add(key)
-            msg = "Odległość między próbkami potwierdzona. Możesz skanować kolejną."
+        elif sample_count == 2:
+            msg = f"Druga próbka {subject} pobrana."
             powiedz(
                 msg,
                 gui_ref,
-                message_id="MSG.EXOBIO_RANGE_READY",
+                message_id="MSG.EXOBIO_SAMPLE_LOGGED",
                 context={"raw_text": msg, "system": system_name, "body": body},
             )
+        elif sample_count >= 3:
+            value_cr, includes_ff = _estimate_collected_species_value(ev, species)
+            value_text = _format_cr(value_cr)
+            if value_text:
+                ff_suffix = " (uwzględniono bonus pierwszego kroku)." if includes_ff else "."
+                msg = f"Mamy wszystko dla {subject}. Szacowana wartość pobranych próbek: {value_text} kredytów{ff_suffix}"
+            else:
+                msg = f"Mamy wszystko dla {subject}. Skanowanie gatunku zakończone."
+            powiedz(
+                msg,
+                gui_ref,
+                message_id="MSG.EXOBIO_SAMPLE_LOGGED",
+                context={"raw_text": msg, "system": system_name, "body": body},
+            )
+            EXOBIO_SAMPLE_COMPLETE.add(key)
+            EXOBIO_SCAN_WARNED.add(key)
+            EXOBIO_RANGE_TRACKERS.pop(key, None)
+            EXOBIO_RANGE_READY_WARNED.discard(key)
+            return
+
+        # Real distance tracker based on science data + status position.
+        tracker_state = _arm_range_tracker(key, species) if sample_count < 3 else "complete"
+
+        # Gate message only when real threshold tracking is available from science data.
+        if tracker_state == "unavailable":
+            EXOBIO_RANGE_TRACKERS.pop(key, None)
+            EXOBIO_RANGE_READY_WARNED.discard(key)
         return
 
     if not _is_biology_codex(ev):
