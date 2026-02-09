@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 from typing import Any, Callable
+import re
 
 import config
 from app.route_manager import route_manager
@@ -46,6 +47,8 @@ class SpanshPlannerBase(ttk.Frame):
 
         self._range_user_overridden = False
         self._range_updating = False
+        self._results_rows: list[dict[str, Any]] = []
+        self._results_row_offset = 0
 
     # ------------------------------------------------------------------ UI helpers
 
@@ -66,6 +69,137 @@ class SpanshPlannerBase(ttk.Frame):
             list_widget.delete(*list_widget.get_children())
         else:
             list_widget.delete(0, tk.END)
+        self._results_rows = []
+        self._results_row_offset = 0
+
+    @staticmethod
+    def _extract_system_from_text(row_text: str | None) -> str:
+        text = (row_text or "").strip()
+        if not text:
+            return ""
+        text = re.sub(r"^\d+\.\s*", "", text)
+        if "->" in text:
+            text = text.split("->", 1)[-1].strip()
+        parts = [part.strip() for part in text.split("  ") if part.strip()]
+        if parts:
+            text = parts[0]
+        return text.split(" (", 1)[0].strip()
+
+    def _extract_row_system(self, row: dict[str, Any]) -> str:
+        candidates = (
+            row.get("system_name"),
+            row.get("to_system"),
+            row.get("from_system"),
+            row.get("system"),
+            row.get("name"),
+        )
+        for candidate in candidates:
+            value = str(candidate or "").strip()
+            if value:
+                return value
+        return ""
+
+    def _attach_default_results_context_menu(self, list_widget: Any) -> None:
+        common.attach_results_context_menu(
+            list_widget,
+            self._get_results_payload,
+            self._get_results_actions,
+        )
+
+    def _get_results_payload(self, row_index, row_text=None) -> dict[str, Any] | None:
+        try:
+            idx = int(row_index) - int(self._results_row_offset)
+        except Exception:
+            return None
+        if idx < 0:
+            return None
+
+        row = None
+        if idx < len(self._results_rows):
+            row = self._results_rows[idx]
+        system = self._extract_row_system(row or {})
+        if not system:
+            system = self._extract_system_from_text(row_text)
+
+        return {
+            "row_index": idx,
+            "row_text": row_text,
+            "schema_id": self._schema_id,
+            "row": row or {},
+            "system": system,
+        }
+
+    def _get_results_actions(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        actions: list[dict[str, Any]] = []
+        system = str(payload.get("system") or "").strip()
+
+        if system:
+            actions.append(
+                {
+                    "label": "Kopiuj system",
+                    "action": lambda p: common.copy_text_to_clipboard(system, context="results.system"),
+                }
+            )
+            actions.append({"separator": True})
+            actions.append(
+                {
+                    "label": "Ustaw jako Start",
+                    "action": lambda p: self._set_var_if_present("var_start", system),
+                }
+            )
+            actions.append(
+                {
+                    "label": "Ustaw jako Cel",
+                    "action": lambda p: self._set_var_if_present("var_cel", system),
+                }
+            )
+
+        row_text = str(payload.get("row_text") or "").strip()
+        if row_text:
+            actions.append({"separator": True})
+            actions.append(
+                {
+                    "label": "Kopiuj caly wiersz",
+                    "action": lambda p: common.copy_text_to_clipboard(row_text, context="results.row"),
+                }
+            )
+
+        row = payload.get("row") or {}
+        if row:
+            csv_text = common.format_row_delimited(self._schema_id, row, ",")
+            tsv_text = common.format_row_delimited(self._schema_id, row, "\t")
+        else:
+            csv_text = ""
+            tsv_text = ""
+        if csv_text or tsv_text:
+            actions.append({"separator": True})
+        if csv_text:
+            actions.append(
+                {
+                    "label": "Kopiuj jako CSV",
+                    "action": lambda p: common.copy_text_to_clipboard(csv_text, context="results.csv"),
+                }
+            )
+        if tsv_text:
+            actions.append(
+                {
+                    "label": "Kopiuj jako TSV",
+                    "action": lambda p: common.copy_text_to_clipboard(tsv_text, context="results.tsv"),
+                }
+            )
+
+        while actions and actions[-1].get("separator"):
+            actions.pop()
+        return actions
+
+    def _set_var_if_present(self, var_name: str, value: str) -> None:
+        var_obj = getattr(self, var_name, None)
+        if var_obj is None:
+            return
+        try:
+            var_obj.set(value)
+        except Exception:
+            return
 
     @staticmethod
     def _reset_shared_route_state() -> None:
@@ -231,6 +365,8 @@ class SpanshPlannerBase(ttk.Frame):
         worker_error: Exception | None,
     ) -> None:
         try:
+            self._results_rows = rows or []
+            self._results_row_offset = 0
             if worker_error is not None:
                 common.emit_status(
                     "ERROR",

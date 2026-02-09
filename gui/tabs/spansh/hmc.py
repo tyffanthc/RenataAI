@@ -104,6 +104,7 @@ class HMCTab(SpanshPlannerBase):
             self.lst = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_HMC)
         else:
             self.lst = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_HMC)
+        self._attach_default_results_context_menu(self.lst)
 
     def run(self):
         if not self._can_start():

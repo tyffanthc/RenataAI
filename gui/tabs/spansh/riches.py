@@ -117,6 +117,7 @@ class RichesTab(SpanshPlannerBase):
             self.lst_rtr = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_RICHES)
         else:
             self.lst_rtr = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_RICHES)
+        self._attach_default_results_context_menu(self.lst_rtr)
 
     def clear_rtr(self):
         self._clear_list_widget(self.lst_rtr)

@@ -102,6 +102,7 @@ class AmmoniaTab(SpanshPlannerBase):
             self.lst_amm = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_AMMONIA)
         else:
             self.lst_amm = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_AMMONIA)
+        self._attach_default_results_context_menu(self.lst_amm)
 
     def run_amm(self):
         if not self._can_start():

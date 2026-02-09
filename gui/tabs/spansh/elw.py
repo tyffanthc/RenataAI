@@ -104,6 +104,7 @@ class ELWTab(SpanshPlannerBase):
             self.lst = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_ELW)
         else:
             self.lst = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_ELW)
+        self._attach_default_results_context_menu(self.lst)
 
     def run(self):
         if not self._can_start():
