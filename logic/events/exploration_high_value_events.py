@@ -20,7 +20,7 @@ def _body_label(ev: Dict[str, Any]) -> str:
 
 def _dss_hint_text(body: str, fallback: str) -> str:
     if body:
-        return f"Planeta {body} jest warta doglebnej analizy DSS."
+        return f"Planeta {body} jest warta dogłębnej analizy DSS."
     return fallback
 
 
@@ -72,7 +72,7 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
         and has_body_type("earth-like")
     ):
         body = _body_label(ev)
-        raw_text = _dss_hint_text(body, "Wykryto planete ziemiopodobna. Wysoka wartosc.")
+        raw_text = _dss_hint_text(body, "Wykryto planetę ziemiopodobną. Wysoka wartość.")
         powiedz(
             raw_text,
             gui_ref,
@@ -89,7 +89,7 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
         and has_body_type("water world")
     ):
         body = _body_label(ev)
-        raw_text = _dss_hint_text(body, "Wykryto oceaniczny swiat. Bardzo wartosciowy.")
+        raw_text = _dss_hint_text(body, "Wykryto oceaniczny świat. Bardzo wartościowy.")
         powiedz(
             raw_text,
             gui_ref,
@@ -107,7 +107,7 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
         and has_body_type("high metal content", terraformable="yes")
     ):
         body = _body_label(ev)
-        raw_text = _dss_hint_text(body, "Wykryto terraformowalny swiat.")
+        raw_text = _dss_hint_text(body, "Wykryto terraformowalny świat.")
         powiedz(
             raw_text,
             gui_ref,

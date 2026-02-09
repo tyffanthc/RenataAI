@@ -348,7 +348,7 @@ def handle_exobio_status_position(status: Dict[str, Any], gui_ref=None) -> None:
             continue
 
         EXOBIO_RANGE_READY_WARNED.add(key)
-        msg = "Odleglosc miedzy probkami potwierdzona. Mozesz skanowac kolejna."
+        msg = "Odległość między próbkami potwierdzona. Możesz skanować kolejną."
         powiedz(
             msg,
             gui_ref,
@@ -454,9 +454,9 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
         if key not in EXOBIO_SCAN_WARNED:
             EXOBIO_SCAN_WARNED.add(key)
             if body:
-                msg = f"Probka zapisana. {species}. Kontynuuj badania na {body}."
+                msg = f"Próbka zapisana. {species}. Kontynuuj badania na {body}."
             else:
-                msg = f"Probka zapisana. {species}. Kontynuuj badania."
+                msg = f"Próbka zapisana. {species}. Kontynuuj badania."
             powiedz(
                 msg,
                 gui_ref,
@@ -470,7 +470,7 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
         # Legacy fallback only when science data does not provide distance threshold.
         if tracker_state == "unavailable" and sample_count == 2 and key not in EXOBIO_RANGE_READY_WARNED:
             EXOBIO_RANGE_READY_WARNED.add(key)
-            msg = "Odleglosc miedzy probkami potwierdzona. Mozesz skanowac kolejna."
+            msg = "Odległość między próbkami potwierdzona. Możesz skanować kolejną."
             powiedz(
                 msg,
                 gui_ref,

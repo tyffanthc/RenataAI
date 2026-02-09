@@ -36,10 +36,67 @@ ALLOWED_MESSAGES = {
 }
 
 
+_MOJIBAKE_REPLACEMENTS = {
+    # UTF-8 decoded as latin/cp125x (common Polish diacritics).
+    "Ä…": "ą",
+    "Ä‡": "ć",
+    "Ä™": "ę",
+    "Ä…": "ą",
+    "Ä„": "Ą",
+    "Ä†": "Ć",
+    "Ä˜": "Ę",
+    "Å‚": "ł",
+    "Å": "Ł",
+    "Å„": "ń",
+    "Åƒ": "Ń",
+    "Ã³": "ó",
+    "Ã“": "Ó",
+    "Ăł": "ó",
+    "Ă“": "Ó",
+    "Å›": "ś",
+    "Åš": "Ś",
+    "Åº": "ź",
+    "Å¹": "Ź",
+    "Å¼": "ż",
+    "Å»": "Ż",
+    # Second mojibake family visible in project logs/source snippets.
+    "Ĺ‚": "ł",
+    "Ĺ": "Ł",
+    "Ĺ„": "ń",
+    "Ĺƒ": "Ń",
+    "Ĺ›": "ś",
+    "Ĺš": "Ś",
+    "Ĺº": "ź",
+    "Ĺ¹": "Ź",
+    "Ĺ¼": "ż",
+    "Ĺ»": "Ż",
+    # Punctuation artifacts.
+    "â€“": "-",
+    "â€”": "-",
+    "â€ž": "\"",
+    "â€ť": "\"",
+    "â€œ": "\"",
+    "â€": "\"",
+    "â€™": "'",
+    "â€˜": "'",
+    "Â ": " ",
+}
+
+
+def _repair_polish_text(value: Any) -> str:
+    text = "" if value is None else str(value)
+    if not text:
+        return ""
+    for broken, fixed in _MOJIBAKE_REPLACEMENTS.items():
+        if broken in text:
+            text = text.replace(broken, fixed)
+    return text
+
+
 def _normalize_system_name(value: Any) -> str:
     if value is None:
         return ""
-    text = str(value).strip()
+    text = _repair_polish_text(value).strip()
     if not text:
         return ""
     text = text.replace("-", " ")
@@ -53,7 +110,7 @@ def _normalize_system_name(value: Any) -> str:
 def _normalize_station_name(value: Any) -> str:
     if value is None:
         return ""
-    text = str(value).strip()
+    text = _repair_polish_text(value).strip()
     if not text:
         return ""
     text = re.sub(r"\s+", " ", text).strip()
@@ -61,6 +118,7 @@ def _normalize_station_name(value: Any) -> str:
 
 
 def _finalize_tts(text: str) -> str:
+    text = _repair_polish_text(text)
     text = text.replace("?", ".").replace("!", ".").replace(",", ".")
     text = re.sub(r"\.{2,}", ".", text)
     text = re.sub(r"\s+", " ", text).strip()
@@ -88,7 +146,10 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         raw_text = ctx.get("raw_text")
         if not raw_text:
             return None
-        return str(raw_text)
+        fixed = _repair_polish_text(raw_text).strip()
+        if not fixed:
+            return None
+        return fixed
 
     if message_id == "MSG.NEXT_HOP":
         system = _normalize_system_name(ctx.get("system"))
@@ -163,10 +224,10 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         if target:
             if next_target:
                 return _finalize_tts(
-                    f"Cel odcinka osiagniety. {target}. Przechodze do kolejnego celu. {next_target}."
+                    f"Cel odcinka osiągnięty. {target}. Przechodzę do kolejnego celu. {next_target}."
                 )
-            return _finalize_tts(f"Cel odcinka osiagniety. {target}.")
-        return _finalize_tts("Cel odcinka osiagniety.")
+            return _finalize_tts(f"Cel odcinka osiągnięty. {target}.")
+        return _finalize_tts("Cel odcinka osiągnięty.")
 
     if message_id == "MSG.ELW_DETECTED":
         return _finalize_tts("Wykryto planetę ziemiopodobną. Wysoka wartość.")
@@ -180,7 +241,7 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
     if message_id == "MSG.STARTUP_SYSTEMS":
         version = str(ctx.get("version", "")).strip()
         if version:
-            return _finalize_tts(f"Renata. {version}. Startuje wszystkie systemy.")
-        return _finalize_tts("Renata. Startuje wszystkie systemy.")
+            return _finalize_tts(f"Renata. {version}. Startuję wszystkie systemy.")
+        return _finalize_tts("Renata. Startuję wszystkie systemy.")
 
     return None

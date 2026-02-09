@@ -44,6 +44,7 @@ from logic import hmc_route as hmc_logic  # type: ignore
 from logic import exomastery as exomastery_logic  # type: ignore
 from logic import trade as trade_logic  # type: ignore
 from logic.rows_normalizer import normalize_trade_rows
+from logic.tts.text_preprocessor import prepare_tts
 from gui import common_tables  # type: ignore
 
 
@@ -982,6 +983,30 @@ def test_trade_station_name_normalization(_ctx: TestContext) -> None:
     assert r2.get("from_station") == "UNKNOWN_STATION", "Missing from_station should use UNKNOWN_STATION"
     assert r2.get("to_station") == "UNKNOWN_STATION", "Missing to_station should use UNKNOWN_STATION"
 
+
+def test_tts_polish_diacritics_global(_ctx: TestContext) -> None:
+    fss = prepare_tts("MSG.FSS_PROGRESS_50", {})
+    assert fss and "Połowa systemu przeskanowana." in fss, "Expected Polish diacritics in FSS text"
+
+    milestone = prepare_tts(
+        "MSG.MILESTONE_REACHED",
+        {"target": "Źródło", "next_target": "Łąka"},
+    )
+    assert milestone and "osiągnięty" in milestone.lower(), "Expected 'osiągnięty' in milestone text"
+    assert "przechodzę" in milestone.lower(), "Expected 'przechodzę' in milestone text"
+
+    startup = prepare_tts("MSG.STARTUP_SYSTEMS", {"version": "v1"})
+    assert startup and "Startuję wszystkie systemy." in startup, "Expected Polish diacritics in startup text"
+
+    repaired = prepare_tts(
+        "MSG.TRADE_JACKPOT",
+        {"raw_text": "To Ĺ›wietna okazja. Cena: 100 kredytĂłw."},
+    )
+    assert repaired and "świetna okazja" in repaired.lower(), "Expected mojibake repair for Polish text"
+    assert "kredytów" in repaired.lower(), "Expected mojibake repair for Polish currency word"
+    for marker in ("Ã", "Ä", "Å", "Ĺ", "â€"):
+        assert marker not in repaired, f"Unexpected mojibake marker '{marker}' in repaired text"
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1004,6 +1029,7 @@ def run_all_tests() -> int:
         ("test_spansh_copy_mode_actions", test_spansh_copy_mode_actions),
         ("test_spansh_export_actions_and_formats", test_spansh_export_actions_and_formats),
         ("test_trade_station_name_normalization", test_trade_station_name_normalization),
+        ("test_tts_polish_diacritics_global", test_tts_polish_diacritics_global),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),
