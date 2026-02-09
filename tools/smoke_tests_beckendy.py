@@ -1177,6 +1177,39 @@ def test_trade_station_state_reset_on_system_change(_ctx: TestContext) -> None:
     TradeTab._on_start_system_changed(initial)
     assert initial.var_start_station.get() == "Jameson Memorial", "Initial trace should not clear prefilled station"
 
+
+def test_trade_station_picker_candidates_and_wiring(_ctx: TestContext) -> None:
+    class DummyTradePicker:
+        def __init__(self, cached: list[str], recent: list[str]) -> None:
+            self._station_autocomplete_by_system = False
+            self._station_lookup_online = False
+            self._cached = list(cached)
+            self._recent_stations = list(recent)
+
+        def _get_cached_stations(self, _system: str) -> list[str]:
+            return list(self._cached)
+
+        def _remember_station_list(self, _system: str, _stations: list[str]) -> None:
+            return None
+
+        def _filter_stations(self, stations: list[str], _query: str) -> list[str]:
+            return list(stations)
+
+    cached_first = DummyTradePicker(cached=["Jameson Memorial"], recent=["Ohm City"])
+    out_cached = TradeTab._load_station_candidates(cached_first, "Sol")
+    assert out_cached == ["Jameson Memorial"], "Picker should prioritize cached station list"
+
+    recent_fallback = DummyTradePicker(cached=[], recent=["Ohm City", "Jameson Memorial"])
+    out_recent = TradeTab._load_station_candidates(recent_fallback, "Sol")
+    assert out_recent == ["Ohm City", "Jameson Memorial"], "Picker should fallback to recent stations"
+
+    trade_path = os.path.join(ROOT_DIR, "gui/tabs/spansh/trade.py")
+    with open(trade_path, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+    assert "def _open_station_picker_dialog" in content, "Missing station picker dialog handler"
+    assert "Wybierz stacje..." in content, "Missing station picker button label"
+    assert "<Control-space>" in content, "Missing station picker keyboard shortcut binding"
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1202,6 +1235,7 @@ def run_all_tests() -> int:
         ("test_tts_polish_diacritics_global", test_tts_polish_diacritics_global),
         ("test_exobio_sample_progress_sequence", test_exobio_sample_progress_sequence),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
+        ("test_trade_station_picker_candidates_and_wiring", test_trade_station_picker_candidates_and_wiring),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

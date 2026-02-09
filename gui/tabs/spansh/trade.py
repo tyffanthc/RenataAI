@@ -86,6 +86,7 @@ class TradeTab(ttk.Frame):
             config.get("features.trade.station_lookup_online", False)
 
         )
+        self._station_picker_window = None
 
 
 
@@ -244,8 +245,16 @@ class TradeTab(ttk.Frame):
             entry_width=layout.ENTRY_W_LONG,
 
         )
-        self.lbl_station_hint = ttk.Label(f_form, textvariable=self._station_hint_var)
-        self.lbl_station_hint.grid(row=1, column=2, sticky="w", padx=(8, 0))
+        station_tools = ttk.Frame(f_form)
+        station_tools.grid(row=1, column=2, sticky="w", padx=(8, 0))
+        self.btn_station_picker = ttk.Button(
+            station_tools,
+            text="Wybierz stacje...",
+            command=self._open_station_picker_dialog,
+        )
+        self.btn_station_picker.pack(side="left")
+        self.lbl_station_hint = ttk.Label(station_tools, textvariable=self._station_hint_var)
+        self.lbl_station_hint.pack(side="left", padx=(8, 0))
 
 
 
@@ -280,6 +289,7 @@ class TradeTab(ttk.Frame):
         self.e_station.bind("<Button-1>", self._on_station_focus, add="+")
         self.e_station.bind("<FocusOut>", self._on_station_focus_out, add="+")
         self.e_station.bind("<KeyPress>", self._on_station_keypress, add="+")
+        self.e_station.bind("<Control-space>", self._on_station_picker_hotkey, add="+")
 
 
 
@@ -1287,6 +1297,174 @@ class TradeTab(ttk.Frame):
 
     def _on_station_keypress(self, _event):
         self._update_station_hint()
+
+    def _on_station_picker_hotkey(self, _event):
+        self._open_station_picker_dialog()
+        return "break"
+
+    def _load_station_candidates(self, system: str) -> list[str]:
+        raw_system = (system or "").strip()
+        if not raw_system:
+            return []
+
+        cached = self._get_cached_stations(raw_system)
+        if cached:
+            return cached
+
+        stations: list[str] = []
+        if self._station_autocomplete_by_system and is_edsm_enabled():
+            try:
+                stations = edsm_stations_for_system(raw_system) or []
+            except Exception:
+                stations = []
+            if stations:
+                self._remember_station_list(raw_system, stations)
+                cached = self._get_cached_stations(raw_system)
+                if cached:
+                    return cached
+
+        if self._station_lookup_online:
+            try:
+                stations = spansh_client.stations_for_system(raw_system, None) or []
+            except Exception:
+                stations = []
+            if stations:
+                self._remember_station_list(raw_system, stations)
+                cached = self._get_cached_stations(raw_system)
+                if cached:
+                    return cached
+
+        return self._filter_stations(self._recent_stations, "")
+
+    def _open_station_picker_dialog(self) -> None:
+        system = (self.var_start_system.get() or "").strip()
+        if not system:
+            self._set_station_hint("Najpierw wybierz system")
+            try:
+                self.e_system.focus_set()
+            except Exception:
+                pass
+            return
+
+        # Re-open existing picker if still alive.
+        existing = getattr(self, "_station_picker_window", None)
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.deiconify()
+                    existing.lift()
+                    existing.focus_set()
+                    return
+            except Exception:
+                pass
+            self._station_picker_window = None
+
+        stations_all = self._load_station_candidates(system)
+        if not stations_all:
+            self._set_station_hint("Brak listy stacji dla wybranego systemu")
+            return
+
+        top = tk.Toplevel(self)
+        self._station_picker_window = top
+        top.title(f"Wybierz stacje ({system})")
+        top.transient(self.root)
+        top.geometry("760x520")
+        top.minsize(560, 380)
+
+        info_var = tk.StringVar(value=f"Dostepne stacje: {len(stations_all)}")
+        query_var = tk.StringVar()
+
+        f_top = ttk.Frame(top, padding=10)
+        f_top.pack(fill="both", expand=True)
+
+        ttk.Label(f_top, text=f"System: {system}").pack(anchor="w")
+        ttk.Label(f_top, textvariable=info_var).pack(anchor="w", pady=(2, 8))
+
+        f_filter = ttk.Frame(f_top)
+        f_filter.pack(fill="x", pady=(0, 8))
+        ttk.Label(f_filter, text="Filtr stacji:").pack(side="left", padx=(0, 6))
+        e_filter = ttk.Entry(f_filter, textvariable=query_var)
+        e_filter.pack(side="left", fill="x", expand=True)
+
+        f_list = ttk.Frame(f_top)
+        f_list.pack(fill="both", expand=True)
+        sc = ttk.Scrollbar(f_list, orient="vertical")
+        sc.pack(side="right", fill="y")
+        lb = tk.Listbox(
+            f_list,
+            yscrollcommand=sc.set,
+            selectmode="browse",
+            exportselection=False,
+            font=("Consolas", 10),
+        )
+        lb.pack(side="left", fill="both", expand=True)
+        sc.config(command=lb.yview)
+
+        displayed: list[str] = []
+
+        def _refresh_list(*_args) -> None:
+            q = (query_var.get() or "").strip().lower()
+            lb.delete(0, tk.END)
+            displayed.clear()
+            for item in stations_all:
+                if q and q not in item.lower():
+                    continue
+                displayed.append(item)
+                lb.insert(tk.END, item)
+            info_var.set(f"Dostepne stacje: {len(displayed)} / {len(stations_all)}")
+            if displayed:
+                lb.selection_clear(0, tk.END)
+                lb.selection_set(0)
+                lb.activate(0)
+
+        def _apply_selection(_event=None) -> None:
+            if not displayed:
+                return
+            sel = lb.curselection()
+            if not sel:
+                idx = lb.index("active")
+            else:
+                idx = sel[0]
+            if idx is None:
+                return
+            try:
+                station = displayed[int(idx)]
+            except Exception:
+                return
+            self.var_start_station.set(station)
+            self._remember_station(system, station)
+            try:
+                if hasattr(self, "ac_station"):
+                    self.ac_station.hide()
+            except Exception:
+                pass
+            _close_picker()
+
+        def _close_picker() -> None:
+            try:
+                if top.winfo_exists():
+                    top.destroy()
+            finally:
+                self._station_picker_window = None
+                self._update_station_hint()
+                try:
+                    self.e_station.focus_set()
+                except Exception:
+                    pass
+
+        f_btn = ttk.Frame(f_top)
+        f_btn.pack(fill="x", pady=(10, 0))
+        ttk.Button(f_btn, text="Wybierz", command=_apply_selection).pack(side="right")
+        ttk.Button(f_btn, text="Anuluj", command=_close_picker).pack(side="right", padx=(0, 8))
+
+        query_var.trace_add("write", _refresh_list)
+        lb.bind("<Double-Button-1>", _apply_selection)
+        lb.bind("<Return>", _apply_selection)
+        top.bind("<Escape>", lambda _e: _close_picker())
+
+        _refresh_list()
+        e_filter.focus_set()
+        top.protocol("WM_DELETE_WINDOW", _close_picker)
 
     def _suggest_system(self, tekst: str):
 
