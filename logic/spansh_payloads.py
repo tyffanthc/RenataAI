@@ -296,7 +296,7 @@ def build_trade_payload(
     cargo: int,
     max_hops: int,
     max_dta: int,
-    max_age: float,
+    max_age: float | None,
     flags: dict[str, Any],
     app_state: Any | None = None,
 ) -> SpanshPayload:
@@ -317,7 +317,7 @@ def build_trade_payload(
     _add_field(fields, "max_cargo", as_str_number(cargo))
     _add_field(fields, "max_hops", as_str_number(max_hops))
     _add_field(fields, "max_system_distance", as_str_number(max_dta))
-    if config.get("features.spansh.trade_market_age_enabled", True):
+    if config.get("features.spansh.trade_market_age_enabled", True) and max_age is not None:
         _add_field(fields, "max_price_age", as_str_number(max_age))
     _add_field(fields, "requires_large_pad", bool01(large_pad))
     _add_field(fields, "allow_prohibited", bool01(prohibited))

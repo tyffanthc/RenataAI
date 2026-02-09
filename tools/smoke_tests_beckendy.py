@@ -506,6 +506,22 @@ def test_trade_payload_snapshot(_ctx: TestContext) -> None:
     assert fields.get("unique") == "1", "unique should map to avoid_loops"
 
 
+def test_trade_payload_forever_omits_market_age(_ctx: TestContext) -> None:
+    payload = spansh_payloads.build_trade_payload(
+        start_system="Sol",
+        start_station="Jameson Memorial",
+        capital=1_000_000,
+        max_hop=25.5,
+        cargo=256,
+        max_hops=10,
+        max_dta=1000,
+        max_age=None,
+        flags={"avoid_loops": True},
+    )
+    fields = _payload_fields(payload)
+    assert "max_price_age" not in fields, "max_price_age must be omitted for forever mode"
+
+
 def test_neutron_payload_snapshot(_ctx: TestContext) -> None:
     class DummyClient(spansh_client_logic.SpanshClient):
         def __init__(self) -> None:
@@ -1257,6 +1273,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_exobio_sample_progress_sequence",
         "test_trade_station_state_reset_on_system_change",
         "test_trade_station_picker_candidates_and_wiring",
+        "test_trade_payload_forever_omits_market_age",
     ]
     for test_name in required_tests:
         assert f"def {test_name}(" in self_content, f"Missing regression test function: {test_name}"
@@ -1294,6 +1311,7 @@ def run_all_tests() -> int:
         ("test_elw_payload_snapshot", test_elw_payload_snapshot),
         ("test_hmc_payload_snapshot", test_hmc_payload_snapshot),
         ("test_trade_payload_snapshot", test_trade_payload_snapshot),
+        ("test_trade_payload_forever_omits_market_age", test_trade_payload_forever_omits_market_age),
         ("test_neutron_payload_snapshot", test_neutron_payload_snapshot),
         ("test_start_system_fallback_source", test_start_system_fallback_source),
         ("test_resolve_planner_jump_range_auto", test_resolve_planner_jump_range_auto),

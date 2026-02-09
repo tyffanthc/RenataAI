@@ -3,6 +3,7 @@
 from tkinter import ttk
 
 import time
+import math
 
 from datetime import datetime, timedelta
 
@@ -107,6 +108,8 @@ class TradeTab(ttk.Frame):
         self.var_market_age_cutoff = tk.StringVar()
 
         self.var_market_age_hours = tk.DoubleVar(value=48.0)
+        self.var_market_age_relative = tk.StringVar(value="")
+        self._market_age_forever = False
 
 
 
@@ -362,6 +365,16 @@ class TradeTab(ttk.Frame):
             self.e_max_age.bind("<FocusOut>", self._on_market_age_cutoff_commit)
 
             self.e_max_age.bind("<Return>", self._on_market_age_cutoff_commit)
+            self.lbl_market_age_relative = ttk.Label(
+                f_form,
+                textvariable=self.var_market_age_relative,
+            )
+            self.lbl_market_age_relative.grid(
+                row=4,
+                column=5,
+                sticky="w",
+                padx=(8, 0),
+            )
 
 
 
@@ -379,9 +392,9 @@ class TradeTab(ttk.Frame):
 
                 f_age,
 
-                from_=self._market_age_min_hours(),
+                from_=self._market_age_slider_min_position(),
 
-                to=self._market_age_max_hours(),
+                to=self._market_age_slider_max_position(),
 
                 variable=self.var_market_age_hours,
 
@@ -390,27 +403,6 @@ class TradeTab(ttk.Frame):
             )
 
             self.scale_market_age.pack(side="left", fill="x", expand=True, padx=(0, 6))
-
-
-
-            f_presets = ttk.Frame(fr)
-
-            f_presets.pack(fill="x", pady=(0, 6))
-
-            ttk.Label(f_presets, text="Presety:").pack(side="left", padx=(10, 6))
-
-            for label, hours in self._market_age_presets():
-
-                ttk.Button(
-
-                    f_presets,
-
-                    text=label,
-
-                    command=lambda h=hours: self._apply_market_age_hours(h),
-
-                ).pack(side="left", padx=2)
-
         else:
 
             _, max_age_entry = layout.add_labeled_pair(
@@ -578,39 +570,51 @@ class TradeTab(ttk.Frame):
 
     def _market_age_min_hours(self) -> float:
 
-        return 0.25
+        return 1.0
 
 
 
     def _market_age_max_hours(self) -> float:
 
-        return 72.0
+        return 24.0 * 365.0 * 10.0
 
 
 
-    def _market_age_presets(self) -> list[tuple[str, float]]:
+    def _market_age_slider_min_position(self) -> float:
 
-        return [
+        return 0.0
 
-            ("15m", 0.25),
 
-            ("30m", 0.5),
+    def _market_age_slider_max_position(self) -> float:
 
-            ("1h", 1.0),
+        return 100.0
 
-            ("2h", 2.0),
 
-            ("6h", 6.0),
+    def _market_age_forever_position(self) -> float:
 
-            ("12h", 12.0),
+        return self._market_age_slider_min_position()
 
-            ("24h", 24.0),
 
-            ("48h", 48.0),
+    def _is_market_age_forever_position(self, position: float) -> bool:
 
-            ("72h", 72.0),
+        return position <= (self._market_age_forever_position() + 0.5)
 
-        ]
+
+    def _market_age_clamp_slider_position(self, position: float) -> float:
+
+        min_pos = self._market_age_slider_min_position()
+
+        max_pos = self._market_age_slider_max_position()
+
+        if position < min_pos:
+
+            return min_pos
+
+        if position > max_pos:
+
+            return max_pos
+
+        return position
 
 
 
@@ -632,6 +636,45 @@ class TradeTab(ttk.Frame):
 
 
 
+    def _market_age_hours_from_slider_position(self, position: float) -> float | None:
+
+        position = self._market_age_clamp_slider_position(position)
+
+        if self._is_market_age_forever_position(position):
+
+            return None
+
+        min_h = self._market_age_min_hours()
+
+        max_h = self._market_age_max_hours()
+
+        # Log scale keeps short ranges usable while still allowing multi-year history.
+        normalized = (self._market_age_slider_max_position() - position) / (
+            self._market_age_slider_max_position() - 1.0
+        )
+        normalized = max(0.0, min(1.0, normalized))
+        ratio = max_h / min_h
+        hours = min_h * (ratio ** normalized)
+        return self._clamp_market_age_hours(hours)
+
+
+    def _market_age_slider_position_from_hours(self, hours: float) -> float:
+
+        hours = self._clamp_market_age_hours(hours)
+        min_h = self._market_age_min_hours()
+        max_h = self._market_age_max_hours()
+        if hours <= min_h:
+            return self._market_age_slider_max_position()
+        if hours >= max_h:
+            return 1.0
+        ratio = max_h / min_h
+        normalized = math.log(hours / min_h, ratio)
+        position = self._market_age_slider_max_position() - (
+            normalized * (self._market_age_slider_max_position() - 1.0)
+        )
+        return self._market_age_clamp_slider_position(position)
+
+
     def _format_market_age_cutoff(self, value: datetime) -> str:
 
         return value.strftime("%Y-%m-%d %H:%M")
@@ -648,6 +691,41 @@ class TradeTab(ttk.Frame):
 
             return None
 
+
+
+    def _format_market_age_relative(self, hours: float | None) -> str:
+
+        if hours is None:
+
+            return "forever"
+
+        if hours < 24.0:
+
+            return f"{int(round(hours))}h wstecz"
+
+        days = hours / 24.0
+        if days < 365.0:
+            return f"{int(round(days))}d wstecz"
+        years = days / 365.0
+        if years >= 10.0:
+            return "10 lat wstecz"
+        return f"{years:.1f} lat wstecz"
+
+
+    def _set_market_age_forever(self) -> None:
+
+        if self._market_age_updating:
+            return
+
+        self._market_age_updating = True
+        try:
+            self._market_age_forever = True
+            self.var_market_age_hours.set(self._market_age_forever_position())
+            self.var_max_age.set(0.0)
+            self.var_market_age_cutoff.set("forever")
+            self.var_market_age_relative.set(self._format_market_age_relative(None))
+        finally:
+            self._market_age_updating = False
 
 
     def _apply_market_age_hours(self, hours: float) -> None:
@@ -670,13 +748,16 @@ class TradeTab(ttk.Frame):
 
             hours = self._clamp_market_age_hours(hours)
 
-            self.var_market_age_hours.set(hours)
+            self._market_age_forever = False
+
+            self.var_market_age_hours.set(self._market_age_slider_position_from_hours(hours))
 
             self.var_max_age.set(hours / 24.0)
 
             cutoff = datetime.now() - timedelta(hours=hours)
 
             self.var_market_age_cutoff.set(self._format_market_age_cutoff(cutoff))
+            self.var_market_age_relative.set(self._format_market_age_relative(hours))
 
         finally:
 
@@ -690,7 +771,15 @@ class TradeTab(ttk.Frame):
 
             return
 
-        self._apply_market_age_hours(value)
+        try:
+            position = float(value)
+        except Exception:
+            return
+        hours = self._market_age_hours_from_slider_position(position)
+        if hours is None:
+            self._set_market_age_forever()
+            return
+        self._apply_market_age_hours(hours)
 
 
 
@@ -706,6 +795,10 @@ class TradeTab(ttk.Frame):
 
             return
 
+        if raw.casefold() in {"forever", "bez limitu", "brak limitu"}:
+            self._set_market_age_forever()
+            return
+
         parsed = self._parse_market_age_cutoff(raw)
 
         if parsed is None:
@@ -715,6 +808,16 @@ class TradeTab(ttk.Frame):
         hours = (datetime.now() - parsed).total_seconds() / 3600.0
 
         self._apply_market_age_hours(hours)
+
+
+    def _resolve_trade_max_age(self) -> float | None:
+
+        if self._market_age_slider_enabled and self._market_age_forever:
+            return None
+        try:
+            return float(self.var_max_age.get())
+        except Exception:
+            return None
 
 
 
@@ -1773,7 +1876,7 @@ class TradeTab(ttk.Frame):
 
         max_dta = self.var_max_dta.get()
 
-        max_age = self.var_max_age.get()
+        max_age = self._resolve_trade_max_age()
 
 
 

@@ -17,7 +17,7 @@ def oblicz_trade(
     cargo: int,
     max_hops: int,
     max_dta: int,
-    max_age: float,
+    max_age: float | None,
     flags: Dict[str, Any],
     gui_ref: Any | None = None,
 ) -> tuple[list[str], list[dict]]:
@@ -32,7 +32,7 @@ def oblicz_trade(
         cargo        - ladownosc [t]
         max_hops     - max liczba skokow
         max_dta      - max distance to arrival [ls]
-        max_age      - max wiek danych [dni]
+        max_age      - max wiek danych [dni], None = brak limitu (forever)
         flags        - slownik z checkboxow
 
     Zwraca:

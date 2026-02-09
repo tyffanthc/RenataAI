@@ -268,6 +268,29 @@ class SpanshPayloadContractTests(unittest.TestCase):
         self.assertEqual(fields.get("unique"), "1")
         self.assertEqual(fields.get("permit"), "0")
 
+    def test_trade_payload_omits_max_price_age_when_forever(self) -> None:
+        payload = spansh_payloads.build_trade_payload(
+            start_system="Sol",
+            start_station="Jameson Memorial",
+            capital=1_000_000,
+            max_hop=25.5,
+            cargo=256,
+            max_hops=10,
+            max_dta=1000,
+            max_age=None,
+            flags={
+                "large_pad": True,
+                "planetary": False,
+                "player_owned": True,
+                "restricted": False,
+                "prohibited": True,
+                "avoid_loops": True,
+                "allow_permits": False,
+            },
+        )
+        fields = _fields_to_dict(payload.form_fields)
+        self.assertNotIn("max_price_age", fields)
+
 
 if __name__ == "__main__":
     unittest.main()
