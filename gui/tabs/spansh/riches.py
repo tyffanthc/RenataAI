@@ -106,21 +106,24 @@ class RichesTab(SpanshPlannerBase):
             side="left", padx=10
         )
 
-        f_btn = ttk.Frame(fr)
-        f_btn.pack(pady=6)
-
-        self.btn_run = ttk.Button(f_btn, text=ui.BUTTON_CALCULATE, command=self.run_rtr)
-        self.btn_run.pack(side="left", padx=4)
-        ttk.Button(f_btn, text=ui.BUTTON_CLEAR, command=self.clear_rtr).pack(side="left", padx=4)
+        self._build_centered_actions_row(
+            fr,
+            run_command=self.run_rtr,
+            clear_command=self.clear_rtr,
+            status_text="Gotowy",
+            button_padx=4,
+        )
 
         if self._use_treeview:
-            self.lst_rtr = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_RICHES)
+            self.lst_rtr = common.stworz_tabele_trasy(fr, title=ui.LIST_TITLE_RICHES)
         else:
-            self.lst_rtr = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_RICHES)
+            self.lst_rtr = common.stworz_liste_trasy(fr, title=ui.LIST_TITLE_RICHES)
         self._attach_default_results_context_menu(self.lst_rtr)
 
     def clear_rtr(self):
         self._clear_list_widget(self.lst_rtr)
+        if getattr(self, "lbl_status", None):
+            self.lbl_status.config(text="Wyczyszczono", foreground="grey")
         common.emit_status(
             "INFO",
             "ROUTE_CLEARED",

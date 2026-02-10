@@ -152,19 +152,19 @@ class NeutronTab(ttk.Frame):
         # Pasek akcji + status (tuz nad tabela)
         f_actions = ttk.Frame(fr)
         f_actions.pack(fill="x", pady=(6, 4))
-        f_actions.columnconfigure(0, weight=0)
-        f_actions.columnconfigure(1, weight=1)
-        f_actions.columnconfigure(2, weight=0)
 
-        f_btn = ttk.Frame(f_actions)
-        f_btn.grid(row=0, column=0, sticky="w")
+        center_group = ttk.Frame(f_actions)
+        center_group.pack(anchor="center")
+
+        f_btn = ttk.Frame(center_group)
+        f_btn.pack(side="left")
         self.btn_run = ttk.Button(f_btn, text=ui.BUTTON_CALCULATE, command=self.run_neutron)
         self.btn_run.pack(side="left", padx=(0, 6))
         ttk.Button(f_btn, text=ui.BUTTON_CLEAR, command=self.clear).pack(side="left", padx=(0, 6))
         ttk.Button(f_btn, text=ui.BUTTON_REVERSE, command=self._reverse_route).pack(side="left")
 
-        self.lbl_status = ttk.Label(f_actions, text="Status: Gotowy", font=("Arial", 10, "bold"))
-        self.lbl_status.grid(row=0, column=1)
+        self.lbl_status = ttk.Label(center_group, text="Status: Gotowy", font=("Arial", 10, "bold"))
+        self.lbl_status.pack(side="left", padx=(20, 0))
 
         # Lista wynikow
         if self._use_treeview:

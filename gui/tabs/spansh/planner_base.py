@@ -8,6 +8,7 @@ import config
 from app.route_manager import route_manager
 from app.state import app_state
 from gui import common
+from gui import strings as ui
 from gui.ui_thread import run_on_ui_thread
 from logic import utils
 
@@ -72,6 +73,45 @@ class SpanshPlannerBase(ttk.Frame):
         common.clear_results_checkboxes(list_widget)
         self._results_rows = []
         self._results_row_offset = 0
+
+    def _build_centered_actions_row(
+        self,
+        parent: Any,
+        *,
+        run_command,
+        clear_command,
+        run_text: str | None = None,
+        clear_text: str | None = None,
+        status_text: str = "Gotowy",
+        button_padx: int = 5,
+    ) -> ttk.Frame:
+        """Build a centered actions+status row used by Spansh planner tabs."""
+        actions = ttk.Frame(parent)
+        actions.pack(fill="x", pady=(6, 4))
+
+        center_group = ttk.Frame(actions)
+        center_group.pack(anchor="center")
+
+        btn_frame = ttk.Frame(center_group)
+        btn_frame.pack(side="left")
+
+        self.btn_run = ttk.Button(
+            btn_frame,
+            text=run_text or ui.BUTTON_CALCULATE,
+            command=run_command,
+        )
+        self.btn_run.pack(side="left", padx=(0, button_padx))
+
+        ttk.Button(
+            btn_frame,
+            text=clear_text or ui.BUTTON_CLEAR,
+            command=clear_command,
+        ).pack(side="left")
+
+        self.lbl_status = ttk.Label(center_group, text=status_text, font=("Arial", 10, "bold"))
+        self.lbl_status.pack(side="left", padx=(20, 0))
+
+        return actions
 
     def _attach_default_results_context_menu(self, list_widget: Any) -> None:
         self._results_widget = list_widget

@@ -91,19 +91,16 @@ class HMCTab(SpanshPlannerBase):
             side="left", padx=10
         )
 
-        bf = ttk.Frame(fr)
-        bf.pack(pady=6)
-
-        self.btn_run = ttk.Button(bf, text=ui.BUTTON_CALCULATE, command=self.run)
-        self.btn_run.pack(side="left", padx=5)
-        ttk.Button(bf, text=ui.BUTTON_CLEAR, command=self.clear).pack(side="left", padx=5)
-
-        self.lbl_status = ttk.Label(self, text="Gotowy", font=("Arial", 10, "bold"))
-        self.lbl_status.pack()
+        self._build_centered_actions_row(
+            fr,
+            run_command=self.run,
+            clear_command=self.clear,
+            status_text="Gotowy",
+        )
         if self._use_treeview:
-            self.lst = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_HMC)
+            self.lst = common.stworz_tabele_trasy(fr, title=ui.LIST_TITLE_HMC)
         else:
-            self.lst = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_HMC)
+            self.lst = common.stworz_liste_trasy(fr, title=ui.LIST_TITLE_HMC)
         self._attach_default_results_context_menu(self.lst)
 
     def run(self):

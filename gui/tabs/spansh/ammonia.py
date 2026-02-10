@@ -91,17 +91,17 @@ class AmmoniaTab(SpanshPlannerBase):
             side="left", padx=10
         )
 
-        bf = ttk.Frame(fr)
-        bf.pack(pady=6)
-
-        self.btn_run = ttk.Button(bf, text=ui.BUTTON_CALCULATE, command=self.run_amm)
-        self.btn_run.pack(side="left", padx=5)
-        ttk.Button(bf, text=ui.BUTTON_CLEAR, command=self.clear_amm).pack(side="left", padx=5)
+        self._build_centered_actions_row(
+            fr,
+            run_command=self.run_amm,
+            clear_command=self.clear_amm,
+            status_text="Gotowy",
+        )
 
         if self._use_treeview:
-            self.lst_amm = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_AMMONIA)
+            self.lst_amm = common.stworz_tabele_trasy(fr, title=ui.LIST_TITLE_AMMONIA)
         else:
-            self.lst_amm = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_AMMONIA)
+            self.lst_amm = common.stworz_liste_trasy(fr, title=ui.LIST_TITLE_AMMONIA)
         self._attach_default_results_context_menu(self.lst_amm)
 
     def run_amm(self):
@@ -142,6 +142,8 @@ class AmmoniaTab(SpanshPlannerBase):
 
     def clear_amm(self):
         self._clear_list_widget(self.lst_amm)
+        if getattr(self, "lbl_status", None):
+            self.lbl_status.config(text="Wyczyszczono", foreground="grey")
         common.emit_status(
             "INFO",
             "ROUTE_CLEARED",
