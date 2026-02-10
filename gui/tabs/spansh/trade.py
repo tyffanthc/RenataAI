@@ -4,6 +4,7 @@ from tkinter import ttk
 
 import time
 import math
+import re
 
 from datetime import datetime, timedelta
 
@@ -40,6 +41,26 @@ class TradeTab(ttk.Frame):
     ZakĹ‚adka: Trade Planner (Spansh)
 
     """
+
+    _UPDATED_AGE_RE = re.compile(
+        r"(?P<num>\d+)\s*(?P<unit>"
+        r"second|seconds|sec|secs|s|"
+        r"minute|minutes|min|mins|m|"
+        r"hour|hours|hr|hrs|h|"
+        r"day|days|d|"
+        r"week|weeks|w|"
+        r"month|months|"
+        r"year|years|y|"
+        r"sekunda|sekundy|sekund|sek|"
+        r"minuta|minuty|minut|"
+        r"godzina|godziny|godzin|godz|"
+        r"dzien|dni|"
+        r"tydzien|tygodnie|tygodni|"
+        r"miesiac|miesiace|miesiecy|"
+        r"rok|lata|lat"
+        r")\b",
+        flags=re.IGNORECASE,
+    )
 
 
 
@@ -135,6 +156,10 @@ class TradeTab(ttk.Frame):
 
         self._results_row_offset = 0
         self._results_widget = None
+        self._last_effective_jump_range: float | None = None
+        self.var_trade_summary = tk.StringVar(value="")
+        self.var_trade_leg_route = tk.StringVar(value="")
+        self.var_trade_leg_meta = tk.StringVar(value="")
 
         self._busy = False
 
@@ -517,41 +542,33 @@ class TradeTab(ttk.Frame):
 
         # --- Przyciski / status / lista ---------------------------------------
 
-        bf = ttk.Frame(fr)
+        f_actions = ttk.Frame(fr)
+        f_actions.pack(fill="x", pady=(6, 4))
 
-        bf.pack(pady=6)
+        center_group = ttk.Frame(f_actions)
+        center_group.pack(anchor="center")
 
-
+        bf = ttk.Frame(center_group)
+        bf.pack(side="left")
 
         self.btn_run = ttk.Button(
-
             bf,
-
             text=ui.BUTTON_CALCULATE_TRADE,
-
             command=self.run_trade,
-
         )
+        self.btn_run.pack(side="left", padx=(0, 6))
+        ttk.Button(bf, text=ui.BUTTON_CLEAR, command=self.clear).pack(side="left")
 
-        self.btn_run.pack(side="left", padx=5)
-
-
-
-        ttk.Button(bf, text=ui.BUTTON_CLEAR, command=self.clear).pack(side="left", padx=5)
-
-
-
-        self.lbl_status = ttk.Label(self, text="Gotowy", font=("Arial", 10, "bold"))
-
-        self.lbl_status.pack(pady=(4, 2))
+        self.lbl_status = ttk.Label(center_group, text="Gotowy", font=("Arial", 10, "bold"))
+        self.lbl_status.pack(side="left", padx=(20, 0))
 
         if self._use_treeview:
 
-            self.lst_trade = common.stworz_tabele_trasy(self, title=ui.LIST_TITLE_TRADE)
+            self.lst_trade = common.stworz_tabele_trasy(fr, title=ui.LIST_TITLE_TRADE)
 
         else:
 
-            self.lst_trade = common.stworz_liste_trasy(self, title=ui.LIST_TITLE_TRADE)
+            self.lst_trade = common.stworz_liste_trasy(fr, title=ui.LIST_TITLE_TRADE)
 
         common.attach_results_context_menu(
 
@@ -564,6 +581,65 @@ class TradeTab(ttk.Frame):
         )
         self._results_widget = self.lst_trade
         common.enable_results_checkboxes(self.lst_trade, enabled=True)
+        if isinstance(self.lst_trade, ttk.Treeview):
+            self.lst_trade.bind("<<TreeviewSelect>>", self._on_results_selection_changed, add="+")
+        else:
+            self.lst_trade.bind("<<ListboxSelect>>", self._on_results_selection_changed, add="+")
+        summary_wrap = ttk.Frame(fr)
+        summary_wrap.pack(fill="x", padx=8, pady=(4, 0))
+        self.lbl_trade_summary = ttk.Label(
+            summary_wrap,
+            textvariable=self.var_trade_summary,
+            anchor="e",
+            justify="right",
+        )
+        self.lbl_trade_summary.pack(side="right", fill="x", expand=True)
+        self._clear_trade_summary()
+
+        details_wrap = ttk.LabelFrame(fr, text="Szczegoly kroku")
+        details_wrap.pack(fill="x", padx=8, pady=(4, 8))
+        self.lbl_trade_leg_route = ttk.Label(
+            details_wrap,
+            textvariable=self.var_trade_leg_route,
+            anchor="w",
+            justify="left",
+        )
+        self.lbl_trade_leg_route.pack(fill="x", padx=8, pady=(6, 0))
+        self.lbl_trade_leg_meta = ttk.Label(
+            details_wrap,
+            textvariable=self.var_trade_leg_meta,
+            anchor="w",
+            justify="left",
+        )
+        self.lbl_trade_leg_meta.pack(fill="x", padx=8, pady=(0, 6))
+
+        leg_table_wrap = ttk.Frame(details_wrap)
+        leg_table_wrap.pack(fill="x", padx=8, pady=(0, 8))
+        leg_scroll = ttk.Scrollbar(leg_table_wrap)
+        leg_scroll.pack(side="right", fill="y")
+        self.tree_leg_commodities = ttk.Treeview(
+            leg_table_wrap,
+            columns=("commodity", "amount", "buy", "sell", "profit_t", "profit_total"),
+            show="headings",
+            selectmode="browse",
+            height=4,
+            yscrollcommand=leg_scroll.set,
+        )
+        self.tree_leg_commodities.heading("commodity", text="Towar")
+        self.tree_leg_commodities.heading("amount", text="Ilosc")
+        self.tree_leg_commodities.heading("buy", text="Kupno")
+        self.tree_leg_commodities.heading("sell", text="Sprzedaz")
+        self.tree_leg_commodities.heading("profit_t", text="Zysk/t")
+        self.tree_leg_commodities.heading("profit_total", text="Zysk")
+        self.tree_leg_commodities.column("commodity", anchor="w", width=220, stretch=True)
+        self.tree_leg_commodities.column("amount", anchor="e", width=80, stretch=False)
+        self.tree_leg_commodities.column("buy", anchor="e", width=95, stretch=False)
+        self.tree_leg_commodities.column("sell", anchor="e", width=95, stretch=False)
+        self.tree_leg_commodities.column("profit_t", anchor="e", width=95, stretch=False)
+        self.tree_leg_commodities.column("profit_total", anchor="e", width=115, stretch=False)
+        self.tree_leg_commodities.pack(side="left", fill="x", expand=True)
+        leg_scroll.config(command=self.tree_leg_commodities.yview)
+        self._clear_trade_leg_details()
 
 
 
@@ -1747,6 +1823,305 @@ class TradeTab(ttk.Frame):
 
             self.ac_station.hide()
 
+    @staticmethod
+    def _to_float(value) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        try:
+            text = str(value).strip().replace("\xa0", "").replace(" ", "")
+            if not text:
+                return None
+            if "," in text and "." not in text:
+                text = text.replace(",", ".")
+            else:
+                text = text.replace(",", "")
+            return float(text)
+        except Exception:
+            return None
+
+    @classmethod
+    def _parse_updated_age_seconds(cls, value: str | None) -> float | None:
+        text = (value or "").strip()
+        if not text:
+            return None
+        lower = text.casefold()
+        if lower in {"just now", "now", "teraz", "przed chwila"}:
+            return 0.0
+        if "few second" in lower:
+            return 5.0
+        if "a minute" in lower or "an minute" in lower:
+            return 60.0
+        if "an hour" in lower or "a hour" in lower:
+            return 3600.0
+
+        match = cls._UPDATED_AGE_RE.search(lower)
+        if match:
+            try:
+                num = float(match.group("num"))
+            except Exception:
+                num = None
+            if num is not None:
+                unit = match.group("unit").casefold()
+                if unit in {"s", "sec", "secs", "second", "seconds", "sek", "sekunda", "sekundy", "sekund"}:
+                    return num
+                if unit in {"m", "min", "mins", "minute", "minutes", "minuta", "minuty", "minut"}:
+                    return num * 60.0
+                if unit in {"h", "hr", "hrs", "hour", "hours", "godz", "godzina", "godziny", "godzin"}:
+                    return num * 3600.0
+                if unit in {"d", "day", "days", "dzien", "dni"}:
+                    return num * 86400.0
+                if unit in {"w", "week", "weeks", "tydzien", "tygodnie", "tygodni"}:
+                    return num * 7.0 * 86400.0
+                if unit in {"month", "months", "miesiac", "miesiace", "miesiecy"}:
+                    return num * 30.0 * 86400.0
+                if unit in {"y", "year", "years", "rok", "lata", "lat"}:
+                    return num * 365.0 * 86400.0
+
+        # Fallback: try timestamp string and convert to "age".
+        candidate = text.replace("Z", "")
+        try:
+            parsed = datetime.fromisoformat(candidate)
+        except Exception:
+            parsed = None
+        if parsed is None:
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M"):
+                try:
+                    parsed = datetime.strptime(text, fmt)
+                    break
+                except Exception:
+                    continue
+        if parsed is None:
+            return None
+        age = (datetime.now() - parsed.replace(tzinfo=None)).total_seconds()
+        return max(age, 0.0)
+
+    @classmethod
+    def _updated_range_text(cls, rows: list[dict]) -> str:
+        parsed: list[tuple[float, str]] = []
+        fallback_values: list[str] = []
+        for row in rows:
+            raw = (row.get("updated_ago") or row.get("updated_at") or "").strip()
+            if not raw:
+                continue
+            fallback_values.append(raw)
+            seconds = cls._parse_updated_age_seconds(raw)
+            if seconds is not None:
+                parsed.append((seconds, raw))
+        if parsed:
+            newest = min(parsed, key=lambda item: item[0])[1]
+            oldest = max(parsed, key=lambda item: item[0])[1]
+            if newest == oldest:
+                return newest
+            return f"{newest} ... {oldest}"
+        if not fallback_values:
+            return "-"
+        if len(fallback_values) == 1:
+            return fallback_values[0]
+        return f"{fallback_values[0]} ... {fallback_values[-1]}"
+
+    def _clear_trade_summary(self) -> None:
+        self.var_trade_summary.set("")
+
+    def _update_trade_summary(self, rows: list[dict]) -> None:
+        if not rows:
+            self._clear_trade_summary()
+            return
+
+        total_profit_sum = 0
+        has_total_profit = False
+        last_payload_cumulative: int | None = None
+        distance_total = 0.0
+        has_distance = False
+
+        for row in rows:
+            total_profit = self._to_float(row.get("total_profit"))
+            if total_profit is not None:
+                total_profit_sum += int(round(total_profit))
+                has_total_profit = True
+
+            cumulative = self._to_float(row.get("cumulative_profit"))
+            if bool(row.get("cumulative_profit_from_payload")) and cumulative is not None:
+                last_payload_cumulative = int(round(cumulative))
+
+            distance_ly = self._to_float(row.get("distance_ly"))
+            if distance_ly is not None and distance_ly >= 0:
+                distance_total += distance_ly
+                has_distance = True
+
+        if last_payload_cumulative is not None:
+            profit_label = "Cumulative Profit"
+            profit_value = last_payload_cumulative
+        else:
+            profit_label = "Total Profit"
+            profit_value = total_profit_sum if has_total_profit else None
+
+        jump_range = self._to_float(self._last_effective_jump_range)
+        if jump_range is None or jump_range <= 0:
+            jump_range = self._to_float(self.var_max_hop.get())
+        estimated_jumps: int | None = None
+        if has_distance and jump_range is not None and jump_range > 0:
+            estimated_jumps = 0
+            for row in rows:
+                distance_ly = self._to_float(row.get("distance_ly"))
+                if distance_ly is None or distance_ly < 0:
+                    continue
+                estimated_jumps += int(math.ceil(distance_ly / jump_range))
+
+        profit_text = common.format_value(profit_value, "cr")
+        distance_text = f"{common.format_value(distance_total, 'ly')} ly" if has_distance else "-"
+        jumps_text = str(estimated_jumps) if estimated_jumps is not None else "-"
+        updated_text = self._updated_range_text(rows)
+
+        summary = (
+            f"{profit_label}: {profit_text} | "
+            f"Dystans: {distance_text} | "
+            f"Skoki (szac.): {jumps_text} | "
+            f"Updated: {updated_text}"
+        )
+        self.var_trade_summary.set(summary)
+
+    def _clear_trade_leg_details(self) -> None:
+        self.var_trade_leg_route.set("Wybierz krok trasy, aby zobaczyc szczegoly towarow.")
+        self.var_trade_leg_meta.set("Updated: - | Cumulative Profit: -")
+        tree = getattr(self, "tree_leg_commodities", None)
+        if tree is None:
+            return
+        try:
+            tree.delete(*tree.get_children())
+        except Exception:
+            return
+
+    def _iter_leg_commodities(self, row: dict) -> list[dict]:
+        commodities = row.get("commodities_raw")
+        if isinstance(commodities, list) and commodities:
+            normalized: list[dict] = []
+            for item in commodities:
+                if not isinstance(item, dict):
+                    continue
+                normalized.append(
+                    {
+                        "name": item.get("name"),
+                        "amount": item.get("amount"),
+                        "buy_price": item.get("buy_price"),
+                        "sell_price": item.get("sell_price"),
+                        "profit_unit": item.get("profit_unit") if item.get("profit_unit") is not None else item.get("profit"),
+                        "total_profit": item.get("total_profit"),
+                    }
+                )
+            if normalized:
+                return normalized
+
+        return [
+            {
+                "name": row.get("commodity_primary") or row.get("commodity_display") or row.get("commodity"),
+                "amount": row.get("amount"),
+                "buy_price": row.get("buy_price"),
+                "sell_price": row.get("sell_price"),
+                "profit_unit": row.get("profit"),
+                "total_profit": row.get("total_profit"),
+            }
+        ]
+
+    def _show_trade_leg_details_by_index(self, idx: int | None) -> None:
+        if idx is None or idx < 0 or idx >= len(self._results_rows):
+            self._clear_trade_leg_details()
+            return
+
+        row = self._results_rows[idx]
+        from_system = (row.get("from_system") or "-").strip() or "-"
+        from_station = (row.get("from_station") or "-").strip() or "-"
+        to_system = (row.get("to_system") or "-").strip() or "-"
+        to_station = (row.get("to_station") or "-").strip() or "-"
+        self.var_trade_leg_route.set(
+            f"{from_system} ({from_station}) -> {to_system} ({to_station})"
+        )
+
+        updated = (row.get("updated_ago") or row.get("updated_at") or "-").strip() or "-"
+        cumulative = common.format_value(row.get("cumulative_profit"), "cr")
+        self.var_trade_leg_meta.set(f"Updated: {updated} | Cumulative Profit: {cumulative}")
+
+        tree = getattr(self, "tree_leg_commodities", None)
+        if tree is None:
+            return
+        try:
+            tree.delete(*tree.get_children())
+        except Exception:
+            return
+
+        commodities = self._iter_leg_commodities(row)
+        for item in commodities:
+            name = str(item.get("name") or row.get("commodity_display") or "-")
+            amount = common.format_value(item.get("amount"), "int")
+            buy_price = common.format_value(item.get("buy_price"), "cr")
+            sell_price = common.format_value(item.get("sell_price"), "cr")
+            profit_unit = common.format_value(item.get("profit_unit"), "cr")
+            total_profit = common.format_value(item.get("total_profit"), "cr")
+            tree.insert(
+                "",
+                "end",
+                values=(name, amount, buy_price, sell_price, profit_unit, total_profit),
+            )
+
+    def _get_primary_selected_internal_index(self) -> int | None:
+        widget = self._results_widget
+        if widget is None:
+            return None
+
+        if isinstance(widget, ttk.Treeview):
+            selected = widget.selection() or ()
+            if not selected:
+                return None
+            try:
+                idx = int(str(selected[0])) - int(self._results_row_offset)
+            except Exception:
+                return None
+            return idx if 0 <= idx < len(self._results_rows) else None
+
+        try:
+            selected = list(widget.curselection())
+        except Exception:
+            return None
+        if not selected:
+            return None
+        try:
+            idx = int(selected[0]) - int(self._results_row_offset)
+        except Exception:
+            return None
+        return idx if 0 <= idx < len(self._results_rows) else None
+
+    def _on_results_selection_changed(self, _event=None) -> None:
+        self._show_trade_leg_details_by_index(self._get_primary_selected_internal_index())
+
+    def _select_first_result_row(self) -> None:
+        if not self._results_rows:
+            self._clear_trade_leg_details()
+            return
+        widget = self._results_widget
+        if widget is None:
+            self._show_trade_leg_details_by_index(0)
+            return
+        if isinstance(widget, ttk.Treeview):
+            children = widget.get_children()
+            if children:
+                try:
+                    first = children[0]
+                    widget.selection_set(first)
+                    widget.focus(first)
+                    widget.see(first)
+                except Exception:
+                    pass
+        else:
+            try:
+                widget.selection_clear(0, tk.END)
+                widget.selection_set(0)
+                widget.activate(0)
+                widget.see(0)
+            except Exception:
+                pass
+        self._show_trade_leg_details_by_index(0)
+
 
 
     def clear(self):
@@ -1765,6 +2140,9 @@ class TradeTab(ttk.Frame):
         self._results_rows = []
 
         self._results_row_offset = 0
+        self._last_effective_jump_range = None
+        self._clear_trade_summary()
+        self._clear_trade_leg_details()
 
 
 
@@ -1842,6 +2220,7 @@ class TradeTab(ttk.Frame):
         capital = self.var_capital.get()
 
         max_hop = self._resolve_max_hop()
+        self._last_effective_jump_range = max_hop
 
         cargo = self.var_cargo.get()
 
@@ -2085,6 +2464,7 @@ class TradeTab(ttk.Frame):
             def _apply_result() -> None:
                 try:
                     if worker_error is not None:
+                        self._clear_trade_summary()
                         common.emit_status(
                             "ERROR",
                             "TRADE_ERROR",
@@ -2140,6 +2520,8 @@ class TradeTab(ttk.Frame):
                             ]
                             common.register_active_route_list(self.lst_trade, opis)
                             common.wypelnij_liste(self.lst_trade, opis)
+                        self._update_trade_summary(rows)
+                        self._select_first_result_row()
                         common.handle_route_ready_autoclipboard(self, tr, status_target="trade")
                         common.emit_status(
                             "OK",
@@ -2149,6 +2531,7 @@ class TradeTab(ttk.Frame):
                             ui_target="trade",
                         )
                     else:
+                        self._clear_trade_summary()
                         common.emit_status(
                             "ERROR",
                             "TRADE_NO_RESULTS",

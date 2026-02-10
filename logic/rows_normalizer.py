@@ -196,6 +196,21 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
                         return num_nested
         return None
 
+    def _pick_trade_float(entry: dict, keys: Iterable[str]) -> float | None:
+        for key in keys:
+            if key not in entry:
+                continue
+            value = entry.get(key)
+            num = _to_float(value)
+            if num is not None:
+                return num
+            if isinstance(value, dict):
+                for nested_key in ("value", "distance", "ly", "jump", "length"):
+                    num_nested = _to_float(value.get(nested_key))
+                    if num_nested is not None:
+                        return num_nested
+        return None
+
     def _weighted_average(values: list[tuple[int, int]]) -> int | None:
         if not values:
             return None
@@ -515,6 +530,7 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
                 "runningProfit",
             ),
         )
+        cumulative_profit_from_payload = cumulative_profit is not None
         if cumulative_profit is None:
             cumulative_profit = _pick_trade_number(
                 to_endpoint,
@@ -525,6 +541,7 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
                     "runningProfit",
                 ),
             )
+            cumulative_profit_from_payload = cumulative_profit is not None
         if cumulative_profit is None and total_profit is not None:
             base = running_cumulative_profit if running_cumulative_profit is not None else 0
             cumulative_profit = base + total_profit
@@ -543,6 +560,40 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
         )
 
         jumps = pick_value(leg, ("jumps", "jump_count"))
+        distance_ly = _pick_trade_float(
+            leg,
+            (
+                "distance_ly",
+                "distanceLy",
+                "distance",
+                "jump_distance",
+                "jumpDistance",
+                "distance_to_system",
+                "distanceToSystem",
+            ),
+        )
+        if distance_ly is None:
+            distance_ly = _pick_trade_float(
+                to_endpoint,
+                (
+                    "distance_ly",
+                    "distanceLy",
+                    "distance",
+                    "jump_distance",
+                    "jumpDistance",
+                ),
+            )
+        if distance_ly is None:
+            distance_ly = _pick_trade_float(
+                from_endpoint,
+                (
+                    "distance_ly",
+                    "distanceLy",
+                    "distance",
+                    "jump_distance",
+                    "jumpDistance",
+                ),
+            )
 
         if from_sys:
             route.append(str(from_sys))
@@ -573,6 +624,8 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
                 "cumulative_profit": cumulative_profit,
                 "updated_ago": updated_ago or updated_at,
                 "updated_at": updated_at,
+                "cumulative_profit_from_payload": cumulative_profit_from_payload,
+                "distance_ly": distance_ly,
                 "jumps": jumps,
             }
         )
