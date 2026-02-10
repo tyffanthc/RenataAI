@@ -1019,6 +1019,71 @@ def test_trade_station_name_normalization(_ctx: TestContext) -> None:
     assert r2.get("to_station") == "UNKNOWN_STATION", "Missing to_station should use UNKNOWN_STATION"
 
 
+def test_trade_multi_commodity_aliases_and_metrics(_ctx: TestContext) -> None:
+    sample = {
+        "result": [
+            {
+                "fromSystem": "DIAGUANDRI",
+                "toSystem": "VALTYS",
+                "fromStation": "Ray Gateway",
+                "toStation": "Oleskiw City",
+                "commodity": "Liquid oxygen",
+                "amount": 256,
+                "buyPrice": 719,
+                "sellPrice": 2333,
+                "profit": 1614,
+                "totalProfit": 413184,
+                "updatedAgo": "27 minutes ago",
+                "cumulativeProfit": 413184,
+            },
+            {
+                "from": {"system": "CHUP KAMUI", "station": "Savinykh Platform", "updated_at": "39 minutes ago"},
+                "to": {"system": "LHS 1217", "station_name": "Segmentum Tempestus"},
+                "commodities": [
+                    {
+                        "commodity": "Imperial Slaves",
+                        "amount": 31,
+                        "buyPrice": 1563,
+                        "sellPrice": 17154,
+                        "profit": 15591,
+                        "totalProfit": 483321,
+                    },
+                    {
+                        "commodity_name": "Military Grade Fabrics",
+                        "qty": 225,
+                        "buy_price": 309,
+                        "sell_price": 14530,
+                        "profit_per_tonne": 14221,
+                        "total_profit": 3199725,
+                    },
+                ],
+            },
+        ]
+    }
+    _route, rows = normalize_trade_rows(sample)
+    assert len(rows) == 2, f"Expected 2 rows, got {len(rows)}"
+
+    single = rows[0]
+    assert single.get("commodity_display") == "Liquid oxygen", "Single commodity display mapping failed"
+    assert single.get("amount") == 256, "Single amount mapping failed"
+    assert single.get("buy_price") == 719, "Single buyPrice alias mapping failed"
+    assert single.get("sell_price") == 2333, "Single sellPrice alias mapping failed"
+    assert single.get("profit") == 1614, "Single profit per unit mapping failed"
+    assert single.get("total_profit") == 413184, "Single totalProfit alias mapping failed"
+    assert single.get("updated_ago") == "27 minutes ago", "Single updatedAgo alias mapping failed"
+    assert single.get("cumulative_profit") == 413184, "Single cumulativeProfit alias mapping failed"
+
+    multi = rows[1]
+    assert multi.get("commodity_display") == "Imperial Slaves +1", "Multi commodity aggregate display failed"
+    assert multi.get("amount") == 256, "Multi amount aggregation failed"
+    assert multi.get("buy_price") == 461, "Multi weighted buy price failed"
+    assert multi.get("sell_price") == 14848, "Multi weighted sell price failed"
+    assert multi.get("total_profit") == 3683046, "Multi total_profit aggregation failed"
+    assert multi.get("profit") == 14387, "Multi profit per unit derivation failed"
+    assert multi.get("updated_ago") == "39 minutes ago", "Multi updated_at fallback mapping failed"
+    assert multi.get("cumulative_profit") == 4096230, "Multi cumulative fallback calculation failed"
+
+
 def test_tts_polish_diacritics_global(_ctx: TestContext) -> None:
     fss = prepare_tts("MSG.FSS_PROGRESS_50", {})
     assert fss and "Połowa systemu przeskanowana." in fss, "Expected Polish diacritics in FSS text"
@@ -1287,6 +1352,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_spansh_copy_mode_actions",
         "test_spansh_export_actions_and_formats",
         "test_trade_station_name_normalization",
+        "test_trade_multi_commodity_aliases_and_metrics",
         "test_tts_polish_diacritics_global",
         "test_exobio_sample_progress_sequence",
         "test_trade_station_state_reset_on_system_change",
@@ -1318,6 +1384,7 @@ def run_all_tests() -> int:
         ("test_spansh_copy_mode_actions", test_spansh_copy_mode_actions),
         ("test_spansh_export_actions_and_formats", test_spansh_export_actions_and_formats),
         ("test_trade_station_name_normalization", test_trade_station_name_normalization),
+        ("test_trade_multi_commodity_aliases_and_metrics", test_trade_multi_commodity_aliases_and_metrics),
         ("test_tts_polish_diacritics_global", test_tts_polish_diacritics_global),
         ("test_exobio_sample_progress_sequence", test_exobio_sample_progress_sequence),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),

@@ -130,6 +130,9 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
             for key in (
                 "value",
                 "label",
+                "text",
+                "title",
+                "ago",
                 "name",
                 "system",
                 "system_name",
@@ -144,6 +147,30 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
         text = _clean_text(value)
         return text or None
 
+    def _to_float(value: Any) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        text = _clean_text(value)
+        if not text:
+            return None
+        text = text.replace("\xa0", "").replace(" ", "")
+        if "," in text and "." not in text:
+            text = text.replace(",", ".")
+        else:
+            text = text.replace(",", "")
+        try:
+            return float(text)
+        except Exception:
+            return None
+
+    def _to_int(value: Any) -> int | None:
+        num = _to_float(value)
+        if num is None:
+            return None
+        return int(round(num))
+
     def _pick_trade_field(entry: dict, keys: Iterable[str]) -> str | None:
         for key in keys:
             if key not in entry:
@@ -152,6 +179,31 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
             if value:
                 return value
         return None
+
+    def _pick_trade_number(entry: dict, keys: Iterable[str]) -> int | None:
+        for key in keys:
+            if key not in entry:
+                continue
+            value = entry.get(key)
+            num = _to_int(value)
+            if num is not None:
+                return num
+            # Some APIs wrap values in dicts, e.g. {"value": 1234}
+            if isinstance(value, dict):
+                for nested_key in ("value", "amount", "price", "profit", "total"):
+                    num_nested = _to_int(value.get(nested_key))
+                    if num_nested is not None:
+                        return num_nested
+        return None
+
+    def _weighted_average(values: list[tuple[int, int]]) -> int | None:
+        if not values:
+            return None
+        denominator = sum(weight for _value, weight in values if weight > 0)
+        if denominator <= 0:
+            return None
+        numerator = sum(value * weight for value, weight in values if weight > 0)
+        return int(round(numerator / denominator))
 
     def _pick_endpoint(entry: dict, endpoint_keys: Iterable[str]) -> dict:
         for key in endpoint_keys:
@@ -211,8 +263,87 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
             return None
         return _pick_trade_field(endpoint, ("name",))
 
+    def _normalize_commodities(leg: dict) -> list[dict]:
+        raw = (
+            leg.get("commodities")
+            or leg.get("goods")
+            or leg.get("items")
+            or leg.get("payload")
+            or []
+        )
+        if isinstance(raw, dict):
+            if all(isinstance(v, dict) for v in raw.values()):
+                raw_list = list(raw.values())
+            else:
+                raw_list = [raw]
+        elif isinstance(raw, list):
+            raw_list = raw
+        else:
+            raw_list = []
+
+        # Fallback to single commodity shape at leg-level.
+        if not raw_list and _pick_trade_field(
+            leg,
+            ("commodity", "commodity_name", "item", "item_name", "good", "name"),
+        ):
+            raw_list = [leg]
+
+        normalized: list[dict] = []
+        for item in raw_list:
+            if isinstance(item, str):
+                name = _clean_text(item)
+                if not name:
+                    continue
+                normalized.append({"name": name})
+                continue
+            if not isinstance(item, dict):
+                continue
+
+            name = _pick_trade_field(
+                item,
+                (
+                    "commodity",
+                    "commodity_name",
+                    "item",
+                    "item_name",
+                    "good",
+                    "name",
+                ),
+            )
+            amount = _pick_trade_number(item, ("amount", "qty", "quantity", "tons", "tonnage", "units"))
+            buy_price = _pick_trade_number(item, ("buy_price", "buyPrice", "buy", "buy_price_cr", "buyPriceCr"))
+            sell_price = _pick_trade_number(item, ("sell_price", "sellPrice", "sell", "sell_price_cr", "sellPriceCr"))
+            profit_unit = _pick_trade_number(
+                item,
+                (
+                    "profit_per_ton",
+                    "profitPerTon",
+                    "profit_per_tonne",
+                    "profitPerTonne",
+                    "profit",
+                    "unit_profit",
+                    "unitProfit",
+                ),
+            )
+            total_profit = _pick_trade_number(item, ("total_profit", "totalProfit", "profit_total", "profitTotal"))
+            if total_profit is None and profit_unit is not None and amount is not None:
+                total_profit = profit_unit * amount
+
+            normalized.append(
+                {
+                    "name": name,
+                    "amount": amount,
+                    "buy_price": buy_price,
+                    "sell_price": sell_price,
+                    "profit_unit": profit_unit,
+                    "total_profit": total_profit,
+                }
+            )
+        return normalized
+
     route: list[str] = []
     rows: list[dict] = []
+    running_cumulative_profit: int | None = None
 
     if not result:
         return route, rows
@@ -233,8 +364,8 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
     for leg in core:
         if not isinstance(leg, dict):
             continue
-        from_endpoint = _pick_endpoint(leg, ("from", "source", "origin", "buy", "start"))
-        to_endpoint = _pick_endpoint(leg, ("to", "destination", "target", "sell", "end"))
+        from_endpoint = _pick_endpoint(leg, ("from", "source", "origin", "buy", "start", "sourceLeg"))
+        to_endpoint = _pick_endpoint(leg, ("to", "destination", "target", "sell", "end", "targetLeg"))
 
         from_sys = _pick_trade_field(
             leg,
@@ -298,19 +429,119 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
         if not to_station:
             to_station = _pick_endpoint_station(to_endpoint)
 
-        commodity = _pick_trade_field(
+        commodities = _normalize_commodities(leg)
+        commodity_names = [str(c.get("name") or "").strip() for c in commodities if str(c.get("name") or "").strip()]
+        commodity_first = commodity_names[0] if commodity_names else None
+        commodity_display = None
+        if commodity_names:
+            commodity_display = commodity_first if len(commodity_names) == 1 else f"{commodity_first} +{len(commodity_names) - 1}"
+        else:
+            commodity_display = _pick_trade_field(
+                leg,
+                (
+                    "commodity",
+                    "commodity_name",
+                    "item",
+                    "item_name",
+                    "name",
+                    "good",
+                ),
+            )
+
+        leg_amount = _pick_trade_number(leg, ("amount", "qty", "quantity", "tons", "tonnage", "units"))
+        if leg_amount is None:
+            leg_amount = sum(int(c["amount"]) for c in commodities if c.get("amount") is not None) or None
+
+        total_profit = _pick_trade_number(leg, ("total_profit", "totalProfit", "profit_total", "profitTotal"))
+        if total_profit is None:
+            totals = []
+            for c in commodities:
+                tp = c.get("total_profit")
+                if tp is not None:
+                    totals.append(int(tp))
+                    continue
+                pu = c.get("profit_unit")
+                amount = c.get("amount")
+                if pu is not None and amount is not None:
+                    totals.append(int(pu) * int(amount))
+            if totals:
+                total_profit = sum(totals)
+
+        profit_per_ton = _pick_trade_number(
             leg,
             (
-                "commodity",
-                "commodity_name",
-                "item",
-                "item_name",
-                "name",
-                "good",
+                "profit_per_ton",
+                "profitPerTon",
+                "profit_per_tonne",
+                "profitPerTonne",
+                "profit",
+                "estimated_profit",
+                "unit_profit",
+                "unitProfit",
             ),
         )
-        profit = pick_value(leg, ("profit", "estimated_profit"))
-        profit_per_ton = pick_value(leg, ("profit_per_tonne", "profit_per_ton"))
+        if profit_per_ton is None and total_profit is not None and leg_amount:
+            try:
+                profit_per_ton = int(round(total_profit / leg_amount))
+            except Exception:
+                profit_per_ton = None
+
+        buy_price = _pick_trade_number(leg, ("buy_price", "buyPrice", "buy", "buy_price_cr", "buyPriceCr"))
+        if buy_price is None:
+            weighted_buy = [
+                (int(c["buy_price"]), int(c["amount"]))
+                for c in commodities
+                if c.get("buy_price") is not None and c.get("amount") is not None
+            ]
+            buy_price = _weighted_average(weighted_buy)
+
+        sell_price = _pick_trade_number(leg, ("sell_price", "sellPrice", "sell", "sell_price_cr", "sellPriceCr"))
+        if sell_price is None:
+            weighted_sell = [
+                (int(c["sell_price"]), int(c["amount"]))
+                for c in commodities
+                if c.get("sell_price") is not None and c.get("amount") is not None
+            ]
+            sell_price = _weighted_average(weighted_sell)
+
+        cumulative_profit = _pick_trade_number(
+            leg,
+            (
+                "cumulative_profit",
+                "cumulativeProfit",
+                "route_cumulative_profit",
+                "routeCumulativeProfit",
+                "running_profit",
+                "runningProfit",
+            ),
+        )
+        if cumulative_profit is None:
+            cumulative_profit = _pick_trade_number(
+                to_endpoint,
+                (
+                    "cumulative_profit",
+                    "cumulativeProfit",
+                    "running_profit",
+                    "runningProfit",
+                ),
+            )
+        if cumulative_profit is None and total_profit is not None:
+            base = running_cumulative_profit if running_cumulative_profit is not None else 0
+            cumulative_profit = base + total_profit
+        if cumulative_profit is not None:
+            running_cumulative_profit = cumulative_profit
+
+        updated_ago = (
+            _pick_trade_field(leg, ("updated_ago", "updatedAgo", "updated", "updated_at", "updatedAt"))
+            or _pick_trade_field(to_endpoint, ("updated_ago", "updatedAgo", "updated", "updated_at", "updatedAt"))
+            or _pick_trade_field(from_endpoint, ("updated_ago", "updatedAgo", "updated", "updated_at", "updatedAt"))
+        )
+        updated_at = (
+            _pick_trade_field(leg, ("updated_at", "updatedAt"))
+            or _pick_trade_field(to_endpoint, ("updated_at", "updatedAt"))
+            or _pick_trade_field(from_endpoint, ("updated_at", "updatedAt"))
+        )
+
         jumps = pick_value(leg, ("jumps", "jump_count"))
 
         if from_sys:
@@ -329,9 +560,19 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
                 "from_station": from_station_final,
                 "to_station": to_station_final,
                 "station": station_for_copy,
-                "commodity": commodity,
-                "profit": profit,
+                "commodity": commodity_display,
+                "commodity_display": commodity_display,
+                "commodity_primary": commodity_first,
+                "commodities_raw": commodities,
+                "amount": leg_amount,
+                "buy_price": buy_price,
+                "sell_price": sell_price,
+                "profit": profit_per_ton,
                 "profit_per_ton": profit_per_ton,
+                "total_profit": total_profit,
+                "cumulative_profit": cumulative_profit,
+                "updated_ago": updated_ago or updated_at,
+                "updated_at": updated_at,
                 "jumps": jumps,
             }
         )

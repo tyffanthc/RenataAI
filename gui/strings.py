@@ -101,6 +101,8 @@ TABLE_HDR_TO_STATION = "Stacja Do"
 TABLE_HDR_COMMODITY = "Towar"
 TABLE_HDR_PROFIT = "Zysk [cr]"
 TABLE_HDR_PROFIT_TON = "Zysk/t [cr]"
+TABLE_HDR_CUMULATIVE_PROFIT = "Cumulative Profit [cr]"
+TABLE_HDR_UPDATED = "Updated"
 
 PLACEHOLDER_TITLE = "Wkrotce"
 PLACEHOLDER_LINE_1 = "Ta funkcja jest w przygotowaniu."
