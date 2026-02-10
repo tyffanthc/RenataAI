@@ -334,6 +334,86 @@ def test_fss_progress_basic(ctx: TestContext) -> None:
     )
 
 
+def test_fss_last_body_before_full_9_of_10(ctx: TestContext) -> None:
+    """
+    Last-body must fire on 9/10, and full-scan on 10/10.
+    Last-body must NOT be emitted at 10/10.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    fss_events.reset_fss_progress()
+    app_state.current_system = "SMOKE_TEST_FSS_9_10"
+
+    fss_events.handle_fss_discovery_scan(
+        {"event": "FSSDiscoveryScan", "BodyCount": 10, "SystemName": app_state.current_system},
+        gui_ref=None,
+    )
+
+    for idx in range(8):
+        fss_events.handle_scan(
+            {"event": "Scan", "BodyName": f"SMOKE_TEST_9_10_BODY_{idx + 1}", "WasDiscovered": False},
+            gui_ref=None,
+        )
+    ctx.clear_queue()
+
+    fss_events.handle_scan(
+        {"event": "Scan", "BodyName": "SMOKE_TEST_9_10_BODY_9", "WasDiscovered": False},
+        gui_ref=None,
+    )
+    msgs_9 = " | ".join(str(m) for m in ctx.drain_queue())
+    assert "Ostatnia planeta do skanowania." in msgs_9, "Expected last-body callout on 9/10"
+    assert "System w peĹ‚ni przeskanowany." not in msgs_9, "Full-scan must not fire on 9/10"
+
+    fss_events.handle_scan(
+        {"event": "Scan", "BodyName": "SMOKE_TEST_9_10_BODY_10", "WasDiscovered": False},
+        gui_ref=None,
+    )
+    msgs_10 = " | ".join(str(m) for m in ctx.drain_queue())
+    lower_10 = msgs_10.lower()
+    assert "system" in lower_10 and "przeskanowany" in lower_10, "Expected full-scan callout on 10/10"
+    assert "Ostatnia planeta do skanowania." not in msgs_10, "Last-body must not be emitted at 10/10"
+
+
+def test_fss_last_body_before_full_11_of_12(ctx: TestContext) -> None:
+    """
+    Last-body must fire on 11/12, and full-scan on 12/12.
+    This path uses only Scan fallback (without FSSAllBodiesFound).
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    fss_events.reset_fss_progress()
+    app_state.current_system = "SMOKE_TEST_FSS_11_12"
+
+    fss_events.handle_fss_discovery_scan(
+        {"event": "FSSDiscoveryScan", "BodyCount": 12, "SystemName": app_state.current_system},
+        gui_ref=None,
+    )
+
+    for idx in range(10):
+        fss_events.handle_scan(
+            {"event": "Scan", "BodyName": f"SMOKE_TEST_11_12_BODY_{idx + 1}", "WasDiscovered": False},
+            gui_ref=None,
+        )
+    ctx.clear_queue()
+
+    fss_events.handle_scan(
+        {"event": "Scan", "BodyName": "SMOKE_TEST_11_12_BODY_11", "WasDiscovered": False},
+        gui_ref=None,
+    )
+    msgs_11 = " | ".join(str(m) for m in ctx.drain_queue())
+    assert "Ostatnia planeta do skanowania." in msgs_11, "Expected last-body callout on 11/12"
+    assert "System w peĹ‚ni przeskanowany." not in msgs_11, "Full-scan must not fire on 11/12"
+
+    fss_events.handle_scan(
+        {"event": "Scan", "BodyName": "SMOKE_TEST_11_12_BODY_12", "WasDiscovered": False},
+        gui_ref=None,
+    )
+    msgs_12 = " | ".join(str(m) for m in ctx.drain_queue())
+    lower_12 = msgs_12.lower()
+    assert "system" in lower_12 and "przeskanowany" in lower_12, "Expected full-scan callout on 12/12"
+    assert "Ostatnia planeta do skanowania." not in msgs_12, "Last-body must not be emitted at 12/12"
+
+
 # --- TESTY: BIO / DSS SYGNAŁY ------------------------------------------------
 
 
@@ -1027,6 +1107,7 @@ def test_trade_multi_commodity_aliases_and_metrics(_ctx: TestContext) -> None:
                 "toSystem": "VALTYS",
                 "fromStation": "Ray Gateway",
                 "toStation": "Oleskiw City",
+                "distanceLy": 46.74,
                 "commodity": "Liquid oxygen",
                 "amount": 256,
                 "buyPrice": 719,
@@ -1039,6 +1120,7 @@ def test_trade_multi_commodity_aliases_and_metrics(_ctx: TestContext) -> None:
             {
                 "from": {"system": "CHUP KAMUI", "station": "Savinykh Platform", "updated_at": "39 minutes ago"},
                 "to": {"system": "LHS 1217", "station_name": "Segmentum Tempestus"},
+                "distance": 42.10,
                 "commodities": [
                     {
                         "commodity": "Imperial Slaves",
@@ -1072,6 +1154,8 @@ def test_trade_multi_commodity_aliases_and_metrics(_ctx: TestContext) -> None:
     assert single.get("total_profit") == 413184, "Single totalProfit alias mapping failed"
     assert single.get("updated_ago") == "27 minutes ago", "Single updatedAgo alias mapping failed"
     assert single.get("cumulative_profit") == 413184, "Single cumulativeProfit alias mapping failed"
+    assert single.get("distance_ly") == 46.74, "Single distanceLy alias mapping failed"
+    assert single.get("cumulative_profit_from_payload") is True, "Single cumulative payload source should be flagged"
 
     multi = rows[1]
     assert multi.get("commodity_display") == "Imperial Slaves +1", "Multi commodity aggregate display failed"
@@ -1082,6 +1166,8 @@ def test_trade_multi_commodity_aliases_and_metrics(_ctx: TestContext) -> None:
     assert multi.get("profit") == 14387, "Multi profit per unit derivation failed"
     assert multi.get("updated_ago") == "39 minutes ago", "Multi updated_at fallback mapping failed"
     assert multi.get("cumulative_profit") == 4096230, "Multi cumulative fallback calculation failed"
+    assert multi.get("distance_ly") == 42.10, "Multi distance mapping failed"
+    assert multi.get("cumulative_profit_from_payload") is False, "Multi cumulative fallback should not be payload"
 
 
 def test_tts_polish_diacritics_global(_ctx: TestContext) -> None:
@@ -1353,6 +1439,8 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_spansh_export_actions_and_formats",
         "test_trade_station_name_normalization",
         "test_trade_multi_commodity_aliases_and_metrics",
+        "test_fss_last_body_before_full_9_of_10",
+        "test_fss_last_body_before_full_11_of_12",
         "test_tts_polish_diacritics_global",
         "test_exobio_sample_progress_sequence",
         "test_trade_station_state_reset_on_system_change",
@@ -1385,6 +1473,8 @@ def run_all_tests() -> int:
         ("test_spansh_export_actions_and_formats", test_spansh_export_actions_and_formats),
         ("test_trade_station_name_normalization", test_trade_station_name_normalization),
         ("test_trade_multi_commodity_aliases_and_metrics", test_trade_multi_commodity_aliases_and_metrics),
+        ("test_fss_last_body_before_full_9_of_10", test_fss_last_body_before_full_9_of_10),
+        ("test_fss_last_body_before_full_11_of_12", test_fss_last_body_before_full_11_of_12),
         ("test_tts_polish_diacritics_global", test_tts_polish_diacritics_global),
         ("test_exobio_sample_progress_sequence", test_exobio_sample_progress_sequence),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),

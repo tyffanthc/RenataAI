@@ -180,24 +180,13 @@ def _check_fss_thresholds(gui_ref=None):
 
 
 def _maybe_speak_fss_full(gui_ref=None) -> bool:
-    """Emit full-scan message once; ensure last-body hint is not emitted after 100%."""
-    global FSS_FULL_WARNED, FSS_LAST_WARNED
+    """Emit full-scan message once; never emit last-body hint at 100%."""
+    global FSS_FULL_WARNED
 
     if FSS_TOTAL_BODIES <= 0 or FSS_DISCOVERED < FSS_TOTAL_BODIES:
         return False
 
     system_name = app_state.current_system or None
-
-    # If full scan happened without emitting "last body", emit it first.
-    if not FSS_LAST_WARNED and FSS_TOTAL_BODIES > 1:
-        FSS_LAST_WARNED = True
-        if DEBOUNCER.can_send("FSS_LAST", 120, context=system_name):
-            powiedz(
-                "Ostatnia planeta do skanowania.",
-                gui_ref,
-                message_id="MSG.FSS_LAST_BODY",
-                context={"system": system_name},
-            )
 
     if FSS_FULL_WARNED:
         return True
