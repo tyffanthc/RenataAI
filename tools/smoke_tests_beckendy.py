@@ -1719,6 +1719,10 @@ def test_global_scrollbar_style_and_window_chrome_wiring(_ctx: TestContext) -> N
         "style.configure(\"Horizontal.TScrollbar\", **sb_kwargs)",
         "style.map(",
         "\"Horizontal.TScrollbar\",",
+        "style.configure(",
+        "\"TPanedwindow\",",
+        "style.configure(\"Vertical.Sash\", background=C_ACC)",
+        "style.configure(\"Horizontal.Sash\", background=C_ACC)",
         "apply_renata_orange_window_chrome(self.root)",
     ]
     for snippet in required_app_snippets:

@@ -169,6 +169,16 @@ class RenataApp:
             arrowcolor=[("active", C_FG), ("pressed", C_FG)],
         )
 
+        # Splittery (PanedWindow) - usuniecie jasnego paska/sash
+        style.configure(
+            "TPanedwindow",
+            background=C_ACC,
+            sashthickness=8,
+            sashrelief="flat",
+        )
+        style.configure("Vertical.Sash", background=C_ACC)
+        style.configure("Horizontal.Sash", background=C_ACC)
+
         # ==========================================================
         # KONIEC PROTOKOŁU BLACKOUT
         # ==========================================================
