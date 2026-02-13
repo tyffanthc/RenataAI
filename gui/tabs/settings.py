@@ -887,7 +887,7 @@ class SettingsTab(ttk.Frame):
             foreground="#888888",
         ).grid(row=2, column=0, columnspan=4, padx=8, pady=(0, 6), sticky="w")
 
-        self._add_save_bar(parent, row=3)
+        self._add_save_bar(parent, row=4)
 
     # ------------------------------------------------------------------ #
     #   Zakładka: EKSPLORACJA
@@ -1495,7 +1495,7 @@ class SettingsTab(ttk.Frame):
             foreground="#888888",
         ).grid(row=10, column=0, padx=8, pady=(2, 8), sticky="w")
 
-        self._add_save_bar(parent, row=3)
+        self._add_save_bar(parent, row=4)
 
     # ------------------------------------------------------------------ #
     # Ładowanie / zapisywanie – połączone z backendowym configiem
