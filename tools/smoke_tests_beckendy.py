@@ -1705,6 +1705,44 @@ def test_trade_split_view_layout_wiring(_ctx: TestContext) -> None:
         assert snippet in content, f"Missing trade split-view layout snippet: {snippet}"
 
 
+def test_global_scrollbar_style_and_window_chrome_wiring(_ctx: TestContext) -> None:
+    app_path = os.path.join(ROOT_DIR, "gui/app.py")
+    with open(app_path, "r", encoding="utf-8", errors="ignore") as f:
+        app_content = f.read()
+
+    required_app_snippets = [
+        "style.configure(\"TScrollbar\", background=C_ACC, troughcolor=C_BG, borderwidth=0, arrowcolor=C_FG)",
+        "style.configure(\"Vertical.TScrollbar\", background=C_ACC, troughcolor=C_BG, borderwidth=0, arrowcolor=C_FG)",
+        "style.configure(\"Horizontal.TScrollbar\", background=C_ACC, troughcolor=C_BG, borderwidth=0, arrowcolor=C_FG)",
+        "apply_renata_orange_window_chrome(self.root)",
+    ]
+    for snippet in required_app_snippets:
+        assert snippet in app_content, f"Missing global scrollbar/window-chrome wiring snippet: {snippet}"
+
+    chrome_path = os.path.join(ROOT_DIR, "gui/window_chrome.py")
+    with open(chrome_path, "r", encoding="utf-8", errors="ignore") as f:
+        chrome_content = f.read()
+    required_chrome_snippets = [
+        "def apply_window_chrome_colors(",
+        "DwmSetWindowAttribute",
+        "_DWMWA_CAPTION_COLOR = 35",
+        "caption_hex=\"#ff7100\"",
+    ]
+    for snippet in required_chrome_snippets:
+        assert snippet in chrome_content, f"Missing window chrome helper snippet: {snippet}"
+
+    files_with_explicit_vertical_style = [
+        os.path.join(ROOT_DIR, "gui/common_tables.py"),
+        os.path.join(ROOT_DIR, "gui/tabs/settings.py"),
+        os.path.join(ROOT_DIR, "gui/tabs/spansh/trade.py"),
+        os.path.join(ROOT_DIR, "gui/tabs/spansh/neutron.py"),
+    ]
+    for path in files_with_explicit_vertical_style:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        assert "style=\"Vertical.TScrollbar\"" in content, f"Missing explicit Vertical.TScrollbar usage in {path}"
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1744,6 +1782,7 @@ def run_all_tests() -> int:
         ("test_trade_table_first_map_layout_refresh", test_trade_table_first_map_layout_refresh),
         ("test_startup_window_deferred_show", test_startup_window_deferred_show),
         ("test_trade_split_view_layout_wiring", test_trade_split_view_layout_wiring),
+        ("test_global_scrollbar_style_and_window_chrome_wiring", test_global_scrollbar_style_and_window_chrome_wiring),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

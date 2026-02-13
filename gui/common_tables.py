@@ -284,7 +284,7 @@ def stworz_liste_trasy(parent, title="Plan Lotu"):
     list_frame = ttk.Frame(frame)
     list_frame.pack(side="top", fill="both", expand=True)
 
-    sc = ttk.Scrollbar(list_frame)
+    sc = ttk.Scrollbar(list_frame, orient="vertical", style="Vertical.TScrollbar")
     sc.pack(side="right", fill="y")
 
     lb = tk.Listbox(
@@ -336,7 +336,7 @@ def stworz_tabele_trasy(parent, title="Plan Lotu"):
     tree_frame = ttk.Frame(frame)
     tree_frame.pack(side="top", fill="both", expand=True)
 
-    sc = ttk.Scrollbar(tree_frame)
+    sc = ttk.Scrollbar(tree_frame, orient="vertical", style="Vertical.TScrollbar")
     sc.pack(side="right", fill="y")
 
     tree = ttk.Treeview(

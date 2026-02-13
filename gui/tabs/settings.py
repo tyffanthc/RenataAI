@@ -214,7 +214,12 @@ class SettingsTab(ttk.Frame):
         wrapper.pack(fill="both", expand=True)
 
         canvas = tk.Canvas(wrapper, highlightthickness=0, borderwidth=0)
-        scrollbar = ttk.Scrollbar(wrapper, orient="vertical", command=canvas.yview)
+        scrollbar = ttk.Scrollbar(
+            wrapper,
+            orient="vertical",
+            command=canvas.yview,
+            style="Vertical.TScrollbar",
+        )
         canvas.configure(yscrollcommand=scrollbar.set)
 
         scrollbar.pack(side="right", fill="y")

@@ -4,6 +4,7 @@ import threading
 
 from logic.utils import pobierz_sugestie
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
+from gui.window_chrome import apply_renata_orange_window_chrome
 
 COLOR_BG     = '#0b0c10'
 COLOR_FG     = '#ff7100'
@@ -34,6 +35,10 @@ class AddEntryDialog(tk.Toplevel):
         self._coords_last_system = ""
 
         self._create_widgets()
+        try:
+            apply_renata_orange_window_chrome(self)
+        except Exception:
+            pass
         restore_window_geometry(self, "add_entry_dialog", include_size=True)
         bind_window_geometry(self, "add_entry_dialog", include_size=True)
         self._maybe_fetch_coords()
@@ -80,7 +85,6 @@ class AddEntryDialog(tk.Toplevel):
 
         # Combobox, styl i readonly
         style = ttk.Style(self)
-        style.theme_use('clam')
         style.configure("Orange.TCombobox",
                         fieldbackground=COLOR_ACCENT,
                         background=COLOR_ACCENT,

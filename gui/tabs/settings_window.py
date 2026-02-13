@@ -5,6 +5,7 @@ from typing import Optional, Callable, Dict, Any
 from gui.tabs.settings import SettingsTab
 from config import config  # <-- nowy manager konfiguracji
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
+from gui.window_chrome import apply_renata_orange_window_chrome
 
 
 class SettingsWindow(tk.Toplevel):
@@ -54,6 +55,10 @@ class SettingsWindow(tk.Toplevel):
             save_config=self._save_config_wrapper,
         )
         self.settings_tab.pack(fill="both", expand=True)
+        try:
+            apply_renata_orange_window_chrome(self)
+        except Exception:
+            pass
         restore_window_geometry(self, "settings_window", include_size=True)
         bind_window_geometry(self, "settings_window", include_size=True)
 

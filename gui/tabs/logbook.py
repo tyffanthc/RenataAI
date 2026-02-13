@@ -27,7 +27,6 @@ class LogbookTab(tk.Frame):
 
     def _configure_style(self):
         style = ttk.Style()
-        style.theme_use('clam')
         style.configure(
             'Custom.Treeview',
             background=COLOR_ACCENT,

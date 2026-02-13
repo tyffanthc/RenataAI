@@ -647,7 +647,7 @@ class TradeTab(ttk.Frame):
 
         leg_table_wrap = ttk.Frame(details_wrap)
         leg_table_wrap.pack(fill="both", expand=True, padx=8, pady=(0, 8))
-        leg_scroll = ttk.Scrollbar(leg_table_wrap)
+        leg_scroll = ttk.Scrollbar(leg_table_wrap, orient="vertical", style="Vertical.TScrollbar")
         leg_scroll.pack(side="right", fill="y")
         self.tree_leg_commodities = ttk.Treeview(
             leg_table_wrap,
@@ -1674,7 +1674,7 @@ class TradeTab(ttk.Frame):
 
         f_list = ttk.Frame(f_top)
         f_list.pack(fill="both", expand=True)
-        sc = ttk.Scrollbar(f_list, orient="vertical")
+        sc = ttk.Scrollbar(f_list, orient="vertical", style="Vertical.TScrollbar")
         sc.pack(side="right", fill="y")
         lb = tk.Listbox(
             f_list,

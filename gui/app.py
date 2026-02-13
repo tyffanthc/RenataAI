@@ -11,6 +11,7 @@ from gui.tabs import spansh
 from gui.menu_bar import RenataMenuBar
 from gui.tabs.settings_window import SettingsWindow
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
+from gui.window_chrome import apply_renata_orange_window_chrome
 from gui.tabs.logbook import LogbookTab
 import webbrowser
 from logic.generate_renata_science_data import generate_science_excel
@@ -141,9 +142,20 @@ class RenataApp:
         style.configure("TCheckbutton", background=C_BG, foreground=C_SEC)
         style.map("TCheckbutton", background=[('active', C_BG)], foreground=[('active', "#ffffff")])
 
-        # Scrollbary (Paski przewijania)
+        # Scrollbary (Paski przewijania) - globalny styl
+        style.configure("TScrollbar", background=C_ACC, troughcolor=C_BG, borderwidth=0, arrowcolor=C_FG)
         style.configure("Vertical.TScrollbar", background=C_ACC, troughcolor=C_BG, borderwidth=0, arrowcolor=C_FG)
         style.configure("Horizontal.TScrollbar", background=C_ACC, troughcolor=C_BG, borderwidth=0, arrowcolor=C_FG)
+        style.map(
+            "Vertical.TScrollbar",
+            background=[("active", C_ACC), ("pressed", C_ACC)],
+            arrowcolor=[("active", C_FG), ("pressed", C_FG)],
+        )
+        style.map(
+            "Horizontal.TScrollbar",
+            background=[("active", C_ACC), ("pressed", C_ACC)],
+            arrowcolor=[("active", C_FG), ("pressed", C_FG)],
+        )
 
         # ==========================================================
         # KONIEC PROTOKOŁU BLACKOUT
@@ -152,6 +164,12 @@ class RenataApp:
         # =========================
         # GŁÓWNY NOTEBOOK
         # =========================
+        # Best-effort kolor chrome okna (Windows titlebar + border).
+        try:
+            apply_renata_orange_window_chrome(self.root)
+        except Exception as exc:
+            _log_app_fallback("window.chrome", "window chrome color unavailable", exc)
+
         self.main_nb = ttk.Notebook(self.root)
         self.main_nb.pack(fill="both", expand=1)
         self.main_nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)

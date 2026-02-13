@@ -130,6 +130,7 @@ class NeutronTab(ttk.Frame):
                 f_via,
                 orient="vertical",
                 command=self.via_canvas.yview,
+                style="Vertical.TScrollbar",
             )
             self.via_canvas.configure(yscrollcommand=self.via_scroll.set)
             self.via_canvas.pack(side="left", fill="x", expand=True)
