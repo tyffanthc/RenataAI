@@ -1482,6 +1482,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_spansh_copy_mode_actions",
         "test_spansh_export_actions_and_formats",
         "test_low_fuel_transient_startup_sco_guard",
+        "test_neutron_empty_state_skeleton_overlay",
         "test_trade_station_name_normalization",
         "test_trade_multi_commodity_aliases_and_metrics",
         "test_fss_last_body_before_full_9_of_10",
@@ -1494,6 +1495,31 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
     ]
     for test_name in required_tests:
         assert f"def {test_name}(" in self_content, f"Missing regression test function: {test_name}"
+
+
+def test_neutron_empty_state_skeleton_overlay(_ctx: TestContext) -> None:
+    neutron_path = os.path.join(ROOT_DIR, "gui/tabs/spansh/neutron.py")
+    with open(neutron_path, "r", encoding="utf-8", errors="ignore") as f:
+        neutron_content = f.read()
+
+    assert 'common.render_table_treeview(self.lst, "neutron", [])' in neutron_content, (
+        "Neutron should render skeleton table columns on startup"
+    )
+    assert 'display_mode="overlay_body"' in neutron_content, (
+        "Neutron empty state should use overlay_body mode"
+    )
+
+    empty_state_path = os.path.join(ROOT_DIR, "gui/empty_state.py")
+    with open(empty_state_path, "r", encoding="utf-8", errors="ignore") as f:
+        empty_state_content = f.read()
+
+    assert "def _detect_treeview_header_height" in empty_state_content, (
+        "empty_state should detect treeview header height for body-only overlay"
+    )
+    assert "height=-header_h" in empty_state_content, (
+        "overlay should be clipped to treeview body below header"
+    )
+
 
 # --- RUNNER ------------------------------------------------------------------
 
@@ -1526,6 +1552,7 @@ def run_all_tests() -> int:
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
         ("test_trade_station_picker_candidates_and_wiring", test_trade_station_picker_candidates_and_wiring),
         ("test_spansh_feedback_smoke_pack_coverage", test_spansh_feedback_smoke_pack_coverage),
+        ("test_neutron_empty_state_skeleton_overlay", test_neutron_empty_state_skeleton_overlay),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

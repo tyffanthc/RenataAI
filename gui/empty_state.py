@@ -105,10 +105,114 @@ def _resolve_container(target):
     return getattr(target, "_renata_state_container", None) or target
 
 
-def show_state(target, kind: str, title: str, message: str) -> None:
+def _detect_treeview_header_height(tree: ttk.Treeview) -> int:
+    try:
+        tree.update_idletasks()
+    except Exception:
+        return 24
+    try:
+        height = int(tree.winfo_height())
+    except Exception:
+        return 24
+    if height <= 1:
+        return 24
+    limit = max(1, min(96, height - 1))
+    probe_x = 8
+    for y in range(limit):
+        try:
+            region = tree.identify_region(probe_x, y)
+        except Exception:
+            region = ""
+        if region and region != "heading":
+            return max(1, y)
+    return 24
+
+
+def _place_overlay(target, overlay, display_mode: str) -> None:
+    if isinstance(target, ttk.Treeview) and display_mode == "overlay_body":
+        header_h = _detect_treeview_header_height(target)
+        overlay.place(
+            in_=target,
+            x=0,
+            y=header_h,
+            relwidth=1,
+            relheight=1,
+            height=-header_h,
+        )
+    else:
+        overlay.place(in_=target, x=0, y=0, relwidth=1, relheight=1)
+    try:
+        overlay.lift()
+    except Exception:
+        pass
+
+
+def _refresh_overlay_geometry(target) -> None:
+    if not bool(getattr(target, "_renata_state_visible", False)):
+        return
+    mode = getattr(target, "_renata_state_display_mode", None)
+    if mode != "overlay_body":
+        return
+    overlay = getattr(target, "_renata_state_overlay", None)
+    if overlay is None:
+        return
+    try:
+        if not overlay.winfo_exists():
+            return
+    except Exception:
+        return
+    _place_overlay(target, overlay, mode)
+
+
+def show_state(
+    target,
+    kind: str,
+    title: str,
+    message: str,
+    *,
+    display_mode: str = "replace",
+) -> None:
     container = _resolve_container(target)
     if not title and not message:
         hide_state(target)
+        return
+
+    if display_mode == "overlay_body":
+        overlay = getattr(target, "_renata_state_overlay", None)
+        if overlay is None or not overlay.winfo_exists():
+            overlay = ttk.Frame(target)
+            title_label = ttk.Label(overlay, text="", font=("Arial", 10, "bold"))
+            title_label.pack(anchor="center", pady=(16, 0))
+            msg_label = ttk.Label(overlay, text="", font=("Arial", 9))
+            msg_label.pack(anchor="center", pady=(2, 0))
+            target._renata_state_overlay = overlay  # type: ignore[attr-defined]
+            target._renata_state_title = title_label  # type: ignore[attr-defined]
+            target._renata_state_message = msg_label  # type: ignore[attr-defined]
+        else:
+            title_label = getattr(target, "_renata_state_title", None)
+            msg_label = getattr(target, "_renata_state_message", None)
+
+        if title_label is not None:
+            title_label.config(text=title)
+        if msg_label is not None:
+            msg_label.config(text=message or "")
+            if message:
+                msg_label.pack(anchor="center", pady=(2, 0))
+            else:
+                msg_label.pack_forget()
+
+        _place_overlay(target, overlay, display_mode)
+        if not bool(getattr(target, "_renata_state_overlay_bound", False)):
+            target.bind(
+                "<Configure>",
+                lambda _ev, widget=target: _refresh_overlay_geometry(widget),
+                add="+",
+            )
+            target._renata_state_overlay_bound = True  # type: ignore[attr-defined]
+
+        target._renata_state_visible = True  # type: ignore[attr-defined]
+        target._renata_state_kind = kind  # type: ignore[attr-defined]
+        target._renata_state_display_mode = display_mode  # type: ignore[attr-defined]
         return
 
     parent = container.master
@@ -159,9 +263,21 @@ def show_state(target, kind: str, title: str, message: str) -> None:
 
     container._renata_state_visible = True  # type: ignore[attr-defined]
     container._renata_state_kind = kind  # type: ignore[attr-defined]
+    container._renata_state_display_mode = display_mode  # type: ignore[attr-defined]
 
 
 def hide_state(target) -> None:
+    mode = getattr(target, "_renata_state_display_mode", None)
+    if mode == "overlay_body":
+        overlay = getattr(target, "_renata_state_overlay", None)
+        if overlay is not None:
+            try:
+                overlay.place_forget()
+            except Exception:
+                pass
+        target._renata_state_visible = False  # type: ignore[attr-defined]
+        return
+
     container = _resolve_container(target)
     frame = getattr(container, "_renata_state_frame", None)
     pack_info = getattr(container, "_renata_state_pack_info", None)

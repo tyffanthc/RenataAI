@@ -169,6 +169,7 @@ class NeutronTab(ttk.Frame):
         # Lista wynikow
         if self._use_treeview:
             self.lst = common.stworz_tabele_trasy(fr, title=ui.LIST_TITLE_NEUTRON)
+            common.render_table_treeview(self.lst, "neutron", [])
         else:
             self.lst = common.stworz_liste_trasy(fr, title=ui.LIST_TITLE_NEUTRON)
         common.attach_results_context_menu(
@@ -179,7 +180,13 @@ class NeutronTab(ttk.Frame):
         self._results_widget = self.lst
         common.enable_results_checkboxes(self.lst, enabled=True)
         title, message = empty_state.get_copy("no_results")
-        empty_state.show_state(self.lst, empty_state.UIState.EMPTY, title, message)
+        empty_state.show_state(
+            self.lst,
+            empty_state.UIState.EMPTY,
+            title,
+            message,
+            display_mode="overlay_body",
+        )
         if self._last_req_enabled:
             self._build_last_request_ui(fr)
 
@@ -271,7 +278,13 @@ class NeutronTab(ttk.Frame):
         self._results_rows = []
         self._results_row_offset = 0
         title, message = empty_state.get_copy("no_results")
-        empty_state.show_state(self.lst, empty_state.UIState.EMPTY, title, message)
+        empty_state.show_state(
+            self.lst,
+            empty_state.UIState.EMPTY,
+            title,
+            message,
+            display_mode="overlay_body",
+        )
 
     def apply_jump_range_from_ship(self, value: float | None) -> None:
         if not config.get("planner_auto_use_ship_jump_range", True):
@@ -441,7 +454,13 @@ class NeutronTab(ttk.Frame):
                             ui_target="neu",
                         )
                         title, message = empty_state.get_copy("no_results")
-                        empty_state.show_state(self.lst, empty_state.UIState.EMPTY, title, message)
+                        empty_state.show_state(
+                            self.lst,
+                            empty_state.UIState.EMPTY,
+                            title,
+                            message,
+                            display_mode="overlay_body",
+                        )
                 except Exception:
                     common.emit_status(
                         "ERROR",
