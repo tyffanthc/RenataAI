@@ -239,6 +239,20 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
                         return num_nested
         return None
 
+    def _pick_nested_trade_number(
+        entry: dict,
+        parent_keys: Iterable[str],
+        number_keys: Iterable[str],
+    ) -> int | None:
+        for parent_key in parent_keys:
+            nested = entry.get(parent_key)
+            if not isinstance(nested, dict):
+                continue
+            num = _pick_trade_number(nested, number_keys)
+            if num is not None:
+                return num
+        return None
+
     def _to_epoch_seconds(value: Any) -> int | None:
         if value is None:
             return None
@@ -492,7 +506,19 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
             )
             amount = _pick_trade_number(item, ("amount", "qty", "quantity", "tons", "tonnage", "units"))
             buy_price = _pick_trade_number(item, ("buy_price", "buyPrice", "buy", "buy_price_cr", "buyPriceCr"))
+            if buy_price is None:
+                buy_price = _pick_nested_trade_number(
+                    item,
+                    ("source_commodity", "sourceCommodity", "buy_commodity", "buyCommodity", "source"),
+                    ("buy_price", "buyPrice", "buy", "price"),
+                )
             sell_price = _pick_trade_number(item, ("sell_price", "sellPrice", "sell", "sell_price_cr", "sellPriceCr"))
+            if sell_price is None:
+                sell_price = _pick_nested_trade_number(
+                    item,
+                    ("destination_commodity", "destinationCommodity", "sell_commodity", "sellCommodity", "destination"),
+                    ("sell_price", "sellPrice", "sell", "price"),
+                )
             profit_unit = _pick_trade_number(
                 item,
                 (

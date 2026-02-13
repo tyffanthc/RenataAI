@@ -1249,6 +1249,38 @@ def test_trade_updated_buy_sell_pair_from_market_timestamps(_ctx: TestContext) -
     assert " / " in updated_display, "Expected combined buy/sell updated display"
 
 
+def test_trade_nested_source_destination_prices_for_details(_ctx: TestContext) -> None:
+    sample = {
+        "result": [
+            {
+                "from": {"system": "DIAGUANDRI", "station": "Ray Gateway"},
+                "to": {"system": "Tascheter Sector RT-R a4-0", "station": "Fibonacci Relay"},
+                "distance": 46.74,
+                "commodities": [
+                    {
+                        "name": "Liquid oxygen",
+                        "amount": 256,
+                        "profit": 1614,
+                        "total_profit": 413184,
+                        "source_commodity": {"buy_price": 719},
+                        "destination_commodity": {"sell_price": 2333},
+                    }
+                ],
+            }
+        ]
+    }
+    _route, rows = normalize_trade_rows(sample)
+    assert len(rows) == 1, f"Expected one trade row, got {len(rows)}"
+    row = rows[0]
+    assert row.get("buy_price") == 719, "Expected buy_price from source_commodity.buy_price"
+    assert row.get("sell_price") == 2333, "Expected sell_price from destination_commodity.sell_price"
+    commodities = row.get("commodities_raw") or []
+    assert isinstance(commodities, list) and commodities, "Expected commodities_raw to be populated"
+    first = commodities[0]
+    assert first.get("buy_price") == 719, "Expected details buy_price from nested source commodity"
+    assert first.get("sell_price") == 2333, "Expected details sell_price from nested destination commodity"
+
+
 def test_tts_polish_diacritics_global(_ctx: TestContext) -> None:
     fss = prepare_tts("MSG.FSS_PROGRESS_50", {})
     assert fss and "Połowa systemu przeskanowana." in fss, "Expected Polish diacritics in FSS text"
@@ -1698,6 +1730,7 @@ def run_all_tests() -> int:
         ("test_trade_station_name_normalization", test_trade_station_name_normalization),
         ("test_trade_multi_commodity_aliases_and_metrics", test_trade_multi_commodity_aliases_and_metrics),
         ("test_trade_updated_buy_sell_pair_from_market_timestamps", test_trade_updated_buy_sell_pair_from_market_timestamps),
+        ("test_trade_nested_source_destination_prices_for_details", test_trade_nested_source_destination_prices_for_details),
         ("test_fss_last_body_before_full_9_of_10", test_fss_last_body_before_full_9_of_10),
         ("test_fss_last_body_before_full_11_of_12", test_fss_last_body_before_full_11_of_12),
         ("test_tts_polish_diacritics_global", test_tts_polish_diacritics_global),
