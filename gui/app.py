@@ -142,10 +142,22 @@ class RenataApp:
         style.configure("TCheckbutton", background=C_BG, foreground=C_SEC)
         style.map("TCheckbutton", background=[('active', C_BG)], foreground=[('active', "#ffffff")])
 
-        # Scrollbary (Paski przewijania) - globalny styl
-        style.configure("TScrollbar", background=C_ACC, troughcolor=C_BG, borderwidth=0, arrowcolor=C_FG)
-        style.configure("Vertical.TScrollbar", background=C_ACC, troughcolor=C_BG, borderwidth=0, arrowcolor=C_FG)
-        style.configure("Horizontal.TScrollbar", background=C_ACC, troughcolor=C_BG, borderwidth=0, arrowcolor=C_FG)
+        # Scrollbary (Paski przewijania) - globalny styl (pion/poziom identycznie)
+        sb_kwargs = {
+            "background": C_ACC,
+            "troughcolor": C_BG,
+            "borderwidth": 0,
+            "arrowcolor": C_FG,
+            "relief": "flat",
+        }
+        style.configure("TScrollbar", **sb_kwargs)
+        style.configure("Vertical.TScrollbar", **sb_kwargs)
+        style.configure("Horizontal.TScrollbar", **sb_kwargs)
+        style.map(
+            "TScrollbar",
+            background=[("active", C_ACC), ("pressed", C_ACC)],
+            arrowcolor=[("active", C_FG), ("pressed", C_FG)],
+        )
         style.map(
             "Vertical.TScrollbar",
             background=[("active", C_ACC), ("pressed", C_ACC)],
