@@ -1,3 +1,4 @@
+import tkinter as tk
 from tkinter import ttk
 
 
@@ -155,6 +156,26 @@ def _place_overlay(target, overlay, display_mode: str) -> None:
         pass
 
 
+def _resolve_treeview_overlay_colors(tree: ttk.Treeview) -> tuple[str, str]:
+    try:
+        style = ttk.Style(tree)
+    except Exception:
+        style = ttk.Style()
+
+    bg = (
+        style.lookup("Treeview", "fieldbackground")
+        or style.lookup("Treeview", "background")
+        or style.lookup("TFrame", "background")
+        or "#1f2c3d"
+    )
+    fg = (
+        style.lookup("TLabel", "foreground")
+        or style.lookup("Treeview", "foreground")
+        or "#d97a00"
+    )
+    return str(bg), str(fg)
+
+
 def _refresh_overlay_geometry(target) -> None:
     if not bool(getattr(target, "_renata_state_visible", False)):
         return
@@ -188,10 +209,26 @@ def show_state(
     if display_mode == "overlay_body":
         overlay = getattr(target, "_renata_state_overlay", None)
         if overlay is None or not overlay.winfo_exists():
-            overlay = ttk.Frame(target)
-            title_label = ttk.Label(overlay, text="", font=("Arial", 10, "bold"))
+            if isinstance(target, ttk.Treeview):
+                bg, fg = _resolve_treeview_overlay_colors(target)
+            else:
+                bg, fg = "#1f2c3d", "#d97a00"
+            overlay = tk.Frame(target, bg=bg, bd=0, highlightthickness=0)
+            title_label = tk.Label(
+                overlay,
+                text="",
+                font=("Arial", 10, "bold"),
+                bg=bg,
+                fg=fg,
+            )
             title_label.pack(anchor="center", pady=(16, 0))
-            msg_label = ttk.Label(overlay, text="", font=("Arial", 9))
+            msg_label = tk.Label(
+                overlay,
+                text="",
+                font=("Arial", 9),
+                bg=bg,
+                fg=fg,
+            )
             msg_label.pack(anchor="center", pady=(2, 0))
             target._renata_state_overlay = overlay  # type: ignore[attr-defined]
             target._renata_state_title = title_label  # type: ignore[attr-defined]
