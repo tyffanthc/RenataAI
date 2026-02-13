@@ -142,6 +142,24 @@ class RenataApp:
         style.configure("TCheckbutton", background=C_BG, foreground=C_SEC)
         style.map("TCheckbutton", background=[('active', C_BG)], foreground=[('active', "#ffffff")])
 
+        # Suwaki (Scale) - ciemny tor + czytelny uchwyt
+        style.configure(
+            "TScale",
+            background=C_BG,
+            troughcolor=C_ACC,
+            bordercolor=C_BG,
+            lightcolor=C_BG,
+            darkcolor=C_BG,
+        )
+        style.configure(
+            "Horizontal.TScale",
+            background=C_BG,
+            troughcolor=C_ACC,
+            bordercolor=C_BG,
+            lightcolor=C_BG,
+            darkcolor=C_BG,
+        )
+
         # Scrollbary (Paski przewijania) - globalny styl (pion/poziom identycznie)
         sb_kwargs = {
             "background": C_ACC,

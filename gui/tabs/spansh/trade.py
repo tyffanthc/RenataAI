@@ -429,6 +429,7 @@ class TradeTab(ttk.Frame):
                 variable=self.var_market_age_hours,
 
                 command=self._on_market_age_slider,
+                style="Horizontal.TScale",
 
             )
 

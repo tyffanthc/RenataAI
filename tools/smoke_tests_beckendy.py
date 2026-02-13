@@ -1714,6 +1714,9 @@ def test_global_scrollbar_style_and_window_chrome_wiring(_ctx: TestContext) -> N
         "sb_kwargs = {",
         "\"troughcolor\": C_BG,",
         "\"arrowcolor\": C_FG,",
+        "style.configure(",
+        "\"Horizontal.TScale\",",
+        "troughcolor=C_ACC,",
         "style.configure(\"TScrollbar\", **sb_kwargs)",
         "style.configure(\"Vertical.TScrollbar\", **sb_kwargs)",
         "style.configure(\"Horizontal.TScrollbar\", **sb_kwargs)",
@@ -1750,6 +1753,11 @@ def test_global_scrollbar_style_and_window_chrome_wiring(_ctx: TestContext) -> N
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
         assert "style=\"Vertical.TScrollbar\"" in content, f"Missing explicit Vertical.TScrollbar usage in {path}"
+
+    trade_path = os.path.join(ROOT_DIR, "gui/tabs/spansh/trade.py")
+    with open(trade_path, "r", encoding="utf-8", errors="ignore") as f:
+        trade_content = f.read()
+    assert "style=\"Horizontal.TScale\"" in trade_content, "Missing explicit Horizontal.TScale usage for market age slider"
 
 
 # --- RUNNER ------------------------------------------------------------------
