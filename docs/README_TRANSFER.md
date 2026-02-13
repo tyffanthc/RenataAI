@@ -23,18 +23,28 @@ All trademarks and brand names belong to their respective owners.
 - `docs/COMPLIANCE_CHECKLIST.md` - compliance + licenses
 - `docs/README_TRANSFER.md` - handoff summary (this file)
 
-## Recent updates (0.9.2-preview)
-- Route/nav symbiosis improved: milestone progress 25/50/75/100 per active segment.
-- Desync warnings now use confirmation guard to reduce false positives.
-- NEXT_HOP semantics corrected (real next target instead of current system).
-- FSS flow improved: policy-wired progress messages and full-scan ordering.
-- Exobio flow expanded with real distance checks from `Status.json`.
-- Startup reliability fixes:
-  - restored Start prefill after bootstrap,
-  - calmer watcher JSON/I/O wording,
-  - low-fuel startup transient guards.
-- Piper TTS preflight on Windows to prevent focus-stealing popup.
-- Portable mode starter remains available in ZIP (`start_renata_portable.bat` + `PORTABLE_MODE.txt`).
+## Recent updates (0.9.4-preview)
+- Trade normalization hardened for `commodity` and `commodities[]` payload variants.
+- Trade table now maps and renders:
+  - commodity aggregate labels (`Commodity +N`),
+  - cumulative profit,
+  - market age buy/sell pair (`Wiek rynku K/S`),
+  - fallback jump count per leg.
+- Trade details panel expanded:
+  - per-leg commodity breakdown,
+  - buy/sell prices from nested source/destination fields when available.
+- Trade UX/layout updates:
+  - split-view (route + details),
+  - compact startup with details opened by selection,
+  - improved empty-state behavior in route planners.
+- FSS wording/order polished:
+  - stable 25/50/75/100 flow,
+  - last-body cue only at N-1/N,
+  - full-scan line at N/N.
+- Fuel low false positives reduced for startup/SCO transient status samples.
+- Global UI consistency pass:
+  - unified scrollbar styling,
+  - improved popup/window chrome consistency.
 
 ## Where to look in code
 - UI tabs: `gui/tabs/*`

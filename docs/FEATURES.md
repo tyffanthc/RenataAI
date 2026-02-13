@@ -1,4 +1,4 @@
-# R.E.N.A.T.A. (RenataAI) - Features (v0.9.2-preview)
+# R.E.N.A.T.A. (RenataAI) - Features (v0.9.4-preview)
 
 R.E.N.A.T.A. = Route, Exploration & Navigation Assistant for Trading & Analysis.
 
@@ -50,7 +50,11 @@ Common flow: request -> normalize -> render -> status update.
 - Station suggestions by system.
 - EDSM-backed station list on focus (when online provider is enabled).
 - Spansh fallback autocomplete on typed query.
-- Market Age controls (flagged).
+- Trade row normalization for single/multi-commodity legs.
+- Cumulative profit mapping and detail panel per selected leg.
+- Market age pair for buy/sell side (`Wiek rynku K/S`).
+- Fallback jumps calculation per leg when API omits jump count.
+- Split-view layout (route table + details panel).
 - Jackpot thresholds and jackpot voice alerts.
 
 ## Voice (TTS)
@@ -79,6 +83,7 @@ Common flow: request -> normalize -> render -> status update.
 - Startup bootstrap avoids replay navigation spam.
 - Start field prefill is restored after bootstrap.
 - Status watcher JSON/I/O logs are calmer and non-critical.
+- Fuel low warning hardened against startup/SCO transient samples.
 
 ## Providers and networking
 - Centralized Spansh client.

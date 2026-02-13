@@ -11,13 +11,14 @@ Renata to asystent decyzyjny, nie autopilot.
 - podaje krotsze, kontekstowe komunikaty TTS,
 - ogranicza spam i dba o czytelnosc informacji.
 
-## Co Renata robi dzisiaj (v0.9.2)
+## Co Renata robi dzisiaj (v0.9.4)
 - Zakladki Spansh: `Neutron`, `Riches`, `Ammonia`, `ELW`, `HMC`, `Exomastery`, `Trade`.
 - Route workflow z auto-clipboard i wskazaniem kolejnego celu.
-- Trade helper z walidacja danych i wynikami tabelarycznymi.
+- Trade helper z walidacja danych, split-view i panelem szczegolow kroku.
+- Trade pokazuje `Wiek rynku K/S`, `Cumulative Profit` i fallback wyliczania `Skoki [szt]`.
 - Exploration callouty (FSS, high-value hints, exobio sample flow).
 - Globalny pipeline TTS (Piper/pyttsx3) z polityka anti-spam.
-- Konfigurowalne UI tabel (Treeview, kolumny, sort, copy/export).
+- Konfigurowalne UI tabel (Treeview, kolumny, sort, copy/export) + spojny globalny styl scrollbarow.
 
 ## Jak Renata dziala (high-level)
 1. Main loop czyta pliki gry (Journal + watchery pomocnicze).

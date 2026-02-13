@@ -19,11 +19,20 @@
 - FREE tabs: in FREE mode visible only Pulpit/Spansh/Dziennik/Settings.
 - Treeview tables: headers visible, sort by header works, LP column present.
 - Column Picker: toggle columns, presets apply, restart keeps layout.
-- Context menu on results (if enabled): copy, set Start/Cel, CSV/TSV.
+- Context menu on results (if enabled): copy, set Start/Cel/Via, export options per current UI.
 - Trade: required field `Stacja*` validation, no request when empty.
 - Trade: station suggestions on focus:
   - EDSM ON -> list appears after load
   - EDSM OFF -> clear hint text shown
+- Trade: verify split-view behavior:
+  - details panel opens after row selection,
+  - details panel can be hidden/shown without breaking main table.
+- Trade: verify columns render values (no empty placeholders when payload contains data):
+  - `Towar`
+  - `Zysk [cr]`
+  - `Zysk/t [cr]`
+  - `Cumulative Profit [cr]`
+  - `Wiek rynku K/S`
 
 ## Navigation / route behavior (manual)
 - Plan Neutron route with long in-game segment before first neutron.
