@@ -193,7 +193,7 @@ def _maybe_speak_fss_full(gui_ref=None) -> bool:
 
     if DEBOUNCER.can_send("FSS_FULL", 120, context=system_name):
         powiedz(
-            "System w peÄąâ€šni przeskanowany.",
+            "System w pe?ni przeskanowany.",
             gui_ref,
             message_id="MSG.SYSTEM_FULLY_SCANNED",
             context={"system": system_name},
