@@ -25,6 +25,7 @@ from logic.spansh_payloads import SpanshPayload
 
 from logic.utils.notify import powiedz, DEBOUNCER, MSG_QUEUE
 from logic.utils.http_edsm import is_edsm_enabled
+from logic.utils.renata_log import log_event, log_event_throttled
 from logic.request_dedup import make_request_key, run_deduped
 
 
@@ -179,6 +180,21 @@ class SpanshClient:
     def _set_last_request(self, data: Dict[str, Any]) -> None:
         self._last_request = dict(data)
 
+    def _spansh_debug_enabled(self) -> bool:
+        return bool(
+            config.get("features.spansh.debug_payload", False)
+            or config.get("debug_logging", False)
+            or config.get("debug_cache", False)
+        )
+
+    def _log_debug(self, msg: str, **fields: Any) -> None:
+        if not self._spansh_debug_enabled():
+            return
+        log_event("SPANSH", msg, **fields)
+
+    def _log_warn(self, key: str, msg: str, **fields: Any) -> None:
+        log_event_throttled(key, 3000, "SPANSH", msg, **fields)
+
     # ------------------------------------------------------------------ public
 
     def systems_suggest(self, q: str) -> List[str]:
@@ -218,7 +234,13 @@ class SpanshClient:
                 )
             except Exception as e:  # noqa: BLE001
                 # Autocomplete traktujemy łagodnie – log tylko do konsoli.
-                print(f"[Spansh] Autocomplete exception ({q!r}): {e}")
+                self._log_warn(
+                    "SPANSH:autocomplete_exception",
+                    "autocomplete exception",
+                    query=q,
+                    attempt=attempt + 1,
+                    error=f"{type(e).__name__}: {e}",
+                )
                 if use_edsm:
                     try:
                         from logic.utils.http_edsm import edsm_systems_suggest
@@ -231,7 +253,12 @@ class SpanshClient:
                 try:
                     data = res.json()
                 except Exception as e:  # noqa: BLE001
-                    print(f"[Spansh] Autocomplete JSON error ({q!r}): {e}")
+                    self._log_warn(
+                        "SPANSH:autocomplete_json_error",
+                        "autocomplete json decode error",
+                        query=q,
+                        error=f"{type(e).__name__}: {e}",
+                    )
                     return []
 
                 names = self._extract_name_list(
@@ -240,7 +267,7 @@ class SpanshClient:
                     name_keys=("name", "system"),
                 )
 
-                print(f"[Spansh] '{q}' → {len(names)} wyników")
+                self._log_debug("autocomplete response", query=q, results=len(names))
                 if names:
                     return names
                 if use_edsm:
@@ -252,7 +279,12 @@ class SpanshClient:
                 return []
 
             # inne kody HTTP – dla autocomplete nie robimy retry w nieskończoność
-            print(f"[Spansh] HTTP {res.status_code} dla '{q}' (autocomplete)")
+            self._log_warn(
+                "SPANSH:autocomplete_http",
+                "autocomplete http status",
+                query=q,
+                status_code=res.status_code,
+            )
             if res.status_code in (400, 401, 403, 404):
                 break
 
@@ -289,7 +321,7 @@ class SpanshClient:
 
         headers = self._headers(referer="https://spansh.co.uk/trade")
         if config.get("features.spansh.debug_payload", False):
-            print(f"[Spansh] stations request url={url} params={params}")
+            self._log_debug("stations request", url=url, params=params)
 
         for attempt in range(max(1, self.default_retries)):
             try:
@@ -300,14 +332,27 @@ class SpanshClient:
                     timeout=self.default_timeout,
                 )
             except Exception as e:  # noqa: BLE001
-                print(f"[Spansh] Stations exception ({system!r}, {q!r}): {e}")
+                self._log_warn(
+                    "SPANSH:stations_exception",
+                    "stations request exception",
+                    system=system,
+                    query=q,
+                    attempt=attempt + 1,
+                    error=f"{type(e).__name__}: {e}",
+                )
                 return []
 
             if res.status_code == 200:
                 try:
                     data = res.json()
                 except Exception as e:  # noqa: BLE001
-                    print(f"[Spansh] Stations JSON error ({system!r}, {q!r}): {e}")
+                    self._log_warn(
+                        "SPANSH:stations_json_error",
+                        "stations json decode error",
+                        system=system,
+                        query=q,
+                        error=f"{type(e).__name__}: {e}",
+                    )
                     return []
 
                 names = self._extract_name_list(
@@ -318,11 +363,15 @@ class SpanshClient:
                     limit=200,
                 )
 
-                print(f"[Spansh] stations '{system}' ('{q}') → {len(names)} wyników")
+                self._log_debug("stations response", system=system, query=q, results=len(names))
                 return names
 
-            print(
-                f"[Spansh] HTTP {res.status_code} dla stations(system={system!r}, q={q!r})"
+            self._log_warn(
+                "SPANSH:stations_http",
+                "stations http status",
+                system=system,
+                query=q,
+                status_code=res.status_code,
             )
             if res.status_code in (400, 401, 403, 404):
                 break
@@ -613,10 +662,13 @@ class SpanshClient:
             return None
 
         if response.status_code not in (200, 202):
-            try:
-                print(f"[Spansh] {ctx.mode} HTTP {response.status_code} body: {response.text}")
-            except Exception:
-                pass
+            self._log_warn(
+                f"SPANSH:route_http:{ctx.mode}",
+                "route request http error",
+                mode=ctx.mode,
+                status_code=response.status_code,
+                body=str(getattr(response, "text", ""))[:400],
+            )
             spansh_error(
                 f"{ctx.mode.upper()}: HTTP {response.status_code} przy wysyłaniu joba.",
                 gui_ref,
@@ -922,9 +974,13 @@ class SpanshClient:
             payload_json = json.dumps(payload or {}, sort_keys=True, ensure_ascii=True)
         except Exception:
             payload_json = "{}"
-        print(
-            f"[CACHE] SPANSH {mode} {path} {label} "
-            f"key={cache_key} payload={payload_json}"
+        self._log_debug(
+            "cache lookup",
+            mode=mode,
+            path=path,
+            label=label,
+            cache_key=cache_key,
+            payload=payload_json,
         )
 
         if payload is None:
@@ -938,7 +994,7 @@ class SpanshClient:
                 if prev.get(key) != payload.get(key):
                     diff.append(f"{key}: {prev.get(key)!r} -> {payload.get(key)!r}")
             if diff:
-                print(f"[CACHE] SPANSH payload_diff: " + "; ".join(diff))
+                self._log_debug("cache payload diff", mode=mode, path=path, diff="; ".join(diff))
         self._debug_cache_payloads[debug_key] = payload
 
 
