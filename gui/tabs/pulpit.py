@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk
 import config
 
 
@@ -112,13 +112,29 @@ class PulpitTab(ttk.Frame):
         log_frame = ttk.Frame(self)
         log_frame.pack(fill="both", expand=True, padx=5, pady=(0, 5))
 
-        self.log_area = scrolledtext.ScrolledText(
-            log_frame,
+        log_text_wrap = ttk.Frame(log_frame)
+        log_text_wrap.pack(fill="both", expand=True)
+
+        log_scroll = ttk.Scrollbar(log_text_wrap, orient="vertical", style="Vertical.TScrollbar")
+        log_scroll.pack(side="right", fill="y")
+
+        self.log_area = tk.Text(
+            log_text_wrap,
             height=20,
             state="disabled",
             wrap="word",
+            yscrollcommand=log_scroll.set,
+            bg="#1f2833",
+            fg="#ffffff",
+            insertbackground="#ff7100",
+            selectbackground="#ff7100",
+            selectforeground="#0b0c10",
+            highlightthickness=0,
+            bd=0,
+            relief="flat",
         )
-        self.log_area.pack(fill="both", expand=True)
+        self.log_area.pack(side="left", fill="both", expand=True)
+        log_scroll.configure(command=self.log_area.yview)
 
     # ------------------------------------------------------------
     # STATUS
