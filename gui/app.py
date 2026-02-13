@@ -145,21 +145,34 @@ class RenataApp:
         # Suwaki (Scale) - ciemny tor + czytelny uchwyt
         style.configure(
             "TScale",
-            background=C_ACC,
-            troughcolor=C_BG,
-            bordercolor=C_BG,
+            background=C_FG,
+            troughcolor=C_ACC,
+            bordercolor="#d0ccc6",
             lightcolor=C_BG,
             darkcolor=C_BG,
             borderwidth=0,
+            focuscolor="#d0ccc6",
+            focusthickness=0,
         )
         style.configure(
             "Horizontal.TScale",
-            background=C_ACC,
-            troughcolor=C_BG,
-            bordercolor=C_BG,
+            background=C_FG,
+            troughcolor=C_ACC,
+            bordercolor="#d0ccc6",
             lightcolor=C_BG,
             darkcolor=C_BG,
             borderwidth=0,
+            focuscolor="#d0ccc6",
+            focusthickness=0,
+        )
+        style.map(
+            "Horizontal.TScale",
+            background=[("active", C_FG), ("!active", C_FG)],
+            troughcolor=[("active", C_ACC), ("!active", C_ACC)],
+            bordercolor=[("active", "#d0ccc6"), ("!active", "#d0ccc6")],
+            lightcolor=[("active", C_BG), ("!active", C_BG)],
+            darkcolor=[("active", C_BG), ("!active", C_BG)],
+            focuscolor=[("focus", "#d0ccc6"), ("!focus", "#d0ccc6")],
         )
 
         # Scrollbary (Paski przewijania) - globalny styl (pion/poziom identycznie)
@@ -727,7 +740,13 @@ class RenataApp:
                 interval_ms=15000,
             )
             w = e.widget
-        print("[APPDBG] click widget=", w, "class=", w.winfo_class() if w is not None else None)
+        if config.get("features.debug.input_trace", False):
+            log_event(
+                "APPDBG",
+                "click widget",
+                widget=str(w),
+                widget_class=w.winfo_class() if w is not None else None,
+            )
         try:
             from gui.common_autocomplete import AutocompleteController
             active_owner = AutocompleteController._active_owner
@@ -742,7 +761,8 @@ class RenataApp:
         is_listbox = isinstance(w, tk.Listbox) or getattr(w, "_renata_autocomplete", False)
         is_entry = isinstance(w, (tk.Entry, ttk.Entry))
         if is_listbox or (active_owner is not None and is_entry and w == active_owner.entry):
-            print("[APPDBG] ignore_autocomplete_click")
+            if config.get("features.debug.input_trace", False):
+                log_event("APPDBG", "ignore autocomplete click")
             return
         self.root.after_idle(self.tab_spansh.hide_suggestions)
 
@@ -870,8 +890,14 @@ class RenataApp:
         """
         try:
             self.tab_pulpit.log(msg)
-        except Exception:
-            print(msg)
+        except Exception as exc:
+            _log_app_fallback(
+                "show_status.log",
+                "failed to write status to pulpit log",
+                exc,
+                interval_ms=2000,
+                message=msg,
+            )
 
     # ------------------------------------------------------------------ #
     #   Overlay / quick-view
