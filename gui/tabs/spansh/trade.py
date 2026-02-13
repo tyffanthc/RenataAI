@@ -18,6 +18,7 @@ from logic.utils.http_edsm import edsm_stations_for_system, is_edsm_enabled
 from logic.spansh_client import client as spansh_client
 
 from gui import common
+from gui import empty_state
 
 from gui import strings as ui
 
@@ -565,6 +566,7 @@ class TradeTab(ttk.Frame):
         if self._use_treeview:
 
             self.lst_trade = common.stworz_tabele_trasy(fr, title=ui.LIST_TITLE_TRADE)
+            common.render_table_treeview(self.lst_trade, "trade", [])
 
         else:
 
@@ -581,6 +583,7 @@ class TradeTab(ttk.Frame):
         )
         self._results_widget = self.lst_trade
         common.enable_results_checkboxes(self.lst_trade, enabled=True)
+        self._show_empty_state()
         if isinstance(self.lst_trade, ttk.Treeview):
             self.lst_trade.bind("<<TreeviewSelect>>", self._on_results_selection_changed, add="+")
         else:
@@ -2143,6 +2146,23 @@ class TradeTab(ttk.Frame):
         self._last_effective_jump_range = None
         self._clear_trade_summary()
         self._clear_trade_leg_details()
+        self._show_empty_state()
+
+    def _show_empty_state(self) -> None:
+        title, message = empty_state.get_copy("no_results")
+        if isinstance(self.lst_trade, ttk.Treeview):
+            empty_state.show_state(
+                self.lst_trade,
+                empty_state.UIState.EMPTY,
+                title,
+                message,
+                display_mode="overlay_body",
+            )
+            return
+        empty_state.show_state(self.lst_trade, empty_state.UIState.EMPTY, title, message)
+
+    def _hide_empty_state(self) -> None:
+        empty_state.hide_state(self.lst_trade)
 
 
 
@@ -2520,6 +2540,7 @@ class TradeTab(ttk.Frame):
                             ]
                             common.register_active_route_list(self.lst_trade, opis)
                             common.wypelnij_liste(self.lst_trade, opis)
+                        self._hide_empty_state()
                         self._update_trade_summary(rows)
                         self._select_first_result_row()
                         common.handle_route_ready_autoclipboard(self, tr, status_target="trade")
@@ -2532,6 +2553,7 @@ class TradeTab(ttk.Frame):
                         )
                     else:
                         self._clear_trade_summary()
+                        self._show_empty_state()
                         common.emit_status(
                             "ERROR",
                             "TRADE_NO_RESULTS",

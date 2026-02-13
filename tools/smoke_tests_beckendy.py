@@ -1483,6 +1483,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_spansh_export_actions_and_formats",
         "test_low_fuel_transient_startup_sco_guard",
         "test_neutron_empty_state_skeleton_overlay",
+        "test_spansh_empty_state_skeleton_overlay_parity",
         "test_trade_station_name_normalization",
         "test_trade_multi_commodity_aliases_and_metrics",
         "test_fss_last_body_before_full_9_of_10",
@@ -1521,6 +1522,34 @@ def test_neutron_empty_state_skeleton_overlay(_ctx: TestContext) -> None:
     )
 
 
+def test_spansh_empty_state_skeleton_overlay_parity(_ctx: TestContext) -> None:
+    planner_base_path = os.path.join(ROOT_DIR, "gui/tabs/spansh/planner_base.py")
+    with open(planner_base_path, "r", encoding="utf-8", errors="ignore") as f:
+        planner_base_content = f.read()
+
+    assert "from gui import empty_state" in planner_base_content, (
+        "planner_base should import empty_state"
+    )
+    assert "common.render_table_treeview(list_widget, self._schema_id, [])" in planner_base_content, (
+        "planner_base should render skeleton columns for treeview tabs"
+    )
+    assert "display_mode=\"overlay_body\"" in planner_base_content, (
+        "planner_base should use body-only overlay for treeview empty-state"
+    )
+
+    trade_path = os.path.join(ROOT_DIR, "gui/tabs/spansh/trade.py")
+    with open(trade_path, "r", encoding="utf-8", errors="ignore") as f:
+        trade_content = f.read()
+
+    assert "from gui import empty_state" in trade_content, "trade tab should import empty_state"
+    assert "common.render_table_treeview(self.lst_trade, \"trade\", [])" in trade_content, (
+        "trade tab should render skeleton columns on startup"
+    )
+    assert "display_mode=\"overlay_body\"" in trade_content, (
+        "trade tab should use body-only overlay for empty-state"
+    )
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1553,6 +1582,7 @@ def run_all_tests() -> int:
         ("test_trade_station_picker_candidates_and_wiring", test_trade_station_picker_candidates_and_wiring),
         ("test_spansh_feedback_smoke_pack_coverage", test_spansh_feedback_smoke_pack_coverage),
         ("test_neutron_empty_state_skeleton_overlay", test_neutron_empty_state_skeleton_overlay),
+        ("test_spansh_empty_state_skeleton_overlay_parity", test_spansh_empty_state_skeleton_overlay_parity),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

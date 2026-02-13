@@ -8,6 +8,7 @@ import config
 from app.route_manager import route_manager
 from app.state import app_state
 from gui import common
+from gui import empty_state
 from gui import strings as ui
 from gui.ui_thread import run_on_ui_thread
 from logic import utils
@@ -73,6 +74,7 @@ class SpanshPlannerBase(ttk.Frame):
         common.clear_results_checkboxes(list_widget)
         self._results_rows = []
         self._results_row_offset = 0
+        self._show_empty_state(list_widget)
 
     def _build_centered_actions_row(
         self,
@@ -115,12 +117,32 @@ class SpanshPlannerBase(ttk.Frame):
 
     def _attach_default_results_context_menu(self, list_widget: Any) -> None:
         self._results_widget = list_widget
+        if isinstance(list_widget, ttk.Treeview):
+            common.render_table_treeview(list_widget, self._schema_id, [])
         common.enable_results_checkboxes(list_widget, enabled=True)
         common.attach_results_context_menu(
             list_widget,
             self._get_results_payload,
             self._get_results_actions,
         )
+        self._show_empty_state(list_widget)
+
+    def _show_empty_state(self, list_widget: Any) -> None:
+        title, message = empty_state.get_copy("no_results")
+        if isinstance(list_widget, ttk.Treeview):
+            empty_state.show_state(
+                list_widget,
+                empty_state.UIState.EMPTY,
+                title,
+                message,
+                display_mode="overlay_body",
+            )
+            return
+        empty_state.show_state(list_widget, empty_state.UIState.EMPTY, title, message)
+
+    @staticmethod
+    def _hide_empty_state(list_widget: Any) -> None:
+        empty_state.hide_state(list_widget)
 
     def _format_result_line(self, row: dict[str, Any], row_text: str | None = None) -> str:
         try:
@@ -568,6 +590,7 @@ class SpanshPlannerBase(ttk.Frame):
                     numerate=False,
                     show_copied_suffix=False,
                 )
+            self._hide_empty_state(list_widget)
             return
 
         counts: dict[str, int] = {}
@@ -578,6 +601,7 @@ class SpanshPlannerBase(ttk.Frame):
         lines = [f"{sys_name} ({counts.get(sys_name, 0)} cial)" for sys_name in route]
         common.register_active_route_list(list_widget, lines)
         common.wypelnij_liste(list_widget, lines)
+        self._hide_empty_state(list_widget)
 
     def _apply_route_result(
         self,
@@ -619,6 +643,7 @@ class SpanshPlannerBase(ttk.Frame):
                 source=self._status_source,
                 ui_target=self._status_target,
             )
+            self._show_empty_state(list_widget)
         finally:
             self._set_busy(False)
 
