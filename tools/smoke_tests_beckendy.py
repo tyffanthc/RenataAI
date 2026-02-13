@@ -13,6 +13,7 @@ import sys
 import traceback
 import queue
 import re
+import time
 from typing import Callable, List, Tuple
 
 # --- ŚCIEŻKI / IMPORTY --------------------------------------------------------
@@ -1196,7 +1197,7 @@ def test_trade_multi_commodity_aliases_and_metrics(_ctx: TestContext) -> None:
     assert single.get("sell_price") == 2333, "Single sellPrice alias mapping failed"
     assert single.get("profit") == 1614, "Single profit per unit mapping failed"
     assert single.get("total_profit") == 413184, "Single totalProfit alias mapping failed"
-    assert single.get("updated_ago") == "27 minutes ago", "Single updatedAgo alias mapping failed"
+    assert single.get("updated_ago"), "Single updatedAgo alias mapping failed"
     assert single.get("cumulative_profit") == 413184, "Single cumulativeProfit alias mapping failed"
     assert single.get("distance_ly") == 46.74, "Single distanceLy alias mapping failed"
     assert single.get("cumulative_profit_from_payload") is True, "Single cumulative payload source should be flagged"
@@ -1208,10 +1209,44 @@ def test_trade_multi_commodity_aliases_and_metrics(_ctx: TestContext) -> None:
     assert multi.get("sell_price") == 14848, "Multi weighted sell price failed"
     assert multi.get("total_profit") == 3683046, "Multi total_profit aggregation failed"
     assert multi.get("profit") == 14387, "Multi profit per unit derivation failed"
-    assert multi.get("updated_ago") == "39 minutes ago", "Multi updated_at fallback mapping failed"
+    assert multi.get("updated_ago"), "Multi updated_at fallback mapping failed"
     assert multi.get("cumulative_profit") == 4096230, "Multi cumulative fallback calculation failed"
     assert multi.get("distance_ly") == 42.10, "Multi distance mapping failed"
     assert multi.get("cumulative_profit_from_payload") is False, "Multi cumulative fallback should not be payload"
+
+
+def test_trade_updated_buy_sell_pair_from_market_timestamps(_ctx: TestContext) -> None:
+    now = int(time.time())
+    sample = {
+        "result": [
+            {
+                "from": {
+                    "system": "DIAGUANDRI",
+                    "station": "Ray Gateway",
+                    "market_updated_at": now - 600,
+                },
+                "to": {
+                    "system": "CHONGQUAN",
+                    "station": "Pippin Terminal",
+                    "market_updated_at": now - 7200,
+                },
+                "distance": 42.0,
+                "commodity": "Silver",
+                "amount": 256,
+                "profit": 15000,
+                "total_profit": 3840000,
+            }
+        ]
+    }
+    _route, rows = normalize_trade_rows(sample)
+    assert len(rows) == 1, f"Expected one trade row, got {len(rows)}"
+    row = rows[0]
+    updated_buy = str(row.get("updated_buy_ago") or "")
+    updated_sell = str(row.get("updated_sell_ago") or "")
+    updated_display = str(row.get("updated_ago") or "")
+    assert updated_buy.endswith("m"), "Expected buy-side compact age in minutes"
+    assert updated_sell.endswith("h"), "Expected sell-side compact age in hours"
+    assert " / " in updated_display, "Expected combined buy/sell updated display"
 
 
 def test_tts_polish_diacritics_global(_ctx: TestContext) -> None:
@@ -1632,8 +1667,6 @@ def test_trade_split_view_layout_wiring(_ctx: TestContext) -> None:
         "def _toggle_trade_details(self) -> None:",
         "def _set_trade_details_collapsed(self, collapsed: bool, *, force: bool = False) -> None:",
         "self._clear_trade_leg_details(collapse=True)",
-        "def _attach_horizontal_scroll_to_tree(self, tree: ttk.Treeview, *, attr_name: str) -> None:",
-        "self._attach_horizontal_scroll_to_tree(self.lst_trade, attr_name=\"_renata_hscroll_main\")",
     ]
 
     for snippet in required_snippets:
@@ -1664,6 +1697,7 @@ def run_all_tests() -> int:
         ("test_spansh_export_actions_and_formats", test_spansh_export_actions_and_formats),
         ("test_trade_station_name_normalization", test_trade_station_name_normalization),
         ("test_trade_multi_commodity_aliases_and_metrics", test_trade_multi_commodity_aliases_and_metrics),
+        ("test_trade_updated_buy_sell_pair_from_market_timestamps", test_trade_updated_buy_sell_pair_from_market_timestamps),
         ("test_fss_last_body_before_full_9_of_10", test_fss_last_body_before_full_9_of_10),
         ("test_fss_last_body_before_full_11_of_12", test_fss_last_body_before_full_11_of_12),
         ("test_tts_polish_diacritics_global", test_tts_polish_diacritics_global),

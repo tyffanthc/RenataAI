@@ -580,7 +580,6 @@ class TradeTab(ttk.Frame):
             self.lst_trade = common.stworz_tabele_trasy(self.trade_top_wrap, title=ui.LIST_TITLE_TRADE)
             common.render_table_treeview(self.lst_trade, "trade", [])
             self._apply_trade_tree_compact_columns()
-            self._attach_horizontal_scroll_to_tree(self.lst_trade, attr_name="_renata_hscroll_main")
             self.lst_trade.bind("<Map>", self._on_trade_table_mapped, add="+")
 
         else:
@@ -672,28 +671,8 @@ class TradeTab(ttk.Frame):
         self.tree_leg_commodities.column("profit_total", anchor="e", width=115, stretch=False)
         self.tree_leg_commodities.pack(side="left", fill="both", expand=True)
         leg_scroll.config(command=self.tree_leg_commodities.yview)
-        leg_scroll_x = ttk.Scrollbar(leg_table_wrap, orient="horizontal", command=self.tree_leg_commodities.xview)
-        leg_scroll_x.pack(side="bottom", fill="x")
-        self.tree_leg_commodities.configure(xscrollcommand=leg_scroll_x.set)
         self._clear_trade_leg_details(collapse=True)
         self._set_trade_details_collapsed(True, force=True)
-
-    def _attach_horizontal_scroll_to_tree(self, tree: ttk.Treeview, *, attr_name: str) -> None:
-        if not isinstance(tree, ttk.Treeview):
-            return
-        existing = getattr(tree, attr_name, None)
-        try:
-            if existing is not None and existing.winfo_exists():
-                return
-        except Exception:
-            pass
-        container = getattr(tree, "_renata_state_container", None)
-        if container is None:
-            return
-        scroll_x = ttk.Scrollbar(container, orient="horizontal", command=tree.xview)
-        scroll_x.pack(side="bottom", fill="x")
-        tree.configure(xscrollcommand=scroll_x.set)
-        setattr(tree, attr_name, scroll_x)
 
     def _apply_trade_tree_compact_columns(self) -> None:
         if not isinstance(self.lst_trade, ttk.Treeview):
@@ -2057,14 +2036,24 @@ class TradeTab(ttk.Frame):
     def _updated_range_text(cls, rows: list[dict]) -> str:
         parsed: list[tuple[float, str]] = []
         fallback_values: list[str] = []
-        for row in rows:
-            raw = (row.get("updated_ago") or row.get("updated_at") or "").strip()
+        def _collect(raw_value: str | None) -> None:
+            raw = (raw_value or "").strip()
             if not raw:
-                continue
+                return
+            if "/" in raw:
+                for part in raw.split("/"):
+                    _collect(part)
+                return
             fallback_values.append(raw)
             seconds = cls._parse_updated_age_seconds(raw)
             if seconds is not None:
                 parsed.append((seconds, raw))
+
+        for row in rows:
+            _collect(str(row.get("updated_buy_ago") or ""))
+            _collect(str(row.get("updated_sell_ago") or ""))
+            if not (row.get("updated_buy_ago") or row.get("updated_sell_ago")):
+                _collect(str(row.get("updated_ago") or row.get("updated_at") or ""))
         if parsed:
             newest = min(parsed, key=lambda item: item[0])[1]
             oldest = max(parsed, key=lambda item: item[0])[1]
@@ -2117,13 +2106,16 @@ class TradeTab(ttk.Frame):
         if jump_range is None or jump_range <= 0:
             jump_range = self._to_float(self.var_max_hop.get())
         estimated_jumps: int | None = None
-        if has_distance and jump_range is not None and jump_range > 0:
-            estimated_jumps = 0
-            for row in rows:
-                distance_ly = self._to_float(row.get("distance_ly"))
-                if distance_ly is None or distance_ly < 0:
-                    continue
-                estimated_jumps += int(math.ceil(distance_ly / jump_range))
+        jump_total = 0
+        has_jump_data = False
+        for row in rows:
+            leg_jumps = self._estimate_trade_leg_jumps(row, jump_range)
+            if leg_jumps is None:
+                continue
+            jump_total += leg_jumps
+            has_jump_data = True
+        if has_jump_data:
+            estimated_jumps = jump_total
 
         profit_text = common.format_value(profit_value, "cr")
         distance_text = f"{common.format_value(distance_total, 'ly')} ly" if has_distance else "-"
@@ -2134,13 +2126,13 @@ class TradeTab(ttk.Frame):
             f"{profit_label}: {profit_text} | "
             f"Dystans: {distance_text} | "
             f"Skoki (szac.): {jumps_text} | "
-            f"Updated: {updated_text}"
+            f"Wiek rynku: {updated_text}"
         )
         self.var_trade_summary.set(summary)
 
     def _clear_trade_leg_details(self, *, collapse: bool = True) -> None:
         self.var_trade_leg_route.set("Wybierz krok trasy, aby zobaczyc szczegoly towarow.")
-        self.var_trade_leg_meta.set("Updated: - | Cumulative Profit: -")
+        self.var_trade_leg_meta.set("Wiek rynku: - | Cumulative Profit: -")
         tree = getattr(self, "tree_leg_commodities", None)
         if tree is None:
             if collapse:
@@ -2201,9 +2193,14 @@ class TradeTab(ttk.Frame):
             f"{from_system} ({from_station}) -> {to_system} ({to_station})"
         )
 
-        updated = (row.get("updated_ago") or row.get("updated_at") or "-").strip() or "-"
+        updated_buy = (row.get("updated_buy_ago") or "").strip()
+        updated_sell = (row.get("updated_sell_ago") or "").strip()
+        if updated_buy and updated_sell:
+            updated = f"{updated_buy} / {updated_sell}"
+        else:
+            updated = (row.get("updated_ago") or row.get("updated_at") or "-").strip() or "-"
         cumulative = common.format_value(row.get("cumulative_profit"), "cr")
-        self.var_trade_leg_meta.set(f"Updated: {updated} | Cumulative Profit: {cumulative}")
+        self.var_trade_leg_meta.set(f"Wiek rynku (kupno/sprzedaz): {updated} | Cumulative Profit: {cumulative}")
 
         tree = getattr(self, "tree_leg_commodities", None)
         if tree is None:
@@ -2665,6 +2662,7 @@ class TradeTab(ttk.Frame):
                         return
 
                     if rows:
+                        self._apply_trade_jumps_fallback(rows, max_hop)
                         common.clear_results_checkboxes(self.lst_trade)
                         self._results_rows = rows
                         self._results_row_offset = 0
@@ -2734,5 +2732,28 @@ class TradeTab(ttk.Frame):
                     self._set_busy(False)
 
             run_on_ui_thread(self.root, _apply_result)
+
+    def _estimate_trade_leg_jumps(self, row: dict, jump_range: float | None) -> int | None:
+        raw_jumps = self._to_float(row.get("jumps"))
+        if raw_jumps is not None and raw_jumps >= 0:
+            return int(round(raw_jumps))
+        if jump_range is None or jump_range <= 0:
+            return None
+        distance_ly = self._to_float(row.get("distance_ly"))
+        if distance_ly is None or distance_ly < 0:
+            return None
+        return int(math.ceil(distance_ly / jump_range))
+
+    def _apply_trade_jumps_fallback(self, rows: list[dict], jump_range: float | None) -> None:
+        if not rows:
+            return
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if self._to_float(row.get("jumps")) is not None:
+                continue
+            computed = self._estimate_trade_leg_jumps(row, jump_range)
+            if computed is not None:
+                row["jumps"] = computed
 
 

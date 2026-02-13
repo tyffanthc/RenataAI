@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import math
+import re
+import time
 from typing import Any, Iterable, Tuple
+from datetime import datetime
 
 
 def pick_value(entry: dict, keys: Iterable[str]) -> Any:
@@ -171,6 +174,31 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
             return None
         return int(round(num))
 
+    def _pick_trade_raw(entry: dict, keys: Iterable[str]) -> Any:
+        for key in keys:
+            if key not in entry:
+                continue
+            value = entry.get(key)
+            if isinstance(value, dict):
+                for nested_key in (
+                    "value",
+                    "updated",
+                    "updated_ago",
+                    "updatedAgo",
+                    "updated_at",
+                    "updatedAt",
+                    "market_updated_at",
+                    "marketUpdatedAt",
+                    "timestamp",
+                    "ts",
+                ):
+                    nested_value = value.get(nested_key)
+                    if nested_value is not None and nested_value != "":
+                        return nested_value
+            if value is not None and value != "":
+                return value
+        return None
+
     def _pick_trade_field(entry: dict, keys: Iterable[str]) -> str | None:
         for key in keys:
             if key not in entry:
@@ -210,6 +238,143 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
                     if num_nested is not None:
                         return num_nested
         return None
+
+    def _to_epoch_seconds(value: Any) -> int | None:
+        if value is None:
+            return None
+
+        if isinstance(value, dict):
+            value = _pick_trade_raw(
+                value,
+                (
+                    "value",
+                    "timestamp",
+                    "ts",
+                    "updated_at",
+                    "updatedAt",
+                    "market_updated_at",
+                    "marketUpdatedAt",
+                ),
+            )
+
+        if isinstance(value, (int, float)):
+            epoch = float(value)
+        else:
+            text = _clean_text(value)
+            if not text:
+                return None
+            try:
+                epoch = float(text)
+            except Exception:
+                parsed = None
+                try:
+                    parsed = datetime.fromisoformat(text.replace("Z", ""))
+                except Exception:
+                    parsed = None
+                if parsed is None:
+                    for fmt in (
+                        "%Y-%m-%d %H:%M:%S",
+                        "%Y-%m-%d %H:%M",
+                        "%Y-%m-%dT%H:%M:%S",
+                        "%Y-%m-%dT%H:%M",
+                    ):
+                        try:
+                            parsed = datetime.strptime(text, fmt)
+                            break
+                        except Exception:
+                            continue
+                if parsed is None:
+                    return None
+                epoch = parsed.timestamp()
+
+        if epoch > 10_000_000_000:  # milliseconds
+            epoch = epoch / 1000.0
+        if epoch <= 0:
+            return None
+        return int(epoch)
+
+    def _format_age_short(seconds: float) -> str:
+        sec = max(0, int(round(seconds)))
+        if sec < 30:
+            return "now"
+        if sec < 3600:
+            return f"{max(1, sec // 60)}m"
+        if sec < 86400:
+            return f"{max(1, sec // 3600)}h"
+        if sec < 7 * 86400:
+            return f"{max(1, sec // 86400)}d"
+        if sec < 365 * 86400:
+            return f"{max(1, sec // (7 * 86400))}w"
+        return f"{max(1, sec // (365 * 86400))}y"
+
+    def _compact_age_from_text(value: Any) -> str | None:
+        text = _clean_text(value)
+        if not text:
+            return None
+        lower = text.casefold()
+        if lower in {"just now", "now", "teraz", "przed chwila"}:
+            return "now"
+        if "few second" in lower:
+            return "now"
+        if "a minute" in lower or "an minute" in lower:
+            return "1m"
+        if "an hour" in lower or "a hour" in lower:
+            return "1h"
+
+        match = re.search(
+            r"(?P<num>\d+)\s*(?P<unit>"
+            r"second|seconds|sec|secs|s|"
+            r"minute|minutes|min|mins|m|"
+            r"hour|hours|hr|hrs|h|"
+            r"day|days|d|"
+            r"week|weeks|w|"
+            r"month|months|"
+            r"year|years|y|"
+            r"sekunda|sekundy|sekund|sek|"
+            r"minuta|minuty|minut|"
+            r"godzina|godziny|godzin|godz|"
+            r"dzien|dni|"
+            r"tydzien|tygodnie|tygodni|"
+            r"miesiac|miesiace|miesiecy|"
+            r"rok|lata|lat"
+            r")\b",
+            lower,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            return None
+        try:
+            num = int(match.group("num"))
+        except Exception:
+            return None
+        unit = (match.group("unit") or "").casefold()
+        if unit in {"s", "sec", "secs", "second", "seconds", "sek", "sekunda", "sekundy", "sekund"}:
+            return "now" if num < 30 else f"{max(1, num // 60)}m"
+        if unit in {"m", "min", "mins", "minute", "minutes", "minuta", "minuty", "minut"}:
+            return f"{max(1, num)}m"
+        if unit in {"h", "hr", "hrs", "hour", "hours", "godz", "godzina", "godziny", "godzin"}:
+            return f"{max(1, num)}h"
+        if unit in {"d", "day", "days", "dzien", "dni"}:
+            return f"{max(1, num)}d"
+        if unit in {"w", "week", "weeks", "tydzien", "tygodnie", "tygodni"}:
+            return f"{max(1, num)}w"
+        if unit in {"month", "months", "miesiac", "miesiace", "miesiecy"}:
+            return f"{max(1, num * 30)}d"
+        if unit in {"y", "year", "years", "rok", "lata", "lat"}:
+            return f"{max(1, num)}y"
+        return None
+
+    def _compact_updated(value: Any) -> str | None:
+        epoch = _to_epoch_seconds(value)
+        if epoch is not None:
+            age_seconds = max(0.0, float(int(time.time()) - epoch))
+            return _format_age_short(age_seconds)
+
+        short_text = _compact_age_from_text(value)
+        if short_text:
+            return short_text
+
+        return _pick_text(value)
 
     def _weighted_average(values: list[tuple[int, int]]) -> int | None:
         if not values:
@@ -548,7 +713,7 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
         if cumulative_profit is not None:
             running_cumulative_profit = cumulative_profit
 
-        updated_ago = (
+        updated_legacy = (
             _pick_trade_field(leg, ("updated_ago", "updatedAgo", "updated", "updated_at", "updatedAt"))
             or _pick_trade_field(to_endpoint, ("updated_ago", "updatedAgo", "updated", "updated_at", "updatedAt"))
             or _pick_trade_field(from_endpoint, ("updated_ago", "updatedAgo", "updated", "updated_at", "updatedAt"))
@@ -558,6 +723,21 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
             or _pick_trade_field(to_endpoint, ("updated_at", "updatedAt"))
             or _pick_trade_field(from_endpoint, ("updated_at", "updatedAt"))
         )
+
+        buy_updated_raw = _pick_trade_raw(
+            from_endpoint,
+            ("market_updated_at", "marketUpdatedAt", "updated_ago", "updatedAgo", "updated", "updated_at", "updatedAt"),
+        )
+        sell_updated_raw = _pick_trade_raw(
+            to_endpoint,
+            ("market_updated_at", "marketUpdatedAt", "updated_ago", "updatedAgo", "updated", "updated_at", "updatedAt"),
+        )
+        buy_updated_ago = _compact_updated(buy_updated_raw)
+        sell_updated_ago = _compact_updated(sell_updated_raw)
+        if buy_updated_ago and sell_updated_ago:
+            updated_display = f"{buy_updated_ago} / {sell_updated_ago}"
+        else:
+            updated_display = buy_updated_ago or sell_updated_ago or updated_legacy or updated_at
 
         jumps = pick_value(leg, ("jumps", "jump_count"))
         distance_ly = _pick_trade_float(
@@ -622,8 +802,12 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
                 "profit_per_ton": profit_per_ton,
                 "total_profit": total_profit,
                 "cumulative_profit": cumulative_profit,
-                "updated_ago": updated_ago or updated_at,
+                "updated_ago": updated_display,
                 "updated_at": updated_at,
+                "updated_buy_ago": buy_updated_ago,
+                "updated_sell_ago": sell_updated_ago,
+                "updated_buy_raw": _pick_text(buy_updated_raw),
+                "updated_sell_raw": _pick_text(sell_updated_raw),
                 "cumulative_profit_from_payload": cumulative_profit_from_payload,
                 "distance_ly": distance_ly,
                 "jumps": jumps,
