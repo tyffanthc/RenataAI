@@ -1584,10 +1584,14 @@ def test_trade_table_first_map_layout_refresh(_ctx: TestContext) -> None:
 
     required_snippets = [
         "self._trade_table_layout_ready: bool = False",
+        "self._trade_table_layout_retry_count: int = 0",
         "self.lst_trade.bind(\"<Map>\", self._on_trade_table_mapped, add=\"+\")",
         "def _on_trade_table_mapped(self, _event=None) -> None:",
         "def _refresh_trade_table_layout(self) -> None:",
         "self.root.after_idle(self._refresh_trade_table_layout)",
+        "if not self.lst_trade.winfo_viewable():",
+        "self._trade_table_layout_retry_count += 1",
+        "if self._trade_table_layout_retry_count <= 10:",
         "self.root.after(60, self._refresh_trade_table_layout)",
         "common.render_table_treeview(self.lst_trade, \"trade\", rows)",
     ]

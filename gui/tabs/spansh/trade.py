@@ -155,6 +155,7 @@ class TradeTab(ttk.Frame):
 
         self._results_rows: list[dict] = []
         self._trade_table_layout_ready: bool = False
+        self._trade_table_layout_retry_count: int = 0
 
         self._results_row_offset = 0
         self._results_widget = None
@@ -651,6 +652,7 @@ class TradeTab(ttk.Frame):
             return
         if self._trade_table_layout_ready and self.lst_trade.winfo_width() > 1:
             return
+        self._trade_table_layout_retry_count = 0
         self.root.after_idle(self._refresh_trade_table_layout)
 
     def _refresh_trade_table_layout(self) -> None:
@@ -662,12 +664,22 @@ class TradeTab(ttk.Frame):
         except Exception:
             return
 
+        # Hidden notebook pages can report width=1 for a long time.
+        # Avoid infinite startup polling and wait for the next real map/visibility.
+        try:
+            if not self.lst_trade.winfo_viewable():
+                return
+        except Exception:
+            return
+
         try:
             current_width = int(self.lst_trade.winfo_width())
         except Exception:
             current_width = 0
         if current_width <= 1:
-            self.root.after(60, self._refresh_trade_table_layout)
+            self._trade_table_layout_retry_count += 1
+            if self._trade_table_layout_retry_count <= 10:
+                self.root.after(60, self._refresh_trade_table_layout)
             return
 
         selected = tuple(self.lst_trade.selection())
@@ -677,6 +689,7 @@ class TradeTab(ttk.Frame):
             if self.lst_trade.exists(iid):
                 self.lst_trade.selection_add(iid)
         self._trade_table_layout_ready = True
+        self._trade_table_layout_retry_count = 0
 
 
 
