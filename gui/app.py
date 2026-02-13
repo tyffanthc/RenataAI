@@ -258,6 +258,7 @@ class RenataApp:
         # =========================
         self.root.bind("<ButtonRelease-1>", self.check_focus, add="+")
         self.root.bind("<Configure>", self.on_window_move)
+        self._init_window_resize_hitbox()
         self.root.after(100, self.check_queue)
 
     # ------------------------------------------------------------------ #
@@ -474,7 +475,185 @@ class RenataApp:
     #   Reszta Twojego kodu bez zmian
     # ------------------------------------------------------------------ #
 
+    def _init_window_resize_hitbox(self) -> None:
+        """
+        Improves resize ergonomics by adding a custom in-window hitbox near
+        the right/bottom edges. Native window frame stays enabled.
+        """
+        self._resize_hitbox_px = 8
+        self._resize_hover_zone = None
+        self._resize_drag_mode = None
+        self._resize_drag_started = False
+        self._resize_drag_origin = (0, 0)
+        self._resize_start_size = (0, 0)
+
+        self.root.bind_all("<Motion>", self._on_resize_motion, add="+")
+        self.root.bind_all("<ButtonPress-1>", self._on_resize_press, add="+")
+        self.root.bind_all("<B1-Motion>", self._on_resize_drag, add="+")
+        self.root.bind_all("<ButtonRelease-1>", self._on_resize_release, add="+")
+
+    def _is_resize_allowed(self) -> bool:
+        try:
+            state = str(self.root.state()).lower()
+        except Exception:
+            state = "normal"
+        if state in {"zoomed", "iconic"}:
+            return False
+        try:
+            if bool(self.root.attributes("-fullscreen")):
+                return False
+        except Exception:
+            pass
+        return True
+
+    def _is_pointer_over_main_window(self, x_root: int, y_root: int) -> bool:
+        try:
+            widget = self.root.winfo_containing(x_root, y_root)
+        except Exception:
+            return False
+        if widget is None:
+            return False
+        try:
+            return widget.winfo_toplevel() == self.root
+        except Exception:
+            return False
+
+    def _detect_resize_zone(self, x_root: int, y_root: int):
+        try:
+            x = x_root - self.root.winfo_rootx()
+            y = y_root - self.root.winfo_rooty()
+            w = self.root.winfo_width()
+            h = self.root.winfo_height()
+        except Exception:
+            return None
+
+        margin = int(getattr(self, "_resize_hitbox_px", 8))
+        if margin < 1 or w <= 0 or h <= 0:
+            return None
+
+        near_right = (w - margin) <= x <= w
+        near_bottom = (h - margin) <= y <= h
+
+        if near_right and near_bottom:
+            return "se"
+        if near_right:
+            return "e"
+        if near_bottom:
+            return "s"
+        return None
+
+    @staticmethod
+    def _cursor_for_resize_zone(zone):
+        if zone == "e":
+            return "sb_h_double_arrow"
+        if zone == "s":
+            return "sb_v_double_arrow"
+        if zone == "se":
+            return "size_nw_se"
+        return ""
+
+    def _set_resize_cursor(self, zone) -> None:
+        cursor = self._cursor_for_resize_zone(zone)
+        try:
+            self.root.configure(cursor=cursor)
+        except Exception:
+            pass
+
+    def _on_resize_motion(self, event):
+        if getattr(self, "_resize_drag_mode", None):
+            return
+        if not self._is_resize_allowed():
+            self._resize_hover_zone = None
+            self._set_resize_cursor(None)
+            return
+
+        x_root = int(getattr(event, "x_root", self.root.winfo_pointerx()))
+        y_root = int(getattr(event, "y_root", self.root.winfo_pointery()))
+
+        if not self._is_pointer_over_main_window(x_root, y_root):
+            if self._resize_hover_zone is not None:
+                self._resize_hover_zone = None
+                self._set_resize_cursor(None)
+            return
+
+        zone = self._detect_resize_zone(x_root, y_root)
+        if zone != self._resize_hover_zone:
+            self._resize_hover_zone = zone
+            self._set_resize_cursor(zone)
+
+    def _on_resize_press(self, event):
+        if not self._is_resize_allowed():
+            return
+
+        x_root = int(getattr(event, "x_root", self.root.winfo_pointerx()))
+        y_root = int(getattr(event, "y_root", self.root.winfo_pointery()))
+
+        if not self._is_pointer_over_main_window(x_root, y_root):
+            return
+
+        zone = self._detect_resize_zone(x_root, y_root)
+        if zone is None:
+            return
+
+        self._resize_drag_mode = zone
+        self._resize_drag_started = True
+        self._resize_drag_origin = (x_root, y_root)
+        self._resize_start_size = (self.root.winfo_width(), self.root.winfo_height())
+        self._set_resize_cursor(zone)
+        return "break"
+
+    def _on_resize_drag(self, event):
+        mode = getattr(self, "_resize_drag_mode", None)
+        if mode is None:
+            return
+
+        x_root = int(getattr(event, "x_root", self.root.winfo_pointerx()))
+        y_root = int(getattr(event, "y_root", self.root.winfo_pointery()))
+
+        start_x, start_y = self._resize_drag_origin
+        start_w, start_h = self._resize_start_size
+        dx = x_root - start_x
+        dy = y_root - start_y
+
+        min_w, min_h = self.root.minsize()
+        if min_w < 1:
+            min_w = 1
+        if min_h < 1:
+            min_h = 1
+
+        new_w = start_w + dx if "e" in mode else start_w
+        new_h = start_h + dy if "s" in mode else start_h
+
+        if new_w < min_w:
+            new_w = min_w
+        if new_h < min_h:
+            new_h = min_h
+
+        try:
+            self.root.geometry(f"{int(new_w)}x{int(new_h)}")
+        except Exception as exc:
+            _log_app_fallback("window.resize.drag", "window resize drag failed", exc, interval_ms=1000)
+        return "break"
+
+    def _on_resize_release(self, event):
+        mode = getattr(self, "_resize_drag_mode", None)
+        if mode is None:
+            return
+
+        self._resize_drag_mode = None
+        self._resize_drag_started = False
+
+        x_root = int(getattr(event, "x_root", self.root.winfo_pointerx()))
+        y_root = int(getattr(event, "y_root", self.root.winfo_pointery()))
+        zone = self._detect_resize_zone(x_root, y_root) if self._is_resize_allowed() else None
+        self._resize_hover_zone = zone
+        self._set_resize_cursor(zone)
+        return "break"
+
     def check_focus(self, e):
+        if getattr(self, "_resize_drag_started", False):
+            self._resize_drag_started = False
+            return
         if not hasattr(self.tab_spansh, 'hide_suggestions'):
             return
         w = None

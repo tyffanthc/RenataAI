@@ -1484,6 +1484,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_low_fuel_transient_startup_sco_guard",
         "test_neutron_empty_state_skeleton_overlay",
         "test_spansh_empty_state_skeleton_overlay_parity",
+        "test_window_resize_hitbox_wiring",
         "test_trade_station_name_normalization",
         "test_trade_multi_commodity_aliases_and_metrics",
         "test_fss_last_body_before_full_9_of_10",
@@ -1550,6 +1551,31 @@ def test_spansh_empty_state_skeleton_overlay_parity(_ctx: TestContext) -> None:
     )
 
 
+def test_window_resize_hitbox_wiring(_ctx: TestContext) -> None:
+    app_path = os.path.join(ROOT_DIR, "gui/app.py")
+    with open(app_path, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+
+    required_snippets = [
+        "self._init_window_resize_hitbox()",
+        "def _init_window_resize_hitbox(self) -> None:",
+        "self._resize_hitbox_px = 8",
+        "self.root.bind_all(\"<Motion>\", self._on_resize_motion, add=\"+\")",
+        "self.root.bind_all(\"<ButtonPress-1>\", self._on_resize_press, add=\"+\")",
+        "self.root.bind_all(\"<B1-Motion>\", self._on_resize_drag, add=\"+\")",
+        "self.root.bind_all(\"<ButtonRelease-1>\", self._on_resize_release, add=\"+\")",
+        "def _is_resize_allowed(self) -> bool:",
+        "def _detect_resize_zone(self, x_root: int, y_root: int):",
+        "def _cursor_for_resize_zone(zone):",
+        "return \"sb_h_double_arrow\"",
+        "return \"sb_v_double_arrow\"",
+        "return \"size_nw_se\"",
+    ]
+
+    for snippet in required_snippets:
+        assert snippet in content, f"Missing resize hitbox wiring snippet: {snippet}"
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1583,6 +1609,7 @@ def run_all_tests() -> int:
         ("test_spansh_feedback_smoke_pack_coverage", test_spansh_feedback_smoke_pack_coverage),
         ("test_neutron_empty_state_skeleton_overlay", test_neutron_empty_state_skeleton_overlay),
         ("test_spansh_empty_state_skeleton_overlay_parity", test_spansh_empty_state_skeleton_overlay_parity),
+        ("test_window_resize_hitbox_wiring", test_window_resize_hitbox_wiring),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),
