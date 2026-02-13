@@ -118,13 +118,21 @@ def _detect_treeview_header_height(tree: ttk.Treeview) -> int:
         return 24
     limit = max(1, min(96, height - 1))
     probe_x = 8
+    heading_bottom = -1
     for y in range(limit):
         try:
             region = tree.identify_region(probe_x, y)
         except Exception:
             region = ""
-        if region and region != "heading":
-            return max(1, y)
+        if region in ("heading", "separator"):
+            heading_bottom = y
+            continue
+        if region in ("tree", "cell"):
+            if heading_bottom >= 0:
+                return max(1, y)
+            return max(24, y)
+    if heading_bottom >= 0:
+        return max(24, heading_bottom + 1)
     return 24
 
 
