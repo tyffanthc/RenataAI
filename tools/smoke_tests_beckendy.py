@@ -1716,7 +1716,7 @@ def test_global_scrollbar_style_and_window_chrome_wiring(_ctx: TestContext) -> N
         "\"arrowcolor\": C_FG,",
         "style.configure(",
         "\"Horizontal.TScale\",",
-        "troughcolor=C_ACC,",
+        "troughcolor=C_BG,",
         "style.configure(\"TScrollbar\", **sb_kwargs)",
         "style.configure(\"Vertical.TScrollbar\", **sb_kwargs)",
         "style.configure(\"Horizontal.TScrollbar\", **sb_kwargs)",

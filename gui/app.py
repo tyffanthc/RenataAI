@@ -145,19 +145,21 @@ class RenataApp:
         # Suwaki (Scale) - ciemny tor + czytelny uchwyt
         style.configure(
             "TScale",
-            background=C_BG,
-            troughcolor=C_ACC,
+            background=C_ACC,
+            troughcolor=C_BG,
             bordercolor=C_BG,
             lightcolor=C_BG,
             darkcolor=C_BG,
+            borderwidth=0,
         )
         style.configure(
             "Horizontal.TScale",
-            background=C_BG,
-            troughcolor=C_ACC,
+            background=C_ACC,
+            troughcolor=C_BG,
             bordercolor=C_BG,
             lightcolor=C_BG,
             darkcolor=C_BG,
+            borderwidth=0,
         )
 
         # Scrollbary (Paski przewijania) - globalny styl (pion/poziom identycznie)
