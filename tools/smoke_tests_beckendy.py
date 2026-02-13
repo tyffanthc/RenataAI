@@ -1486,6 +1486,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_spansh_empty_state_skeleton_overlay_parity",
         "test_window_resize_hitbox_wiring",
         "test_trade_table_first_map_layout_refresh",
+        "test_startup_window_deferred_show",
         "test_trade_station_name_normalization",
         "test_trade_multi_commodity_aliases_and_metrics",
         "test_fss_last_body_before_full_9_of_10",
@@ -1600,6 +1601,22 @@ def test_trade_table_first_map_layout_refresh(_ctx: TestContext) -> None:
         assert snippet in content, f"Missing trade first-map layout refresh snippet: {snippet}"
 
 
+def test_startup_window_deferred_show(_ctx: TestContext) -> None:
+    main_path = os.path.join(ROOT_DIR, "main.py")
+    with open(main_path, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+
+    required_snippets = [
+        "root = tk.Tk()",
+        "root.withdraw()",
+        "def _show_main_window():",
+        "root.deiconify()",
+        "root.after(0, _show_main_window)",
+    ]
+    for snippet in required_snippets:
+        assert snippet in content, f"Missing deferred startup-window snippet: {snippet}"
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1635,6 +1652,7 @@ def run_all_tests() -> int:
         ("test_spansh_empty_state_skeleton_overlay_parity", test_spansh_empty_state_skeleton_overlay_parity),
         ("test_window_resize_hitbox_wiring", test_window_resize_hitbox_wiring),
         ("test_trade_table_first_map_layout_refresh", test_trade_table_first_map_layout_refresh),
+        ("test_startup_window_deferred_show", test_startup_window_deferred_show),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

@@ -11,6 +11,8 @@ from logic.utils import powiedz
 
 if __name__ == "__main__":
     root = tk.Tk()
+    # Avoid startup flicker while all tabs/widgets are being built.
+    root.withdraw()
     app = RenataApp(root)
 
     startup_text = f"Renata {APP_VERSION}: startuje wszystkie systemy."
@@ -31,4 +33,15 @@ if __name__ == "__main__":
     )
     th.start()
 
+    def _show_main_window():
+        try:
+            root.update_idletasks()
+        except Exception:
+            pass
+        try:
+            root.deiconify()
+        except Exception:
+            pass
+
+    root.after(0, _show_main_window)
     root.mainloop()
