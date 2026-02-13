@@ -3,6 +3,8 @@ from tkinter import ttk, messagebox, simpledialog
 import re
 import config
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
+from gui.window_chrome import apply_renata_orange_window_chrome
+from logic.utils.renata_log import log_event_throttled
 
 
 
@@ -433,8 +435,15 @@ def wypelnij_liste(
         # delikatne podświetlenie wiersza
         try:
             lb.itemconfig(copied_index, {'bg': COPIED_BG, 'fg': COPIED_FG})
-        except:
-            pass
+        except Exception as exc:
+            log_event_throttled(
+                "GUI:common_tables.itemconfig",
+                5000,
+                "GUI",
+                "failed to style copied row",
+                index=copied_index,
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
         # automatyczne zaznaczenie
         if autoselect:
@@ -442,15 +451,29 @@ def wypelnij_liste(
                 lb.selection_clear(0, tk.END)
                 lb.selection_set(copied_index)
                 lb.activate(copied_index)
-            except:
-                pass
+            except Exception as exc:
+                log_event_throttled(
+                    "GUI:common_tables.selection",
+                    5000,
+                    "GUI",
+                    "failed to select copied row",
+                    index=copied_index,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
 
         # automatyczne przewinięcie
         if autoscroll:
             try:
                 lb.see(copied_index)
-            except:
-                pass
+            except Exception as exc:
+                log_event_throttled(
+                    "GUI:common_tables.autoscroll",
+                    5000,
+                    "GUI",
+                    "failed to autoscroll copied row",
+                    index=copied_index,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
 
 
 def podswietl_cel(lb, idx) -> None:
@@ -1138,6 +1161,10 @@ def _open_columns_picker(listbox) -> None:
     dialog.title(f"Kolumny: {schema.title}")
     dialog.resizable(False, False)
     dialog.transient(listbox.winfo_toplevel())
+    try:
+        apply_renata_orange_window_chrome(dialog)
+    except Exception:
+        pass
     restore_window_geometry(dialog, "column_picker", include_size=False)
     bind_window_geometry(dialog, "column_picker", include_size=False)
 
