@@ -43,6 +43,7 @@ def handle_status_update(status: dict, gui_ref=None):
 
     # Proba wyliczenia procentu paliwa.
     fuel_percent = None
+    uncertain_low_sample = False
     fuel = status.get("Fuel") or {}
     fuel_main = fuel.get("FuelMain")
     cap = status.get("FuelCapacity") or {}
@@ -59,11 +60,20 @@ def handle_status_update(status: dict, gui_ref=None):
             ):
                 return
 
+            has_cap_main = bool(cap_main and float(cap_main) > 0.0)
+
             # 0..1 traktujemy jako procent 0..100.
             if 0.0 <= val <= 1.0:
                 fuel_percent = val * 100.0
-            elif cap_main:
+                # Przy braku pojemnosci i braku flagi low-fuel traktujemy probe
+                # jako niepewna (typowy transient startup/SCO).
+                if not low_fuel_flag and not has_cap_main:
+                    uncertain_low_sample = True
+            elif has_cap_main:
                 fuel_percent = (val / float(cap_main)) * 100.0
+            elif not low_fuel_flag:
+                # Wysoka wartosc bez pojemnosci tez jest niejednoznaczna semantycznie.
+                uncertain_low_sample = True
     except (TypeError, ValueError):
         fuel_percent = None
 
@@ -80,9 +90,10 @@ def handle_status_update(status: dict, gui_ref=None):
     low_fuel = (fuel_percent < min_fuel_percent) if fuel_percent is not None else low_fuel_flag
 
     if low_fuel and not LOW_FUEL_WARNED:
-        # Dla "flag-only" (bez wyliczonego procentu) wymagamy potwierdzenia
+        # Dla "flag-only" oraz niepewnych probek liczbowych wymagamy potwierdzenia:
         # druga probka low_fuel w oknie czasu.
-        if fuel_percent is None:
+        needs_confirmation = (fuel_percent is None) or uncertain_low_sample
+        if needs_confirmation:
             now = time.time()
             if not LOW_FUEL_FLAG_PENDING:
                 LOW_FUEL_FLAG_PENDING = True

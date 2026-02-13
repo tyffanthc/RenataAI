@@ -187,6 +187,50 @@ def test_low_fuel_basic(ctx: TestContext) -> None:
     )
 
 
+def test_low_fuel_transient_startup_sco_guard(ctx: TestContext) -> None:
+    """
+    Scenariusz regresyjny:
+    - pojedyncza niepewna probka low-fuel (bez FuelCapacity, startup/SCO) nie moze wywolac alertu,
+    - probka bezpieczna resetuje pending,
+    - kolejna pojedyncza niepewna probka nadal nie moze wywolac alertu.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+
+    fuel_events.LOW_FUEL_WARNED = False  # type: ignore[attr-defined]
+    fuel_events.LOW_FUEL_FLAG_PENDING = False  # type: ignore[attr-defined]
+    fuel_events.LOW_FUEL_FLAG_PENDING_TS = 0.0  # type: ignore[attr-defined]
+
+    transient_low = {
+        "Fuel": {"FuelMain": 0.02},
+        "Flags": 0,
+        "StarSystem": "SMOKE_TEST_TRANSIENT_LOW",
+    }
+    fuel_events.handle_status_update(transient_low, gui_ref=None)
+    msgs_first = ctx.drain_queue()
+    assert len(msgs_first) == 0, (
+        "Single uncertain startup/SCO low-fuel sample should not emit alert, "
+        f"got: {msgs_first}"
+    )
+
+    safe_sample = {
+        "Fuel": {"FuelMain": 0.7},
+        "FuelCapacity": {"Main": 10},
+        "Flags": 0,
+        "StarSystem": "SMOKE_TEST_TRANSIENT_LOW",
+    }
+    fuel_events.handle_status_update(safe_sample, gui_ref=None)
+    msgs_safe = ctx.drain_queue()
+    assert len(msgs_safe) == 0, f"Safe sample should not emit alert, got: {msgs_safe}"
+
+    fuel_events.handle_status_update(transient_low, gui_ref=None)
+    msgs_second = ctx.drain_queue()
+    assert len(msgs_second) == 0, (
+        "Another single uncertain startup/SCO low-fuel sample should still not emit alert, "
+        f"got: {msgs_second}"
+    )
+
+
 # --- TESTY: MAKLER PRO / JACKPOT ---------------------------------------------
 
 
@@ -1437,6 +1481,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_spansh_system_copy_mapping",
         "test_spansh_copy_mode_actions",
         "test_spansh_export_actions_and_formats",
+        "test_low_fuel_transient_startup_sco_guard",
         "test_trade_station_name_normalization",
         "test_trade_multi_commodity_aliases_and_metrics",
         "test_fss_last_body_before_full_9_of_10",
@@ -1463,6 +1508,7 @@ def run_all_tests() -> int:
 
     tests: List[TestSpec] = [
         ("test_low_fuel_basic", test_low_fuel_basic),
+        ("test_low_fuel_transient_startup_sco_guard", test_low_fuel_transient_startup_sco_guard),
         ("test_trade_jackpot_basic", test_trade_jackpot_basic),
         ("test_fss_progress_basic", test_fss_progress_basic),
         ("test_bio_signals_basic", test_bio_signals_basic),
