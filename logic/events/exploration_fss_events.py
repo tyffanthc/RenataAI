@@ -138,7 +138,7 @@ def _check_fss_thresholds(gui_ref=None):
         FSS_25_WARNED = True
         if DEBOUNCER.can_send("FSS_25", 120, context=system_name):
             powiedz(
-                "Dwadziescia piec procent systemu przeskanowane.",
+                "Dwadzieścia pięć procent systemu przeskanowane.",
                 gui_ref,
                 message_id="MSG.FSS_PROGRESS_25",
                 context={"system": system_name},
@@ -160,7 +160,7 @@ def _check_fss_thresholds(gui_ref=None):
         FSS_75_WARNED = True
         if DEBOUNCER.can_send("FSS_75", 120, context=system_name):
             powiedz(
-                "Siedemdziesiat piec procent systemu przeskanowane.",
+                "Siedemdziesiąt pięć procent systemu przeskanowane.",
                 gui_ref,
                 message_id="MSG.FSS_PROGRESS_75",
                 context={"system": system_name},
