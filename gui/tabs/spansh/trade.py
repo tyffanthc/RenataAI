@@ -156,6 +156,7 @@ class TradeTab(ttk.Frame):
         self._results_rows: list[dict] = []
         self._trade_table_layout_ready: bool = False
         self._trade_table_layout_retry_count: int = 0
+        self._trade_details_collapsed: bool = True
 
         self._results_row_offset = 0
         self._results_widget = None
@@ -163,6 +164,7 @@ class TradeTab(ttk.Frame):
         self.var_trade_summary = tk.StringVar(value="")
         self.var_trade_leg_route = tk.StringVar(value="")
         self.var_trade_leg_meta = tk.StringVar(value="")
+        self.var_trade_details_toggle = tk.StringVar(value="Pokaz szczegoly kroku")
 
         self._busy = False
 
@@ -565,15 +567,25 @@ class TradeTab(ttk.Frame):
         self.lbl_status = ttk.Label(center_group, text="Gotowy", font=("Arial", 10, "bold"))
         self.lbl_status.pack(side="left", padx=(20, 0))
 
+        self.trade_split = ttk.PanedWindow(fr, orient=tk.VERTICAL)
+        self.trade_split.pack(fill="both", expand=True, padx=8, pady=(4, 8))
+
+        self.trade_top_wrap = ttk.Frame(self.trade_split)
+        self.trade_bottom_wrap = ttk.Frame(self.trade_split)
+        self.trade_split.add(self.trade_top_wrap, weight=4)
+        self.trade_split.add(self.trade_bottom_wrap, weight=2)
+
         if self._use_treeview:
 
-            self.lst_trade = common.stworz_tabele_trasy(fr, title=ui.LIST_TITLE_TRADE)
+            self.lst_trade = common.stworz_tabele_trasy(self.trade_top_wrap, title=ui.LIST_TITLE_TRADE)
             common.render_table_treeview(self.lst_trade, "trade", [])
+            self._apply_trade_tree_compact_columns()
+            self._attach_horizontal_scroll_to_tree(self.lst_trade, attr_name="_renata_hscroll_main")
             self.lst_trade.bind("<Map>", self._on_trade_table_mapped, add="+")
 
         else:
 
-            self.lst_trade = common.stworz_liste_trasy(fr, title=ui.LIST_TITLE_TRADE)
+            self.lst_trade = common.stworz_liste_trasy(self.trade_top_wrap, title=ui.LIST_TITLE_TRADE)
 
         common.attach_results_context_menu(
 
@@ -591,7 +603,7 @@ class TradeTab(ttk.Frame):
             self.lst_trade.bind("<<TreeviewSelect>>", self._on_results_selection_changed, add="+")
         else:
             self.lst_trade.bind("<<ListboxSelect>>", self._on_results_selection_changed, add="+")
-        summary_wrap = ttk.Frame(fr)
+        summary_wrap = ttk.Frame(self.trade_top_wrap)
         summary_wrap.pack(fill="x", padx=8, pady=(4, 0))
         self.lbl_trade_summary = ttk.Label(
             summary_wrap,
@@ -602,8 +614,23 @@ class TradeTab(ttk.Frame):
         self.lbl_trade_summary.pack(side="right", fill="x", expand=True)
         self._clear_trade_summary()
 
-        details_wrap = ttk.LabelFrame(fr, text="Szczegoly kroku")
-        details_wrap.pack(fill="x", padx=8, pady=(4, 8))
+        details_header = ttk.Frame(self.trade_bottom_wrap)
+        details_header.pack(fill="x")
+        self.btn_trade_details_toggle = ttk.Button(
+            details_header,
+            textvariable=self.var_trade_details_toggle,
+            command=self._toggle_trade_details,
+        )
+        self.btn_trade_details_toggle.pack(side="left")
+        ttk.Label(
+            details_header,
+            text="Panel szczegolow aktywuje sie po zaznaczeniu kroku trasy.",
+        ).pack(side="right")
+
+        self.trade_details_body = ttk.LabelFrame(self.trade_bottom_wrap, text="Szczegoly kroku")
+        self.trade_details_body.pack(fill="both", expand=True, pady=(4, 0))
+
+        details_wrap = self.trade_details_body
         self.lbl_trade_leg_route = ttk.Label(
             details_wrap,
             textvariable=self.var_trade_leg_route,
@@ -620,7 +647,7 @@ class TradeTab(ttk.Frame):
         self.lbl_trade_leg_meta.pack(fill="x", padx=8, pady=(0, 6))
 
         leg_table_wrap = ttk.Frame(details_wrap)
-        leg_table_wrap.pack(fill="x", padx=8, pady=(0, 8))
+        leg_table_wrap.pack(fill="both", expand=True, padx=8, pady=(0, 8))
         leg_scroll = ttk.Scrollbar(leg_table_wrap)
         leg_scroll.pack(side="right", fill="y")
         self.tree_leg_commodities = ttk.Treeview(
@@ -643,9 +670,87 @@ class TradeTab(ttk.Frame):
         self.tree_leg_commodities.column("sell", anchor="e", width=95, stretch=False)
         self.tree_leg_commodities.column("profit_t", anchor="e", width=95, stretch=False)
         self.tree_leg_commodities.column("profit_total", anchor="e", width=115, stretch=False)
-        self.tree_leg_commodities.pack(side="left", fill="x", expand=True)
+        self.tree_leg_commodities.pack(side="left", fill="both", expand=True)
         leg_scroll.config(command=self.tree_leg_commodities.yview)
-        self._clear_trade_leg_details()
+        leg_scroll_x = ttk.Scrollbar(leg_table_wrap, orient="horizontal", command=self.tree_leg_commodities.xview)
+        leg_scroll_x.pack(side="bottom", fill="x")
+        self.tree_leg_commodities.configure(xscrollcommand=leg_scroll_x.set)
+        self._clear_trade_leg_details(collapse=True)
+        self._set_trade_details_collapsed(True, force=True)
+
+    def _attach_horizontal_scroll_to_tree(self, tree: ttk.Treeview, *, attr_name: str) -> None:
+        if not isinstance(tree, ttk.Treeview):
+            return
+        existing = getattr(tree, attr_name, None)
+        try:
+            if existing is not None and existing.winfo_exists():
+                return
+        except Exception:
+            pass
+        container = getattr(tree, "_renata_state_container", None)
+        if container is None:
+            return
+        scroll_x = ttk.Scrollbar(container, orient="horizontal", command=tree.xview)
+        scroll_x.pack(side="bottom", fill="x")
+        tree.configure(xscrollcommand=scroll_x.set)
+        setattr(tree, attr_name, scroll_x)
+
+    def _apply_trade_tree_compact_columns(self) -> None:
+        if not isinstance(self.lst_trade, ttk.Treeview):
+            return
+        try:
+            columns = list(self.lst_trade["columns"] or [])
+        except Exception:
+            columns = []
+        for col in columns:
+            if col in ("__sel__", "__lp__"):
+                continue
+            try:
+                self.lst_trade.column(col, stretch=False)
+            except Exception:
+                continue
+
+    def _toggle_trade_details(self) -> None:
+        self._set_trade_details_collapsed(not self._trade_details_collapsed)
+
+    def _set_trade_details_collapsed(self, collapsed: bool, *, force: bool = False) -> None:
+        if self._trade_details_collapsed == bool(collapsed) and not force:
+            return
+        self._trade_details_collapsed = bool(collapsed)
+        if self._trade_details_collapsed:
+            self.var_trade_details_toggle.set("Pokaz szczegoly kroku")
+            try:
+                self.trade_details_body.pack_forget()
+            except Exception:
+                pass
+            return
+
+        self.var_trade_details_toggle.set("Ukryj szczegoly kroku")
+        try:
+            if not self.trade_details_body.winfo_manager():
+                self.trade_details_body.pack(fill="both", expand=True, pady=(4, 0))
+        except Exception:
+            pass
+        self.root.after_idle(self._position_trade_splitter_for_details)
+
+    def _position_trade_splitter_for_details(self) -> None:
+        try:
+            if not self.trade_split.winfo_viewable():
+                return
+        except Exception:
+            return
+        try:
+            total_h = int(self.trade_split.winfo_height())
+        except Exception:
+            return
+        if total_h <= 1:
+            return
+        detail_h = max(200, int(total_h * 0.32))
+        sash_pos = max(120, total_h - detail_h)
+        try:
+            self.trade_split.sashpos(0, sash_pos)
+        except Exception:
+            pass
 
     def _on_trade_table_mapped(self, _event=None) -> None:
         if not isinstance(self.lst_trade, ttk.Treeview):
@@ -685,6 +790,7 @@ class TradeTab(ttk.Frame):
         selected = tuple(self.lst_trade.selection())
         rows = list(self._results_rows or getattr(self.lst_trade, "_renata_table_rows", []) or [])
         common.render_table_treeview(self.lst_trade, "trade", rows)
+        self._apply_trade_tree_compact_columns()
         for iid in selected:
             if self.lst_trade.exists(iid):
                 self.lst_trade.selection_add(iid)
@@ -2032,16 +2138,22 @@ class TradeTab(ttk.Frame):
         )
         self.var_trade_summary.set(summary)
 
-    def _clear_trade_leg_details(self) -> None:
+    def _clear_trade_leg_details(self, *, collapse: bool = True) -> None:
         self.var_trade_leg_route.set("Wybierz krok trasy, aby zobaczyc szczegoly towarow.")
         self.var_trade_leg_meta.set("Updated: - | Cumulative Profit: -")
         tree = getattr(self, "tree_leg_commodities", None)
         if tree is None:
+            if collapse:
+                self._set_trade_details_collapsed(True)
             return
         try:
             tree.delete(*tree.get_children())
         except Exception:
+            if collapse:
+                self._set_trade_details_collapsed(True)
             return
+        if collapse:
+            self._set_trade_details_collapsed(True)
 
     def _iter_leg_commodities(self, row: dict) -> list[dict]:
         commodities = row.get("commodities_raw")
@@ -2076,10 +2188,11 @@ class TradeTab(ttk.Frame):
 
     def _show_trade_leg_details_by_index(self, idx: int | None) -> None:
         if idx is None or idx < 0 or idx >= len(self._results_rows):
-            self._clear_trade_leg_details()
+            self._clear_trade_leg_details(collapse=not bool(self._results_rows))
             return
 
         row = self._results_rows[idx]
+        self._set_trade_details_collapsed(False)
         from_system = (row.get("from_system") or "-").strip() or "-"
         from_station = (row.get("from_station") or "-").strip() or "-"
         to_system = (row.get("to_system") or "-").strip() or "-"
@@ -2142,15 +2255,22 @@ class TradeTab(ttk.Frame):
         return idx if 0 <= idx < len(self._results_rows) else None
 
     def _on_results_selection_changed(self, _event=None) -> None:
-        self._show_trade_leg_details_by_index(self._get_primary_selected_internal_index())
+        idx = self._get_primary_selected_internal_index()
+        if idx is None:
+            self._clear_trade_leg_details(collapse=False)
+            return
+        self._show_trade_leg_details_by_index(idx)
 
-    def _select_first_result_row(self) -> None:
+    def _select_first_result_row(self, *, reveal_details: bool = False) -> None:
         if not self._results_rows:
-            self._clear_trade_leg_details()
+            self._clear_trade_leg_details(collapse=True)
             return
         widget = self._results_widget
         if widget is None:
-            self._show_trade_leg_details_by_index(0)
+            if reveal_details:
+                self._show_trade_leg_details_by_index(0)
+            else:
+                self._clear_trade_leg_details(collapse=True)
             return
         if isinstance(widget, ttk.Treeview):
             children = widget.get_children()
@@ -2170,7 +2290,10 @@ class TradeTab(ttk.Frame):
                 widget.see(0)
             except Exception:
                 pass
-        self._show_trade_leg_details_by_index(0)
+        if reveal_details:
+            self._show_trade_leg_details_by_index(0)
+        else:
+            self._clear_trade_leg_details(collapse=True)
 
 
 
@@ -2192,7 +2315,7 @@ class TradeTab(ttk.Frame):
         self._results_row_offset = 0
         self._last_effective_jump_range = None
         self._clear_trade_summary()
-        self._clear_trade_leg_details()
+        self._clear_trade_leg_details(collapse=True)
         self._show_empty_state()
 
     def _show_empty_state(self) -> None:

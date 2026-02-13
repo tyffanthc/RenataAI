@@ -1487,6 +1487,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_window_resize_hitbox_wiring",
         "test_trade_table_first_map_layout_refresh",
         "test_startup_window_deferred_show",
+        "test_trade_split_view_layout_wiring",
         "test_trade_station_name_normalization",
         "test_trade_multi_commodity_aliases_and_metrics",
         "test_fss_last_body_before_full_9_of_10",
@@ -1617,6 +1618,28 @@ def test_startup_window_deferred_show(_ctx: TestContext) -> None:
         assert snippet in content, f"Missing deferred startup-window snippet: {snippet}"
 
 
+def test_trade_split_view_layout_wiring(_ctx: TestContext) -> None:
+    trade_path = os.path.join(ROOT_DIR, "gui/tabs/spansh/trade.py")
+    with open(trade_path, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+
+    required_snippets = [
+        "self.trade_split = ttk.PanedWindow(fr, orient=tk.VERTICAL)",
+        "self.trade_split.add(self.trade_top_wrap, weight=4)",
+        "self.trade_split.add(self.trade_bottom_wrap, weight=2)",
+        "self.var_trade_details_toggle = tk.StringVar(value=\"Pokaz szczegoly kroku\")",
+        "command=self._toggle_trade_details",
+        "def _toggle_trade_details(self) -> None:",
+        "def _set_trade_details_collapsed(self, collapsed: bool, *, force: bool = False) -> None:",
+        "self._clear_trade_leg_details(collapse=True)",
+        "def _attach_horizontal_scroll_to_tree(self, tree: ttk.Treeview, *, attr_name: str) -> None:",
+        "self._attach_horizontal_scroll_to_tree(self.lst_trade, attr_name=\"_renata_hscroll_main\")",
+    ]
+
+    for snippet in required_snippets:
+        assert snippet in content, f"Missing trade split-view layout snippet: {snippet}"
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1653,6 +1676,7 @@ def run_all_tests() -> int:
         ("test_window_resize_hitbox_wiring", test_window_resize_hitbox_wiring),
         ("test_trade_table_first_map_layout_refresh", test_trade_table_first_map_layout_refresh),
         ("test_startup_window_deferred_show", test_startup_window_deferred_show),
+        ("test_trade_split_view_layout_wiring", test_trade_split_view_layout_wiring),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),
