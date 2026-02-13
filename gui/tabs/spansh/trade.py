@@ -30,6 +30,8 @@ from gui.common_autocomplete import AutocompleteController
 from app.route_manager import route_manager
 
 from app.state import app_state
+from gui.window_chrome import apply_renata_orange_window_chrome
+from logic.utils.renata_log import log_event, log_event_throttled
 
 
 
@@ -418,9 +420,17 @@ class TradeTab(ttk.Frame):
 
             )
 
+            slider_wrap = tk.Frame(
+                f_age,
+                bg="#d0ccc6",
+                borderwidth=0,
+                highlightthickness=0,
+            )
+            slider_wrap.pack(side="left", fill="x", expand=True, padx=(0, 6))
+
             self.scale_market_age = ttk.Scale(
 
-                f_age,
+                slider_wrap,
 
                 from_=self._market_age_slider_min_position(),
 
@@ -433,7 +443,7 @@ class TradeTab(ttk.Frame):
 
             )
 
-            self.scale_market_age.pack(side="left", fill="x", expand=True, padx=(0, 6))
+            self.scale_market_age.pack(fill="x", expand=True, padx=1, pady=1)
         else:
 
             _, max_age_entry = layout.add_labeled_pair(
@@ -1454,7 +1464,15 @@ class TradeTab(ttk.Frame):
 
 
 
-        print(f"[TRADE] refresh_from_app_state: {sysname!r} / {staname!r}")
+        if config.get("features.debug.trade_state_trace", False):
+            log_event(
+                "TRADE",
+                "refresh_from_app_state",
+                system=sysname,
+                station=staname,
+                is_docked=is_docked,
+                live_ready=live_ready,
+            )
 
         self._set_detected_label(sysname, staname if is_docked else "")
 
@@ -1552,9 +1570,15 @@ class TradeTab(ttk.Frame):
             return []
 
         except Exception as e:
-
-            print(f"[Spansh] Station autocomplete exception ({raw!r}, {q!r}): {e}")
-
+            log_event_throttled(
+                "TRADE:station_autocomplete_exception",
+                3000,
+                "TRADE",
+                "station autocomplete exception",
+                system=raw,
+                query=q,
+                error=f"{type(e).__name__}: {e}",
+            )
             return []
 
 
@@ -1657,6 +1681,10 @@ class TradeTab(ttk.Frame):
         top.transient(self.root)
         top.geometry("760x520")
         top.minsize(560, 380)
+        try:
+            apply_renata_orange_window_chrome(top)
+        except Exception:
+            pass
 
         info_var = tk.StringVar(value=f"Dostepne stacje: {len(stations_all)}")
         query_var = tk.StringVar()
@@ -1770,9 +1798,14 @@ class TradeTab(ttk.Frame):
             return spansh_client.systems_suggest(q)
 
         except Exception as e:
-
-            print(f"[Spansh] System autocomplete exception ({q!r}): {e}")
-
+            log_event_throttled(
+                "TRADE:system_autocomplete_exception",
+                3000,
+                "TRADE",
+                "system autocomplete exception",
+                query=q,
+                error=f"{type(e).__name__}: {e}",
+            )
             return []
 
 
