@@ -366,9 +366,9 @@ def test_fss_progress_basic(ctx: TestContext) -> None:
 
     joined = " | ".join(str(m) for m in msgs)
     expected_fragments = [
-        "25% systemu przeskanowane.",
+        "Dwadziescia piec procent systemu przeskanowane.",
         "Połowa systemu przeskanowana.",
-        "75% systemu przeskanowane.",
+        "Siedemdziesiat piec procent systemu przeskanowane.",
         "Ostatnia planeta do skanowania.",
         "System w pełni przeskanowany.",
     ]

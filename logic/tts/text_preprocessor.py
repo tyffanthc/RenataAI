@@ -194,13 +194,13 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         return _finalize_tts("Skan systemu zakończony.")
 
     if message_id == "MSG.FSS_PROGRESS_25":
-        return _finalize_tts("25% systemu przeskanowane.")
+        return _finalize_tts("Dwadziescia piec procent systemu przeskanowane.")
 
     if message_id == "MSG.FSS_PROGRESS_50":
         return _finalize_tts("Połowa systemu przeskanowana.")
 
     if message_id == "MSG.FSS_PROGRESS_75":
-        return _finalize_tts("75% systemu przeskanowane.")
+        return _finalize_tts("Siedemdziesiat piec procent systemu przeskanowane.")
 
     if message_id == "MSG.FSS_LAST_BODY":
         return _finalize_tts("Ostatnia planeta do skanowania.")
