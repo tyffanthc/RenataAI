@@ -3,6 +3,7 @@ from tkinter import ttk
 import threading
 
 from logic.utils import pobierz_sugestie
+from logic.utils.renata_log import log_event_throttled
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
 from gui.window_chrome import apply_renata_orange_window_chrome
 
@@ -200,8 +201,15 @@ class AddEntryDialog(tk.Toplevel):
             self.entry_system['values'] = names
             if names:
                 self.entry_system.configure(state="readonly")
-        except:
-            pass
+        except Exception as exc:
+            log_event_throttled(
+                "GUI:add_entry.apply_suggestions",
+                5000,
+                "GUI",
+                "failed to apply system suggestions in add-entry dialog",
+                suggestions_count=len(names),
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     # --------------------------------------------------
     #  EDSM fallback dla wspolrzednych
