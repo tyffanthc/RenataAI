@@ -6,6 +6,7 @@ from typing import Optional, Callable, Dict, Any
 import os
 import config
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
+from gui.window_chrome import apply_renata_orange_window_chrome
 
 
 class SettingsTab(ttk.Frame):
@@ -1087,6 +1088,10 @@ class SettingsTab(ttk.Frame):
         dialog.title("Progi jackpotów")
         dialog.resizable(False, False)
         dialog.transient(self.winfo_toplevel())
+        try:
+            apply_renata_orange_window_chrome(dialog)
+        except Exception:
+            pass
         restore_window_geometry(dialog, "jackpot_dialog", include_size=False)
         bind_window_geometry(dialog, "jackpot_dialog", include_size=False)
         try:
@@ -1170,6 +1175,10 @@ class SettingsTab(ttk.Frame):
         self._tables_columns_dialog = dialog
         dialog.title("Spansh table columns")
         dialog.geometry("520x520")
+        try:
+            apply_renata_orange_window_chrome(dialog)
+        except Exception:
+            pass
         restore_window_geometry(dialog, "tables_columns_dialog", include_size=True)
         bind_window_geometry(dialog, "tables_columns_dialog", include_size=True)
         dialog.protocol("WM_DELETE_WINDOW", lambda: self._close_tables_columns_dialog())
