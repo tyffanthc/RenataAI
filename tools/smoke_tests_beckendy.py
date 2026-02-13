@@ -1485,6 +1485,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_neutron_empty_state_skeleton_overlay",
         "test_spansh_empty_state_skeleton_overlay_parity",
         "test_window_resize_hitbox_wiring",
+        "test_trade_table_first_map_layout_refresh",
         "test_trade_station_name_normalization",
         "test_trade_multi_commodity_aliases_and_metrics",
         "test_fss_last_body_before_full_9_of_10",
@@ -1576,6 +1577,25 @@ def test_window_resize_hitbox_wiring(_ctx: TestContext) -> None:
         assert snippet in content, f"Missing resize hitbox wiring snippet: {snippet}"
 
 
+def test_trade_table_first_map_layout_refresh(_ctx: TestContext) -> None:
+    trade_path = os.path.join(ROOT_DIR, "gui/tabs/spansh/trade.py")
+    with open(trade_path, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+
+    required_snippets = [
+        "self._trade_table_layout_ready: bool = False",
+        "self.lst_trade.bind(\"<Map>\", self._on_trade_table_mapped, add=\"+\")",
+        "def _on_trade_table_mapped(self, _event=None) -> None:",
+        "def _refresh_trade_table_layout(self) -> None:",
+        "self.root.after_idle(self._refresh_trade_table_layout)",
+        "self.root.after(60, self._refresh_trade_table_layout)",
+        "common.render_table_treeview(self.lst_trade, \"trade\", rows)",
+    ]
+
+    for snippet in required_snippets:
+        assert snippet in content, f"Missing trade first-map layout refresh snippet: {snippet}"
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1610,6 +1630,7 @@ def run_all_tests() -> int:
         ("test_neutron_empty_state_skeleton_overlay", test_neutron_empty_state_skeleton_overlay),
         ("test_spansh_empty_state_skeleton_overlay_parity", test_spansh_empty_state_skeleton_overlay_parity),
         ("test_window_resize_hitbox_wiring", test_window_resize_hitbox_wiring),
+        ("test_trade_table_first_map_layout_refresh", test_trade_table_first_map_layout_refresh),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

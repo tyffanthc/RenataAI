@@ -154,6 +154,7 @@ class TradeTab(ttk.Frame):
 
 
         self._results_rows: list[dict] = []
+        self._trade_table_layout_ready: bool = False
 
         self._results_row_offset = 0
         self._results_widget = None
@@ -567,6 +568,7 @@ class TradeTab(ttk.Frame):
 
             self.lst_trade = common.stworz_tabele_trasy(fr, title=ui.LIST_TITLE_TRADE)
             common.render_table_treeview(self.lst_trade, "trade", [])
+            self.lst_trade.bind("<Map>", self._on_trade_table_mapped, add="+")
 
         else:
 
@@ -643,6 +645,38 @@ class TradeTab(ttk.Frame):
         self.tree_leg_commodities.pack(side="left", fill="x", expand=True)
         leg_scroll.config(command=self.tree_leg_commodities.yview)
         self._clear_trade_leg_details()
+
+    def _on_trade_table_mapped(self, _event=None) -> None:
+        if not isinstance(self.lst_trade, ttk.Treeview):
+            return
+        if self._trade_table_layout_ready and self.lst_trade.winfo_width() > 1:
+            return
+        self.root.after_idle(self._refresh_trade_table_layout)
+
+    def _refresh_trade_table_layout(self) -> None:
+        if not isinstance(self.lst_trade, ttk.Treeview):
+            return
+        try:
+            if not self.lst_trade.winfo_exists():
+                return
+        except Exception:
+            return
+
+        try:
+            current_width = int(self.lst_trade.winfo_width())
+        except Exception:
+            current_width = 0
+        if current_width <= 1:
+            self.root.after(60, self._refresh_trade_table_layout)
+            return
+
+        selected = tuple(self.lst_trade.selection())
+        rows = list(self._results_rows or getattr(self.lst_trade, "_renata_table_rows", []) or [])
+        common.render_table_treeview(self.lst_trade, "trade", rows)
+        for iid in selected:
+            if self.lst_trade.exists(iid):
+                self.lst_trade.selection_add(iid)
+        self._trade_table_layout_ready = True
 
 
 
