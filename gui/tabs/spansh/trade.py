@@ -749,8 +749,47 @@ class TradeTab(ttk.Frame):
     def _dismiss_sell_assist(self) -> None:
         self._sell_assist_dismissed = True
         self.var_sell_assist_state.set("Sell Assist: pomijam - decyzja po stronie pilota.")
-        if not self.var_sell_assist_note.get().strip():
-            self.var_sell_assist_note.set("Mozesz wrzucic nowe dane trasy, aby odswiezyc ranking.")
+        self.var_sell_assist_note.set("Mozesz wrzucic nowe dane trasy, aby odswiezyc ranking.")
+        common.emit_status(
+            "INFO",
+            "SELL_ASSIST_SKIPPED",
+            text="Sell Assist pominięty. Renata nie zmienia trasy.",
+            source="spansh.trade.sell_assist",
+            ui_target="trade",
+            notify_overlay=False,
+        )
+
+    def _apply_sell_assist_intent(self, option: dict | None) -> None:
+        result = trade.handoff_sell_assist_to_route_intent(
+            option if isinstance(option, dict) else {},
+            set_route_intent=self.app_state.set_route_intent,
+            source="spansh.trade.sell_assist.intent",
+            allow_auto_route=False,
+        )
+        if not bool(result.get("ok")):
+            self.var_sell_assist_state.set("Sell Assist: brak celu dla intentu.")
+            self.var_sell_assist_note.set("Nie udało się ustawić intentu dla tej opcji.")
+            common.emit_status(
+                "WARN",
+                "SELL_ASSIST_INTENT_NOT_SET",
+                text="Nie udało się ustawić intentu (brak celu).",
+                source="spansh.trade.sell_assist",
+                ui_target="trade",
+                notify_overlay=False,
+            )
+            return
+
+        target_display = str(result.get("target_display") or result.get("target_system") or "-")
+        self.var_sell_assist_state.set(f"Sell Assist: ustawiono intent -> {target_display}")
+        self.var_sell_assist_note.set("Tryb intent aktywny. Bez auto-route i bez automatyzacji mapy gry.")
+        common.emit_status(
+            "OK",
+            "SELL_ASSIST_INTENT_SET",
+            text=f"Ustawiono intent: {target_display} (bez auto-route).",
+            source="spansh.trade.sell_assist",
+            ui_target="trade",
+            notify_overlay=False,
+        )
 
     def _format_sell_assist_card(self, option: dict, index: int) -> tuple[str, str]:
         label = str(option.get("label") or f"Opcja {index}")
@@ -805,6 +844,13 @@ class TradeTab(ttk.Frame):
         for idx, option in enumerate(options, start=1):
             card = ttk.Frame(host)
             card.pack(fill="x", pady=(0, 4))
+            action_row = ttk.Frame(card)
+            action_row.pack(fill="x")
+            ttk.Button(
+                action_row,
+                text="Ustaw intent",
+                command=lambda opt=option: self._apply_sell_assist_intent(opt),
+            ).pack(side="right")
             line1, line2 = self._format_sell_assist_card(option, idx)
             ttk.Label(card, text=line1, anchor="w", justify="left").pack(fill="x")
             ttk.Label(card, text=line2, anchor="w", justify="left").pack(fill="x")

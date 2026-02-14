@@ -409,6 +409,71 @@ def build_sell_assist_decision_space(
     }
 
 
+def handoff_sell_assist_to_route_intent(
+    option: dict[str, Any] | None,
+    *,
+    set_route_intent: Any,
+    source: str = "sell_assist.intent",
+    allow_auto_route: bool = False,
+) -> dict[str, Any]:
+    """
+    Handoff contract for Sell Assist -> Route Intent.
+
+    Guardrail:
+    - this function only sets route intent,
+    - auto-route side effects are forbidden.
+    """
+    if allow_auto_route:
+        raise ValueError("AUTO_ROUTE_FORBIDDEN_SELL_ASSIST")
+
+    if not callable(set_route_intent):
+        return {
+            "ok": False,
+            "reason": "intent_setter_missing",
+            "target_system": "",
+            "target_station": "",
+            "target_display": "",
+            "snapshot": {},
+        }
+
+    payload = option if isinstance(option, dict) else {}
+    target_system = str(
+        payload.get("to_system")
+        or payload.get("target_system")
+        or payload.get("target")
+        or ""
+    ).strip()
+    target_station = str(
+        payload.get("to_station")
+        or payload.get("target_station")
+        or ""
+    ).strip()
+
+    if not target_system:
+        return {
+            "ok": False,
+            "reason": "target_missing",
+            "target_system": "",
+            "target_station": target_station,
+            "target_display": "",
+            "snapshot": {},
+        }
+
+    snapshot = set_route_intent(target_system, source=source) or {}
+    target_display = target_system
+    if target_station:
+        target_display = f"{target_system} ({target_station})"
+
+    return {
+        "ok": True,
+        "reason": "intent_set",
+        "target_system": target_system,
+        "target_station": target_station,
+        "target_display": target_display,
+        "snapshot": snapshot,
+    }
+
+
 def oblicz_trade(
     start_system: str,
     start_station: str,
