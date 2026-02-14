@@ -118,8 +118,12 @@ def capability_config_patch_from_free_policy(free_policy_enabled: bool) -> dict[
     return {
         "plan.profile": profile,
         "features.tts.free_policy_enabled": bool(free_policy_enabled),
+        CAP_VOICE_STT: not bool(free_policy_enabled),
         CAP_SETTINGS_FULL: not bool(free_policy_enabled),
         CAP_UI_EXTENDED_TABS: not bool(free_policy_enabled),
         CAP_TTS_ADVANCED_POLICY: not bool(free_policy_enabled),
     }
 
+
+def is_voice_stt_enabled(settings: Mapping[str, Any] | None = None) -> bool:
+    return has_capability(CAP_VOICE_STT, settings)

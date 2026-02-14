@@ -58,6 +58,7 @@ from logic.capabilities import (
     CAP_SETTINGS_FULL,
     CAP_TTS_ADVANCED_POLICY,
     CAP_UI_EXTENDED_TABS,
+    CAP_VOICE_STT,
     PROFILE_FREE,
     PROFILE_PRO,
     capability_config_patch_from_free_policy,
@@ -1918,12 +1919,14 @@ def test_capabilities_profile_contract(_ctx: TestContext) -> None:
     assert not free_caps.has(CAP_SETTINGS_FULL), "FREE should not expose full settings capability"
     assert not free_caps.has(CAP_UI_EXTENDED_TABS), "FREE should not expose extended tabs capability"
     assert not free_caps.has(CAP_TTS_ADVANCED_POLICY), "FREE should use conservative TTS policy"
+    assert not free_caps.has(CAP_VOICE_STT), "FREE should keep STT capability disabled"
 
     pro_caps = resolve_capabilities({"plan.profile": "PRO"})
     assert pro_caps.profile == PROFILE_PRO, "PRO profile should resolve as PRO"
     assert pro_caps.has(CAP_SETTINGS_FULL), "PRO should expose full settings capability"
     assert pro_caps.has(CAP_UI_EXTENDED_TABS), "PRO should expose extended tabs capability"
     assert pro_caps.has(CAP_TTS_ADVANCED_POLICY), "PRO should expose advanced TTS policy capability"
+    assert pro_caps.has(CAP_VOICE_STT), "PRO should expose STT capability"
 
 
 def test_no_plan_checks_in_action_modules(_ctx: TestContext) -> None:
@@ -2033,6 +2036,7 @@ def test_runtime_free_pro_capabilities_smoke(_ctx: TestContext) -> None:
         CAP_TTS_ADVANCED_POLICY: settings.get(CAP_TTS_ADVANCED_POLICY),
         CAP_SETTINGS_FULL: settings.get(CAP_SETTINGS_FULL),
         CAP_UI_EXTENDED_TABS: settings.get(CAP_UI_EXTENDED_TABS),
+        CAP_VOICE_STT: settings.get(CAP_VOICE_STT),
     }
 
     try:
@@ -2040,11 +2044,13 @@ def test_runtime_free_pro_capabilities_smoke(_ctx: TestContext) -> None:
         assert not has_capability(CAP_TTS_ADVANCED_POLICY), "FREE runtime should disable advanced TTS policy"
         assert not has_capability(CAP_SETTINGS_FULL), "FREE runtime should disable full settings capability"
         assert not has_capability(CAP_UI_EXTENDED_TABS), "FREE runtime should disable extended tabs capability"
+        assert not has_capability(CAP_VOICE_STT), "FREE runtime should disable STT capability"
 
         settings.update(capability_config_patch_from_free_policy(False))
         assert has_capability(CAP_TTS_ADVANCED_POLICY), "PRO runtime should enable advanced TTS policy"
         assert has_capability(CAP_SETTINGS_FULL), "PRO runtime should enable full settings capability"
         assert has_capability(CAP_UI_EXTENDED_TABS), "PRO runtime should enable extended tabs capability"
+        assert has_capability(CAP_VOICE_STT), "PRO runtime should enable STT capability"
     finally:
         for key, value in original.items():
             if value is None and key in settings:

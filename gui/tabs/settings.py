@@ -10,6 +10,7 @@ from gui.window_chrome import apply_renata_orange_window_chrome
 from logic.capabilities import (
     CAP_SETTINGS_FULL,
     CAP_TTS_ADVANCED_POLICY,
+    CAP_VOICE_STT,
     capability_config_patch_from_free_policy,
     resolve_capabilities,
 )
@@ -93,6 +94,7 @@ class SettingsTab(ttk.Frame):
         self.var_enable_sounds = tk.BooleanVar(value=True)
         self.var_confirm_exit = tk.BooleanVar(value=True)
         self.var_tts_free_policy = tk.BooleanVar(value=True)
+        self.var_voice_stt_enabled = tk.BooleanVar(value=False)
         self.var_online_data_enabled = tk.BooleanVar(value=False)
 
         # --- Asystenci / alerty – te mapujemy na klucze JSON --- #
@@ -439,6 +441,12 @@ class SettingsTab(ttk.Frame):
             text="Opcje odblokowane dla FREE: niskie ryzyko i realny efekt UX.",
             foreground="#888888",
         ).grid(row=2, column=0, columnspan=2, padx=8, pady=(0, 8), sticky="w")
+
+        ttk.Label(
+            lf_safe,
+            text="STT voice commands: niedostepne w FREE (fallback: UI/hotkey bez crashy).",
+            foreground="#888888",
+        ).grid(row=3, column=0, columnspan=2, padx=8, pady=(0, 8), sticky="w")
 
         lf_paths = ttk.LabelFrame(parent, text=" Ścieżki i dane ")
         lf_paths.grid(row=2, column=0, padx=12, pady=(0, 6), sticky="nsew")
@@ -1427,6 +1435,14 @@ class SettingsTab(ttk.Frame):
             text="Configure columns...",
             command=self._open_tables_columns_dialog,
         ).grid(row=2, column=1, padx=8, pady=4, sticky="w")
+
+        voice_stt_cb = ttk.Checkbutton(
+            lf_tables,
+            text="Voice STT capability enabled",
+            variable=self.var_voice_stt_enabled,
+        )
+        voice_stt_cb.grid(row=4, column=0, padx=8, pady=4, sticky="w")
+        voice_stt_cb.state(["disabled"])
         lf_providers = ttk.LabelFrame(parent, text=" Providerzy (online) ")
         lf_providers.grid(row=2, column=0, padx=12, pady=(6, 6), sticky="nsew")
         lf_providers.columnconfigure(0, weight=1)
@@ -1528,6 +1544,7 @@ class SettingsTab(ttk.Frame):
         self.var_enable_sounds.set(cfg.get("voice_enabled", self.var_enable_sounds.get()))
         caps = resolve_capabilities(cfg)
         self.var_tts_free_policy.set(not caps.has(CAP_TTS_ADVANCED_POLICY))
+        self.var_voice_stt_enabled.set(caps.has(CAP_VOICE_STT))
         online_enabled = (
             bool(cfg.get("features.providers.edsm_enabled", False))
             or bool(cfg.get("features.providers.system_lookup_online", False))
@@ -2098,6 +2115,7 @@ class SettingsTab(ttk.Frame):
         self.var_confirm_exit.set(bool(defaults.get("confirm_exit", True)))
         defaults_caps = resolve_capabilities(defaults)
         self.var_tts_free_policy.set(not defaults_caps.has(CAP_TTS_ADVANCED_POLICY))
+        self.var_voice_stt_enabled.set(defaults_caps.has(CAP_VOICE_STT))
         self.var_online_data_enabled.set(
             bool(defaults.get("features.providers.system_lookup_online", False))
             or bool(defaults.get("features.trade.station_lookup_online", False))

@@ -2,9 +2,10 @@ import threading
 import pyttsx3
 import queue
 from datetime import datetime
+from typing import Any, Callable
 import config
 from logic.tts.text_preprocessor import prepare_tts
-from logic.capabilities import CAP_TTS_ADVANCED_POLICY, has_capability
+from logic.capabilities import CAP_TTS_ADVANCED_POLICY, CAP_VOICE_STT, has_capability
 
 
 # Globalna kolejka komunikatów dla GUI (Thread-Safe)
@@ -328,3 +329,50 @@ class NotificationDebouncer:
 
 # Globalny debouncer do użycia w całej aplikacji
 DEBOUNCER = NotificationDebouncer()
+
+
+def is_voice_stt_available() -> bool:
+    return has_capability(CAP_VOICE_STT)
+
+
+def _queue_log_line(text: str) -> None:
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    MSG_QUEUE.put(("log", f"[{timestamp}] {text}"))
+
+
+def execute_voice_stt_action(
+    action: Callable[[], Any] | None = None,
+    *,
+    fallback_message: str = "Tryb glosowy STT niedostepny w tym profilu. Uzyj UI/hotkey.",
+    on_unavailable: Callable[[], None] | None = None,
+) -> tuple[bool, Any | None]:
+    """
+    Centralny gate dla voice/STT.
+
+    FREE:
+    - zwraca (False, None),
+    - publikuje bezpieczny fallback do logu/GUI,
+    - nie rzuca wyjatku.
+
+    PRO:
+    - uruchamia `action` (jesli przekazane),
+    - zwraca (True, wynik) lub (True, None), gdy action nie podano.
+    """
+    if not is_voice_stt_available():
+        _queue_log_line(fallback_message)
+        if callable(on_unavailable):
+            try:
+                on_unavailable()
+            except Exception:
+                pass
+        return False, None
+
+    if action is None:
+        return True, None
+
+    try:
+        return True, action()
+    except Exception as exc:
+        print(f"[VOICE_STT] action failed: {type(exc).__name__}: {exc}")
+        _queue_log_line("Akcja glosowa STT chwilowo niedostepna. Uzyj UI/hotkey.")
+        return False, None

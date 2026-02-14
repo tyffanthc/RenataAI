@@ -54,12 +54,13 @@ class CapabilitiesTests(unittest.TestCase):
         self.assertEqual(free_patch["plan.profile"], PROFILE_FREE)
         self.assertFalse(free_patch[CAP_TTS_ADVANCED_POLICY])
         self.assertFalse(free_patch[CAP_SETTINGS_FULL])
+        self.assertFalse(free_patch[CAP_VOICE_STT])
 
         self.assertEqual(pro_patch["plan.profile"], PROFILE_PRO)
         self.assertTrue(pro_patch[CAP_TTS_ADVANCED_POLICY])
         self.assertTrue(pro_patch[CAP_SETTINGS_FULL])
+        self.assertTrue(pro_patch[CAP_VOICE_STT])
 
 
 if __name__ == "__main__":
     unittest.main()
-
