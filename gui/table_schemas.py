@@ -165,6 +165,9 @@ SCHEMAS: dict[str, TableSchema] = {
                 TableColumn("jumps", ui.TABLE_HDR_JUMPS, fmt="int", align="right", width=8),
                 TableColumn("cumulative_profit", ui.TABLE_HDR_CUMULATIVE_PROFIT, fmt="cr", align="right", width=16, default_visible=False),
                 TableColumn("updated_ago", ui.TABLE_HDR_UPDATED, width=18, default_visible=False),
+                TableColumn("source_status", ui.TABLE_HDR_SOURCE_STATUS, width=14, default_visible=False),
+                TableColumn("confidence", ui.TABLE_HDR_CONFIDENCE, width=10, default_visible=False),
+                TableColumn("data_age", ui.TABLE_HDR_DATA_AGE, width=11, default_visible=False),
             ]
         ),
         show_lp=True,

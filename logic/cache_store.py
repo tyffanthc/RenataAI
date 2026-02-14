@@ -56,7 +56,7 @@ class CacheStore:
         filename = _safe_filename(key, self.namespace)
         return os.path.join(self.base_dir, self.namespace, filename)
 
-    def get(self, key: str) -> Tuple[bool, Any | None, Dict[str, Any]]:
+    def get(self, key: str, *, allow_expired: bool = False) -> Tuple[bool, Any | None, Dict[str, Any]]:
         meta: Dict[str, Any] = {"key": key}
         if not key:
             return False, None, meta
@@ -82,13 +82,21 @@ class CacheStore:
 
         file_meta = data.get("meta") or {}
         expires_at = file_meta.get("expires_at")
+        created_at = file_meta.get("created_at")
+        if created_at is not None:
+            try:
+                meta["data_age_seconds"] = max(0.0, time.time() - float(created_at))
+            except Exception:
+                pass
+
         if expires_at is not None and time.time() > float(expires_at):
             meta.update(file_meta)
             meta["reason"] = "expired"
-            try:
-                os.remove(path)
-            except Exception:
-                pass
+            meta["stale"] = True
+            if allow_expired:
+                if config.get("debug_cache", False):
+                    _emit_cache_status("INFO", "CACHE_HIT", "Cache stale hit")
+                return True, data.get("value"), meta
             if config.get("debug_cache", False):
                 _emit_cache_status("INFO", "CACHE_MISS", "Cache expired")
             return False, None, meta
@@ -96,6 +104,7 @@ class CacheStore:
         if config.get("debug_cache", False):
             _emit_cache_status("INFO", "CACHE_HIT", "Cache hit")
         meta.update(file_meta)
+        meta["stale"] = False
         return True, data.get("value"), meta
 
     def set(
@@ -114,6 +123,7 @@ class CacheStore:
             "key": key,
             "created_at": created_at,
             "expires_at": expires_at,
+            "ttl_seconds": float(ttl_seconds) if ttl_seconds is not None else None,
             "version": self.version,
             "provider": self.provider,
         }

@@ -2103,6 +2103,18 @@ class TradeTab(ttk.Frame):
     def _clear_trade_summary(self) -> None:
         self.var_trade_summary.set("")
 
+    @staticmethod
+    def _source_status_text(value: object) -> str:
+        raw = str(value or "").strip().upper()
+        mapping = {
+            "ONLINE_LIVE": "online",
+            "CACHE_TTL_HIT": "cache",
+            "OFFLINE_CACHE_FALLBACK": "offline-fallback",
+            "ERROR_NO_DATA": "brak danych",
+            "UNKNOWN": "-",
+        }
+        return mapping.get(raw, raw.lower() if raw else "-")
+
     def _update_trade_summary(self, rows: list[dict]) -> None:
         if not rows:
             self._clear_trade_summary()
@@ -2155,18 +2167,27 @@ class TradeTab(ttk.Frame):
         distance_text = f"{common.format_value(distance_total, 'ly')} ly" if has_distance else "-"
         jumps_text = str(estimated_jumps) if estimated_jumps is not None else "-"
         updated_text = self._updated_range_text(rows)
+        first_row = rows[0] if rows else {}
+        source_status = self._source_status_text(first_row.get("source_status"))
+        confidence = str(first_row.get("confidence") or "-").strip() or "-"
+        data_age = str(first_row.get("data_age") or "-").strip() or "-"
 
         summary = (
             f"{profit_label}: {profit_text} | "
             f"Dystans: {distance_text} | "
             f"Skoki (szac.): {jumps_text} | "
-            f"Wiek rynku: {updated_text}"
+            f"Wiek rynku: {updated_text} | "
+            f"Zrodlo: {source_status} | "
+            f"Pewnosc: {confidence} | "
+            f"Wiek danych: {data_age}"
         )
         self.var_trade_summary.set(summary)
 
     def _clear_trade_leg_details(self, *, collapse: bool = True) -> None:
         self.var_trade_leg_route.set("Wybierz krok trasy, aby zobaczyc szczegoly towarow.")
-        self.var_trade_leg_meta.set("Wiek rynku: - | Cumulative Profit: -")
+        self.var_trade_leg_meta.set(
+            "Wiek rynku: - | Cumulative Profit: - | Zrodlo: - | Pewnosc: - | Wiek danych: -"
+        )
         tree = getattr(self, "tree_leg_commodities", None)
         if tree is None:
             if collapse:
@@ -2234,7 +2255,16 @@ class TradeTab(ttk.Frame):
         else:
             updated = (row.get("updated_ago") or row.get("updated_at") or "-").strip() or "-"
         cumulative = common.format_value(row.get("cumulative_profit"), "cr")
-        self.var_trade_leg_meta.set(f"Wiek rynku (kupno/sprzedaz): {updated} | Cumulative Profit: {cumulative}")
+        source_status = self._source_status_text(row.get("source_status"))
+        confidence = str(row.get("confidence") or "-").strip() or "-"
+        data_age = str(row.get("data_age") or "-").strip() or "-"
+        self.var_trade_leg_meta.set(
+            f"Wiek rynku (kupno/sprzedaz): {updated} | "
+            f"Cumulative Profit: {cumulative} | "
+            f"Zrodlo: {source_status} | "
+            f"Pewnosc: {confidence} | "
+            f"Wiek danych: {data_age}"
+        )
 
         tree = getattr(self, "tree_leg_commodities", None)
         if tree is None:

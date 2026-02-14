@@ -55,6 +55,16 @@ class _RouteRequestContext:
     debug_payload: Dict[str, Any] | None
 
 
+@dataclass(frozen=True)
+class _RouteCacheSnapshot:
+    fresh_hit: bool
+    fresh_value: Any | None
+    fresh_meta: Dict[str, Any]
+    stale_available: bool
+    stale_value: Any | None
+    stale_meta: Dict[str, Any]
+
+
 # --- Wspólny helper do obsługi błędów SPANSH --------------------------------
 
 
@@ -466,10 +476,21 @@ class SpanshClient:
         ctx = self._build_route_context(mode, payload, referer, endpoint_path=endpoint_path)
         start_ts = time.monotonic()
 
-        hit, cached = self._route_cache_lookup(ctx)
-        if hit:
-            self._record_route_telemetry(ctx, status="CACHE_HIT", start_ts=start_ts, response_ms=0)
-            return cached
+        cache_snapshot = self._route_cache_lookup(ctx)
+        if cache_snapshot.fresh_hit:
+            freshness = self._freshness_from_source(
+                source_status="CACHE_TTL_HIT",
+                cache_meta=cache_snapshot.fresh_meta,
+                ttl_seconds=ctx.ttl_seconds,
+            )
+            self._record_route_telemetry(
+                ctx,
+                status="CACHE_HIT",
+                start_ts=start_ts,
+                response_ms=0,
+                freshness=freshness,
+            )
+            return cache_snapshot.fresh_value
 
         try:
             result = run_deduped(
@@ -482,17 +503,58 @@ class SpanshClient:
                 ),
             )
         except Exception:
-            self._record_route_telemetry(ctx, status="ERROR", start_ts=start_ts)
+            if cache_snapshot.stale_available:
+                freshness = self._freshness_from_source(
+                    source_status="OFFLINE_CACHE_FALLBACK",
+                    cache_meta=cache_snapshot.stale_meta,
+                    ttl_seconds=ctx.ttl_seconds,
+                )
+                self._record_route_telemetry(
+                    ctx,
+                    status="OFFLINE_FALLBACK",
+                    start_ts=start_ts,
+                    freshness=freshness,
+                )
+                return cache_snapshot.stale_value
+            self._record_route_telemetry(
+                ctx,
+                status="ERROR",
+                start_ts=start_ts,
+                freshness=self._freshness_from_source("ERROR_NO_DATA", ttl_seconds=ctx.ttl_seconds),
+            )
             return None
 
         if result is None:
-            self._record_route_telemetry(ctx, status="ERROR", start_ts=start_ts)
+            if cache_snapshot.stale_available:
+                freshness = self._freshness_from_source(
+                    source_status="OFFLINE_CACHE_FALLBACK",
+                    cache_meta=cache_snapshot.stale_meta,
+                    ttl_seconds=ctx.ttl_seconds,
+                )
+                self._record_route_telemetry(
+                    ctx,
+                    status="OFFLINE_FALLBACK",
+                    start_ts=start_ts,
+                    freshness=freshness,
+                )
+                return cache_snapshot.stale_value
+            self._record_route_telemetry(
+                ctx,
+                status="ERROR",
+                start_ts=start_ts,
+                freshness=self._freshness_from_source("ERROR_NO_DATA", ttl_seconds=ctx.ttl_seconds),
+            )
             return None
 
         status = "SUCCESS"
         if isinstance(result, list) and not result:
             status = "EMPTY"
-        self._record_route_telemetry(ctx, status=status, start_ts=start_ts)
+        freshness = self._freshness_from_source(
+            source_status="ONLINE_LIVE",
+            ttl_seconds=ctx.ttl_seconds,
+            data_age_seconds=0.0,
+        )
+        self._record_route_telemetry(ctx, status=status, start_ts=start_ts, freshness=freshness)
         self._route_cache_store(ctx, result)
         return result
 
@@ -598,8 +660,9 @@ class SpanshClient:
             return value.strip()
         return value
 
-    def _route_cache_lookup(self, ctx: _RouteRequestContext) -> tuple[bool, Any]:
-        hit, cached, _meta = self.cache.get(ctx.cache_key)
+    def _route_cache_lookup(self, ctx: _RouteRequestContext) -> _RouteCacheSnapshot:
+        hit, cached, fresh_meta = self.cache.get(ctx.cache_key)
+        stale_hit, stale_cached, stale_meta = self.cache.get(ctx.cache_key, allow_expired=True)
         if config.get("debug_cache", False):
             self._debug_cache_log(
                 ctx.mode,
@@ -608,7 +671,15 @@ class SpanshClient:
                 ctx.debug_payload,
                 hit,
             )
-        return bool(hit), cached
+        stale_available = bool(stale_hit and stale_cached is not None and stale_meta.get("stale"))
+        return _RouteCacheSnapshot(
+            fresh_hit=bool(hit),
+            fresh_value=cached,
+            fresh_meta=fresh_meta or {},
+            stale_available=stale_available,
+            stale_value=stale_cached if stale_available else None,
+            stale_meta=stale_meta or {},
+        )
 
     def _run_route_pipeline(
         self,
@@ -711,9 +782,11 @@ class SpanshClient:
         status: str,
         start_ts: float,
         response_ms: int | None = None,
+        freshness: Dict[str, Any] | None = None,
     ) -> None:
         if response_ms is None:
             response_ms = int((time.monotonic() - start_ts) * 1000)
+        freshness_payload = dict(freshness or {})
         self._set_last_request(
             {
                 "timestamp": time.time(),
@@ -723,6 +796,13 @@ class SpanshClient:
                 "payload": ctx.payload_dict,
                 "status": status,
                 "response_ms": response_ms,
+                "source_status": freshness_payload.get("source_status", "UNKNOWN"),
+                "confidence": freshness_payload.get("confidence", "low"),
+                "confidence_score": freshness_payload.get("confidence_score", 0.0),
+                "data_age": freshness_payload.get("data_age", "-"),
+                "data_age_seconds": freshness_payload.get("data_age_seconds"),
+                "ttl_seconds": freshness_payload.get("ttl_seconds", ctx.ttl_seconds),
+                "is_offline_fallback": bool(freshness_payload.get("is_offline_fallback", False)),
             }
         )
 
@@ -731,8 +811,75 @@ class SpanshClient:
             ctx.cache_key,
             result,
             ctx.ttl_seconds,
-            meta={"provider": "spansh", "endpoint": ctx.endpoint_path, "mode": ctx.mode},
+            meta={
+                "provider": "spansh",
+                "endpoint": ctx.endpoint_path,
+                "mode": ctx.mode,
+                "source_status": "ONLINE_LIVE",
+            },
         )
+
+    @staticmethod
+    def _compact_age(seconds: float | None) -> str:
+        if seconds is None:
+            return "-"
+        sec = max(0, int(round(seconds)))
+        if sec < 60:
+            return f"{sec}s"
+        if sec < 3600:
+            return f"{max(1, sec // 60)}m"
+        if sec < 24 * 3600:
+            return f"{max(1, sec // 3600)}h"
+        if sec < 7 * 24 * 3600:
+            return f"{max(1, sec // (24 * 3600))}d"
+        return f"{max(1, sec // (7 * 24 * 3600))}w"
+
+    @staticmethod
+    def _confidence_from_source(source_status: str, data_age_seconds: float | None) -> tuple[str, float]:
+        age = data_age_seconds if data_age_seconds is not None else 0.0
+        if source_status == "ONLINE_LIVE":
+            return "high", 0.95
+        if source_status == "CACHE_TTL_HIT":
+            if age <= 3600:
+                return "high", 0.85
+            if age <= 6 * 3600:
+                return "mid", 0.72
+            return "mid", 0.62
+        if source_status == "OFFLINE_CACHE_FALLBACK":
+            if age <= 6 * 3600:
+                return "mid", 0.56
+            if age <= 24 * 3600:
+                return "low", 0.46
+            return "low", 0.35
+        return "low", 0.2
+
+    def _freshness_from_source(
+        self,
+        source_status: str,
+        *,
+        cache_meta: Dict[str, Any] | None = None,
+        ttl_seconds: int | None = None,
+        data_age_seconds: float | None = None,
+    ) -> Dict[str, Any]:
+        meta = dict(cache_meta or {})
+        age_seconds = data_age_seconds
+        if age_seconds is None:
+            raw_age = meta.get("data_age_seconds")
+            try:
+                age_seconds = float(raw_age) if raw_age is not None else None
+            except Exception:
+                age_seconds = None
+
+        confidence, confidence_score = self._confidence_from_source(source_status, age_seconds)
+        return {
+            "source_status": source_status,
+            "confidence": confidence,
+            "confidence_score": confidence_score,
+            "data_age_seconds": age_seconds,
+            "data_age": self._compact_age(age_seconds),
+            "ttl_seconds": ttl_seconds,
+            "is_offline_fallback": source_status == "OFFLINE_CACHE_FALLBACK",
+        }
 
     def neutron_route(
         self,

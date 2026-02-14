@@ -122,7 +122,11 @@ def normalize_body_rows(
     return route, rows
 
 
-def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
+def normalize_trade_rows(
+    result: Any,
+    *,
+    external_meta: dict[str, Any] | None = None,
+) -> Tuple[list[str], list[dict]]:
     def _clean_text(value: Any) -> str:
         return " ".join(str(value or "").strip().split())
 
@@ -549,6 +553,11 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
 
     route: list[str] = []
     rows: list[dict] = []
+    source_status = _clean_text((external_meta or {}).get("source_status")) or "UNKNOWN"
+    confidence = _clean_text((external_meta or {}).get("confidence")) or "low"
+    data_age = _clean_text((external_meta or {}).get("data_age")) or "-"
+    confidence_score = _to_float((external_meta or {}).get("confidence_score"))
+    data_age_seconds = _to_float((external_meta or {}).get("data_age_seconds"))
     running_cumulative_profit: int | None = None
 
     if not result:
@@ -837,6 +846,11 @@ def normalize_trade_rows(result: Any) -> Tuple[list[str], list[dict]]:
                 "cumulative_profit_from_payload": cumulative_profit_from_payload,
                 "distance_ly": distance_ly,
                 "jumps": jumps,
+                "source_status": source_status,
+                "confidence": confidence,
+                "confidence_score": confidence_score,
+                "data_age": data_age,
+                "data_age_seconds": data_age_seconds,
             }
         )
 

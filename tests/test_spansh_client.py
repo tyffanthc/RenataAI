@@ -89,7 +89,11 @@ class SpanshClientUnitTests(unittest.TestCase):
             )
 
         self.assertEqual(second, first)
-        self.assertEqual(self.client.get_last_request().get("status"), "CACHE_HIT")
+        req = self.client.get_last_request()
+        self.assertEqual(req.get("status"), "CACHE_HIT")
+        self.assertEqual(req.get("source_status"), "CACHE_TTL_HIT")
+        self.assertIn(req.get("confidence"), {"high", "mid"})
+        self.assertTrue(isinstance(req.get("data_age"), str) and req.get("data_age"))
 
     def test_route_dedup_makes_single_http_roundtrip_for_parallel_calls(self) -> None:
         payload = {"from": "Sol", "to": "Colonia", "range": 42.0, "profile": "dedup"}
@@ -138,6 +142,44 @@ class SpanshClientUnitTests(unittest.TestCase):
         self.assertEqual(len(results), 2)
         self.assertEqual(results[0], [{"system": "X"}])
         self.assertEqual(results[1], [{"system": "X"}])
+
+    def test_route_uses_offline_fallback_for_expired_cache(self) -> None:
+        payload = {"from": "Sol", "to": "Colonia", "range": 42.0, "profile": "offline-fallback"}
+        ctx = self.client._build_route_context(
+            mode="riches",
+            payload=payload,
+            referer="https://spansh.co.uk/riches",
+            endpoint_path=None,
+        )
+        stale_value = [{"system": "Cached"}]
+        self.client.cache.set(
+            ctx.cache_key,
+            stale_value,
+            ttl_seconds=0,
+            meta={"provider": "spansh", "mode": "riches"},
+        )
+
+        with patch(
+            "logic.spansh_client.requests.post",
+            side_effect=RuntimeError("network down"),
+        ), patch(
+            "logic.spansh_client.requests.get",
+            side_effect=RuntimeError("network down"),
+        ):
+            out = self.client.route(
+                mode="riches",
+                payload=payload,
+                referer="https://spansh.co.uk/riches",
+                poll_seconds=0.0,
+                polls=2,
+            )
+
+        self.assertEqual(out, stale_value)
+        req = self.client.get_last_request()
+        self.assertEqual(req.get("status"), "OFFLINE_FALLBACK")
+        self.assertEqual(req.get("source_status"), "OFFLINE_CACHE_FALLBACK")
+        self.assertIn(req.get("confidence"), {"mid", "low"})
+        self.assertTrue(req.get("is_offline_fallback"))
 
 
 if __name__ == "__main__":

@@ -1188,7 +1188,16 @@ def test_trade_multi_commodity_aliases_and_metrics(_ctx: TestContext) -> None:
             },
         ]
     }
-    _route, rows = normalize_trade_rows(sample)
+    _route, rows = normalize_trade_rows(
+        sample,
+        external_meta={
+            "source_status": "CACHE_TTL_HIT",
+            "confidence": "mid",
+            "data_age": "2h",
+            "confidence_score": 0.72,
+            "data_age_seconds": 7200,
+        },
+    )
     assert len(rows) == 2, f"Expected 2 rows, got {len(rows)}"
 
     single = rows[0]
@@ -1202,6 +1211,9 @@ def test_trade_multi_commodity_aliases_and_metrics(_ctx: TestContext) -> None:
     assert single.get("cumulative_profit") == 413184, "Single cumulativeProfit alias mapping failed"
     assert single.get("distance_ly") == 46.74, "Single distanceLy alias mapping failed"
     assert single.get("cumulative_profit_from_payload") is True, "Single cumulative payload source should be flagged"
+    assert single.get("source_status") == "CACHE_TTL_HIT", "Expected source_status passthrough from external meta"
+    assert single.get("confidence") == "mid", "Expected confidence passthrough from external meta"
+    assert single.get("data_age") == "2h", "Expected data_age passthrough from external meta"
 
     multi = rows[1]
     assert multi.get("commodity_display") == "Imperial Slaves +1", "Multi commodity aggregate display failed"
@@ -1214,6 +1226,7 @@ def test_trade_multi_commodity_aliases_and_metrics(_ctx: TestContext) -> None:
     assert multi.get("cumulative_profit") == 4096230, "Multi cumulative fallback calculation failed"
     assert multi.get("distance_ly") == 42.10, "Multi distance mapping failed"
     assert multi.get("cumulative_profit_from_payload") is False, "Multi cumulative fallback should not be payload"
+    assert multi.get("source_status") == "CACHE_TTL_HIT", "Expected source_status passthrough for all rows"
 
 
 def test_trade_updated_buy_sell_pair_from_market_timestamps(_ctx: TestContext) -> None:

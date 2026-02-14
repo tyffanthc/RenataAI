@@ -105,7 +105,20 @@ def oblicz_trade(
         if not result:
             return [], []
 
-        route, rows = normalize_trade_rows(result)
+        getter = getattr(client, "get_last_request", None)
+        if callable(getter):
+            last_request = getter() or {}
+        else:
+            last_request = {}
+        external_meta = {
+            "source_status": last_request.get("source_status"),
+            "confidence": last_request.get("confidence"),
+            "confidence_score": last_request.get("confidence_score"),
+            "data_age": last_request.get("data_age"),
+            "data_age_seconds": last_request.get("data_age_seconds"),
+            "is_offline_fallback": bool(last_request.get("is_offline_fallback", False)),
+        }
+        route, rows = normalize_trade_rows(result, external_meta=external_meta)
 
         if not rows:
             spansh_error(
