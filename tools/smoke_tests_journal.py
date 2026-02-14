@@ -28,6 +28,7 @@ from logic.event_handler import handler  # type: ignore
 from app.state import app_state  # type: ignore
 from app.route_manager import route_manager  # type: ignore
 from gui import common as gui_common  # type: ignore
+from logic.events import exploration_bio_events as bio_events  # type: ignore
 
 
 class TestContext:
@@ -455,6 +456,83 @@ def test_nav_symbiosis_guard_and_desync(ctx: TestContext) -> None:
             pass
 
 
+def test_journal_f3_exobio_progress_no_flood(ctx: TestContext) -> None:
+    """
+    F3 journal gate:
+    - ScanOrganic 1/2/3 emit expected progression,
+    - 4th ScanOrganic for same body/species stays silent,
+    - CodexEntry new entry is deduped for same (system, species).
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    bio_events.reset_bio_flags()
+
+    system_name = "SMOKE_T2_F3_EXOBIO_SYS"
+    body_name = "SMOKE_T2_F3_EXOBIO_BODY"
+    species_name = "Aleoida Arcus"
+
+    events = [
+        {"event": "Location", "StarSystem": system_name},
+        {
+            "event": "ScanOrganic",
+            "StarSystem": system_name,
+            "BodyName": body_name,
+            "Species_Localised": species_name,
+        },
+        {
+            "event": "ScanOrganic",
+            "StarSystem": system_name,
+            "BodyName": body_name,
+            "Species_Localised": species_name,
+        },
+        {
+            "event": "ScanOrganic",
+            "StarSystem": system_name,
+            "BodyName": body_name,
+            "Species_Localised": species_name,
+        },
+        {
+            "event": "ScanOrganic",
+            "StarSystem": system_name,
+            "BodyName": body_name,
+            "Species_Localised": species_name,
+        },
+        {
+            "event": "CodexEntry",
+            "StarSystem": system_name,
+            "BodyName": body_name,
+            "Category": "Biology",
+            "IsNewEntry": True,
+            "Name_Localised": "Cactoida Cortexum",
+        },
+        {
+            "event": "CodexEntry",
+            "StarSystem": system_name,
+            "BodyName": body_name,
+            "Category": "Biology",
+            "IsNewEntry": True,
+            "Name_Localised": "Cactoida Cortexum",
+        },
+    ]
+
+    for ev in events:
+        handler.handle_event(json.dumps(ev), gui_ref=None)
+
+    joined = " | ".join(str(m) for m in ctx.drain_queue()).lower()
+    assert joined.count("pierwsza próbka aleoida arcus pobrana.") == 1, (
+        "Expected one first-sample callout in journal F3 exobio scenario"
+    )
+    assert joined.count("druga próbka aleoida arcus pobrana.") == 1, (
+        "Expected one second-sample callout in journal F3 exobio scenario"
+    )
+    assert joined.count("mamy wszystko dla aleoida arcus.") == 1, (
+        "Expected one completion callout in journal F3 exobio scenario"
+    )
+    assert joined.count("nowy wpis biologiczny. cactoida cortexum.") == 1, (
+        "Expected one deduped codex callout in journal F3 exobio scenario"
+    )
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -473,6 +551,7 @@ def run_all_tests() -> int:
         ("test_journal_sequence_no_crash", test_journal_sequence_no_crash),
         ("test_route_manager_autoschowek_integration", test_route_manager_autoschowek_integration),
         ("test_nav_symbiosis_guard_and_desync", test_nav_symbiosis_guard_and_desync),
+        ("test_journal_f3_exobio_progress_no_flood", test_journal_f3_exobio_progress_no_flood),
     ]
 
     print("=== RenataAI Journal / AppState / Debouncer Tests (T2) ===")

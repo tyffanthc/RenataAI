@@ -16,6 +16,9 @@ import re
 import time
 import ast
 from typing import Callable, List, Tuple
+from unittest.mock import patch
+
+import pandas as pd
 
 # --- ŚCIEŻKI / IMPORTY --------------------------------------------------------
 
@@ -39,6 +42,7 @@ from logic.events import exploration_fss_events as fss_events  # type: ignore
 from logic.events import exploration_bio_events as bio_events  # type: ignore
 from logic.events import exploration_dss_events as dss_events  # type: ignore
 from logic.events import exploration_misc_events as misc_events  # type: ignore
+from logic.events import exploration_awareness as awareness_events  # type: ignore
 from logic import spansh_payloads
 from logic import spansh_client as spansh_client_logic  # type: ignore
 from logic import neutron as neutron_logic  # type: ignore
@@ -1520,6 +1524,113 @@ def test_exobio_sample_progress_sequence(_ctx: TestContext) -> None:
             MSG_QUEUE.get_nowait()
 
 
+def test_f3_exploration_cross_module_invariants(ctx: TestContext) -> None:
+    """
+    F3 quality gate (cross-module):
+    - mixed exploration signals in one system -> single awareness summary,
+    - exobio 1/2/3 progression without extra 4th sample callout.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+
+    app_state.current_system = "SMOKE_F3_CROSS_SYSTEM"
+    awareness_events.reset_exploration_awareness()
+    fss_events.reset_fss_progress()
+    bio_events.reset_bio_flags()
+    dss_events.reset_dss_helper_state()
+
+    class DummyGui:
+        def __init__(self) -> None:
+            self.carto_df = pd.DataFrame(
+                [
+                    {
+                        "Body_Type": "earth-like world",
+                        "Terraformable": "No",
+                        "DSS_Mapped_Value": 1_500_000,
+                    },
+                    {
+                        "Body_Type": "rocky body",
+                        "Terraformable": "No",
+                        "DSS_Mapped_Value": 900_000,
+                    },
+                ]
+            )
+
+    def _awareness_limits(key: str, default=None):
+        if key == "exploration.awareness.max_callouts_per_system":
+            return 1
+        if key == "exploration.awareness.max_callouts_per_session":
+            return 60
+        return default
+
+    gui_ref = DummyGui()
+    with (
+        patch("logic.events.exploration_awareness.config.get", side_effect=_awareness_limits),
+        patch(
+            "logic.events.exploration_bio_events._estimate_collected_species_value",
+            return_value=(12345.0, False),
+        ),
+    ):
+        # Awareness stack: first callout + one summary for mixed exploration context.
+        fss_events.handle_scan(
+            {
+                "event": "Scan",
+                "StarSystem": "SMOKE_F3_CROSS_SYSTEM",
+                "BodyName": "SMOKE_F3_BODY_1",
+                "PlanetClass": "Earth-like world",
+                "WasDiscovered": False,
+            },
+            gui_ref=gui_ref,
+        )
+        bio_events.handle_dss_bio_signals(
+            {
+                "event": "SAASignalsFound",
+                "StarSystem": "SMOKE_F3_CROSS_SYSTEM",
+                "BodyName": "SMOKE_F3_BODY_2",
+                "Signals": [{"Type": "Biological", "Count": 3}],
+            },
+            gui_ref=gui_ref,
+        )
+        dss_events.handle_dss_target_hint(
+            {
+                "event": "Scan",
+                "StarSystem": "SMOKE_F3_CROSS_SYSTEM",
+                "BodyName": "SMOKE_F3_BODY_3",
+                "PlanetClass": "Rocky body",
+                "WasMapped": False,
+            },
+            gui_ref=gui_ref,
+        )
+
+        # Exobio progress: 1/2/3 then stop.
+        sample_event = {
+            "event": "ScanOrganic",
+            "StarSystem": "SMOKE_F3_CROSS_SYSTEM",
+            "BodyName": "SMOKE_F3_BIO_BODY",
+            "Species_Localised": "Aleoida Arcus",
+        }
+        bio_events.handle_exobio_progress(sample_event, gui_ref=None)
+        bio_events.handle_exobio_progress(sample_event, gui_ref=None)
+        bio_events.handle_exobio_progress(sample_event, gui_ref=None)
+        bio_events.handle_exobio_progress(sample_event, gui_ref=None)
+
+    joined = " | ".join(str(m) for m in ctx.drain_queue())
+    joined_lower = joined.lower()
+
+    assert joined_lower.count("w tym systemie sa jeszcze obiekty warte uwagi eksploracyjnej.") == 1, (
+        "Expected exactly one mixed-system summary in F3 cross-module scenario"
+    )
+    assert joined_lower.count("pierwsza próbka aleoida arcus pobrana.") == 1, (
+        "Expected exactly one first-sample exobio callout"
+    )
+    assert joined_lower.count("druga próbka aleoida arcus pobrana.") == 1, (
+        "Expected exactly one second-sample exobio callout"
+    )
+    assert joined_lower.count("mamy wszystko dla aleoida arcus.") == 1, (
+        "Expected exactly one completion exobio callout"
+    )
+
+
 def test_trade_station_state_reset_on_system_change(_ctx: TestContext) -> None:
     class DummyVar:
         def __init__(self, value: str = "") -> None:
@@ -2322,6 +2433,7 @@ def run_all_tests() -> int:
         ("test_fss_last_body_before_full_11_of_12", test_fss_last_body_before_full_11_of_12),
         ("test_tts_polish_diacritics_global", test_tts_polish_diacritics_global),
         ("test_exobio_sample_progress_sequence", test_exobio_sample_progress_sequence),
+        ("test_f3_exploration_cross_module_invariants", test_f3_exploration_cross_module_invariants),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
         ("test_trade_station_picker_candidates_and_wiring", test_trade_station_picker_candidates_and_wiring),
         ("test_spansh_feedback_smoke_pack_coverage", test_spansh_feedback_smoke_pack_coverage),
