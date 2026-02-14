@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+set -eu
+
+MSG_FILE="${1:-}"
+if [ -z "$MSG_FILE" ]; then
+  echo "[commit-msg] ERROR: missing commit message file argument." >&2
+  exit 1
+fi
+
+echo "[commit-msg] Validating commit prefix and public guard..."
+
+if command -v py >/dev/null 2>&1; then
+  py tools/commit_msg_guard.py "$MSG_FILE"
+elif command -v python >/dev/null 2>&1; then
+  python tools/commit_msg_guard.py "$MSG_FILE"
+else
+  echo "[commit-msg] ERROR: Python launcher not found (py/python)." >&2
+  exit 1
+fi
+
+echo "[commit-msg] COMMIT_MSG_GUARD passed."

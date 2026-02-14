@@ -78,6 +78,10 @@ Settings in FREE mode show a short, safe list of options (5-7 max). Advanced/dev
 - Forbidden in public repo/release: `docs/internal/`, `docs/Flow/private/`, `pro/`.
 - Install git hooks once per clone:
   - `py tools/install_git_hooks.py`
+- Before first commit each day:
+  - `py tools/commit_rules_guard.py --ack`
+- Commit message must start with exactly one prefix:
+  - `[PUB]` or `[PRO]`
 - Before push/build:
   - `py tools/public_repo_guard.py`
 - Before ZIP upload:

@@ -22,10 +22,14 @@ def main() -> int:
         return 1
 
     print("Git hooks installed: core.hooksPath=.githooks")
-    print("pre-push now runs tools/public_repo_guard.py")
+    print("Configured hooks:")
+    print("- pre-commit: commit rules acknowledgement guard")
+    print("- commit-msg: [PUB]/[PRO] prefix + [PUB] public guard")
+    print("- pre-push: public guard")
+    print("Before first commit each day, run:")
+    print("  py tools/commit_rules_guard.py --ack")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

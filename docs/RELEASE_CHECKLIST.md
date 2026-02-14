@@ -4,6 +4,10 @@
 - Confirm target version and included tickets.
 - Freeze feature flags for release (default ON/OFF decisions).
 - Verify `user_settings.json` is not tracked.
+- Commit discipline:
+  - Prefix required: `[PUB]` or `[PRO]` (exactly one).
+  - Acknowledge rules before first commit each day:
+    - `py tools/commit_rules_guard.py --ack`
 - FREE/PRO isolation:
   - Public release = FREE only.
   - No files from `docs/internal/`, `docs/Flow/private/` and `pro/` can be tracked or shipped.
