@@ -15,6 +15,7 @@ from logic.events.exploration_high_value_events import (
     reset_high_value_flags,
 )
 from logic.events.exploration_bio_events import reset_bio_flags
+from logic.events.exploration_dss_events import reset_dss_helper_state
 from logic.events.exploration_misc_events import reset_footfall_flags
 from logic.events.exploration_awareness import reset_system_awareness
 
@@ -152,6 +153,7 @@ def reset_fss_progress() -> None:
     # Resety w innych moduĹ‚ach eksploracyjnych
     reset_high_value_flags()
     reset_bio_flags()
+    reset_dss_helper_state()
     reset_footfall_flags()
     reset_system_awareness(previous_system)
 

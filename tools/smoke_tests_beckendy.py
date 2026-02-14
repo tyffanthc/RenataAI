@@ -37,6 +37,7 @@ from logic.events import trade_events  # type: ignore
 from logic.events import navigation_events  # type: ignore
 from logic.events import exploration_fss_events as fss_events  # type: ignore
 from logic.events import exploration_bio_events as bio_events  # type: ignore
+from logic.events import exploration_dss_events as dss_events  # type: ignore
 from logic.events import exploration_misc_events as misc_events  # type: ignore
 from logic import spansh_payloads
 from logic import spansh_client as spansh_client_logic  # type: ignore
@@ -522,6 +523,74 @@ def test_bio_signals_basic(ctx: TestContext) -> None:
         "Expected no additional bio messages on second call for same body, "
         f"got: {msgs_second}"
     )
+
+
+def test_dss_helper_completion_basic(ctx: TestContext) -> None:
+    """
+    DSS helper smoke:
+    - SAAScanComplete -> completion callout,
+    - sparse progress milestones (1/3/5),
+    - no completion duplicates for the same body.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    dss_events.reset_dss_helper_state()
+
+    dss_events.handle_dss_scan_complete(
+        {
+            "event": "SAAScanComplete",
+            "StarSystem": "SMOKE_DSS_SYSTEM",
+            "BodyName": "SMOKE_DSS_BODY_1",
+            "ProbesUsed": 5,
+            "EfficiencyTarget": 6,
+            "WasMapped": False,
+        },
+        gui_ref=None,
+    )
+    msgs_first = " | ".join(str(m) for m in ctx.drain_queue())
+    assert "Mapowanie DSS ukonczone" in msgs_first, "Missing DSS completion callout for first body"
+    assert "Pierwsze mapowanie DSS" in msgs_first, "Missing DSS progress milestone for first body"
+    assert "first mapped" in msgs_first.lower(), "Missing first mapped confirmation on explicit WasMapped=False"
+
+    ctx.clear_queue()
+    dss_events.handle_dss_scan_complete(
+        {
+            "event": "SAAScanComplete",
+            "StarSystem": "SMOKE_DSS_SYSTEM",
+            "BodyName": "SMOKE_DSS_BODY_1",
+            "ProbesUsed": 5,
+            "EfficiencyTarget": 6,
+            "WasMapped": False,
+        },
+        gui_ref=None,
+    )
+    assert len(ctx.drain_queue()) == 0, "Duplicate SAAScanComplete for same body should stay silent"
+
+    ctx.clear_queue()
+    dss_events.handle_dss_scan_complete(
+        {
+            "event": "SAAScanComplete",
+            "StarSystem": "SMOKE_DSS_SYSTEM",
+            "BodyName": "SMOKE_DSS_BODY_2",
+            "ProbesUsed": 7,
+            "EfficiencyTarget": 6,
+            "WasMapped": True,
+        },
+        gui_ref=None,
+    )
+    dss_events.handle_dss_scan_complete(
+        {
+            "event": "SAAScanComplete",
+            "StarSystem": "SMOKE_DSS_SYSTEM",
+            "BodyName": "SMOKE_DSS_BODY_3",
+            "ProbesUsed": 8,
+            "EfficiencyTarget": 6,
+            "WasMapped": True,
+        },
+        gui_ref=None,
+    )
+    msgs_more = " | ".join(str(m) for m in ctx.drain_queue())
+    assert "Zmapowano DSS 3 cial" in msgs_more, "Missing DSS progress milestone at 3 bodies"
 
 
 def test_ammonia_payload_snapshot(_ctx: TestContext) -> None:
@@ -1868,6 +1937,7 @@ def test_no_wild_emits_in_migrated_event_modules(_ctx: TestContext) -> None:
         os.path.join(ROOT_DIR, "logic/events/navigation_events.py"),
         os.path.join(ROOT_DIR, "logic/events/fuel_events.py"),
         os.path.join(ROOT_DIR, "logic/events/exploration_fss_events.py"),
+        os.path.join(ROOT_DIR, "logic/events/exploration_dss_events.py"),
     ]
 
     for path in migrated_files:
@@ -1889,6 +1959,10 @@ def test_event_insight_mapping_core_contract(_ctx: TestContext) -> None:
         "MSG.FSS_PROGRESS_75",
         "MSG.FSS_LAST_BODY",
         "MSG.SYSTEM_FULLY_SCANNED",
+        "MSG.DSS_TARGET_HINT",
+        "MSG.DSS_COMPLETED",
+        "MSG.DSS_PROGRESS",
+        "MSG.FIRST_MAPPED",
     ]
     for message_id in required_message_ids:
         spec = get_insight_class(message_id)
@@ -1936,6 +2010,7 @@ def test_no_plan_checks_in_action_modules(_ctx: TestContext) -> None:
         os.path.join(ROOT_DIR, "logic/events/navigation_events.py"),
         os.path.join(ROOT_DIR, "logic/events/fuel_events.py"),
         os.path.join(ROOT_DIR, "logic/events/exploration_fss_events.py"),
+        os.path.join(ROOT_DIR, "logic/events/exploration_dss_events.py"),
         os.path.join(ROOT_DIR, "logic/events/exploration_bio_events.py"),
         os.path.join(ROOT_DIR, "logic/events/exploration_misc_events.py"),
         os.path.join(ROOT_DIR, "logic/events/trade_events.py"),
@@ -2229,6 +2304,7 @@ def run_all_tests() -> int:
         ("test_trade_jackpot_basic", test_trade_jackpot_basic),
         ("test_fss_progress_basic", test_fss_progress_basic),
         ("test_bio_signals_basic", test_bio_signals_basic),
+        ("test_dss_helper_completion_basic", test_dss_helper_completion_basic),
         ("test_first_footfall_basic", test_first_footfall_basic),
         ("test_table_schemas_basic", test_table_schemas_basic),
         ("test_spansh_system_copy_mapping", test_spansh_system_copy_mapping),

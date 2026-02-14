@@ -4,6 +4,7 @@ import config
 from logic.events import fuel_events
 from logic.events import exploration_fss_events
 from logic.events import exploration_bio_events
+from logic.events import exploration_dss_events
 from logic.events import exploration_material_events
 from logic.events import exploration_misc_events
 from logic.events import navigation_events
@@ -138,6 +139,7 @@ class EventHandler:
 
         if typ == "Scan":
             exploration_fss_events.handle_scan(ev, gui_ref)
+            exploration_dss_events.handle_dss_target_hint(ev, gui_ref)
             try:
                 from app.state import app_state
                 app_state.system_value_engine.analyze_scan_event(ev)
@@ -145,6 +147,17 @@ class EventHandler:
                 _log_router_fallback("scan.value_engine", "scan event value analysis failed", exc)
         if typ == "SAASignalsFound":
             exploration_bio_events.handle_dss_bio_signals(ev, gui_ref)
+        if typ == "SAAScanComplete":
+            exploration_dss_events.handle_dss_scan_complete(ev, gui_ref)
+            try:
+                from app.state import app_state
+                app_state.system_value_engine.analyze_discovery_meta_event(ev)
+            except Exception as exc:
+                _log_router_fallback(
+                    "saa.discovery_meta",
+                    "SAAScanComplete discovery meta analysis failed",
+                    exc,
+                )
         if typ in ("ScanOrganic", "CodexEntry"):
             exploration_bio_events.handle_exobio_progress(ev, gui_ref)
 

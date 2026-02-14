@@ -19,6 +19,10 @@ class EventInsightMappingTests(unittest.TestCase):
             "MSG.FSS_LAST_BODY",
             "MSG.SYSTEM_FULLY_SCANNED",
             "MSG.FIRST_DISCOVERY_OPPORTUNITY",
+            "MSG.DSS_TARGET_HINT",
+            "MSG.DSS_COMPLETED",
+            "MSG.DSS_PROGRESS",
+            "MSG.FIRST_MAPPED",
         ]
         for message_id in required:
             spec = get_insight_class(message_id)
