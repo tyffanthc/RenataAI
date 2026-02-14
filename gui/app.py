@@ -22,6 +22,7 @@ import threading
 from logic.science_data import load_science_data
 from logic.modules_data import load_modules_data
 from logic.utils.renata_log import log_event, log_event_throttled
+from logic.capabilities import CAP_UI_EXTENDED_TABS, has_capability
 
 
 def _exc_text(exc: Exception) -> str:
@@ -247,8 +248,7 @@ class RenataApp:
         self.tab_inara = None
         self.tab_edtools = None
         self.tab_engi = None
-        free_profile = bool(config.get("features.tts.free_policy_enabled", True))
-        if not free_profile:
+        if has_capability(CAP_UI_EXTENDED_TABS):
             self.tab_inara = ttk.Frame(self.main_nb)
             self.main_nb.add(self.tab_inara, text=ui.TAB_MAIN_INARA)
             ttk.Label(

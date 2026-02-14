@@ -48,6 +48,14 @@ from logic.rows_normalizer import normalize_trade_rows
 from logic.tts.text_preprocessor import prepare_tts
 from logic.insight_dispatcher import Insight, pick_insight_for_emit, evaluate_risk_trust_gate
 from logic.event_insight_mapping import get_insight_class, resolve_emit_contract
+from logic.capabilities import (
+    CAP_SETTINGS_FULL,
+    CAP_TTS_ADVANCED_POLICY,
+    CAP_UI_EXTENDED_TABS,
+    PROFILE_FREE,
+    PROFILE_PRO,
+    resolve_capabilities,
+)
 from gui import common_tables  # type: ignore
 from gui.tabs.spansh.trade import TradeTab  # type: ignore
 
@@ -1896,6 +1904,40 @@ def test_event_insight_mapping_core_contract(_ctx: TestContext) -> None:
     assert ctx.get("decision_space") == "critical_warning", "Resolved context should expose decision space"
 
 
+def test_capabilities_profile_contract(_ctx: TestContext) -> None:
+    free_caps = resolve_capabilities({"plan.profile": "FREE"})
+    assert free_caps.profile == PROFILE_FREE, "FREE profile should resolve as FREE"
+    assert not free_caps.has(CAP_SETTINGS_FULL), "FREE should not expose full settings capability"
+    assert not free_caps.has(CAP_UI_EXTENDED_TABS), "FREE should not expose extended tabs capability"
+    assert not free_caps.has(CAP_TTS_ADVANCED_POLICY), "FREE should use conservative TTS policy"
+
+    pro_caps = resolve_capabilities({"plan.profile": "PRO"})
+    assert pro_caps.profile == PROFILE_PRO, "PRO profile should resolve as PRO"
+    assert pro_caps.has(CAP_SETTINGS_FULL), "PRO should expose full settings capability"
+    assert pro_caps.has(CAP_UI_EXTENDED_TABS), "PRO should expose extended tabs capability"
+    assert pro_caps.has(CAP_TTS_ADVANCED_POLICY), "PRO should expose advanced TTS policy capability"
+
+
+def test_no_plan_checks_in_action_modules(_ctx: TestContext) -> None:
+    action_files = [
+        os.path.join(ROOT_DIR, "logic/events/navigation_events.py"),
+        os.path.join(ROOT_DIR, "logic/events/fuel_events.py"),
+        os.path.join(ROOT_DIR, "logic/events/exploration_fss_events.py"),
+        os.path.join(ROOT_DIR, "logic/events/exploration_bio_events.py"),
+        os.path.join(ROOT_DIR, "logic/events/exploration_misc_events.py"),
+        os.path.join(ROOT_DIR, "logic/events/trade_events.py"),
+    ]
+    forbidden_plan_conditions = (
+        "features.tts.free_policy_enabled",
+        "plan.profile",
+    )
+    for path in action_files:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        for marker in forbidden_plan_conditions:
+            assert marker not in content, f"Plan condition '{marker}' should not exist in action module {path}"
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1941,6 +1983,8 @@ def run_all_tests() -> int:
         ("test_risk_trust_gate_allows_critical_override", test_risk_trust_gate_allows_critical_override),
         ("test_no_wild_emits_in_migrated_event_modules", test_no_wild_emits_in_migrated_event_modules),
         ("test_event_insight_mapping_core_contract", test_event_insight_mapping_core_contract),
+        ("test_capabilities_profile_contract", test_capabilities_profile_contract),
+        ("test_no_plan_checks_in_action_modules", test_no_plan_checks_in_action_modules),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

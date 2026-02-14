@@ -110,7 +110,12 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "tts.cooldown_explore_sec": 30,
     "tts.cooldown_alert_sec": 15,
     "tts.cooldown_route_sec": 15,
+    "plan.profile": "PRO",
     "features.tts.free_policy_enabled": False,
+    "capabilities.voice_stt": False,
+    "capabilities.ui_extended_tabs": True,
+    "capabilities.settings_full": True,
+    "capabilities.tts_advanced_policy": True,
     "landing_pad_speech": True,       # komunikaty do lądowania
     "route_progress_speech": True,    # 25/50/75% itp.
     "exit_summary_enabled": True,     # podsumowanie po skanowaniu

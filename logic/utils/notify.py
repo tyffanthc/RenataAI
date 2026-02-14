@@ -4,6 +4,7 @@ import queue
 from datetime import datetime
 import config
 from logic.tts.text_preprocessor import prepare_tts
+from logic.capabilities import CAP_TTS_ADVANCED_POLICY, has_capability
 
 
 # Globalna kolejka komunikatów dla GUI (Thread-Safe)
@@ -125,8 +126,7 @@ def _should_speak_tts(message_id: str, context: dict | None) -> bool:
     if confidence in ("low", "mid", "uncertain", "maybe"):
         return False
 
-    free_policy = bool(config.get("features.tts.free_policy_enabled", True))
-    if not free_policy:
+    if has_capability(CAP_TTS_ADVANCED_POLICY):
         return _should_speak_legacy(message_id, ctx)
 
     intent = _tts_intent(message_id)

@@ -7,6 +7,12 @@ import os
 import config
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
 from gui.window_chrome import apply_renata_orange_window_chrome
+from logic.capabilities import (
+    CAP_SETTINGS_FULL,
+    CAP_TTS_ADVANCED_POLICY,
+    capability_config_patch_from_free_policy,
+    resolve_capabilities,
+)
 
 
 class SettingsTab(ttk.Frame):
@@ -40,7 +46,13 @@ class SettingsTab(ttk.Frame):
         self._save_config = save_config
         self._jackpot_dialog = None
         self._tables_columns_dialog = None
-        self._free_profile = bool(config.get("features.tts.free_policy_enabled", True))
+        initial_cfg: Dict[str, Any] = {}
+        if callable(self._get_config):
+            try:
+                initial_cfg = self._get_config() or {}
+            except Exception:
+                initial_cfg = {}
+        self._free_profile = not resolve_capabilities(initial_cfg or None).has(CAP_SETTINGS_FULL)
         self._scroll_tabs: Dict[tk.Widget, Dict[str, Any]] = {}
 
         self._create_vars()
@@ -1514,9 +1526,8 @@ class SettingsTab(ttk.Frame):
 
         # główny TTS / głos
         self.var_enable_sounds.set(cfg.get("voice_enabled", self.var_enable_sounds.get()))
-        self.var_tts_free_policy.set(
-            cfg.get("features.tts.free_policy_enabled", self.var_tts_free_policy.get())
-        )
+        caps = resolve_capabilities(cfg)
+        self.var_tts_free_policy.set(not caps.has(CAP_TTS_ADVANCED_POLICY))
         online_enabled = (
             bool(cfg.get("features.providers.edsm_enabled", False))
             or bool(cfg.get("features.providers.system_lookup_online", False))
@@ -1867,7 +1878,6 @@ class SettingsTab(ttk.Frame):
             "theme": self.var_theme.get() if self.var_theme.get() in ("dark", "ed_orange", "ed_blue", "dark_minimal") else "dark",
 
             "voice_enabled": self.var_enable_sounds.get(),
-            "features.tts.free_policy_enabled": self.var_tts_free_policy.get(),
 
             "landing_pad_speech": self.var_read_landing_pad.get(),
             "auto_clipboard": self.var_auto_clipboard.get(),
@@ -1942,6 +1952,11 @@ class SettingsTab(ttk.Frame):
             "fit_resolver_debug": self.var_fit_resolver_debug.get(),
             "jump_range_validate_debug": self.var_jump_range_validate_debug.get(),
         }
+        cfg.update(
+            capability_config_patch_from_free_policy(
+                self.var_tts_free_policy.get()
+            )
+        )
         return cfg
 
     def _update_exploration_excel_hint(self) -> None:
@@ -2081,7 +2096,8 @@ class SettingsTab(ttk.Frame):
 
         self.var_enable_sounds.set(bool(defaults.get("voice_enabled", True)))
         self.var_confirm_exit.set(bool(defaults.get("confirm_exit", True)))
-        self.var_tts_free_policy.set(bool(defaults.get("features.tts.free_policy_enabled", True)))
+        defaults_caps = resolve_capabilities(defaults)
+        self.var_tts_free_policy.set(not defaults_caps.has(CAP_TTS_ADVANCED_POLICY))
         self.var_online_data_enabled.set(
             bool(defaults.get("features.providers.system_lookup_online", False))
             or bool(defaults.get("features.trade.station_lookup_online", False))
