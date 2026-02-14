@@ -1,7 +1,8 @@
 import time
 
 import config
-from logic.utils import DEBOUNCER, powiedz
+from logic.utils import DEBOUNCER
+from logic.insight_dispatcher import emit_insight
 
 
 # --- GLOBAL FLAGS / STATE (paliwo) ---
@@ -109,10 +110,16 @@ def handle_status_update(status: dict, gui_ref=None):
 
         system_name = status.get("StarSystem") or status.get("SystemName") or None
         if DEBOUNCER.can_send("LOW_FUEL", 300, context=system_name):
-            powiedz(
+            emit_insight(
                 "Warning. Fuel reserves critical.",
-                gui_ref,
+                gui_ref=gui_ref,
                 message_id="MSG.FUEL_CRITICAL",
+                source="fuel_events",
+                priority="P0_CRITICAL",
+                dedup_key=f"low_fuel:{system_name or 'unknown'}",
+                cooldown_scope="entity",
+                cooldown_seconds=300.0,
+                combat_silence_sensitive=False,
             )
         return
 

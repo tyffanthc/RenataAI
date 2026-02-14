@@ -5,8 +5,8 @@ from typing import Dict
 import config
 import pyperclip
 
-from logic.utils import powiedz
 from logic import utils
+from logic.insight_dispatcher import emit_insight
 from logic.utils.renata_log import log_event, log_event_throttled
 from app.state import app_state
 from app.route_manager import route_manager
@@ -135,18 +135,28 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
             # Without active route, announce current jump as "jumped system", not "next hop".
             next_hop = route_manager.get_next_system(str(sysname))
             if next_hop:
-                powiedz(
+                emit_insight(
                     f"Skok: {sysname}",
-                    gui_ref,
+                    gui_ref=gui_ref,
                     message_id="MSG.NEXT_HOP",
+                    source="navigation_events",
                     context={"system": next_hop},
+                    priority="P2_NORMAL",
+                    dedup_key=f"next_hop:{next_hop}",
+                    cooldown_scope="entity",
+                    cooldown_seconds=8.0,
                 )
             elif config.get("read_system_after_jump", True):
-                powiedz(
+                emit_insight(
                     f"Skok: {sysname}",
-                    gui_ref,
+                    gui_ref=gui_ref,
                     message_id="MSG.JUMPED_SYSTEM",
+                    source="navigation_events",
                     context={"system": sysname},
+                    priority="P2_NORMAL",
+                    dedup_key=f"jumped:{sysname}",
+                    cooldown_scope="entity",
+                    cooldown_seconds=8.0,
                 )
             # AUTO-COPY Cel podr+-+-y (tylko w pierwszym bloku, jak w oryginale)
             try:
@@ -156,11 +166,16 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
                            or getattr(gui_ref.state, "current_body", None))
                     if obj:
                         pyperclip.copy(obj)
-                        powiedz(
+                        emit_insight(
                             "Skopiowano cel podr+-+-y",
-                            gui_ref,
+                            gui_ref=gui_ref,
                             message_id="MSG.NEXT_HOP_COPIED",
+                            source="navigation_events",
                             context={"system": obj},
+                            priority="P2_NORMAL",
+                            dedup_key=f"target_copy:{obj}",
+                            cooldown_scope="entity",
+                            cooldown_seconds=8.0,
                         )
                     gui_ref.state.next_travel_target = None
             except Exception as exc:
@@ -179,11 +194,16 @@ def handle_docked(ev: Dict[str, object], gui_ref=None):
     if st:
         app_state.set_station(st)
         app_state.set_docked(True)
-        powiedz(
+        emit_insight(
             f"Dokowano w {st}",
-            gui_ref,
+            gui_ref=gui_ref,
             message_id="MSG.DOCKED",
+            source="navigation_events",
             context={"station": st},
+            priority="P2_NORMAL",
+            dedup_key=f"docked:{st}",
+            cooldown_scope="entity",
+            cooldown_seconds=8.0,
         )
     else:
         # nawet je+Ťli z jakiego+Ť powodu brak nazwy stacji, sam event Docked
@@ -196,7 +216,16 @@ def handle_undocked(ev: Dict[str, object], gui_ref=None):
     Obs+éuga eventu Undocked.
     """
     app_state.set_docked(False)
-    powiedz("Odlot z portu.", gui_ref, message_id="MSG.UNDOCKED")
+    emit_insight(
+        "Odlot z portu.",
+        gui_ref=gui_ref,
+        message_id="MSG.UNDOCKED",
+        source="navigation_events",
+        priority="P2_NORMAL",
+        dedup_key="undocked",
+        cooldown_scope="message",
+        cooldown_seconds=6.0,
+    )
 
 
 def handle_navroute_update(navroute_data: Dict[str, object], gui_ref=None) -> None:

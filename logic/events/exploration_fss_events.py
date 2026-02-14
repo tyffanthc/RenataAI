@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Any, Dict
 import config
 
-from logic.utils import powiedz, DEBOUNCER
+from logic.utils import DEBOUNCER
+from logic.insight_dispatcher import emit_insight
 from logic import utils
 from app.state import app_state
 
@@ -137,33 +138,48 @@ def _check_fss_thresholds(gui_ref=None):
         # zachowujemy starÄ… logikÄ™ flag (jedno odpalenie na prĂłg)
         FSS_25_WARNED = True
         if DEBOUNCER.can_send("FSS_25", 120, context=system_name):
-            powiedz(
+            emit_insight(
                 "Dwadzieścia pięć procent systemu przeskanowane.",
-                gui_ref,
+                gui_ref=gui_ref,
                 message_id="MSG.FSS_PROGRESS_25",
+                source="exploration_fss_events",
                 context={"system": system_name},
+                priority="P2_NORMAL",
+                dedup_key=f"fss25:{system_name or 'unknown'}",
+                cooldown_scope="entity",
+                cooldown_seconds=120.0,
             )
 
     # 50%
     if not FSS_50_WARNED and progress >= 0.5:
         FSS_50_WARNED = True
         if DEBOUNCER.can_send("FSS_50", 120, context=system_name):
-            powiedz(
+            emit_insight(
                 "PoĹ‚owa systemu przeskanowana.",
-                gui_ref,
+                gui_ref=gui_ref,
                 message_id="MSG.FSS_PROGRESS_50",
+                source="exploration_fss_events",
                 context={"system": system_name},
+                priority="P2_NORMAL",
+                dedup_key=f"fss50:{system_name or 'unknown'}",
+                cooldown_scope="entity",
+                cooldown_seconds=120.0,
             )
 
     # 75%
     if not FSS_75_WARNED and progress >= 0.75:
         FSS_75_WARNED = True
         if DEBOUNCER.can_send("FSS_75", 120, context=system_name):
-            powiedz(
+            emit_insight(
                 "Siedemdziesiąt pięć procent systemu przeskanowane.",
-                gui_ref,
+                gui_ref=gui_ref,
                 message_id="MSG.FSS_PROGRESS_75",
+                source="exploration_fss_events",
                 context={"system": system_name},
+                priority="P2_NORMAL",
+                dedup_key=f"fss75:{system_name or 'unknown'}",
+                cooldown_scope="entity",
+                cooldown_seconds=120.0,
             )
 
     # Ostatnia planeta do skanowania
@@ -171,11 +187,16 @@ def _check_fss_thresholds(gui_ref=None):
     if not FSS_LAST_WARNED and FSS_TOTAL_BODIES > 1 and remaining == 1:
         FSS_LAST_WARNED = True
         if DEBOUNCER.can_send("FSS_LAST", 120, context=system_name):
-            powiedz(
+            emit_insight(
                 "Ostatnia planeta do skanowania.",
-                gui_ref,
+                gui_ref=gui_ref,
                 message_id="MSG.FSS_LAST_BODY",
+                source="exploration_fss_events",
                 context={"system": system_name},
+                priority="P2_NORMAL",
+                dedup_key=f"fss_last:{system_name or 'unknown'}",
+                cooldown_scope="entity",
+                cooldown_seconds=120.0,
             )
 
 
@@ -192,11 +213,16 @@ def _maybe_speak_fss_full(gui_ref=None) -> bool:
         return True
 
     if DEBOUNCER.can_send("FSS_FULL", 120, context=system_name):
-        powiedz(
+        emit_insight(
             "System w pe?ni przeskanowany.",
-            gui_ref,
+            gui_ref=gui_ref,
             message_id="MSG.SYSTEM_FULLY_SCANNED",
+            source="exploration_fss_events",
             context={"system": system_name},
+            priority="P2_NORMAL",
+            dedup_key=f"fss_full:{system_name or 'unknown'}",
+            cooldown_scope="entity",
+            cooldown_seconds=120.0,
         )
         FSS_FULL_WARNED = True
         _wire_exit_summary_to_runtime()
@@ -239,17 +265,32 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
         if was_discovered is False or was_discovered == 0:
             # System â€“ pierwszy skan w systemie i brak wczeĹ›niejszego odkrycia
             if first_scan_in_system and not FIRST_SYS_DISC_WARNED:
-                powiedz(
+                emit_insight(
                     "Gratulacje. JesteĹ› pierwszym czĹ‚owiekiem w tym ukĹ‚adzie.",
-                    gui_ref,
+                    gui_ref=gui_ref,
                     message_id="MSG.FIRST_DISCOVERY",
+                    source="exploration_fss_events",
                     context={"system": app_state.current_system},
+                    priority="P2_NORMAL",
+                    dedup_key=f"first_discovery_system:{app_state.current_system or 'unknown'}",
+                    cooldown_scope="entity",
+                    cooldown_seconds=120.0,
                 )
                 FIRST_SYS_DISC_WARNED = True
 
             # Planeta â€“ indywidualny komunikat per ciaĹ‚o
             if body_name not in FIRST_BODY_DISC_WARNED_BODIES:
-                powiedz("To ciaĹ‚o nie ma wczeĹ›niejszego odkrywcy.", gui_ref)
+                emit_insight(
+                    "To ciaĹ‚o nie ma wczeĹ›niejszego odkrywcy.",
+                    gui_ref=gui_ref,
+                    message_id="MSG.BODY_NO_PREV_DISCOVERY",
+                    source="exploration_fss_events",
+                    context={"system": app_state.current_system, "body": str(body_name)},
+                    priority="P3_LOW",
+                    dedup_key=f"first_body:{body_name}",
+                    cooldown_scope="entity",
+                    cooldown_seconds=120.0,
+                )
                 FIRST_BODY_DISC_WARNED_BODIES.add(body_name)
 
         # --- FSS progi + high-value planets ---

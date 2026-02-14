@@ -46,6 +46,7 @@ from logic import exomastery as exomastery_logic  # type: ignore
 from logic import trade as trade_logic  # type: ignore
 from logic.rows_normalizer import normalize_trade_rows
 from logic.tts.text_preprocessor import prepare_tts
+from logic.insight_dispatcher import Insight, pick_insight_for_emit
 from gui import common_tables  # type: ignore
 from gui.tabs.spansh.trade import TradeTab  # type: ignore
 
@@ -1762,6 +1763,51 @@ def test_global_scrollbar_style_and_window_chrome_wiring(_ctx: TestContext) -> N
     assert "style=\"Horizontal.TScale\"" in trade_content, "Missing explicit Horizontal.TScale usage for market age slider"
 
 
+def test_insight_dispatcher_conflict_selection_deterministic(_ctx: TestContext) -> None:
+    candidates = [
+        Insight(
+            text="normal",
+            message_id="MSG.NORMAL",
+            source="test",
+            priority="P2_NORMAL",
+        ),
+        Insight(
+            text="critical",
+            message_id="MSG.CRITICAL",
+            source="test",
+            priority="P0_CRITICAL",
+        ),
+        Insight(
+            text="high",
+            message_id="MSG.HIGH",
+            source="test",
+            priority="P1_HIGH",
+        ),
+    ]
+
+    selected_1 = pick_insight_for_emit(candidates)
+    selected_2 = pick_insight_for_emit(candidates)
+
+    assert selected_1 is not None, "Dispatcher should pick one insight"
+    assert selected_2 is not None, "Dispatcher should be deterministic across runs"
+    assert selected_1.message_id == "MSG.CRITICAL", "Highest priority insight should win"
+    assert selected_2.message_id == "MSG.CRITICAL", "Selection must be deterministic"
+
+
+def test_no_wild_emits_in_migrated_event_modules(_ctx: TestContext) -> None:
+    migrated_files = [
+        os.path.join(ROOT_DIR, "logic/events/navigation_events.py"),
+        os.path.join(ROOT_DIR, "logic/events/fuel_events.py"),
+        os.path.join(ROOT_DIR, "logic/events/exploration_fss_events.py"),
+    ]
+
+    for path in migrated_files:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        assert "emit_insight(" in content, f"Expected dispatcher usage in {path}"
+        assert "powiedz(" not in content, f"Found direct powiedz() call in migrated module {path}"
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1802,6 +1848,8 @@ def run_all_tests() -> int:
         ("test_startup_window_deferred_show", test_startup_window_deferred_show),
         ("test_trade_split_view_layout_wiring", test_trade_split_view_layout_wiring),
         ("test_global_scrollbar_style_and_window_chrome_wiring", test_global_scrollbar_style_and_window_chrome_wiring),
+        ("test_insight_dispatcher_conflict_selection_deterministic", test_insight_dispatcher_conflict_selection_deterministic),
+        ("test_no_wild_emits_in_migrated_event_modules", test_no_wild_emits_in_migrated_event_modules),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),
