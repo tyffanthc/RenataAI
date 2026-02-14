@@ -14,6 +14,7 @@ ALLOWED_MESSAGES = {
     "MSG.DOCKED",
     "MSG.UNDOCKED",
     "MSG.FIRST_DISCOVERY",
+    "MSG.FIRST_DISCOVERY_OPPORTUNITY",
     "MSG.SYSTEM_FULLY_SCANNED",
     "MSG.ELW_DETECTED",
     "MSG.FOOTFALL",
@@ -191,6 +192,9 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
 
     if message_id == "MSG.FIRST_DISCOVERY":
         return _finalize_tts("Pierwsze odkrycie. Układ potwierdzony.")
+
+    if message_id == "MSG.FIRST_DISCOVERY_OPPORTUNITY":
+        return _finalize_tts("Wygląda na okazję pierwszego odkrycia. Czekam na potwierdzenie.")
 
     if message_id == "MSG.SYSTEM_FULLY_SCANNED":
         return _finalize_tts("Skan systemu zakończony.")

@@ -33,6 +33,7 @@ FSS_FULL_WARNED = False
 # --- FIRST DISCOVERY (S2-LOGIC-05) ---
 FIRST_SYS_DISC_WARNED = False           # komunikat o dziewiczym systemie
 FIRST_BODY_DISC_WARNED_BODIES = set()   # ciaĹ‚a, dla ktĂłrych padĹ‚ komunikat discovery
+FIRST_SYS_OPPORTUNITY_WARNED = False    # ostrozny komunikat "mozliwy first" przy niepelnych danych
 
 
 def _fss_gate_context(system_name: str | None, *, body_name: str | None = None) -> Dict[str, Any]:
@@ -42,6 +43,32 @@ def _fss_gate_context(system_name: str | None, *, body_name: str | None = None) 
         "var_status": "VAR_MEDIUM",
         "trust_status": "TRUST_HIGH",
         "confidence": "high",
+    }
+    if body_name:
+        ctx["body"] = body_name
+    return ctx
+
+
+def _first_status_context(
+    system_name: str | None,
+    *,
+    body_name: str | None = None,
+    status_kind: str = "confirmed",
+) -> Dict[str, Any]:
+    if str(status_kind).strip().lower() == "opportunity":
+        trust_status = "TRUST_MEDIUM"
+        confidence = "mid"
+    else:
+        trust_status = "TRUST_HIGH"
+        confidence = "high"
+
+    ctx: Dict[str, Any] = {
+        "system": system_name,
+        "risk_status": "RISK_LOW",
+        "var_status": "VAR_MEDIUM",
+        "trust_status": trust_status,
+        "confidence": confidence,
+        "first_status_kind": status_kind,
     }
     if body_name:
         ctx["body"] = body_name
@@ -103,7 +130,7 @@ def reset_fss_progress() -> None:
     """
     global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES
     global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED, FSS_FULL_WARNED
-    global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES
+    global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES, FIRST_SYS_OPPORTUNITY_WARNED
 
     previous_system = str(getattr(app_state, "current_system", "") or "").strip()
 
@@ -120,6 +147,7 @@ def reset_fss_progress() -> None:
     # First discovery (system + ciaĹ‚a)
     FIRST_SYS_DISC_WARNED = False
     FIRST_BODY_DISC_WARNED_BODIES = set()
+    FIRST_SYS_OPPORTUNITY_WARNED = False
 
     # Resety w innych moduĹ‚ach eksploracyjnych
     reset_high_value_flags()
@@ -266,7 +294,7 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
     )
 
     global FSS_SCANNED_BODIES, FSS_DISCOVERED
-    global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES
+    global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES, FIRST_SYS_OPPORTUNITY_WARNED
 
     if not body_name:
         return
@@ -288,12 +316,12 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
             # System â€“ pierwszy skan w systemie i brak wczeĹ›niejszego odkrycia
             if first_scan_in_system and not FIRST_SYS_DISC_WARNED:
                 emit_insight(
-                    "Gratulacje. JesteĹ› pierwszym czĹ‚owiekiem w tym ukĹ‚adzie.",
+                    "Potwierdzono pierwsze odkrycie. Jesteś pierwszym odkrywcą tego układu.",
                     gui_ref=gui_ref,
                     message_id="MSG.FIRST_DISCOVERY",
                     source="exploration_fss_events",
                     event_type="BODY_DISCOVERED",
-                    context=_fss_gate_context(app_state.current_system),
+                    context=_first_status_context(app_state.current_system, status_kind="confirmed"),
                     priority="P2_NORMAL",
                     dedup_key=f"first_discovery_system:{app_state.current_system or 'unknown'}",
                     cooldown_scope="entity",
@@ -304,18 +332,36 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
             # Planeta â€“ indywidualny komunikat per ciaĹ‚o
             if body_name not in FIRST_BODY_DISC_WARNED_BODIES:
                 emit_insight(
-                    "To ciaĹ‚o nie ma wczeĹ›niejszego odkrywcy.",
+                    "Potwierdzono. To ciało nie ma wcześniejszego odkrywcy.",
                     gui_ref=gui_ref,
                     message_id="MSG.BODY_NO_PREV_DISCOVERY",
                     source="exploration_fss_events",
                     event_type="BODY_DISCOVERED",
-                    context=_fss_gate_context(app_state.current_system, body_name=str(body_name)),
+                    context=_first_status_context(
+                        app_state.current_system,
+                        body_name=str(body_name),
+                        status_kind="confirmed",
+                    ),
                     priority="P3_LOW",
                     dedup_key=f"first_body:{body_name}",
                     cooldown_scope="entity",
                     cooldown_seconds=120.0,
                 )
                 FIRST_BODY_DISC_WARNED_BODIES.add(body_name)
+        elif was_discovered is None and first_scan_in_system and not FIRST_SYS_OPPORTUNITY_WARNED:
+            emit_insight(
+                "Wygląda na okazję pierwszego odkrycia, ale czekam na potwierdzenie.",
+                gui_ref=gui_ref,
+                message_id="MSG.FIRST_DISCOVERY_OPPORTUNITY",
+                source="exploration_fss_events",
+                event_type="BODY_DISCOVERED",
+                context=_first_status_context(app_state.current_system, status_kind="opportunity"),
+                priority="P3_LOW",
+                dedup_key=f"first_opportunity_system:{app_state.current_system or 'unknown'}",
+                cooldown_scope="entity",
+                cooldown_seconds=120.0,
+            )
+            FIRST_SYS_OPPORTUNITY_WARNED = True
 
         # --- FSS progi + high-value planets ---
         _check_fss_thresholds(gui_ref)
