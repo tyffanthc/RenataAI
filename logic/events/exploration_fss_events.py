@@ -34,6 +34,19 @@ FIRST_SYS_DISC_WARNED = False           # komunikat o dziewiczym systemie
 FIRST_BODY_DISC_WARNED_BODIES = set()   # ciaĹ‚a, dla ktĂłrych padĹ‚ komunikat discovery
 
 
+def _fss_gate_context(system_name: str | None, *, body_name: str | None = None) -> Dict[str, Any]:
+    ctx: Dict[str, Any] = {
+        "system": system_name,
+        "risk_status": "RISK_LOW",
+        "var_status": "VAR_MEDIUM",
+        "trust_status": "TRUST_HIGH",
+        "confidence": "high",
+    }
+    if body_name:
+        ctx["body"] = body_name
+    return ctx
+
+
 def _wire_exit_summary_to_runtime() -> None:
     """
     EXIT-SUMMARY-WIRE-01:
@@ -143,7 +156,7 @@ def _check_fss_thresholds(gui_ref=None):
                 gui_ref=gui_ref,
                 message_id="MSG.FSS_PROGRESS_25",
                 source="exploration_fss_events",
-                context={"system": system_name},
+                context=_fss_gate_context(system_name),
                 priority="P2_NORMAL",
                 dedup_key=f"fss25:{system_name or 'unknown'}",
                 cooldown_scope="entity",
@@ -159,7 +172,7 @@ def _check_fss_thresholds(gui_ref=None):
                 gui_ref=gui_ref,
                 message_id="MSG.FSS_PROGRESS_50",
                 source="exploration_fss_events",
-                context={"system": system_name},
+                context=_fss_gate_context(system_name),
                 priority="P2_NORMAL",
                 dedup_key=f"fss50:{system_name or 'unknown'}",
                 cooldown_scope="entity",
@@ -175,7 +188,7 @@ def _check_fss_thresholds(gui_ref=None):
                 gui_ref=gui_ref,
                 message_id="MSG.FSS_PROGRESS_75",
                 source="exploration_fss_events",
-                context={"system": system_name},
+                context=_fss_gate_context(system_name),
                 priority="P2_NORMAL",
                 dedup_key=f"fss75:{system_name or 'unknown'}",
                 cooldown_scope="entity",
@@ -192,7 +205,7 @@ def _check_fss_thresholds(gui_ref=None):
                 gui_ref=gui_ref,
                 message_id="MSG.FSS_LAST_BODY",
                 source="exploration_fss_events",
-                context={"system": system_name},
+                context=_fss_gate_context(system_name),
                 priority="P2_NORMAL",
                 dedup_key=f"fss_last:{system_name or 'unknown'}",
                 cooldown_scope="entity",
@@ -218,7 +231,7 @@ def _maybe_speak_fss_full(gui_ref=None) -> bool:
             gui_ref=gui_ref,
             message_id="MSG.SYSTEM_FULLY_SCANNED",
             source="exploration_fss_events",
-            context={"system": system_name},
+            context=_fss_gate_context(system_name),
             priority="P2_NORMAL",
             dedup_key=f"fss_full:{system_name or 'unknown'}",
             cooldown_scope="entity",
@@ -270,7 +283,7 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
                     gui_ref=gui_ref,
                     message_id="MSG.FIRST_DISCOVERY",
                     source="exploration_fss_events",
-                    context={"system": app_state.current_system},
+                    context=_fss_gate_context(app_state.current_system),
                     priority="P2_NORMAL",
                     dedup_key=f"first_discovery_system:{app_state.current_system or 'unknown'}",
                     cooldown_scope="entity",
@@ -285,7 +298,7 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
                     gui_ref=gui_ref,
                     message_id="MSG.BODY_NO_PREV_DISCOVERY",
                     source="exploration_fss_events",
-                    context={"system": app_state.current_system, "body": str(body_name)},
+                    context=_fss_gate_context(app_state.current_system, body_name=str(body_name)),
                     priority="P3_LOW",
                     dedup_key=f"first_body:{body_name}",
                     cooldown_scope="entity",

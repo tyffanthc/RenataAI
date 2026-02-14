@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
-import config
 from logic.utils import notify as _notify
 
 
@@ -36,6 +35,17 @@ class Insight:
     force_tts: bool = False
 
 
+@dataclass(frozen=True)
+class GateDecision:
+    allow_emit: bool
+    risk_status: str
+    var_status: str
+    trust_status: str
+    confidence_score: float
+    confidence_label: str
+    reason: str
+
+
 def _priority_rank(priority: str) -> int:
     return _PRIORITY_ORDER.get(str(priority or "").strip().upper(), 999)
 
@@ -43,6 +53,153 @@ def _priority_rank(priority: str) -> int:
 def _default_cooldown(priority: str) -> float:
     norm = str(priority or "").strip().upper()
     return float(_DEFAULT_COOLDOWN_BY_PRIORITY.get(norm, _DEFAULT_COOLDOWN_BY_PRIORITY["P2_NORMAL"]))
+
+
+def _normalize_risk(value: object) -> str:
+    text = str(value or "").strip().lower()
+    if "critical" in text:
+        return "RISK_CRITICAL"
+    if "high" in text:
+        return "RISK_HIGH"
+    if "med" in text:
+        return "RISK_MEDIUM"
+    if "low" in text:
+        return "RISK_LOW"
+    return "RISK_UNKNOWN"
+
+
+def _normalize_var(value: object) -> str:
+    text = str(value or "").strip().lower()
+    if "critical" in text:
+        return "VAR_CRITICAL"
+    if "high" in text:
+        return "VAR_HIGH"
+    if "med" in text:
+        return "VAR_MEDIUM"
+    if "low" in text:
+        return "VAR_LOW"
+    if "neg" in text or "none" in text:
+        return "VAR_NEGLIGIBLE"
+    return "VAR_UNKNOWN"
+
+
+def _normalize_trust(value: object) -> str:
+    text = str(value or "").strip().lower()
+    if "high" in text:
+        return "TRUST_HIGH"
+    if "med" in text:
+        return "TRUST_MEDIUM"
+    if "low" in text:
+        return "TRUST_LOW"
+    return "TRUST_UNKNOWN"
+
+
+def _normalize_confidence(value: object) -> tuple[float, str]:
+    if value is None:
+        return 0.5, "mid"
+    if isinstance(value, (int, float)):
+        score = max(0.0, min(1.0, float(value)))
+    else:
+        text = str(value).strip().lower()
+        if text in {"critical", "high", "strong", "certain"}:
+            score = 0.9
+        elif text in {"medium", "mid", "normal"}:
+            score = 0.6
+        elif text in {"low", "weak", "uncertain", "maybe"}:
+            score = 0.25
+        else:
+            try:
+                score = max(0.0, min(1.0, float(text)))
+            except Exception:
+                score = 0.5
+    if score >= 0.8:
+        return score, "high"
+    if score >= 0.5:
+        return score, "mid"
+    return score, "low"
+
+
+def _gate_context_snapshot(context: dict | None) -> tuple[str, str, str, float, str]:
+    ctx = context or {}
+    risk_status = _normalize_risk(ctx.get("risk_status") or ctx.get("risk_level") or ctx.get("risk"))
+    var_status = _normalize_var(ctx.get("var_status") or ctx.get("var_tier") or ctx.get("value_at_risk"))
+    trust_status = _normalize_trust(ctx.get("trust_status") or ctx.get("trust"))
+    confidence_score, confidence_label = _normalize_confidence(
+        ctx.get("confidence_score", ctx.get("confidence"))
+    )
+    return risk_status, var_status, trust_status, confidence_score, confidence_label
+
+
+def evaluate_risk_trust_gate(insight: Insight) -> GateDecision:
+    risk_status, var_status, trust_status, confidence_score, confidence_label = _gate_context_snapshot(
+        insight.context
+    )
+    priority = str(insight.priority or "P2_NORMAL").strip().upper()
+
+    if insight.force_tts:
+        return GateDecision(
+            allow_emit=True,
+            risk_status=risk_status,
+            var_status=var_status,
+            trust_status=trust_status,
+            confidence_score=confidence_score,
+            confidence_label=confidence_label,
+            reason="force_tts",
+        )
+
+    if priority == "P0_CRITICAL":
+        return GateDecision(
+            allow_emit=True,
+            risk_status=risk_status,
+            var_status=var_status,
+            trust_status=trust_status,
+            confidence_score=confidence_score,
+            confidence_label=confidence_label,
+            reason="priority_critical",
+        )
+
+    if confidence_score < 0.35 and priority in {"P2_NORMAL", "P3_LOW"}:
+        return GateDecision(
+            allow_emit=False,
+            risk_status=risk_status,
+            var_status=var_status,
+            trust_status=trust_status,
+            confidence_score=confidence_score,
+            confidence_label=confidence_label,
+            reason="low_confidence",
+        )
+
+    if trust_status == "TRUST_LOW" and confidence_score < 0.5 and priority != "P1_HIGH":
+        return GateDecision(
+            allow_emit=False,
+            risk_status=risk_status,
+            var_status=var_status,
+            trust_status=trust_status,
+            confidence_score=confidence_score,
+            confidence_label=confidence_label,
+            reason="trust_low_confidence_low",
+        )
+
+    if var_status == "VAR_NEGLIGIBLE" and priority == "P3_LOW":
+        return GateDecision(
+            allow_emit=False,
+            risk_status=risk_status,
+            var_status=var_status,
+            trust_status=trust_status,
+            confidence_score=confidence_score,
+            confidence_label=confidence_label,
+            reason="var_negligible_low_priority",
+        )
+
+    return GateDecision(
+        allow_emit=True,
+        risk_status=risk_status,
+        var_status=var_status,
+        trust_status=trust_status,
+        confidence_score=confidence_score,
+        confidence_label=confidence_label,
+        reason="allow_default",
+    )
 
 
 def _is_combat_silence_active(context: dict | None) -> bool:
@@ -75,6 +232,10 @@ def should_speak(insight: Insight) -> bool:
 
     if insight.force_tts:
         return True
+
+    gate = evaluate_risk_trust_gate(insight)
+    if not gate.allow_emit:
+        return False
 
     priority = str(insight.priority or "P2_NORMAL").strip().upper()
     if insight.combat_silence_sensitive and priority != "P0_CRITICAL":
@@ -121,8 +282,15 @@ def emit_insight(
         force_tts=bool(force_tts),
     )
 
+    gate = evaluate_risk_trust_gate(insight)
     allow_tts = should_speak(insight)
     runtime_ctx = dict(insight.context or {})
+    runtime_ctx["risk_status"] = gate.risk_status
+    runtime_ctx["var_status"] = gate.var_status
+    runtime_ctx["trust_status"] = gate.trust_status
+    runtime_ctx["confidence"] = gate.confidence_label
+    runtime_ctx["confidence_score"] = gate.confidence_score
+    runtime_ctx["gate_reason"] = gate.reason
     if allow_tts:
         runtime_ctx["force_tts"] = True
     else:

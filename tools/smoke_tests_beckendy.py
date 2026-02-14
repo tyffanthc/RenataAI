@@ -46,7 +46,7 @@ from logic import exomastery as exomastery_logic  # type: ignore
 from logic import trade as trade_logic  # type: ignore
 from logic.rows_normalizer import normalize_trade_rows
 from logic.tts.text_preprocessor import prepare_tts
-from logic.insight_dispatcher import Insight, pick_insight_for_emit
+from logic.insight_dispatcher import Insight, pick_insight_for_emit, evaluate_risk_trust_gate
 from gui import common_tables  # type: ignore
 from gui.tabs.spansh.trade import TradeTab  # type: ignore
 
@@ -1794,6 +1794,42 @@ def test_insight_dispatcher_conflict_selection_deterministic(_ctx: TestContext) 
     assert selected_2.message_id == "MSG.CRITICAL", "Selection must be deterministic"
 
 
+def test_risk_trust_gate_blocks_low_trust_low_confidence(_ctx: TestContext) -> None:
+    insight = Insight(
+        text="low confidence hint",
+        message_id="MSG.TEST_LOW",
+        source="test_gate",
+        priority="P2_NORMAL",
+        context={
+            "risk_status": "RISK_HIGH",
+            "trust_status": "TRUST_LOW",
+            "confidence": "low",
+        },
+    )
+    decision = evaluate_risk_trust_gate(insight)
+    assert decision.allow_emit is False, "Low trust + low confidence should block normal priority emits"
+    assert decision.reason in {"low_confidence", "trust_low_confidence_low"}, (
+        f"Unexpected gate reason: {decision.reason}"
+    )
+
+
+def test_risk_trust_gate_allows_critical_override(_ctx: TestContext) -> None:
+    insight = Insight(
+        text="critical warning",
+        message_id="MSG.TEST_CRIT",
+        source="test_gate",
+        priority="P0_CRITICAL",
+        context={
+            "risk_status": "RISK_CRITICAL",
+            "trust_status": "TRUST_LOW",
+            "confidence": "low",
+        },
+    )
+    decision = evaluate_risk_trust_gate(insight)
+    assert decision.allow_emit is True, "Critical priority should bypass low trust/confidence gate"
+    assert decision.reason == "priority_critical", f"Unexpected gate reason: {decision.reason}"
+
+
 def test_no_wild_emits_in_migrated_event_modules(_ctx: TestContext) -> None:
     migrated_files = [
         os.path.join(ROOT_DIR, "logic/events/navigation_events.py"),
@@ -1849,6 +1885,8 @@ def run_all_tests() -> int:
         ("test_trade_split_view_layout_wiring", test_trade_split_view_layout_wiring),
         ("test_global_scrollbar_style_and_window_chrome_wiring", test_global_scrollbar_style_and_window_chrome_wiring),
         ("test_insight_dispatcher_conflict_selection_deterministic", test_insight_dispatcher_conflict_selection_deterministic),
+        ("test_risk_trust_gate_blocks_low_trust_low_confidence", test_risk_trust_gate_blocks_low_trust_low_confidence),
+        ("test_risk_trust_gate_allows_critical_override", test_risk_trust_gate_allows_critical_override),
         ("test_no_wild_emits_in_migrated_event_modules", test_no_wild_emits_in_migrated_event_modules),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),

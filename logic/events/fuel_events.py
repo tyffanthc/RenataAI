@@ -115,6 +115,13 @@ def handle_status_update(status: dict, gui_ref=None):
                 gui_ref=gui_ref,
                 message_id="MSG.FUEL_CRITICAL",
                 source="fuel_events",
+                context={
+                    "risk_status": "RISK_CRITICAL",
+                    "var_status": "VAR_HIGH",
+                    "trust_status": "TRUST_HIGH",
+                    "confidence": "high",
+                    "system": system_name,
+                },
                 priority="P0_CRITICAL",
                 dedup_key=f"low_fuel:{system_name or 'unknown'}",
                 cooldown_scope="entity",
