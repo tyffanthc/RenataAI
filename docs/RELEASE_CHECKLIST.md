@@ -4,6 +4,11 @@
 - Confirm target version and included tickets.
 - Freeze feature flags for release (default ON/OFF decisions).
 - Verify `user_settings.json` is not tracked.
+- FREE/PRO isolation:
+  - Public release = FREE only.
+  - No files from `docs/internal/` and `docs/Flow/private/` can be tracked or shipped.
+  - Run guard before build/push:
+    - `py tools/public_repo_guard.py`
 
 ## Build and smoke
 - `py tools/smoke_tests_beckendy.py`
@@ -67,6 +72,8 @@
 
 ## Release artifacts
 - Verify `docs/README_TRANSFER.md`, `docs/COMPLIANCE_CHECKLIST.md`, `docs/RELEASE_SANITY_CHECK.md` are up to date.
+- Run ZIP isolation gate:
+  - `py tools/public_repo_guard.py --zip release/Renata_vX.Y.Z-preview_win_x64.zip`
 - Voice Pack installer is a separate asset (not inside app ZIP).
 - ZIP should contain:
   - `RenataAI.exe`

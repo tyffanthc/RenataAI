@@ -20,6 +20,17 @@ PASS/FAIL gate:
 - [ ] PASS - ZIP is clean (none of the forbidden files above)
 - [ ] FAIL - ZIP contains runtime data (do not upload)
 
+## FREE/PRO isolation gate (required)
+Before upload, run:
+
+```powershell
+py tools/public_repo_guard.py
+py tools/public_repo_guard.py --zip "release\Renata_vX.Y.Z-preview_win_x64.zip"
+```
+
+Expected result:
+- `PUBLIC_GUARD=PASS`
+
 Quick PowerShell check (optional):
 ```powershell
 $zip = "release\\Renata_vX.Y.Z-preview_win_x64.zip"

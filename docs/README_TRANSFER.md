@@ -73,6 +73,15 @@ Settings in FREE mode show a short, safe list of options (5-7 max). Advanced/dev
 - Use `py` on Windows if `python` is not available.
 - `user_settings.json` is local-only; do not commit.
 
+## FREE/Public release guard
+- Public release must contain FREE-only content.
+- Before push/build:
+  - `py tools/public_repo_guard.py`
+- Before ZIP upload:
+  - `py tools/public_repo_guard.py --zip release/Renata_vX.Y.Z-preview_win_x64.zip`
+- Expected output:
+  - `PUBLIC_GUARD=PASS`
+
 ## TTS (Piper, Windows-only)
 - Default engine: `tts.engine=auto` (Piper if available, else pyttsx3).
 - Optional Voice Pack in APPDATA is auto-detected when `tts.engine=auto`.
