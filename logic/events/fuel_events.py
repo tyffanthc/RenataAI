@@ -115,6 +115,7 @@ def handle_status_update(status: dict, gui_ref=None):
                 gui_ref=gui_ref,
                 message_id="MSG.FUEL_CRITICAL",
                 source="fuel_events",
+                event_type="SHIP_HEALTH_CHANGED",
                 context={
                     "risk_status": "RISK_CRITICAL",
                     "var_status": "VAR_HIGH",

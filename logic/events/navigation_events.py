@@ -140,6 +140,7 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
                     gui_ref=gui_ref,
                     message_id="MSG.NEXT_HOP",
                     source="navigation_events",
+                    event_type="ROUTE_PROGRESS",
                     context={
                         "system": next_hop,
                         "risk_status": "RISK_LOW",
@@ -158,6 +159,7 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
                     gui_ref=gui_ref,
                     message_id="MSG.JUMPED_SYSTEM",
                     source="navigation_events",
+                    event_type="JUMP_COMPLETED",
                     context={
                         "system": sysname,
                         "risk_status": "RISK_LOW",
@@ -183,6 +185,7 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
                             gui_ref=gui_ref,
                             message_id="MSG.NEXT_HOP_COPIED",
                             source="navigation_events",
+                            event_type="ROUTE_PROGRESS",
                             context={
                                 "system": obj,
                                 "risk_status": "RISK_LOW",
@@ -217,6 +220,7 @@ def handle_docked(ev: Dict[str, object], gui_ref=None):
             gui_ref=gui_ref,
             message_id="MSG.DOCKED",
             source="navigation_events",
+            event_type="ROUTE_PROGRESS",
             context={
                 "station": st,
                 "risk_status": "RISK_LOW",
@@ -245,6 +249,7 @@ def handle_undocked(ev: Dict[str, object], gui_ref=None):
         gui_ref=gui_ref,
         message_id="MSG.UNDOCKED",
         source="navigation_events",
+        event_type="ROUTE_PROGRESS",
         context={
             "risk_status": "RISK_LOW",
             "var_status": "VAR_LOW",

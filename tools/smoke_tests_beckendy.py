@@ -47,6 +47,7 @@ from logic import trade as trade_logic  # type: ignore
 from logic.rows_normalizer import normalize_trade_rows
 from logic.tts.text_preprocessor import prepare_tts
 from logic.insight_dispatcher import Insight, pick_insight_for_emit, evaluate_risk_trust_gate
+from logic.event_insight_mapping import get_insight_class, resolve_emit_contract
 from gui import common_tables  # type: ignore
 from gui.tabs.spansh.trade import TradeTab  # type: ignore
 
@@ -1857,6 +1858,44 @@ def test_no_wild_emits_in_migrated_event_modules(_ctx: TestContext) -> None:
         assert "powiedz(" not in content, f"Found direct powiedz() call in migrated module {path}"
 
 
+def test_event_insight_mapping_core_contract(_ctx: TestContext) -> None:
+    required_message_ids = [
+        "MSG.NEXT_HOP",
+        "MSG.JUMPED_SYSTEM",
+        "MSG.DOCKED",
+        "MSG.UNDOCKED",
+        "MSG.FUEL_CRITICAL",
+        "MSG.FSS_PROGRESS_25",
+        "MSG.FSS_PROGRESS_50",
+        "MSG.FSS_PROGRESS_75",
+        "MSG.FSS_LAST_BODY",
+        "MSG.SYSTEM_FULLY_SCANNED",
+    ]
+    for message_id in required_message_ids:
+        spec = get_insight_class(message_id)
+        assert spec is not None, f"Missing insight class mapping for {message_id}"
+        assert spec.canonical_event, f"Missing canonical_event for {message_id}"
+        assert spec.kind, f"Missing kind for {message_id}"
+        assert spec.decision_space, f"Missing decision_space for {message_id}"
+
+    resolved = resolve_emit_contract(
+        message_id="MSG.FUEL_CRITICAL",
+        context={"system": "SOL"},
+        event_type="SHIP_HEALTH_CHANGED",
+        dedup_key=None,
+        priority=None,
+        cooldown_scope=None,
+        cooldown_seconds=None,
+    )
+    assert resolved["dedup_key"] == "low_fuel:SOL", "Fuel dedup key should be deterministic from mapping template"
+    assert resolved["priority"] == "P0_CRITICAL", "Fuel mapping should enforce critical priority by default"
+    assert resolved["cooldown_scope"] == "entity", "Fuel mapping should use entity cooldown scope"
+    ctx = resolved["context"] or {}
+    assert ctx.get("canonical_event") == "SHIP_HEALTH_CHANGED", "Resolved context should expose canonical event"
+    assert ctx.get("insight_kind") == "risk", "Resolved context should expose insight kind"
+    assert ctx.get("decision_space") == "critical_warning", "Resolved context should expose decision space"
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1901,6 +1940,7 @@ def run_all_tests() -> int:
         ("test_risk_trust_gate_blocks_low_trust_low_confidence", test_risk_trust_gate_blocks_low_trust_low_confidence),
         ("test_risk_trust_gate_allows_critical_override", test_risk_trust_gate_allows_critical_override),
         ("test_no_wild_emits_in_migrated_event_modules", test_no_wild_emits_in_migrated_event_modules),
+        ("test_event_insight_mapping_core_contract", test_event_insight_mapping_core_contract),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),

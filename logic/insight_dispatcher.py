@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
+from logic.event_insight_mapping import resolve_emit_contract
 from logic.utils import notify as _notify
 
 
@@ -262,6 +263,7 @@ def emit_insight(
     message_id: str,
     source: str,
     context: dict | None = None,
+    event_type: str | None = None,
     priority: str = "P2_NORMAL",
     dedup_key: str | None = None,
     cooldown_scope: str = "message",
@@ -269,15 +271,25 @@ def emit_insight(
     combat_silence_sensitive: bool = True,
     force_tts: bool = False,
 ) -> bool:
+    contract = resolve_emit_contract(
+        message_id=message_id,
+        context=context,
+        event_type=event_type,
+        priority=priority,
+        dedup_key=dedup_key,
+        cooldown_scope=cooldown_scope,
+        cooldown_seconds=cooldown_seconds,
+    )
+
     insight = Insight(
         text=str(text or ""),
         message_id=str(message_id or ""),
         source=str(source or ""),
-        context=dict(context or {}),
-        priority=str(priority or "P2_NORMAL"),
-        dedup_key=dedup_key,
-        cooldown_scope=cooldown_scope,
-        cooldown_seconds=cooldown_seconds,
+        context=dict(contract.get("context") or {}),
+        priority=str(contract.get("priority") or "P2_NORMAL"),
+        dedup_key=contract.get("dedup_key"),
+        cooldown_scope=str(contract.get("cooldown_scope") or "message"),
+        cooldown_seconds=contract.get("cooldown_seconds"),
         combat_silence_sensitive=combat_silence_sensitive,
         force_tts=bool(force_tts),
     )
