@@ -9,7 +9,7 @@ from typing import Any, Dict
 import config
 from app.state import app_state
 from logic.events.exploration_awareness import emit_callout_or_summary
-from logic.utils import powiedz
+from logic.insight_dispatcher import emit_insight
 from logic.utils.renata_log import log_event_throttled
 
 
@@ -122,6 +122,30 @@ def _species_name(ev: Dict[str, Any]) -> str:
         or _as_text(ev.get("Genus"))
         or _as_text(ev.get("Name"))
     )
+
+
+def _exobio_context(
+    *,
+    system_name: str,
+    body_name: str,
+    species: str = "",
+    payload: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    ctx: Dict[str, Any] = {
+        "raw_text": "",
+        "system": system_name,
+        "body": body_name,
+        "species": species,
+        "risk_status": "RISK_LOW",
+        "var_status": "VAR_MEDIUM",
+        "trust_status": "TRUST_HIGH",
+        "confidence": "high",
+    }
+    source = payload or {}
+    for key in ("in_combat", "combat_silence", "combat_state"):
+        if key in source:
+            ctx[key] = source.get(key)
+    return ctx
 
 
 def _normalize_species_for_science(raw_name: str) -> str:
@@ -423,16 +447,29 @@ def handle_exobio_status_position(status: Dict[str, Any], gui_ref=None) -> None:
 
         EXOBIO_RANGE_READY_WARNED.add(key)
         msg = "Osiągnięto odpowiednią odległość. Pobierz kolejną próbkę."
-        powiedz(
-            msg,
-            gui_ref,
-            message_id="MSG.EXOBIO_RANGE_READY",
-            context={
-                "raw_text": msg,
-                "system": _current_status_system(),
-                "body": _status_body_name(status),
-            },
+        key_system, key_body, key_species = key
+        ctx = _exobio_context(
+            system_name=_current_status_system() or key_system,
+            body_name=_status_body_name(status) or key_body,
+            species=key_species,
+            payload=status,
         )
+        ctx["raw_text"] = msg
+        allow_tts = emit_insight(
+            msg,
+            gui_ref=gui_ref,
+            message_id="MSG.EXOBIO_RANGE_READY",
+            source="exploration_bio_events",
+            event_type="BIO_PROGRESS",
+            context=ctx,
+            priority="P2_NORMAL",
+            dedup_key=f"exobio_ready:{key_system}:{key_body}:{key_species}",
+            cooldown_scope="entity",
+            cooldown_seconds=10.0,
+        )
+        if not allow_tts:
+            # Retry on next position update if TTS was suppressed (e.g. combat silence).
+            EXOBIO_RANGE_READY_WARNED.discard(key)
 
 
 def handle_dss_bio_signals(ev: Dict[str, Any], gui_ref=None) -> None:
@@ -542,19 +579,35 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
 
         if sample_count == 1:
             msg = f"Pierwsza próbka {subject} pobrana."
-            powiedz(
+            ctx = _exobio_context(system_name=system_name, body_name=body, species=species, payload=ev)
+            ctx["raw_text"] = msg
+            emit_insight(
                 msg,
-                gui_ref,
+                gui_ref=gui_ref,
                 message_id="MSG.EXOBIO_SAMPLE_LOGGED",
-                context={"raw_text": msg, "system": system_name, "body": body},
+                source="exploration_bio_events",
+                event_type="BIO_PROGRESS",
+                context=ctx,
+                priority="P2_NORMAL",
+                dedup_key=f"exobio_sample:{system_name}:{body}:{species}:1",
+                cooldown_scope="entity",
+                cooldown_seconds=0.0,
             )
         elif sample_count == 2:
             msg = f"Druga próbka {subject} pobrana."
-            powiedz(
+            ctx = _exobio_context(system_name=system_name, body_name=body, species=species, payload=ev)
+            ctx["raw_text"] = msg
+            emit_insight(
                 msg,
-                gui_ref,
+                gui_ref=gui_ref,
                 message_id="MSG.EXOBIO_SAMPLE_LOGGED",
-                context={"raw_text": msg, "system": system_name, "body": body},
+                source="exploration_bio_events",
+                event_type="BIO_PROGRESS",
+                context=ctx,
+                priority="P2_NORMAL",
+                dedup_key=f"exobio_sample:{system_name}:{body}:{species}:2",
+                cooldown_scope="entity",
+                cooldown_seconds=0.0,
             )
         elif sample_count >= 3:
             value_cr, includes_ff = _estimate_collected_species_value(ev, species)
@@ -564,11 +617,19 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
                 msg = f"Mamy wszystko dla {subject}. Szacowana wartość pobranych próbek: {value_text} kredytów{ff_suffix}"
             else:
                 msg = f"Mamy wszystko dla {subject}. Skanowanie gatunku zakończone."
-            powiedz(
+            ctx = _exobio_context(system_name=system_name, body_name=body, species=species, payload=ev)
+            ctx["raw_text"] = msg
+            emit_insight(
                 msg,
-                gui_ref,
+                gui_ref=gui_ref,
                 message_id="MSG.EXOBIO_SAMPLE_LOGGED",
-                context={"raw_text": msg, "system": system_name, "body": body},
+                source="exploration_bio_events",
+                event_type="BIO_PROGRESS",
+                context=ctx,
+                priority="P2_NORMAL",
+                dedup_key=f"exobio_sample:{system_name}:{body}:{species}:3",
+                cooldown_scope="entity",
+                cooldown_seconds=0.0,
             )
             EXOBIO_SAMPLE_COMPLETE.add(key)
             EXOBIO_SCAN_WARNED.add(key)
@@ -598,9 +659,17 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
     EXOBIO_CODEX_WARNED.add(codex_key)
 
     msg = f"Nowy wpis biologiczny. {species}."
-    powiedz(
+    ctx = _exobio_context(system_name=system_name, body_name=body, species=species, payload=ev)
+    ctx["raw_text"] = msg
+    emit_insight(
         msg,
-        gui_ref,
+        gui_ref=gui_ref,
         message_id="MSG.EXOBIO_NEW_ENTRY",
-        context={"raw_text": msg, "system": system_name, "body": body},
+        source="exploration_bio_events",
+        event_type="BIO_DISCOVERED",
+        context=ctx,
+        priority="P2_NORMAL",
+        dedup_key=f"exobio_codex:{system_name}:{species}",
+        cooldown_scope="entity",
+        cooldown_seconds=120.0,
     )

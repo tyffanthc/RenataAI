@@ -23,6 +23,9 @@ class EventInsightMappingTests(unittest.TestCase):
             "MSG.DSS_COMPLETED",
             "MSG.DSS_PROGRESS",
             "MSG.FIRST_MAPPED",
+            "MSG.EXOBIO_SAMPLE_LOGGED",
+            "MSG.EXOBIO_RANGE_READY",
+            "MSG.EXOBIO_NEW_ENTRY",
         ]
         for message_id in required:
             spec = get_insight_class(message_id)

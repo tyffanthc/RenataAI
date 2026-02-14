@@ -1938,6 +1938,7 @@ def test_no_wild_emits_in_migrated_event_modules(_ctx: TestContext) -> None:
         os.path.join(ROOT_DIR, "logic/events/fuel_events.py"),
         os.path.join(ROOT_DIR, "logic/events/exploration_fss_events.py"),
         os.path.join(ROOT_DIR, "logic/events/exploration_dss_events.py"),
+        os.path.join(ROOT_DIR, "logic/events/exploration_bio_events.py"),
     ]
 
     for path in migrated_files:
@@ -1963,6 +1964,9 @@ def test_event_insight_mapping_core_contract(_ctx: TestContext) -> None:
         "MSG.DSS_COMPLETED",
         "MSG.DSS_PROGRESS",
         "MSG.FIRST_MAPPED",
+        "MSG.EXOBIO_SAMPLE_LOGGED",
+        "MSG.EXOBIO_RANGE_READY",
+        "MSG.EXOBIO_NEW_ENTRY",
     ]
     for message_id in required_message_ids:
         spec = get_insight_class(message_id)
