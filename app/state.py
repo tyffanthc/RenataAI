@@ -76,6 +76,19 @@ class AppState:
             "updated_at": None,
             "source": None,
         }
+        saved_mode = str(config.STATE.get("route_mode", "idle") or "idle").strip().lower()
+        if saved_mode not in {"awareness", "intent", "idle"}:
+            saved_mode = "idle"
+        saved_target = str(config.STATE.get("route_target", "") or "").strip() or None
+        try:
+            saved_progress = int(config.STATE.get("route_progress_percent", 0) or 0)
+        except Exception:
+            saved_progress = 0
+        self.route_mode: str = saved_mode
+        self.route_target: str | None = saved_target
+        self.route_progress_percent: int = max(0, min(100, saved_progress))
+        self.next_system: str | None = str(config.STATE.get("route_next_system", "") or "").strip() or None
+        self.is_off_route: bool = bool(config.STATE.get("route_is_off_route", False))
         self.inventory = config.STATE.get("inventory", {})
 
         # True only while MainLoop replays historical Journal lines at startup.
@@ -229,6 +242,114 @@ class AppState:
                 "source": source,
             }
         log_event_throttled("state.nav_route", 1000, "STATE", "NavRoute cleared")
+
+    def get_route_awareness_snapshot(self) -> dict:
+        with self.lock:
+            return {
+                "route_mode": self.route_mode,
+                "route_target": self.route_target,
+                "route_progress_percent": int(self.route_progress_percent),
+                "next_system": self.next_system,
+                "is_off_route": bool(self.is_off_route),
+            }
+
+    def update_route_awareness(
+        self,
+        *,
+        route_mode: str | None = None,
+        route_target: str | None = None,
+        route_progress_percent: int | None = None,
+        next_system: str | None = None,
+        is_off_route: bool | None = None,
+        source: str = "runtime",
+    ) -> dict:
+        changed = False
+        with self.lock:
+            if route_mode is not None:
+                mode = str(route_mode).strip().lower()
+                if mode not in {"awareness", "intent", "idle"}:
+                    mode = "idle"
+                if mode != self.route_mode:
+                    self.route_mode = mode
+                    changed = True
+
+            if route_target is not None:
+                target = str(route_target).strip() or None
+                if target != self.route_target:
+                    self.route_target = target
+                    changed = True
+
+            if route_progress_percent is not None:
+                try:
+                    progress = int(route_progress_percent)
+                except Exception:
+                    progress = self.route_progress_percent
+                progress = max(0, min(100, progress))
+                if progress != self.route_progress_percent:
+                    self.route_progress_percent = progress
+                    changed = True
+
+            if next_system is not None:
+                next_value = str(next_system).strip() or None
+                if next_value != self.next_system:
+                    self.next_system = next_value
+                    changed = True
+
+            if is_off_route is not None:
+                off_route = bool(is_off_route)
+                if off_route != self.is_off_route:
+                    self.is_off_route = off_route
+                    changed = True
+
+            config.STATE["route_mode"] = self.route_mode
+            config.STATE["route_target"] = self.route_target or ""
+            config.STATE["route_progress_percent"] = int(self.route_progress_percent)
+            config.STATE["route_next_system"] = self.next_system or ""
+            config.STATE["route_is_off_route"] = bool(self.is_off_route)
+
+            snapshot = {
+                "route_mode": self.route_mode,
+                "route_target": self.route_target,
+                "route_progress_percent": int(self.route_progress_percent),
+                "next_system": self.next_system,
+                "is_off_route": bool(self.is_off_route),
+            }
+
+        if changed:
+            log_event_throttled(
+                "state.route_awareness",
+                500,
+                "STATE",
+                (
+                    f"Route mode={snapshot['route_mode']} "
+                    f"target={snapshot['route_target'] or '-'} "
+                    f"progress={snapshot['route_progress_percent']} "
+                    f"next={snapshot['next_system'] or '-'} "
+                    f"off_route={snapshot['is_off_route']} "
+                    f"source={source}"
+                ),
+            )
+        return snapshot
+
+    def set_route_intent(self, target: str | None, *, source: str = "intent") -> dict:
+        normalized = str(target or "").strip()
+        if not normalized:
+            return self.update_route_awareness(
+                route_mode="idle",
+                route_target="",
+                route_progress_percent=0,
+                next_system="",
+                is_off_route=False,
+                source=source,
+            )
+        return self.update_route_awareness(
+            route_mode="intent",
+            route_target=normalized,
+            route_progress_percent=0,
+            next_system=normalized,
+            is_off_route=False,
+            source=source,
+        )
 
 
 # Globalny stan aplikacji – importowany w innych modułach

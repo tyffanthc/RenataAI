@@ -130,6 +130,7 @@ class RichesTab(SpanshPlannerBase):
             source="spansh.riches",
             ui_target="rtr",
         )
+        self._reset_shared_route_state()
 
     def run_rtr(self):
         if not self._can_start():

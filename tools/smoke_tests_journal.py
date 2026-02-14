@@ -401,6 +401,13 @@ def test_nav_symbiosis_guard_and_desync(ctx: TestContext) -> None:
             "Aligned NavRoute+milestone should not emit ROUTE_DESYNC; "
             f"got: {aligned_joined}"
         )
+        aligned_state = app_state.get_route_awareness_snapshot()
+        assert aligned_state.get("route_mode") == "awareness", (
+            f"Expected awareness mode after aligned jump, got: {aligned_state}"
+        )
+        assert not bool(aligned_state.get("is_off_route")), (
+            f"Aligned jump should keep on-route state, got: {aligned_state}"
+        )
 
         # Real off-route: should trigger desync.
         ctx.clear_queue()
@@ -410,6 +417,10 @@ def test_nav_symbiosis_guard_and_desync(ctx: TestContext) -> None:
         assert "ROUTE_DESYNC" in off_joined, (
             "Real off-route should emit ROUTE_DESYNC; "
             f"got: {off_joined}"
+        )
+        off_state = app_state.get_route_awareness_snapshot()
+        assert bool(off_state.get("is_off_route")), (
+            f"Off-route jump should set is_off_route=True, got: {off_state}"
         )
 
         # Return to route clears desync state and resumes progression.
@@ -423,6 +434,16 @@ def test_nav_symbiosis_guard_and_desync(ctx: TestContext) -> None:
         )
         assert not bool(getattr(gui_common, "_ACTIVE_ROUTE_DESYNC_ACTIVE", True)), (
             "Desync flag should be cleared after returning to route"
+        )
+        back_state = app_state.get_route_awareness_snapshot()
+        assert back_state.get("route_mode") == "awareness", (
+            f"Expected awareness mode after returning to route, got: {back_state}"
+        )
+        assert not bool(back_state.get("is_off_route")), (
+            f"Returning to route should clear off-route state, got: {back_state}"
+        )
+        assert int(back_state.get("route_progress_percent") or 0) >= 25, (
+            f"Expected progress update after returning to route, got: {back_state}"
         )
     finally:
         for key, value in original.items():

@@ -448,6 +448,37 @@ class SpanshPlannerBase(ttk.Frame):
     def _reset_shared_route_state() -> None:
         config.STATE["rtr_data"] = {}
         config.STATE["trasa"] = []
+        try:
+            route_manager.clear_route()
+        except Exception:
+            pass
+        try:
+            app_state.clear_spansh_milestones(source="spansh.clear")
+        except Exception:
+            pass
+        try:
+            snap = app_state.get_route_awareness_snapshot()
+            if snap.get("route_mode") == "intent" and snap.get("route_target"):
+                intent_target = str(snap.get("route_target") or "").strip()
+                app_state.update_route_awareness(
+                    route_mode="intent",
+                    route_target=intent_target,
+                    route_progress_percent=0,
+                    next_system=intent_target,
+                    is_off_route=False,
+                    source="planner.clear.intent",
+                )
+            else:
+                app_state.update_route_awareness(
+                    route_mode="idle",
+                    route_target="",
+                    route_progress_percent=0,
+                    next_system="",
+                    is_off_route=False,
+                    source="planner.clear.idle",
+                )
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------ Busy / lifecycle
 
@@ -488,6 +519,12 @@ class SpanshPlannerBase(ttk.Frame):
             self.lbl_status.config(text=("Laduje..." if busy else "Gotowy"))
 
     def _start_route_thread(self, target: Callable[..., None], args: tuple[Any, ...]) -> None:
+        intent_target = self._resolve_intent_target()
+        if intent_target:
+            try:
+                app_state.set_route_intent(intent_target, source=f"{self._status_source}.intent")
+            except Exception:
+                pass
         self._set_busy(True)
         route_manager.start_route_thread(self._mode_key, target, args=args, gui_ref=self.root)
 
@@ -625,6 +662,17 @@ class SpanshPlannerBase(ttk.Frame):
 
             if route:
                 route_manager.set_route(route, self._mode_key)
+                try:
+                    app_state.update_route_awareness(
+                        route_mode="awareness",
+                        route_target=route[-1],
+                        route_progress_percent=0,
+                        next_system=route[0],
+                        is_off_route=False,
+                        source=f"{self._status_source}.route_found",
+                    )
+                except Exception:
+                    pass
                 self._render_route_rows(list_widget, route, rows)
                 common.handle_route_ready_autoclipboard(self, route, status_target=self._status_target)
                 common.emit_status(
@@ -643,6 +691,33 @@ class SpanshPlannerBase(ttk.Frame):
                 source=self._status_source,
                 ui_target=self._status_target,
             )
+            try:
+                intent_target = self._resolve_intent_target()
+                if intent_target:
+                    app_state.set_route_intent(intent_target, source=f"{self._status_source}.route_empty.intent")
+                else:
+                    snap = app_state.get_route_awareness_snapshot()
+                    if snap.get("route_mode") == "intent" and snap.get("route_target"):
+                        keep_target = str(snap.get("route_target") or "").strip()
+                        app_state.update_route_awareness(
+                            route_mode="intent",
+                            route_target=keep_target,
+                            route_progress_percent=0,
+                            next_system=keep_target,
+                            is_off_route=False,
+                            source=f"{self._status_source}.route_empty.keep_intent",
+                        )
+                    else:
+                        app_state.update_route_awareness(
+                            route_mode="idle",
+                            route_target="",
+                            route_progress_percent=0,
+                            next_system="",
+                            is_off_route=False,
+                            source=f"{self._status_source}.route_empty.idle",
+                        )
+            except Exception:
+                pass
             self._show_empty_state(list_widget)
         finally:
             self._set_busy(False)
@@ -667,4 +742,33 @@ class SpanshPlannerBase(ttk.Frame):
                 self.root,
                 lambda: self._apply_route_result(list_widget, route, rows, worker_error),
             )
+
+    def _resolve_intent_target(self) -> str:
+        for attr in ("var_cel", "var_target", "var_destination"):
+            var_obj = getattr(self, attr, None)
+            if var_obj is None:
+                continue
+            getter = getattr(var_obj, "get", None)
+            if not callable(getter):
+                continue
+            try:
+                value = str(getter() or "").strip()
+            except Exception:
+                value = ""
+            if value:
+                return value
+        for attr in ("e_cel", "entry_target", "entry_destination"):
+            entry_obj = getattr(self, attr, None)
+            if entry_obj is None:
+                continue
+            getter = getattr(entry_obj, "get", None)
+            if not callable(getter):
+                continue
+            try:
+                value = str(getter() or "").strip()
+            except Exception:
+                value = ""
+            if value:
+                return value
+        return ""
 

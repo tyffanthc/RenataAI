@@ -271,6 +271,19 @@ def handle_navroute_update(navroute_data: Dict[str, object], gui_ref=None) -> No
     event_name = str(navroute_data.get("event") or "").strip()
     if event_name in {"NavRouteClear", "ClearRoute"}:
         app_state.clear_nav_route(source="navroute_clear")
+        try:
+            snap = app_state.get_route_awareness_snapshot()
+            if snap.get("route_mode") == "awareness":
+                app_state.update_route_awareness(
+                    route_mode="idle",
+                    route_target="",
+                    route_progress_percent=0,
+                    next_system="",
+                    is_off_route=False,
+                    source="navroute_clear",
+                )
+        except Exception as exc:
+            _log_nav_fallback("navroute.clear.state", "failed to clear route awareness on NavRouteClear", exc)
         return
 
     route_items = navroute_data.get("Route")
@@ -299,6 +312,52 @@ def handle_navroute_update(navroute_data: Dict[str, object], gui_ref=None) -> No
 
     if not systems and event_name in {"NavRoute", "Route"}:
         app_state.clear_nav_route(source="navroute_empty")
+        try:
+            snap = app_state.get_route_awareness_snapshot()
+            if snap.get("route_mode") == "awareness":
+                app_state.update_route_awareness(
+                    route_mode="idle",
+                    route_target="",
+                    route_progress_percent=0,
+                    next_system="",
+                    is_off_route=False,
+                    source="navroute_empty",
+                )
+        except Exception as exc:
+            _log_nav_fallback("navroute.empty.state", "failed to clear route awareness on empty navroute", exc)
         return
 
     app_state.set_nav_route(endpoint=endpoint, systems=systems, source="navroute_json")
+    try:
+        has_spansh_route = bool(getattr(route_manager, "route", None))
+        has_spansh_milestones = bool(getattr(app_state, "spansh_milestones", None))
+        if has_spansh_route or has_spansh_milestones:
+            return
+
+        current_norm = " ".join(str(getattr(app_state, "current_system", "") or "").strip().split()).casefold()
+        ordered_norm = [" ".join(str(value).strip().split()).casefold() for value in systems]
+        next_system = systems[0] if systems else ""
+        progress = 0
+        if current_norm and current_norm in ordered_norm:
+            idx = ordered_norm.index(current_norm)
+            if idx + 1 < len(systems):
+                next_system = systems[idx + 1]
+            else:
+                next_system = ""
+            if len(systems) <= 1:
+                progress = 100
+            else:
+                progress = int((idx * 100) / max(1, len(systems) - 1))
+                progress = max(0, min(100, progress))
+
+        target = endpoint or (systems[-1] if systems else "")
+        app_state.update_route_awareness(
+            route_mode="awareness",
+            route_target=str(target or ""),
+            route_progress_percent=progress,
+            next_system=str(next_system or ""),
+            is_off_route=False,
+            source="navroute_json",
+        )
+    except Exception as exc:
+        _log_nav_fallback("navroute.state", "failed to update route awareness from navroute", exc)

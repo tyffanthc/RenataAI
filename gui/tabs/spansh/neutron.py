@@ -202,8 +202,24 @@ class NeutronTab(ttk.Frame):
     def clear(self):
         self._clear_results()
         self._set_via_items([])
+        route_manager.clear_route()
         try:
             app_state.clear_spansh_milestones(source="spansh.neutron.clear")
+        except Exception:
+            pass
+        try:
+            intent_target = str(self.var_cel.get() or "").strip()
+            if intent_target:
+                app_state.set_route_intent(intent_target, source="spansh.neutron.clear.intent")
+            else:
+                app_state.update_route_awareness(
+                    route_mode="idle",
+                    route_target="",
+                    route_progress_percent=0,
+                    next_system="",
+                    is_off_route=False,
+                    source="spansh.neutron.clear.idle",
+                )
         except Exception:
             pass
         common.emit_status(
@@ -267,6 +283,11 @@ class NeutronTab(ttk.Frame):
 
         args = (s, cel, rng, eff, supercharge_mode, via)
 
+        if cel:
+            try:
+                app_state.set_route_intent(cel, source="spansh.neutron.intent")
+            except Exception:
+                pass
         self._set_busy(True)
         route_manager.start_route_thread("neutron", self._th, args=args, gui_ref=self.root)
 
@@ -372,6 +393,17 @@ class NeutronTab(ttk.Frame):
                         common.clear_results_checkboxes(self.lst)
                         route_manager.set_route(tr, "neutron")
                         try:
+                            app_state.update_route_awareness(
+                                route_mode="awareness",
+                                route_target=tr[-1],
+                                route_progress_percent=0,
+                                next_system=tr[0],
+                                is_off_route=False,
+                                source="spansh.neutron.route_found",
+                            )
+                        except Exception:
+                            pass
+                        try:
                             milestones = self._build_neutron_milestones(tr, details)
                             app_state.set_spansh_milestones(
                                 milestones,
@@ -447,6 +479,21 @@ class NeutronTab(ttk.Frame):
                             ui_target="neu",
                         )
                     else:
+                        try:
+                            intent_target = str(cel or "").strip()
+                            if intent_target:
+                                app_state.set_route_intent(intent_target, source="spansh.neutron.route_empty.intent")
+                            else:
+                                app_state.update_route_awareness(
+                                    route_mode="idle",
+                                    route_target="",
+                                    route_progress_percent=0,
+                                    next_system="",
+                                    is_off_route=False,
+                                    source="spansh.neutron.route_empty.idle",
+                                )
+                        except Exception:
+                            pass
                         common.emit_status(
                             "ERROR",
                             "ROUTE_EMPTY",

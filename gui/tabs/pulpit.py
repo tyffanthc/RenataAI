@@ -160,12 +160,30 @@ class PulpitTab(ttk.Frame):
         # FSS jest trzymany w event_handlerze
         self.lbl_status_bodies.config(text="Ciała: -/-")
 
-        # Trasa - bardzo ogólna informacja
+        # Trasa - status awareness/intent
         route_text = "-"
-        if self._route_manager is not None:
+        if self._app_state is not None and hasattr(self._app_state, "get_route_awareness_snapshot"):
+            try:
+                snap = self._app_state.get_route_awareness_snapshot()
+                mode = str(snap.get("route_mode") or "idle")
+                target = str(snap.get("route_target") or "").strip()
+                progress = int(snap.get("route_progress_percent") or 0)
+                off_route = bool(snap.get("is_off_route"))
+                if mode == "awareness":
+                    if off_route:
+                        route_text = f"off-route ({progress}%)"
+                    elif target:
+                        route_text = f"on-route {progress}% -> {target}"
+                    else:
+                        route_text = f"on-route {progress}%"
+                elif mode == "intent":
+                    route_text = f"intent-only -> {target or '-'}"
+            except Exception:
+                route_text = "-"
+        elif self._route_manager is not None:
             try:
                 if self._route_manager.route:
-                    route_text = f"{len(self._route_manager.route)} punktów"
+                    route_text = f"{len(self._route_manager.route)} punktow"
             except Exception:
                 pass
 
@@ -298,3 +316,4 @@ class PulpitTab(ttk.Frame):
         self.log_area.insert(tk.END, text + "\n")
         self.log_area.see(tk.END)
         self.log_area.config(state="disabled")
+

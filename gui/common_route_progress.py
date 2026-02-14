@@ -104,6 +104,33 @@ def normalize_system_name(name) -> str:
         return ""
     return text.casefold()
 
+
+def _sync_route_awareness_state(
+    *,
+    route_mode: str | None = None,
+    route_target: str | None = None,
+    route_progress_percent: int | None = None,
+    next_system: str | None = None,
+    is_off_route: bool | None = None,
+    source: str | None = None,
+) -> None:
+    try:
+        from app.state import app_state  # type: ignore
+    except Exception:
+        return
+
+    try:
+        app_state.update_route_awareness(
+            route_mode=route_mode,
+            route_target=route_target,
+            route_progress_percent=route_progress_percent,
+            next_system=next_system,
+            is_off_route=is_off_route,
+            source=source or "route_progress",
+        )
+    except Exception:
+        return
+
 def _level_color(level: str) -> str:
     colors = {
         "OK": "green",
@@ -159,6 +186,44 @@ def _set_active_route_data(route, text, sig, source: str | None) -> None:
     _ACTIVE_MILESTONE_START_INDEX = 0
     _ACTIVE_MILESTONE_ANNOUNCED = set()
     _ACTIVE_MILESTONE_START_REMAINING = None
+
+    if _ACTIVE_ROUTE_SYSTEMS_RAW:
+        _sync_route_awareness_state(
+            route_mode="awareness",
+            route_target=_ACTIVE_ROUTE_SYSTEMS_RAW[-1],
+            route_progress_percent=0,
+            next_system=_ACTIVE_ROUTE_SYSTEMS_RAW[0],
+            is_off_route=False,
+            source=source or "route_ready",
+        )
+        return
+
+    try:
+        from app.state import app_state  # type: ignore
+
+        snap = app_state.get_route_awareness_snapshot()
+        if snap.get("route_mode") == "intent" and snap.get("route_target"):
+            intent_target = str(snap.get("route_target") or "").strip()
+            _sync_route_awareness_state(
+                route_mode="intent",
+                route_target=intent_target,
+                route_progress_percent=0,
+                next_system=intent_target,
+                is_off_route=False,
+                source=source or "route_empty.intent",
+            )
+            return
+    except Exception:
+        pass
+
+    _sync_route_awareness_state(
+        route_mode="idle",
+        route_target="",
+        route_progress_percent=0,
+        next_system="",
+        is_off_route=False,
+        source=source or "route_empty.idle",
+    )
 
 def get_active_route_next_system() -> str | None:
     if not _ACTIVE_ROUTE_SYSTEMS_RAW:
@@ -681,6 +746,13 @@ def update_next_hop_on_system(current_system: str | None, trigger: str, source: 
         if _is_navroute_aligned_with_active_milestone(current_norm):
             _ACTIVE_ROUTE_DESYNC_STRIKES = 0
             _ACTIVE_ROUTE_DESYNC_ACTIVE = False
+            _sync_route_awareness_state(
+                route_mode="awareness",
+                route_target=(_ACTIVE_ROUTE_SYSTEMS_RAW[-1] if _ACTIVE_ROUTE_SYSTEMS_RAW else ""),
+                next_system=(get_active_route_next_system() or ""),
+                is_off_route=False,
+                source=source or "next_hop.navroute_aligned",
+            )
             _maybe_emit_milestone_progress_from_navroute(current_norm, source)
             if config.get("debug_next_hop", False):
                 emit_status(
@@ -713,18 +785,48 @@ def update_next_hop_on_system(current_system: str | None, trigger: str, source: 
 
         if not _ACTIVE_ROUTE_DESYNC_ACTIVE:
             _ACTIVE_ROUTE_DESYNC_ACTIVE = True
+            _sync_route_awareness_state(
+                route_mode="awareness",
+                route_target=(_ACTIVE_ROUTE_SYSTEMS_RAW[-1] if _ACTIVE_ROUTE_SYSTEMS_RAW else ""),
+                next_system=(get_active_route_next_system() or ""),
+                is_off_route=True,
+                source=source or "next_hop.off_route",
+            )
             _emit_next_hop_status("WARN", "ROUTE_DESYNC", STATUS_TEXTS["ROUTE_DESYNC"], source=source)
         return
 
     next_index = pos + 1
     _ACTIVE_ROUTE_DESYNC_STRIKES = 0
     _ACTIVE_ROUTE_DESYNC_ACTIVE = False
+
+    if len(_ACTIVE_ROUTE_SYSTEMS) <= 1:
+        progress_percent = 100 if pos >= 0 else 0
+    else:
+        progress_percent = int((pos * 100) / max(1, (len(_ACTIVE_ROUTE_SYSTEMS) - 1)))
+    progress_percent = max(0, min(100, progress_percent))
+
     if next_index >= len(_ACTIVE_ROUTE_SYSTEMS_RAW):
         _ACTIVE_ROUTE_INDEX = len(_ACTIVE_ROUTE_SYSTEMS_RAW)
+        _sync_route_awareness_state(
+            route_mode="awareness",
+            route_target=(_ACTIVE_ROUTE_SYSTEMS_RAW[-1] if _ACTIVE_ROUTE_SYSTEMS_RAW else ""),
+            route_progress_percent=100,
+            next_system="",
+            is_off_route=False,
+            source=source or "next_hop.complete",
+        )
         _emit_next_hop_status("OK", "ROUTE_COMPLETE", STATUS_TEXTS["ROUTE_COMPLETE"], source=source)
         return
 
     _ACTIVE_ROUTE_INDEX = next_index
+    _sync_route_awareness_state(
+        route_mode="awareness",
+        route_target=(_ACTIVE_ROUTE_SYSTEMS_RAW[-1] if _ACTIVE_ROUTE_SYSTEMS_RAW else ""),
+        route_progress_percent=progress_percent,
+        next_system=_ACTIVE_ROUTE_SYSTEMS_RAW[next_index],
+        is_off_route=False,
+        source=source or "next_hop.progress",
+    )
     _maybe_emit_milestone_progress(pos, source)
     if not config.get("auto_clipboard", True):
         if config.get("debug_next_hop", False):
