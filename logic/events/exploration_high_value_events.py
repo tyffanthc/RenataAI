@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from logic.utils import powiedz
+from app.state import app_state
+from logic.events.exploration_awareness import emit_callout_or_summary
 
 
 # --- HIGH VALUE PLANETS (S2-LOGIC-03) ---
@@ -16,6 +17,13 @@ HV_HMC_T_WARNED = False        # Terraformable HMC
 def _body_label(ev: Dict[str, Any]) -> str:
     body = ev.get("BodyName") or ev.get("Body") or ev.get("BodyID") or ""
     return str(body).strip()
+
+
+def _system_label(ev: Dict[str, Any]) -> str:
+    system = ev.get("StarSystem") or ev.get("SystemName") or ev.get("StarSystemName")
+    if system:
+        return str(system).strip()
+    return str(getattr(app_state, "current_system", "") or "").strip()
 
 
 def _dss_hint_text(body: str, fallback: str) -> str:
@@ -73,10 +81,16 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
     ):
         body = _body_label(ev)
         raw_text = _dss_hint_text(body, "Wykryto planetę ziemiopodobną. Wysoka wartość.")
-        powiedz(
-            raw_text,
-            gui_ref,
+        emit_callout_or_summary(
+            text=raw_text,
+            gui_ref=gui_ref,
             message_id="MSG.ELW_DETECTED",
+            source="exploration_high_value_events",
+            system_name=_system_label(ev),
+            body_name=body,
+            callout_key=f"elw:{body or 'unknown'}",
+            event_type="BODY_DISCOVERED",
+            priority="P2_NORMAL",
             context={"raw_text": raw_text, "body": body},
         )
         HV_ELW_WARNED = True
@@ -90,10 +104,16 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
     ):
         body = _body_label(ev)
         raw_text = _dss_hint_text(body, "Wykryto oceaniczny świat. Bardzo wartościowy.")
-        powiedz(
-            raw_text,
-            gui_ref,
+        emit_callout_or_summary(
+            text=raw_text,
+            gui_ref=gui_ref,
             message_id="MSG.WW_DETECTED",
+            source="exploration_high_value_events",
+            system_name=_system_label(ev),
+            body_name=body,
+            callout_key=f"ww:{body or 'unknown'}",
+            event_type="BODY_DISCOVERED",
+            priority="P2_NORMAL",
             context={"raw_text": raw_text, "body": body},
         )
         HV_WW_WARNED = True
@@ -108,10 +128,16 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
     ):
         body = _body_label(ev)
         raw_text = _dss_hint_text(body, "Wykryto terraformowalny świat.")
-        powiedz(
-            raw_text,
-            gui_ref,
+        emit_callout_or_summary(
+            text=raw_text,
+            gui_ref=gui_ref,
             message_id="MSG.TERRAFORMABLE_DETECTED",
+            source="exploration_high_value_events",
+            system_name=_system_label(ev),
+            body_name=body,
+            callout_key=f"hmc_terraformable:{body or 'unknown'}",
+            event_type="BODY_DISCOVERED",
+            priority="P2_NORMAL",
             context={"raw_text": raw_text, "body": body},
         )
         HV_HMC_T_WARNED = True

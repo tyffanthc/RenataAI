@@ -30,6 +30,7 @@ ALLOWED_MESSAGES = {
     "MSG.FSS_PROGRESS_50",
     "MSG.FSS_PROGRESS_75",
     "MSG.FSS_LAST_BODY",
+    "MSG.EXPLORATION_SYSTEM_SUMMARY",
     "MSG.MILESTONE_PROGRESS",
     "MSG.MILESTONE_REACHED",
     "MSG.STARTUP_SYSTEMS",
@@ -142,6 +143,7 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         "MSG.EXOBIO_SAMPLE_LOGGED",
         "MSG.EXOBIO_NEW_ENTRY",
         "MSG.EXOBIO_RANGE_READY",
+        "MSG.EXPLORATION_SYSTEM_SUMMARY",
     }:
         raw_text = ctx.get("raw_text")
         if not raw_text:

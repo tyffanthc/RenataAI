@@ -16,6 +16,7 @@ from logic.events.exploration_high_value_events import (
 )
 from logic.events.exploration_bio_events import reset_bio_flags
 from logic.events.exploration_misc_events import reset_footfall_flags
+from logic.events.exploration_awareness import reset_system_awareness
 
 
 # --- FSS ASSISTANT (S2-LOGIC-02) ---
@@ -104,6 +105,8 @@ def reset_fss_progress() -> None:
     global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED, FSS_FULL_WARNED
     global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES
 
+    previous_system = str(getattr(app_state, "current_system", "") or "").strip()
+
     # Lokalny stan FSS
     FSS_TOTAL_BODIES = 0
     FSS_DISCOVERED = 0
@@ -122,6 +125,7 @@ def reset_fss_progress() -> None:
     reset_high_value_flags()
     reset_bio_flags()
     reset_footfall_flags()
+    reset_system_awareness(previous_system)
 
 
 def _set_fss_total_bodies(count: int):

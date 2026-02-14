@@ -8,6 +8,7 @@ from typing import Any, Dict
 
 import config
 from app.state import app_state
+from logic.events.exploration_awareness import emit_callout_or_summary
 from logic.utils import powiedz
 from logic.utils.renata_log import log_event_throttled
 
@@ -470,11 +471,17 @@ def handle_dss_bio_signals(ev: Dict[str, Any], gui_ref=None) -> None:
     if bio_count >= 3:
         DSS_BIO_WARNED_BODIES.add(body)
         msg = "Potwierdzono liczne sygnały biologiczne. Warto wylądować."
-        powiedz(
-            msg,
-            gui_ref,
+        emit_callout_or_summary(
+            text=msg,
+            gui_ref=gui_ref,
             message_id="MSG.BIO_SIGNALS_HIGH",
-            context={"raw_text": msg},
+            source="exploration_bio_events",
+            system_name=_current_system(ev),
+            body_name=_as_text(body),
+            callout_key=f"bio_signals:{_as_text(body).lower() or 'unknown'}",
+            event_type="BODY_DISCOVERED",
+            priority="P2_NORMAL",
+            context={"raw_text": msg, "body": _as_text(body), "system": _current_system(ev)},
         )
 
 

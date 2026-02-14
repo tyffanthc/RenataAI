@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from logic.utils import powiedz
+from app.state import app_state
+from logic.insight_dispatcher import emit_insight
 
 
 # --- FIRST FOOTFALL (S2-LOGIC-05) ---
@@ -56,8 +57,22 @@ def handle_first_footfall(ev: Dict[str, Any], gui_ref=None):
         return
 
     FIRST_FOOTFALL_WARNED_BODIES.add(body)
-    powiedz(
+    emit_insight(
         "Zanotowano pierwszy ludzki krok na tej planecie.",
-        gui_ref,
+        gui_ref=gui_ref,
         message_id="MSG.FOOTFALL",
+        source="exploration_misc_events",
+        event_type="BODY_DISCOVERED",
+        context={
+            "system": str(getattr(app_state, "current_system", "") or "").strip() or None,
+            "body": str(body).strip(),
+            "risk_status": "RISK_LOW",
+            "var_status": "VAR_MEDIUM",
+            "trust_status": "TRUST_HIGH",
+            "confidence": "high",
+        },
+        priority="P2_NORMAL",
+        dedup_key=f"footfall:{body}",
+        cooldown_scope="entity",
+        cooldown_seconds=120.0,
     )
