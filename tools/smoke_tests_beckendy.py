@@ -30,9 +30,11 @@ import config  # type: ignore
 from logic.utils import MSG_QUEUE, DEBOUNCER  # type: ignore
 
 from app.state import app_state  # type: ignore
+from app.route_manager import route_manager  # type: ignore
 
 from logic.events import fuel_events  # type: ignore
 from logic.events import trade_events  # type: ignore
+from logic.events import navigation_events  # type: ignore
 from logic.events import exploration_fss_events as fss_events  # type: ignore
 from logic.events import exploration_bio_events as bio_events  # type: ignore
 from logic.events import exploration_misc_events as misc_events  # type: ignore
@@ -2059,6 +2061,157 @@ def test_runtime_free_pro_capabilities_smoke(_ctx: TestContext) -> None:
                 settings[key] = value
 
 
+def test_f2_sell_intent_route_cross_module(ctx: TestContext) -> None:
+    """
+    F2 cross-module gate:
+    Sell Assist decision -> intent handoff -> route awareness transition.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+
+    saved_awareness = app_state.get_route_awareness_snapshot()
+    saved_nav_route = dict(getattr(app_state, "nav_route", {}) or {})
+    saved_current_system = str(getattr(app_state, "current_system", "") or "")
+    saved_route = list(route_manager.route)
+    saved_route_type = route_manager.route_type
+    saved_route_index = int(route_manager.current_index)
+    saved_milestones = list(getattr(app_state, "spansh_milestones", []) or [])
+    saved_milestone_mode = getattr(app_state, "spansh_milestone_mode", None)
+
+    try:
+        route_manager.clear_route()
+        app_state.clear_spansh_milestones(source="smoke.f2.cross")
+        app_state.clear_nav_route(source="smoke.f2.cross")
+        app_state.update_route_awareness(
+            route_mode="idle",
+            route_target="",
+            route_progress_percent=0,
+            next_system="",
+            is_off_route=False,
+            source="smoke.f2.cross",
+        )
+
+        rows = [
+            {
+                "from_system": "SOL",
+                "from_station": "Galileo",
+                "to_system": "LHS 20",
+                "to_station": "Ohm City",
+                "total_profit": 1_300_000,
+                "profit": 5500,
+                "amount": 240,
+                "distance_ly": 40.0,
+                "jumps": 1,
+                "source_status": "ONLINE_LIVE",
+                "confidence": "high",
+                "data_age_seconds": 600,
+                "updated_ago": "10m",
+            },
+            {
+                "from_system": "LHS 20",
+                "from_station": "Ohm City",
+                "to_system": "TAU CETI",
+                "to_station": "Ortiz Moreno City",
+                "total_profit": 1_000_000,
+                "profit": 4100,
+                "amount": 240,
+                "distance_ly": 50.0,
+                "jumps": 2,
+                "source_status": "ONLINE_LIVE",
+                "confidence": "high",
+                "data_age_seconds": 900,
+                "updated_ago": "15m",
+            },
+        ]
+
+        decision = trade_logic.build_sell_assist_decision_space(rows, jump_range=48.0)
+        options = decision.get("options") or []
+        assert len(options) in {2, 3}, f"Expected 2-3 options, got: {len(options)}"
+        assert (decision.get("skip_action") or {}).get("label") == "Pomijam", (
+            f"Expected skip label Pomijam, got: {decision.get('skip_action')}"
+        )
+
+        selected = options[0]
+        target = str(selected.get("to_system") or "").strip()
+        assert target, f"Selected option should expose to_system target, got: {selected}"
+
+        handoff = trade_logic.handoff_sell_assist_to_route_intent(
+            selected,
+            set_route_intent=app_state.set_route_intent,
+            source="smoke.f2.cross",
+        )
+        assert handoff.get("ok"), f"Expected successful intent handoff, got: {handoff}"
+
+        snap_intent = app_state.get_route_awareness_snapshot()
+        assert snap_intent.get("route_mode") == "intent", (
+            f"Expected intent mode after handoff, got: {snap_intent}"
+        )
+        assert str(snap_intent.get("route_target") or "") == target, (
+            f"Expected route target {target}, got: {snap_intent}"
+        )
+        assert not bool(snap_intent.get("is_off_route")), (
+            f"Intent handoff should not mark off-route, got: {snap_intent}"
+        )
+
+        app_state.set_system("SOL")
+        navigation_events.handle_navroute_update(
+            {
+                "event": "NavRoute",
+                "EndSystem": target,
+                "Route": [
+                    {"StarSystem": "SOL"},
+                    {"StarSystem": target},
+                ],
+            },
+            gui_ref=None,
+        )
+
+        snap_awareness = app_state.get_route_awareness_snapshot()
+        assert snap_awareness.get("route_mode") == "awareness", (
+            f"Expected awareness mode after navroute update, got: {snap_awareness}"
+        )
+        assert str(snap_awareness.get("route_target") or "") == target, (
+            f"Expected awareness target {target}, got: {snap_awareness}"
+        )
+        assert not bool(snap_awareness.get("is_off_route")), (
+            f"Expected on-route state after aligned navroute update, got: {snap_awareness}"
+        )
+    finally:
+        app_state.set_system(saved_current_system)
+        app_state.update_route_awareness(
+            route_mode=str(saved_awareness.get("route_mode") or "idle"),
+            route_target=str(saved_awareness.get("route_target") or ""),
+            route_progress_percent=int(saved_awareness.get("route_progress_percent") or 0),
+            next_system=str(saved_awareness.get("next_system") or ""),
+            is_off_route=bool(saved_awareness.get("is_off_route")),
+            source="smoke.f2.cross.restore",
+        )
+
+        if saved_nav_route.get("systems"):
+            app_state.set_nav_route(
+                endpoint=saved_nav_route.get("endpoint"),
+                systems=saved_nav_route.get("systems"),
+                source="smoke.f2.cross.restore",
+            )
+        else:
+            app_state.clear_nav_route(source="smoke.f2.cross.restore")
+
+        if saved_milestones:
+            app_state.set_spansh_milestones(
+                saved_milestones,
+                mode=saved_milestone_mode,
+                source="smoke.f2.cross.restore",
+            )
+        else:
+            app_state.clear_spansh_milestones(source="smoke.f2.cross.restore")
+
+        if saved_route:
+            route_manager.set_route(saved_route, route_type=str(saved_route_type or "smoke"))
+            route_manager.current_index = min(saved_route_index, len(saved_route))
+        else:
+            route_manager.clear_route()
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -2109,6 +2262,7 @@ def run_all_tests() -> int:
         ("test_combat_silence_invariant_zero_tts_except_critical", test_combat_silence_invariant_zero_tts_except_critical),
         ("test_emit_insight_contract_gate_in_event_modules", test_emit_insight_contract_gate_in_event_modules),
         ("test_runtime_free_pro_capabilities_smoke", test_runtime_free_pro_capabilities_smoke),
+        ("test_f2_sell_intent_route_cross_module", test_f2_sell_intent_route_cross_module),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),
