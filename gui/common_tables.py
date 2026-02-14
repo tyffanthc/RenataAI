@@ -872,7 +872,13 @@ def _update_treeview_sort_indicators(tree, schema_id: str) -> None:
             command=lambda key=lp_key: _sort_treeview(tree, schema_id, key),
             anchor="e",
         )
+    tree_columns = list(tree["columns"] or [])
     for col in schema.columns:
+        # Ustawiamy heading tylko dla kolumn faktycznie obecnych w widoku Treeview.
+        # Przy ukrytych kolumnach (np. preset/visible_columns) ttk rzuca:
+        # "_tkinter.TclError: Invalid column index ...".
+        if col.key not in tree_columns:
+            continue
         label = col.label
         key_text = (col.key or "").lower()
         label_text = (col.label or "").lower()
