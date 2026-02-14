@@ -75,12 +75,17 @@ Settings in FREE mode show a short, safe list of options (5-7 max). Advanced/dev
 
 ## FREE/Public release guard
 - Public release must contain FREE-only content.
+- Forbidden in public repo/release: `docs/internal/`, `docs/Flow/private/`, `pro/`.
+- Install git hooks once per clone:
+  - `py tools/install_git_hooks.py`
 - Before push/build:
   - `py tools/public_repo_guard.py`
 - Before ZIP upload:
   - `py tools/public_repo_guard.py --zip release/Renata_vX.Y.Z-preview_win_x64.zip`
 - Expected output:
   - `PUBLIC_GUARD=PASS`
+- CI gate:
+  - `.github/workflows/public_guard.yml` runs `tools/public_repo_guard.py` on push/PR.
 
 ## TTS (Piper, Windows-only)
 - Default engine: `tts.engine=auto` (Piper if available, else pyttsx3).

@@ -6,7 +6,9 @@
 - Verify `user_settings.json` is not tracked.
 - FREE/PRO isolation:
   - Public release = FREE only.
-  - No files from `docs/internal/` and `docs/Flow/private/` can be tracked or shipped.
+  - No files from `docs/internal/`, `docs/Flow/private/` and `pro/` can be tracked or shipped.
+  - Install pre-push hook once per clone:
+    - `py tools/install_git_hooks.py`
   - Run guard before build/push:
     - `py tools/public_repo_guard.py`
 

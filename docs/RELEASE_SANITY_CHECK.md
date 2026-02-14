@@ -6,6 +6,7 @@ Before upload, verify ZIP does NOT contain runtime/user files:
 - `config.json`
 - `log.txt` / `*.log`
 - `tmp/` cache/output folders
+- `docs/internal/`, `docs/Flow/private/`, `pro/`
 
 Expected ZIP contents (example):
 - `RenataAI.exe`

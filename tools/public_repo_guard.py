@@ -24,11 +24,13 @@ import zipfile
 FORBIDDEN_PREFIXES = (
     "docs/internal/",
     "docs/Flow/private/",
+    "pro/",
 )
 
 FORBIDDEN_IN_ZIP = (
     "docs/internal/",
     "docs/Flow/private/",
+    "pro/",
     "user_settings.json",
     "config.json",
     "user_logbook.json",
@@ -120,4 +122,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

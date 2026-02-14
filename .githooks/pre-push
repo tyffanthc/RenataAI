@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+set -eu
+
+echo "[pre-push] Running PUBLIC/FREE isolation guard..."
+
+if command -v py >/dev/null 2>&1; then
+  py tools/public_repo_guard.py
+elif command -v python >/dev/null 2>&1; then
+  python tools/public_repo_guard.py
+else
+  echo "[pre-push] ERROR: Python launcher not found (py/python)." >&2
+  exit 1
+fi
+
+echo "[pre-push] PUBLIC_GUARD passed."
