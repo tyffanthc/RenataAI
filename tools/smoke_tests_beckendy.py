@@ -14,6 +14,7 @@ import traceback
 import queue
 import re
 import time
+import ast
 from typing import Callable, List, Tuple
 
 # --- ŚCIEŻKI / IMPORTY --------------------------------------------------------
@@ -46,7 +47,12 @@ from logic import exomastery as exomastery_logic  # type: ignore
 from logic import trade as trade_logic  # type: ignore
 from logic.rows_normalizer import normalize_trade_rows
 from logic.tts.text_preprocessor import prepare_tts
-from logic.insight_dispatcher import Insight, pick_insight_for_emit, evaluate_risk_trust_gate
+from logic.insight_dispatcher import (
+    Insight,
+    pick_insight_for_emit,
+    evaluate_risk_trust_gate,
+    should_speak,
+)
 from logic.event_insight_mapping import get_insight_class, resolve_emit_contract
 from logic.capabilities import (
     CAP_SETTINGS_FULL,
@@ -54,6 +60,8 @@ from logic.capabilities import (
     CAP_UI_EXTENDED_TABS,
     PROFILE_FREE,
     PROFILE_PRO,
+    capability_config_patch_from_free_policy,
+    has_capability,
     resolve_capabilities,
 )
 from gui import common_tables  # type: ignore
@@ -1938,6 +1946,113 @@ def test_no_plan_checks_in_action_modules(_ctx: TestContext) -> None:
             assert marker not in content, f"Plan condition '{marker}' should not exist in action module {path}"
 
 
+def test_combat_silence_invariant_zero_tts_except_critical(ctx: TestContext) -> None:
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+
+    normal = Insight(
+        text="normal in combat",
+        message_id="MSG.TEST_COMBAT_NORMAL",
+        source="smoke",
+        priority="P2_NORMAL",
+        context={
+            "in_combat": True,
+            "risk_status": "RISK_MEDIUM",
+            "trust_status": "TRUST_HIGH",
+            "confidence": "high",
+        },
+    )
+    critical = Insight(
+        text="critical in combat",
+        message_id="MSG.TEST_COMBAT_CRITICAL",
+        source="smoke",
+        priority="P0_CRITICAL",
+        context={
+            "in_combat": True,
+            "risk_status": "RISK_CRITICAL",
+            "trust_status": "TRUST_HIGH",
+            "confidence": "high",
+        },
+    )
+
+    assert should_speak(normal) is False, "combat silence should block non-critical TTS"
+    assert should_speak(critical) is True, "combat silence should not block critical TTS"
+
+
+def test_emit_insight_contract_gate_in_event_modules(_ctx: TestContext) -> None:
+    event_dir = os.path.join(ROOT_DIR, "logic", "events")
+    required_keywords = {
+        "message_id",
+        "source",
+        "event_type",
+        "context",
+        "priority",
+        "dedup_key",
+        "cooldown_scope",
+        "cooldown_seconds",
+    }
+    files_with_emit = 0
+    calls_checked = 0
+
+    for filename in os.listdir(event_dir):
+        if not filename.endswith(".py"):
+            continue
+        path = os.path.join(event_dir, filename)
+        with open(path, "r", encoding="utf-8-sig", errors="ignore") as f:
+            source = f.read()
+        tree = ast.parse(source, filename=path)
+        emit_calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "emit_insight"
+        ]
+        if not emit_calls:
+            continue
+        files_with_emit += 1
+        for call in emit_calls:
+            calls_checked += 1
+            kw_names = {kw.arg for kw in call.keywords if kw.arg is not None}
+            missing = sorted(required_keywords - kw_names)
+            assert not missing, (
+                f"{path}: emit_insight() missing required contract keywords: {', '.join(missing)}"
+            )
+
+    assert files_with_emit > 0, "Expected at least one event module using emit_insight"
+    assert calls_checked > 0, "Expected at least one emit_insight call to validate contract"
+
+
+def test_runtime_free_pro_capabilities_smoke(_ctx: TestContext) -> None:
+    settings = getattr(config.config, "_settings", None)  # type: ignore[attr-defined]
+    assert isinstance(settings, dict), "Config runtime settings dict is unavailable"
+
+    original = {
+        "plan.profile": settings.get("plan.profile"),
+        "features.tts.free_policy_enabled": settings.get("features.tts.free_policy_enabled"),
+        CAP_TTS_ADVANCED_POLICY: settings.get(CAP_TTS_ADVANCED_POLICY),
+        CAP_SETTINGS_FULL: settings.get(CAP_SETTINGS_FULL),
+        CAP_UI_EXTENDED_TABS: settings.get(CAP_UI_EXTENDED_TABS),
+    }
+
+    try:
+        settings.update(capability_config_patch_from_free_policy(True))
+        assert not has_capability(CAP_TTS_ADVANCED_POLICY), "FREE runtime should disable advanced TTS policy"
+        assert not has_capability(CAP_SETTINGS_FULL), "FREE runtime should disable full settings capability"
+        assert not has_capability(CAP_UI_EXTENDED_TABS), "FREE runtime should disable extended tabs capability"
+
+        settings.update(capability_config_patch_from_free_policy(False))
+        assert has_capability(CAP_TTS_ADVANCED_POLICY), "PRO runtime should enable advanced TTS policy"
+        assert has_capability(CAP_SETTINGS_FULL), "PRO runtime should enable full settings capability"
+        assert has_capability(CAP_UI_EXTENDED_TABS), "PRO runtime should enable extended tabs capability"
+    finally:
+        for key, value in original.items():
+            if value is None and key in settings:
+                settings.pop(key, None)
+            else:
+                settings[key] = value
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1985,6 +2100,9 @@ def run_all_tests() -> int:
         ("test_event_insight_mapping_core_contract", test_event_insight_mapping_core_contract),
         ("test_capabilities_profile_contract", test_capabilities_profile_contract),
         ("test_no_plan_checks_in_action_modules", test_no_plan_checks_in_action_modules),
+        ("test_combat_silence_invariant_zero_tts_except_critical", test_combat_silence_invariant_zero_tts_except_critical),
+        ("test_emit_insight_contract_gate_in_event_modules", test_emit_insight_contract_gate_in_event_modules),
+        ("test_runtime_free_pro_capabilities_smoke", test_runtime_free_pro_capabilities_smoke),
         ("test_ammonia_payload_snapshot", test_ammonia_payload_snapshot),
         ("test_exomastery_payload_snapshot", test_exomastery_payload_snapshot),
         ("test_riches_payload_snapshot", test_riches_payload_snapshot),
