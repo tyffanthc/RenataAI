@@ -138,13 +138,14 @@ class EventHandler:
             return
 
         if typ == "Scan":
-            exploration_fss_events.handle_scan(ev, gui_ref)
-            exploration_dss_events.handle_dss_target_hint(ev, gui_ref)
+            # Feed value engine first so F4 summary built on full-scan includes the current body.
             try:
                 from app.state import app_state
                 app_state.system_value_engine.analyze_scan_event(ev)
             except Exception as exc:
                 _log_router_fallback("scan.value_engine", "scan event value analysis failed", exc)
+            exploration_fss_events.handle_scan(ev, gui_ref)
+            exploration_dss_events.handle_dss_target_hint(ev, gui_ref)
         if typ == "SAASignalsFound":
             exploration_bio_events.handle_dss_bio_signals(ev, gui_ref)
         if typ == "SAAScanComplete":

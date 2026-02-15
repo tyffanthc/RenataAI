@@ -43,6 +43,7 @@ from logic.events import exploration_bio_events as bio_events  # type: ignore
 from logic.events import exploration_dss_events as dss_events  # type: ignore
 from logic.events import exploration_misc_events as misc_events  # type: ignore
 from logic.events import exploration_awareness as awareness_events  # type: ignore
+from logic.events import exploration_summary as summary_events  # type: ignore
 from logic import spansh_payloads
 from logic import spansh_client as spansh_client_logic  # type: ignore
 from logic import neutron as neutron_logic  # type: ignore
@@ -53,6 +54,7 @@ from logic import hmc_route as hmc_logic  # type: ignore
 from logic import exomastery as exomastery_logic  # type: ignore
 from logic import trade as trade_logic  # type: ignore
 from logic.rows_normalizer import normalize_trade_rows
+from logic.exit_summary import ExitSummaryData
 from logic.tts.text_preprocessor import prepare_tts
 from logic.insight_dispatcher import (
     Insight,
@@ -1631,6 +1633,66 @@ def test_f3_exploration_cross_module_invariants(ctx: TestContext) -> None:
     )
 
 
+def test_f4_exploration_summary_baseline(ctx: TestContext) -> None:
+    """
+    F4 baseline smoke:
+    - manual summary emits once through dispatcher path,
+    - queue receives log + structured exploration summary payload.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    app_state.current_system = "SMOKE_F4_SUMMARY_SYSTEM"
+    app_state.last_exploration_summary_signature = None
+
+    sample = ExitSummaryData(
+        system_name="SMOKE_F4_SUMMARY_SYSTEM",
+        scanned_bodies=9,
+        total_bodies=10,
+        elw_count=1,
+        elw_value=20_000_000.0,
+        ww_count=1,
+        ww_value=2_000_000.0,
+        ww_t_count=0,
+        ww_t_value=0.0,
+        hmc_t_count=1,
+        hmc_t_value=1_500_000.0,
+        biology_species_count=1,
+        biology_value=3_000_000.0,
+        bonus_discovery=800_000.0,
+        total_value=27_300_000.0,
+    )
+
+    with (
+        patch.object(app_state.exit_summary, "build_summary_data", return_value=sample),
+        patch.object(
+            app_state,
+            "system_value_engine",
+            new=type("DummyEngine", (), {"calculate_totals": lambda self: {"total": 40_000_000.0}})(),
+        ),
+    ):
+        ok = summary_events.trigger_exploration_summary(mode="manual", gui_ref=None)
+
+    assert ok, "Expected manual exploration summary trigger to emit"
+
+    items = ctx.drain_queue()
+    assert any(
+        isinstance(item, tuple) and len(item) == 2 and item[0] == "log"
+        for item in items
+    ), "Expected summary log line in queue"
+    payload_items = [
+        item[1]
+        for item in items
+        if isinstance(item, tuple) and len(item) == 2 and item[0] == "exploration_summary"
+    ]
+    assert payload_items, "Expected structured exploration_summary payload in queue"
+    payload = payload_items[-1]
+    assert payload.get("system") == "SMOKE_F4_SUMMARY_SYSTEM", (
+        f"Unexpected summary payload system: {payload}"
+    )
+    assert payload.get("next_step"), f"Missing next_step in summary payload: {payload}"
+    assert payload.get("highlights"), f"Missing highlights in summary payload: {payload}"
+
+
 def test_trade_station_state_reset_on_system_change(_ctx: TestContext) -> None:
     class DummyVar:
         def __init__(self, value: str = "") -> None:
@@ -2434,6 +2496,7 @@ def run_all_tests() -> int:
         ("test_tts_polish_diacritics_global", test_tts_polish_diacritics_global),
         ("test_exobio_sample_progress_sequence", test_exobio_sample_progress_sequence),
         ("test_f3_exploration_cross_module_invariants", test_f3_exploration_cross_module_invariants),
+        ("test_f4_exploration_summary_baseline", test_f4_exploration_summary_baseline),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
         ("test_trade_station_picker_candidates_and_wiring", test_trade_station_picker_candidates_and_wiring),
         ("test_spansh_feedback_smoke_pack_coverage", test_spansh_feedback_smoke_pack_coverage),

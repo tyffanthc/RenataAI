@@ -53,6 +53,7 @@ class AppState:
 
         # --- Ostatnie wygenerowane summary (EPIC 5) ---
         self.last_exit_summary_text = None
+        self.last_exploration_summary_signature = None
 
         # --- GUI wstrzyknie tu panel eksploracji (EPIC 5) ---
         self.exploration_panel = None

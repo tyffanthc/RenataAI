@@ -152,7 +152,6 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         "MSG.EXOBIO_SAMPLE_LOGGED",
         "MSG.EXOBIO_NEW_ENTRY",
         "MSG.EXOBIO_RANGE_READY",
-        "MSG.EXPLORATION_SYSTEM_SUMMARY",
     }:
         raw_text = ctx.get("raw_text")
         if not raw_text:
@@ -161,6 +160,17 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         if not fixed:
             return None
         return fixed
+
+    if message_id == "MSG.EXPLORATION_SYSTEM_SUMMARY":
+        raw_text = ctx.get("raw_text")
+        if raw_text:
+            fixed = _repair_polish_text(raw_text).strip()
+            if fixed:
+                return fixed
+        system = _normalize_system_name(ctx.get("system"))
+        if system:
+            return _finalize_tts(f"Podsumowanie systemu {system} gotowe.")
+        return _finalize_tts("Podsumowanie eksploracji gotowe.")
 
     if message_id == "MSG.NEXT_HOP":
         system = _normalize_system_name(ctx.get("system"))

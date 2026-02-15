@@ -1,23 +1,33 @@
-import tkinter as tk
+﻿import tkinter as tk
 from tkinter import ttk
 import config
 
 
 class PulpitTab(ttk.Frame):
     """
-    Zakładka 'Pulpit':
-    - mini status (system, ciała)
+    ZakĹ‚adka 'Pulpit':
+    - mini status (system, ciaĹ‚a)
     - log tekstowy
     - przycisk do generowania danych naukowych (Exobiology + Cartography)
     """
 
-    def __init__(self, parent, *, on_generate_science_excel=None, on_generate_modules_data=None, app_state=None, route_manager=None):
+    def __init__(
+        self,
+        parent,
+        *,
+        on_generate_science_excel=None,
+        on_generate_modules_data=None,
+        on_generate_exploration_summary=None,
+        app_state=None,
+        route_manager=None,
+    ):
         super().__init__(parent)
         self.pack(fill="both", expand=True)
 
         # callback do generowania Excela
         self._on_generate_science_excel = on_generate_science_excel
         self._on_generate_modules_data = on_generate_modules_data
+        self._on_generate_exploration_summary = on_generate_exploration_summary
         self._app_state = app_state
         self._route_manager = route_manager
 
@@ -28,7 +38,7 @@ class PulpitTab(ttk.Frame):
     # UI
     # ------------------------------------------------------------
     def _init_ui(self):
-        # GŁÓWNY DASHBOARD
+        # GĹĂ“WNY DASHBOARD
         header_frame = ttk.Frame(self)
         header_frame.pack(fill="x", padx=5, pady=(8, 4))
 
@@ -60,7 +70,7 @@ class PulpitTab(ttk.Frame):
         self.lbl_status_system = ttk.Label(status_frame, text="System: -")
         self.lbl_status_system.pack(side="left", padx=(0, 15))
 
-        self.lbl_status_bodies = ttk.Label(status_frame, text="Ciała: -/-")
+        self.lbl_status_bodies = ttk.Label(status_frame, text="CiaĹ‚a: -/-")
         self.lbl_status_bodies.pack(side="left", padx=(0, 15))
 
         # Miejsce na info o trasie (opcjonalnie)
@@ -82,13 +92,54 @@ class PulpitTab(ttk.Frame):
         self.lbl_status_jr = ttk.Label(status_frame, text="JR: -")
         self.lbl_status_jr.pack(side="left", padx=(0, 15))
 
+        # EXPLORATION SUMMARY (F4 baseline)
+        summary_frame = ttk.LabelFrame(self, text="Exploration Summary")
+        summary_frame.pack(fill="x", padx=5, pady=(2, 5))
+        summary_frame.columnconfigure(0, weight=1)
+
+        self.lbl_exploration_summary_title = ttk.Label(
+            summary_frame,
+            text="Brak podsumowania eksploracji.",
+            font=("Eurostile", 10, "bold"),
+            anchor="w",
+            justify="left",
+        )
+        self.lbl_exploration_summary_title.grid(row=0, column=0, padx=8, pady=(6, 2), sticky="w")
+
+        self.lbl_exploration_summary_highlights = ttk.Label(
+            summary_frame,
+            text="Highlights: -",
+            anchor="w",
+            justify="left",
+            wraplength=960,
+        )
+        self.lbl_exploration_summary_highlights.grid(row=1, column=0, padx=8, pady=2, sticky="w")
+
+        self.lbl_exploration_summary_next = ttk.Label(
+            summary_frame,
+            text="Co dalej: -",
+            anchor="w",
+            justify="left",
+            wraplength=960,
+        )
+        self.lbl_exploration_summary_next.grid(row=2, column=0, padx=8, pady=2, sticky="w")
+
+        self.lbl_exploration_summary_cashin = ttk.Label(
+            summary_frame,
+            text="Cash-in: -",
+            anchor="w",
+            justify="left",
+            wraplength=960,
+        )
+        self.lbl_exploration_summary_cashin.grid(row=3, column=0, padx=8, pady=(2, 6), sticky="w")
+
         # PRZYCISKI / AKCJE
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill="x", padx=5, pady=5)
 
         ttk.Label(
             btn_frame,
-            text="Narzędzia naukowe:",
+            text="NarzÄ™dzia naukowe:",
             font=("Arial", 9, "bold")
         ).pack(side="left")
 
@@ -101,12 +152,19 @@ class PulpitTab(ttk.Frame):
 
         btn_generate_modules = ttk.Button(
             btn_frame,
-            text="Generuj dane modułów",
+            text="Generuj dane moduĹ‚Ăłw",
             command=self._on_click_generate_modules,
         )
         btn_generate_modules.pack(side="right", padx=(0, 8))
         if not config.get("modules_data_autogen_enabled", True):
             btn_generate_modules.state(["disabled"])
+
+        btn_exploration_summary = ttk.Button(
+            btn_frame,
+            text="Podsumowanie eksploracji",
+            command=self._on_click_exploration_summary,
+        )
+        btn_exploration_summary.pack(side="right", padx=(0, 8))
 
         # LOG
         log_frame = ttk.Frame(self)
@@ -142,7 +200,7 @@ class PulpitTab(ttk.Frame):
     def _update_status_from_state(self):
         """
         Jednorazowy update statusu przy starcie na podstawie app_state / route_manager.
-        Nie spina się z eventami w czasie rzeczywistym (tym zajmuje się EventHandler).
+        Nie spina siÄ™ z eventami w czasie rzeczywistym (tym zajmuje siÄ™ EventHandler).
         """
         # System
         system = "-"
@@ -156,9 +214,9 @@ class PulpitTab(ttk.Frame):
 
         self.set_system_runtime_state(system, live_ready=live_ready)
 
-        # Ciała - na start mamy tylko ogólny placeholder, bo licznik
+        # CiaĹ‚a - na start mamy tylko ogĂłlny placeholder, bo licznik
         # FSS jest trzymany w event_handlerze
-        self.lbl_status_bodies.config(text="Ciała: -/-")
+        self.lbl_status_bodies.config(text="CiaĹ‚a: -/-")
 
         # Trasa - status awareness/intent
         route_text = "-"
@@ -292,28 +350,77 @@ class PulpitTab(ttk.Frame):
             try:
                 self._on_generate_science_excel()
             except Exception as e:
-                self.log(f"[SCIENCE_DATA] Błąd przy uruchamianiu generatora: {e}")
+                self.log(f"[SCIENCE_DATA] BĹ‚Ä…d przy uruchamianiu generatora: {e}")
         else:
-            self.log("[SCIENCE_DATA] Brak podpiętego callbacku on_generate_science_excel.")
+            self.log("[SCIENCE_DATA] Brak podpiÄ™tego callbacku on_generate_science_excel.")
 
     def _on_click_generate_modules(self):
         if self._on_generate_modules_data is not None:
             try:
                 self._on_generate_modules_data()
             except Exception as e:
-                self.log(f"[MODULES_DATA] Błąd przy uruchamianiu generatora: {e}")
+                self.log(f"[MODULES_DATA] BĹ‚Ä…d przy uruchamianiu generatora: {e}")
         else:
-            self.log("[MODULES_DATA] Brak podpiętego callbacku on_generate_modules_data.")
+            self.log("[MODULES_DATA] Brak podpiÄ™tego callbacku on_generate_modules_data.")
+
+    def _on_click_exploration_summary(self):
+        if self._on_generate_exploration_summary is not None:
+            try:
+                self._on_generate_exploration_summary()
+            except Exception as e:
+                self.log(f"[EXPLORATION_SUMMARY] Blad triggera podsumowania: {e}")
+        else:
+            self.log("[EXPLORATION_SUMMARY] Brak podpiętego callbacku on_generate_exploration_summary.")
 
     # ------------------------------------------------------------
     # LOG
     # ------------------------------------------------------------
     def log(self, text: str):
         """
-        Prosty logger tekstowy używany przez RenataApp.show_status().
+        Prosty logger tekstowy uĹĽywany przez RenataApp.show_status().
         """
         self.log_area.config(state="normal")
         self.log_area.insert(tk.END, text + "\n")
         self.log_area.see(tk.END)
         self.log_area.config(state="disabled")
+
+
+
+    def update_exploration_summary(self, payload: dict) -> None:
+        if not isinstance(payload, dict):
+            return
+
+        system = str(payload.get("system") or "-").strip() or "-"
+        scanned = payload.get("scanned_bodies")
+        total = payload.get("total_bodies")
+        if scanned is not None and total is not None:
+            title = f"System: {system} | FSS: {scanned}/{total}"
+        else:
+            title = f"System: {system}"
+
+        highlights = payload.get("highlights") or []
+        if isinstance(highlights, list) and highlights:
+            highlights_text = " | ".join(str(item) for item in highlights[:5])
+        else:
+            highlights_text = "-"
+
+        next_step = str(payload.get("next_step") or "-").strip() or "-"
+        signal = str(payload.get("cash_in_signal") or "-").strip() or "-"
+        sys_cash = payload.get("cash_in_system_estimated")
+        ses_cash = payload.get("cash_in_session_estimated")
+
+        def _fmt_cr(value):
+            try:
+                return f"{int(round(float(value))):,}".replace(",", " ")
+            except Exception:
+                return "-"
+
+        cash_text = (
+            f"Cash-in ({signal}): system ~{_fmt_cr(sys_cash)} Cr | sesja ~{_fmt_cr(ses_cash)} Cr"
+        )
+
+        self.lbl_exploration_summary_title.config(text=title)
+        self.lbl_exploration_summary_highlights.config(text=f"Highlights: {highlights_text}")
+        self.lbl_exploration_summary_next.config(text=f"Co dalej: {next_step}")
+        self.lbl_exploration_summary_cashin.config(text=cash_text)
 

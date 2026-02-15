@@ -76,48 +76,24 @@ def _first_status_context(
     return ctx
 
 
-def _wire_exit_summary_to_runtime() -> None:
+def _wire_exit_summary_to_runtime(gui_ref=None) -> None:
     """
     EXIT-SUMMARY-WIRE-01:
-    Build and publish summary when we know FSS scan is complete.
-
-    We keep this path UI-safe:
-    - no new TTS in this ticket (log/panel only),
-    - one summary snapshot per generated text (dedup),
-    - graceful no-op on missing data.
+    Build and publish F4 exploration summary when FSS scan is complete.
+    Emission goes through dispatcher via logic.events.exploration_summary.
     """
     try:
-        if not bool(config.get("exit_summary_enabled", True)):
-            return
-    except Exception:
-        return
+        from logic.events.exploration_summary import trigger_exploration_summary
 
-    system_name = (getattr(app_state, "current_system", "") or "").strip()
-    if not system_name:
-        return
-
-    try:
-        summary_text = app_state.exit_summary.build_and_format(
-            system_name=system_name,
+        trigger_exploration_summary(
+            gui_ref=gui_ref,
+            mode="auto",
+            system_name=getattr(app_state, "current_system", None),
             scanned_bodies=FSS_DISCOVERED if FSS_DISCOVERED > 0 else None,
             total_bodies=FSS_TOTAL_BODIES if FSS_TOTAL_BODIES > 0 else None,
         )
     except Exception:
         return
-
-    if not summary_text:
-        return
-
-    previous = getattr(app_state, "last_exit_summary_text", None)
-    if summary_text == previous:
-        return
-
-    app_state.last_exit_summary_text = summary_text
-    for line in summary_text.splitlines():
-        line = str(line).strip()
-        if not line:
-            continue
-        utils.MSG_QUEUE.put(("log", f"[EXIT-SUMMARY] {line}"))
 
 
 def reset_fss_progress() -> None:
@@ -277,7 +253,7 @@ def _maybe_speak_fss_full(gui_ref=None) -> bool:
             cooldown_seconds=120.0,
         )
         FSS_FULL_WARNED = True
-        _wire_exit_summary_to_runtime()
+        _wire_exit_summary_to_runtime(gui_ref=gui_ref)
         return True
 
     return False

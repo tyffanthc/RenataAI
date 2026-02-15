@@ -201,6 +201,11 @@ def powiedz(tekst, gui_ref=None, *, message_id=None, context=None, force: bool =
     
     # Wyślij do GUI przez kolejkę
     MSG_QUEUE.put(("log", full_msg))
+
+    ctx = context or {}
+    summary_payload = ctx.get("summary_payload")
+    if isinstance(summary_payload, dict):
+        MSG_QUEUE.put(("exploration_summary", summary_payload))
     
     # Synteza mowy (tylko przez Text Preprocessor)
     if config.get("voice_enabled", True) and message_id:

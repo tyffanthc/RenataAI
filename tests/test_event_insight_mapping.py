@@ -26,6 +26,7 @@ class EventInsightMappingTests(unittest.TestCase):
             "MSG.EXOBIO_SAMPLE_LOGGED",
             "MSG.EXOBIO_RANGE_READY",
             "MSG.EXOBIO_NEW_ENTRY",
+            "MSG.EXPLORATION_SYSTEM_SUMMARY",
         ]
         for message_id in required:
             spec = get_insight_class(message_id)

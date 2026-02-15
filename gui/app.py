@@ -235,6 +235,7 @@ class RenataApp:
             self.main_nb,
             on_generate_science_excel=self.on_generate_science_excel,
             on_generate_modules_data=self.on_generate_modules_data,
+            on_generate_exploration_summary=self.on_generate_exploration_summary,
             app_state=app_state,
             route_manager=route_manager,
         )
@@ -800,6 +801,17 @@ class RenataApp:
                 if msg_type == "log":
                     self.tab_pulpit.log(content)
 
+                elif msg_type == "exploration_summary":
+                    try:
+                        self.tab_pulpit.update_exploration_summary(content)
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.exploration_summary",
+                            "failed to update exploration summary card",
+                            exc,
+                            interval_ms=3000,
+                        )
+
                 elif msg_type == "status_neu":
                     txt, col = content
                     if hasattr(self.tab_spansh.tab_neutron, "set_status_text"):
@@ -1352,4 +1364,22 @@ class RenataApp:
                 done()
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def on_generate_exploration_summary(self):
+        """
+        Manual trigger for F4 exploration summary baseline.
+        """
+        try:
+            from logic.events.exploration_summary import trigger_exploration_summary
+
+            emitted = trigger_exploration_summary(gui_ref=self, mode="manual")
+            if not emitted:
+                self.show_status("Brak danych do podsumowania eksploracji w tym momencie.")
+        except Exception as exc:
+            _log_app_fallback(
+                "exploration.summary.manual",
+                "manual exploration summary trigger failed",
+                exc,
+                interval_ms=3000,
+            )
 
