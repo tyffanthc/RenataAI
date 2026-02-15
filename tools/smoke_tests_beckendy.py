@@ -16,6 +16,7 @@ import re
 import time
 import ast
 from typing import Callable, List, Tuple
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
@@ -46,6 +47,7 @@ from logic.events import exploration_awareness as awareness_events  # type: igno
 from logic.events import exploration_summary as summary_events  # type: ignore
 from logic.events import cash_in_assistant as cash_in_events  # type: ignore
 from logic.events import survival_rebuy_awareness as survival_events  # type: ignore
+from logic.events import combat_awareness as combat_events  # type: ignore
 from logic import spansh_payloads
 from logic import spansh_client as spansh_client_logic  # type: ignore
 from logic import neutron as neutron_logic  # type: ignore
@@ -1788,6 +1790,80 @@ def test_f4_survival_rebuy_awareness_baseline(ctx: TestContext) -> None:
     assert payload.get("reason") == "no_rebuy", f"Expected no_rebuy reason, got: {payload}"
 
 
+def test_f5_combat_awareness_baseline(ctx: TestContext) -> None:
+    """
+    F5 combat awareness baseline smoke:
+    - high-risk combat pattern requires repeat entry before emit,
+    - emitted payload is non-flooded and has expected structure.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    app_state.current_system = "SMOKE_F5_COMBAT_SYSTEM"
+    app_state.last_combat_awareness_signature = None
+    combat_events.reset_combat_awareness_state()
+
+    with patch.object(
+        app_state,
+        "system_value_engine",
+        new=SimpleNamespace(calculate_totals=lambda: {"total": 30_000_000.0}),
+    ):
+        combat_events.handle_status_update(
+            {
+                "StarSystem": "SMOKE_F5_COMBAT_SYSTEM",
+                "InDanger": True,
+                "Hull": 0.55,
+                "ShieldsUp": False,
+                "FSDCooldown": 5.0,
+            },
+            gui_ref=None,
+        )
+        # Exit pattern.
+        combat_events.handle_status_update(
+            {
+                "StarSystem": "SMOKE_F5_COMBAT_SYSTEM",
+                "InDanger": True,
+                "Hull": 0.80,
+                "ShieldsUp": True,
+                "FSDCooldown": 0.0,
+            },
+            gui_ref=None,
+        )
+        # Re-enter pattern -> should emit.
+        combat_events.handle_status_update(
+            {
+                "StarSystem": "SMOKE_F5_COMBAT_SYSTEM",
+                "InDanger": True,
+                "Hull": 0.55,
+                "ShieldsUp": False,
+                "FSDCooldown": 5.0,
+            },
+            gui_ref=None,
+        )
+        # Same active pattern should not flood.
+        combat_events.handle_status_update(
+            {
+                "StarSystem": "SMOKE_F5_COMBAT_SYSTEM",
+                "InDanger": True,
+                "Hull": 0.55,
+                "ShieldsUp": False,
+                "FSDCooldown": 5.0,
+            },
+            gui_ref=None,
+        )
+
+    items = ctx.drain_queue()
+    payload_items = [
+        item[1]
+        for item in items
+        if isinstance(item, tuple) and len(item) == 2 and item[0] == "combat_awareness"
+    ]
+    assert len(payload_items) == 1, f"Expected single non-flood combat payload, got: {payload_items}"
+    payload = payload_items[-1] or {}
+    assert payload.get("level") in {"high", "critical"}, f"Unexpected combat level: {payload}"
+    assert str(payload.get("pattern_id") or "").strip(), f"Missing combat pattern_id: {payload}"
+    assert bool(payload.get("in_combat")), f"Expected in_combat=True in combat payload: {payload}"
+
+
 def test_f4_cross_module_voice_priority_baseline(_ctx: TestContext) -> None:
     """
     F4 cross-module voice priority baseline:
@@ -2166,6 +2242,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_trade_station_picker_candidates_and_wiring",
         "test_trade_payload_forever_omits_market_age",
         "test_f4_cash_in_assistant_baseline",
+        "test_f5_combat_awareness_baseline",
     ]
     for test_name in required_tests:
         assert f"def {test_name}(" in self_content, f"Missing regression test function: {test_name}"
@@ -2439,6 +2516,7 @@ def test_no_wild_emits_in_migrated_event_modules(_ctx: TestContext) -> None:
         os.path.join(ROOT_DIR, "logic/events/exploration_dss_events.py"),
         os.path.join(ROOT_DIR, "logic/events/exploration_bio_events.py"),
         os.path.join(ROOT_DIR, "logic/events/survival_rebuy_awareness.py"),
+        os.path.join(ROOT_DIR, "logic/events/combat_awareness.py"),
     ]
 
     for path in migrated_files:
@@ -2470,6 +2548,8 @@ def test_event_insight_mapping_core_contract(_ctx: TestContext) -> None:
         "MSG.CASH_IN_ASSISTANT",
         "MSG.SURVIVAL_REBUY_HIGH",
         "MSG.SURVIVAL_REBUY_CRITICAL",
+        "MSG.COMBAT_AWARENESS_HIGH",
+        "MSG.COMBAT_AWARENESS_CRITICAL",
     ]
     for message_id in required_message_ids:
         spec = get_insight_class(message_id)
@@ -2522,6 +2602,7 @@ def test_no_plan_checks_in_action_modules(_ctx: TestContext) -> None:
         os.path.join(ROOT_DIR, "logic/events/exploration_misc_events.py"),
         os.path.join(ROOT_DIR, "logic/events/trade_events.py"),
         os.path.join(ROOT_DIR, "logic/events/survival_rebuy_awareness.py"),
+        os.path.join(ROOT_DIR, "logic/events/combat_awareness.py"),
     ]
     forbidden_plan_conditions = (
         "features.tts.free_policy_enabled",
@@ -2830,6 +2911,7 @@ def run_all_tests() -> int:
         ("test_f4_exploration_summary_baseline", test_f4_exploration_summary_baseline),
         ("test_f4_cash_in_assistant_baseline", test_f4_cash_in_assistant_baseline),
         ("test_f4_survival_rebuy_awareness_baseline", test_f4_survival_rebuy_awareness_baseline),
+        ("test_f5_combat_awareness_baseline", test_f5_combat_awareness_baseline),
         ("test_f4_cross_module_voice_priority_baseline", test_f4_cross_module_voice_priority_baseline),
         ("test_f4_quality_gates_invariants", test_f4_quality_gates_invariants),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),

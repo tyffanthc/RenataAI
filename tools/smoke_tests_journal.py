@@ -30,6 +30,7 @@ from app.route_manager import route_manager  # type: ignore
 from gui import common as gui_common  # type: ignore
 from logic.events import exploration_bio_events as bio_events  # type: ignore
 from logic.events import survival_rebuy_awareness as survival_events  # type: ignore
+from logic.events import combat_awareness as combat_events  # type: ignore
 
 
 class TestContext:
@@ -570,6 +571,43 @@ def test_journal_f4_survival_no_rebuy_nonflood(ctx: TestContext) -> None:
     assert payload.get("reason") == "no_rebuy", f"Expected no_rebuy reason, got: {payload}"
 
 
+def test_journal_f5_combat_awareness_nonflood(ctx: TestContext) -> None:
+    """
+    F5 journal/status gate:
+    - repeated combat pattern update should emit one combat payload per pattern/session.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    app_state.current_system = "SMOKE_T2_F5_COMBAT_SYS"
+    app_state.last_combat_awareness_signature = None
+    combat_events.reset_combat_awareness_state()
+
+    status = {
+        "StarSystem": "SMOKE_T2_F5_COMBAT_SYS",
+        "InDanger": True,
+        "Hull": 0.18,
+        "ShieldsUp": False,
+    }
+    handler.on_status_update(status, gui_ref=None)
+    handler.on_status_update(status, gui_ref=None)
+
+    batch = ctx.drain_queue()
+    combat_payloads = [
+        item[1]
+        for item in batch
+        if isinstance(item, tuple) and len(item) == 2 and item[0] == "combat_awareness"
+    ]
+    assert len(combat_payloads) == 1, (
+        "Expected one combat payload in non-flood scenario, "
+        f"got: {combat_payloads}"
+    )
+    payload = combat_payloads[-1] or {}
+    assert payload.get("level") == "critical", f"Expected critical combat payload, got: {payload}"
+    assert payload.get("pattern_id") == "combat_hull_critical", (
+        f"Expected combat_hull_critical pattern, got: {payload}"
+    )
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -590,6 +628,7 @@ def run_all_tests() -> int:
         ("test_nav_symbiosis_guard_and_desync", test_nav_symbiosis_guard_and_desync),
         ("test_journal_f3_exobio_progress_no_flood", test_journal_f3_exobio_progress_no_flood),
         ("test_journal_f4_survival_no_rebuy_nonflood", test_journal_f4_survival_no_rebuy_nonflood),
+        ("test_journal_f5_combat_awareness_nonflood", test_journal_f5_combat_awareness_nonflood),
     ]
 
     print("=== RenataAI Journal / AppState / Debouncer Tests (T2) ===")

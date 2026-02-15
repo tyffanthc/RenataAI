@@ -317,6 +317,26 @@ INSIGHT_CLASS_BY_MESSAGE_ID: Dict[str, InsightClassSpec] = {
         default_cooldown_seconds=180.0,
         dedup_template="survival_critical:{system}",
     ),
+    "MSG.COMBAT_AWARENESS_HIGH": InsightClassSpec(
+        class_id="COMBAT_AWARENESS_HIGH",
+        canonical_event="COMBAT_RISK_PATTERN",
+        kind="risk",
+        decision_space="combat_awareness",
+        default_priority="P1_HIGH",
+        default_cooldown_scope="entity",
+        default_cooldown_seconds=75.0,
+        dedup_template="combat_awareness_high:{system}",
+    ),
+    "MSG.COMBAT_AWARENESS_CRITICAL": InsightClassSpec(
+        class_id="COMBAT_AWARENESS_CRITICAL",
+        canonical_event="COMBAT_RISK_PATTERN",
+        kind="risk",
+        decision_space="combat_awareness",
+        default_priority="P0_CRITICAL",
+        default_cooldown_scope="entity",
+        default_cooldown_seconds=90.0,
+        dedup_template="combat_awareness_critical:{system}",
+    ),
 }
 
 

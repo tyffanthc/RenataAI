@@ -30,6 +30,8 @@ class EventInsightMappingTests(unittest.TestCase):
             "MSG.CASH_IN_ASSISTANT",
             "MSG.SURVIVAL_REBUY_HIGH",
             "MSG.SURVIVAL_REBUY_CRITICAL",
+            "MSG.COMBAT_AWARENESS_HIGH",
+            "MSG.COMBAT_AWARENESS_CRITICAL",
         ]
         for message_id in required:
             spec = get_insight_class(message_id)

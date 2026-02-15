@@ -11,6 +11,7 @@ from logic.events import navigation_events
 from logic.events import trade_events
 from logic.events import smuggler_events
 from logic.events import survival_rebuy_awareness
+from logic.events import combat_awareness
 from logic.utils.renata_log import log_event_throttled
 
 
@@ -51,6 +52,10 @@ class EventHandler:
             survival_rebuy_awareness.handle_status_update(status_data, gui_ref)
         except Exception as exc:
             _log_router_fallback("status.survival_rebuy", "status update: survival/rebuy handler failed", exc)
+        try:
+            combat_awareness.handle_status_update(status_data, gui_ref)
+        except Exception as exc:
+            _log_router_fallback("status.combat_awareness", "status update: combat awareness handler failed", exc)
         try:
             exploration_bio_events.handle_exobio_status_position(status_data, gui_ref)
         except Exception as exc:
@@ -120,6 +125,10 @@ class EventHandler:
             survival_rebuy_awareness.handle_journal_event(ev, gui_ref)
         except Exception as exc:
             _log_router_fallback("journal.survival_rebuy", "journal event: survival/rebuy handler failed", exc)
+        try:
+            combat_awareness.handle_journal_event(ev, gui_ref)
+        except Exception as exc:
+            _log_router_fallback("journal.combat_awareness", "journal event: combat awareness handler failed", exc)
 
         # AUTO-SCHOWEK
         if typ == "FSDJump":

@@ -48,6 +48,8 @@ _TTS_INTENT_MAP = {
     "MSG.CASH_IN_ASSISTANT": "context",
     "MSG.SURVIVAL_REBUY_HIGH": "context",
     "MSG.SURVIVAL_REBUY_CRITICAL": "critical",
+    "MSG.COMBAT_AWARENESS_HIGH": "context",
+    "MSG.COMBAT_AWARENESS_CRITICAL": "critical",
 }
 
 _TTS_CATEGORY_MAP = {
@@ -87,6 +89,8 @@ _TTS_CATEGORY_MAP = {
     "MSG.CASH_IN_ASSISTANT": "explore",
     "MSG.SURVIVAL_REBUY_HIGH": "alert",
     "MSG.SURVIVAL_REBUY_CRITICAL": "alert",
+    "MSG.COMBAT_AWARENESS_HIGH": "alert",
+    "MSG.COMBAT_AWARENESS_CRITICAL": "alert",
 }
 
 _TTS_DEFAULT_COOLDOWNS = {
@@ -218,6 +222,9 @@ def powiedz(tekst, gui_ref=None, *, message_id=None, context=None, force: bool =
     survival_payload = ctx.get("survival_payload")
     if isinstance(survival_payload, dict):
         MSG_QUEUE.put(("survival_rebuy", survival_payload))
+    combat_payload = ctx.get("combat_payload")
+    if isinstance(combat_payload, dict):
+        MSG_QUEUE.put(("combat_awareness", combat_payload))
     
     # Synteza mowy (tylko przez Text Preprocessor)
     if config.get("voice_enabled", True) and message_id:
