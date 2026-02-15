@@ -1,23 +1,24 @@
 # REFAKTOR_STATUS.md
 
-Data aktualizacji: 2026-02-08
+Data aktualizacji: 2026-02-15
 
 ## Status
-- Faza 0 (baseline i przygotowanie): DONE
-- Faza 1 (stabilizacja krytyczna): DONE
-- Faza 2 (modularyzacja): DONE
-- Faza 3 (obserwowalnosc i bledy): DONE
-- Faza 4 (testy): DONE
-- Faza 5 (porzadki dokumentacji): DONE
+- Faza 1 (Backbone): DONE
+- Faza 2 (Nawigacja i sprzedaz): DONE
+- Faza 3 (Core eksploracji): DONE
+- Faza 4 (Summary/Cash-In/Survival): DONE
+- Faza 5 (Combat awareness i quality gates): DONE
+- Faza 6 (granice PRO + hardening wydaniowy): IN PROGRESS
 
 ## Co zrobiono
-- Naprawiono linkowanie w dokumentacji publicznej FLOW.
-- Uzupelniono brakujace dokumenty publiczne dla polityk ryzyka i akcji.
-- Dodano publiczny, skrocony status refaktoru.
+- Utrzymano stabilny model FREE/PUB bez zmian semantyki pod PRO.
+- Domknieto publiczne quality gates dla warstw F1-F5.
+- Dodano audyty kontraktowe FREE/PRO oraz voice-policy compliance w warstwie testow.
 
 ## Co dalej
-- Utrzymywac ten status na biezaco przy kolejnych zmianach architektury.
-- Aktualizowac dokumenty publiczne, gdy zmieniaja sie granice produktu.
+- Domknac synchronizacje dokumentacji private/public dla F6.
+- Domknac finalny release hardening FREE (stale gate'y + smoke).
+- Utrzymywac status publiczny jako high-level snapshot, bez przeciekow private.
 
 ## Zakres publikacji
 Ten status jest celowo high-level. Nie zawiera wewnetrznych heurystyk,

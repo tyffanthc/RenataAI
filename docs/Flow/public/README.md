@@ -2,6 +2,11 @@
 
 Publiczna dokumentacja Renaty.
 
+## Status (FREE/PUB)
+- Ostatnia aktualizacja: 2026-02-15
+- Fazy 1-5: DONE
+- Faza 6: IN PROGRESS (docs/release hardening)
+
 ## Zakres
 - filozofia i granice produktu,
 - zasady UX (TTS, Insight Alerts, Decision Cards),

@@ -3,6 +3,15 @@
 Publiczny opis produktu Renata. Ten plik zawiera tylko informacje przeznaczone
 do publikacji.
 
+## Status faz (FREE/PUB)
+- Ostatnia aktualizacja: 2026-02-15
+- Faza 1: DONE
+- Faza 2: DONE
+- Faza 3: DONE
+- Faza 4: DONE
+- Faza 5: DONE
+- Faza 6: IN PROGRESS (docs/release hardening)
+
 ## Granica publikacji
 - `docs/Flow/public` zawiera filozofie produktu, zasady UX i polityki wysokiego poziomu.
 - `docs/Flow/public` nie zawiera heurystyk wewnetrznych, progow, kontraktow technicznych,
@@ -29,6 +38,9 @@ do publikacji.
 ## Publiczny zakres funkcji
 - Nawigacja i wsparcie decyzji trasy.
 - Wsparcie decyzji sprzedazowych.
+- Exploration awareness i komunikaty postepu eksploracji.
+- Podsumowanie eksploracji oraz cash-in/survival awareness.
+- Combat awareness (wzorce ryzyka, bez taktyki).
 - Komunikaty insightowe i karty decyzji zgodne z politykami UX.
 - Komunikacja ryzyka i VaR na poziomie zrozumialym dla pilota.
 
