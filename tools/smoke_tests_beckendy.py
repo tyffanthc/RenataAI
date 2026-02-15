@@ -69,7 +69,7 @@ from logic.insight_dispatcher import (
     reset_dispatcher_runtime_state,
     should_speak,
 )
-from logic.event_insight_mapping import get_insight_class, resolve_emit_contract
+from logic.event_insight_mapping import get_insight_class, get_tts_policy_spec, resolve_emit_contract
 from logic.capabilities import (
     CAP_SETTINGS_FULL,
     CAP_TTS_ADVANCED_POLICY,
@@ -2367,6 +2367,184 @@ def test_f5_quality_gates_invariants(ctx: TestContext) -> None:
     assert ready_cooldown is False, "READY should stay non-flood after recovery"
 
 
+def test_f6_voice_ethics_compliance_baseline(_ctx: TestContext) -> None:
+    """
+    F6 voice ethics compliance baseline:
+    - policy contract for threshold/critical exceptions is stable,
+    - cooldown exceptions bypass global cooldown but keep anti-spam/combat invariants,
+    - wording stays informational and non-coercive.
+    """
+    expected_policy = {
+        "MSG.EXOBIO_SAMPLE_LOGGED": ("context", "explore", "ALWAYS_SAY"),
+        "MSG.EXOBIO_RANGE_READY": ("context", "explore", "BYPASS_GLOBAL"),
+        "MSG.FSS_PROGRESS_25": ("context", "explore", "BYPASS_GLOBAL"),
+        "MSG.FSS_PROGRESS_50": ("context", "explore", "BYPASS_GLOBAL"),
+        "MSG.FSS_PROGRESS_75": ("context", "explore", "BYPASS_GLOBAL"),
+        "MSG.FSS_LAST_BODY": ("context", "explore", "BYPASS_GLOBAL"),
+        "MSG.SYSTEM_FULLY_SCANNED": ("context", "explore", "BYPASS_GLOBAL"),
+        "MSG.FUEL_CRITICAL": ("critical", "alert", "ALWAYS_SAY"),
+    }
+    for message_id, expected in expected_policy.items():
+        policy = get_tts_policy_spec(message_id)
+        assert (policy.intent, policy.category, policy.cooldown_policy) == expected, (
+            f"Unexpected policy for {message_id}: {(policy.intent, policy.category, policy.cooldown_policy)}"
+        )
+
+    def _can_send(key, cooldown_sec, context=None):
+        if key == "TTS_GLOBAL":
+            return False
+        return True
+
+    with (
+        patch("logic.utils.notify.has_capability", return_value=False),
+        patch("logic.utils.notify._is_transit_mode", return_value=False),
+        patch.object(notify_module.DEBOUNCER, "can_send", side_effect=_can_send),
+    ):
+        assert notify_module._should_speak_tts("MSG.EXOBIO_RANGE_READY", {"confidence": "high"}) is True, (
+            "READY should bypass blocked global cooldown"
+        )
+        assert notify_module._should_speak_tts("MSG.FSS_PROGRESS_50", {"confidence": "high"}) is True, (
+            "FSS threshold should bypass blocked global cooldown"
+        )
+        assert notify_module._should_speak_tts("MSG.FUEL_CRITICAL", {"confidence": "high"}) is True, (
+            "Fuel critical should ignore blocked global cooldown"
+        )
+        assert notify_module._should_speak_tts("MSG.NEXT_HOP", {"confidence": "high"}) is False, (
+            "Normal nav message should be blocked by global cooldown"
+        )
+
+    reset_dispatcher_runtime_state()
+    try:
+        last = getattr(notify_module.DEBOUNCER, "_last", None)
+        if isinstance(last, dict):
+            last.clear()
+    except Exception:
+        pass
+
+    with (
+        patch("logic.insight_dispatcher._notify._should_speak_tts", return_value=True),
+        patch("logic.insight_dispatcher._notify.powiedz") as powiedz_mock,
+    ):
+        ready_blocked = emit_insight(
+            "ready in combat",
+            message_id="MSG.EXOBIO_RANGE_READY",
+            source="exploration_bio_events",
+            event_type="BIO_PROGRESS",
+            context={
+                "system": "SMOKE_F6_ETHICS",
+                "in_combat": True,
+                "risk_status": "RISK_MEDIUM",
+                "var_status": "VAR_MEDIUM",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P2_NORMAL",
+            dedup_key="smoke:f6:ethics:ready",
+            cooldown_scope="entity",
+            cooldown_seconds=10.0,
+        )
+        ready_allowed = emit_insight(
+            "ready after combat",
+            message_id="MSG.EXOBIO_RANGE_READY",
+            source="exploration_bio_events",
+            event_type="BIO_PROGRESS",
+            context={
+                "system": "SMOKE_F6_ETHICS",
+                "in_combat": False,
+                "risk_status": "RISK_MEDIUM",
+                "var_status": "VAR_MEDIUM",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P2_NORMAL",
+            dedup_key="smoke:f6:ethics:ready",
+            cooldown_scope="entity",
+            cooldown_seconds=10.0,
+        )
+        ready_cooldown = emit_insight(
+            "ready second",
+            message_id="MSG.EXOBIO_RANGE_READY",
+            source="exploration_bio_events",
+            event_type="BIO_PROGRESS",
+            context={
+                "system": "SMOKE_F6_ETHICS",
+                "in_combat": False,
+                "risk_status": "RISK_MEDIUM",
+                "var_status": "VAR_MEDIUM",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P2_NORMAL",
+            dedup_key="smoke:f6:ethics:ready",
+            cooldown_scope="entity",
+            cooldown_seconds=10.0,
+        )
+        fuel_allowed = emit_insight(
+            "fuel critical",
+            message_id="MSG.FUEL_CRITICAL",
+            source="fuel_events",
+            event_type="SHIP_HEALTH_CHANGED",
+            context={
+                "system": "SMOKE_F6_ETHICS",
+                "in_combat": True,
+                "risk_status": "RISK_CRITICAL",
+                "var_status": "VAR_HIGH",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P0_CRITICAL",
+            dedup_key="smoke:f6:ethics:fuel",
+            cooldown_scope="entity",
+            cooldown_seconds=300.0,
+            combat_silence_sensitive=False,
+        )
+        fuel_cooldown = emit_insight(
+            "fuel critical second",
+            message_id="MSG.FUEL_CRITICAL",
+            source="fuel_events",
+            event_type="SHIP_HEALTH_CHANGED",
+            context={
+                "system": "SMOKE_F6_ETHICS",
+                "in_combat": True,
+                "risk_status": "RISK_CRITICAL",
+                "var_status": "VAR_HIGH",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P0_CRITICAL",
+            dedup_key="smoke:f6:ethics:fuel",
+            cooldown_scope="entity",
+            cooldown_seconds=300.0,
+            combat_silence_sensitive=False,
+        )
+
+    assert ready_blocked is False, "READY should be blocked by combat silence"
+    assert ready_allowed is True, "READY should recover after combat silence"
+    assert ready_cooldown is False, "READY should keep entity anti-spam"
+    assert fuel_allowed is True, "Fuel critical must be delivered even in combat"
+    assert fuel_cooldown is False, "Fuel critical must still respect entity anti-spam cooldown"
+
+    reasons = [dict(call.kwargs.get("context") or {}).get("voice_priority_reason") for call in powiedz_mock.call_args_list]
+    assert "combat_silence" in reasons, f"Missing combat silence reason: {reasons}"
+    assert "insight_cooldown" in reasons, f"Missing cooldown reason: {reasons}"
+    assert any(
+        reason in {"priority_critical", "matrix_p0_critical", "matrix_p0_critical_force"} for reason in reasons
+    ), f"Missing critical reason: {reasons}"
+
+    tone_samples = [
+        prepare_tts("MSG.FUEL_CRITICAL", {}) or "",
+        prepare_tts("MSG.FSS_PROGRESS_25", {}) or "",
+        prepare_tts("MSG.FSS_LAST_BODY", {}) or "",
+        prepare_tts("MSG.MILESTONE_REACHED", {"target": "SOL", "next_target": "LHS 20"}) or "",
+    ]
+    forbidden = ("musisz", "powinienes", "natychmiast", "top 1", "top1", "jedyna opcja")
+    for text in tone_samples:
+        lower = str(text or "").lower()
+        assert lower.strip(), "Tone audit sample should not be empty"
+        for phrase in forbidden:
+            assert phrase not in lower, f"Non-neutral wording detected: '{phrase}' in '{text}'"
+
+
 def test_f4_cross_module_voice_priority_baseline(_ctx: TestContext) -> None:
     """
     F4 cross-module voice priority baseline:
@@ -3098,6 +3276,15 @@ def test_capabilities_profile_contract(_ctx: TestContext) -> None:
     assert pro_caps.has(CAP_VOICE_STT), "PRO should expose STT capability"
 
 
+def test_default_profile_contract_is_free_pub(_ctx: TestContext) -> None:
+    default_caps = resolve_capabilities(config.DEFAULT_SETTINGS)
+    assert default_caps.profile == PROFILE_FREE, "DEFAULT_SETTINGS should resolve to FREE profile"
+    assert not default_caps.has(CAP_SETTINGS_FULL), "DEFAULT_SETTINGS should keep full settings capability disabled"
+    assert not default_caps.has(CAP_UI_EXTENDED_TABS), "DEFAULT_SETTINGS should keep extended tabs capability disabled"
+    assert not default_caps.has(CAP_TTS_ADVANCED_POLICY), "DEFAULT_SETTINGS should keep advanced TTS policy disabled"
+    assert not default_caps.has(CAP_VOICE_STT), "DEFAULT_SETTINGS should keep STT capability disabled"
+
+
 def test_no_plan_checks_in_action_modules(_ctx: TestContext) -> None:
     action_files = [
         os.path.join(ROOT_DIR, "logic/events/navigation_events.py"),
@@ -3422,6 +3609,7 @@ def run_all_tests() -> int:
         ("test_f5_voice_policy_contract_baseline", test_f5_voice_policy_contract_baseline),
         ("test_f5_anti_spam_regression_baseline", test_f5_anti_spam_regression_baseline),
         ("test_f5_quality_gates_invariants", test_f5_quality_gates_invariants),
+        ("test_f6_voice_ethics_compliance_baseline", test_f6_voice_ethics_compliance_baseline),
         ("test_f4_cross_module_voice_priority_baseline", test_f4_cross_module_voice_priority_baseline),
         ("test_f4_quality_gates_invariants", test_f4_quality_gates_invariants),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
@@ -3440,6 +3628,7 @@ def run_all_tests() -> int:
         ("test_no_wild_emits_in_migrated_event_modules", test_no_wild_emits_in_migrated_event_modules),
         ("test_event_insight_mapping_core_contract", test_event_insight_mapping_core_contract),
         ("test_capabilities_profile_contract", test_capabilities_profile_contract),
+        ("test_default_profile_contract_is_free_pub", test_default_profile_contract_is_free_pub),
         ("test_no_plan_checks_in_action_modules", test_no_plan_checks_in_action_modules),
         ("test_combat_silence_invariant_zero_tts_except_critical", test_combat_silence_invariant_zero_tts_except_critical),
         ("test_emit_insight_contract_gate_in_event_modules", test_emit_insight_contract_gate_in_event_modules),
