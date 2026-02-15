@@ -723,6 +723,84 @@ def test_journal_f5_anti_spam_transitions_and_exceptions(ctx: TestContext) -> No
         settings["combat_awareness_enabled"] = saved_combat_enabled
 
 
+def test_journal_f5_quality_gates_cross_module_nonflood(ctx: TestContext) -> None:
+    """
+    F5 quality-gates journal smoke:
+    - repeated no-rebuy emits one survival payload,
+    - repeated combat critical emits one combat payload,
+    - both payload streams coexist without cross-module flood.
+    """
+    settings = config.config._settings  # type: ignore[attr-defined]
+    saved_survival_enabled = settings.get("survival_rebuy_awareness_enabled")
+    saved_combat_enabled = settings.get("combat_awareness_enabled")
+    settings["survival_rebuy_awareness_enabled"] = True
+    settings["combat_awareness_enabled"] = True
+
+    try:
+        ctx.clear_queue()
+        ctx.reset_debouncer()
+        reset_dispatcher_runtime_state()
+        app_state.current_system = "SMOKE_T2_F5_QUALITY_SYS"
+        app_state.last_survival_rebuy_signature = None
+        app_state.last_combat_awareness_signature = None
+        survival_events.reset_survival_rebuy_state()
+        combat_events.reset_combat_awareness_state()
+
+        no_rebuy = {
+            "event": "LoadGame",
+            "StarSystem": "SMOKE_T2_F5_QUALITY_SYS",
+            "Credits": 100_000,
+            "Rebuy": 900_000,
+        }
+        handler.handle_event(json.dumps(no_rebuy), gui_ref=None)
+        handler.handle_event(json.dumps(no_rebuy), gui_ref=None)
+
+        survival_batch = ctx.drain_queue()
+        survival_payloads = [
+            item[1]
+            for item in survival_batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "survival_rebuy"
+        ]
+        assert len(survival_payloads) == 1, (
+            "Expected one survival payload in quality gate scenario, "
+            f"got: {survival_payloads}"
+        )
+        survival_payload = survival_payloads[-1] or {}
+        assert survival_payload.get("reason") == "no_rebuy", (
+            f"Expected no_rebuy survival reason, got: {survival_payload}"
+        )
+
+        settings["survival_rebuy_awareness_enabled"] = False
+        ctx.clear_queue()
+
+        critical_status = {
+            "StarSystem": "SMOKE_T2_F5_QUALITY_SYS",
+            "InDanger": True,
+            "Hull": 0.18,
+            "ShieldsUp": False,
+        }
+        handler.on_status_update(critical_status, gui_ref=None)
+        handler.on_status_update(critical_status, gui_ref=None)
+
+        batch = ctx.drain_queue()
+        combat_payloads = [
+            item[1]
+            for item in batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "combat_awareness"
+        ]
+        assert len(combat_payloads) == 1, (
+            "Expected one combat payload in cross-module quality gate scenario, "
+            f"got: {combat_payloads}"
+        )
+        combat_payload = combat_payloads[-1] or {}
+        assert combat_payload.get("pattern_id") == "combat_hull_critical", (
+            f"Expected combat_hull_critical payload, got: {combat_payload}"
+        )
+    finally:
+        settings["survival_rebuy_awareness_enabled"] = saved_survival_enabled
+        settings["combat_awareness_enabled"] = saved_combat_enabled
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -745,6 +823,7 @@ def run_all_tests() -> int:
         ("test_journal_f4_survival_no_rebuy_nonflood", test_journal_f4_survival_no_rebuy_nonflood),
         ("test_journal_f5_combat_awareness_nonflood", test_journal_f5_combat_awareness_nonflood),
         ("test_journal_f5_anti_spam_transitions_and_exceptions", test_journal_f5_anti_spam_transitions_and_exceptions),
+        ("test_journal_f5_quality_gates_cross_module_nonflood", test_journal_f5_quality_gates_cross_module_nonflood),
     ]
 
     print("=== RenataAI Journal / AppState / Debouncer Tests (T2) ===")

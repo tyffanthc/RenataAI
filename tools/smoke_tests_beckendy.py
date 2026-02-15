@@ -2163,6 +2163,210 @@ def test_f5_anti_spam_regression_baseline(_ctx: TestContext) -> None:
     assert fss_second is False, "FSS threshold should still respect anti-spam entity cooldown"
 
 
+def test_f5_quality_gates_invariants(ctx: TestContext) -> None:
+    """
+    F5 quality gate pack:
+    - combat awareness stays pattern-only and non-coercive,
+    - dispatcher matrix keeps deterministic F4/F5 conflict resolution,
+    - anti-spam stays stable in combat and outside combat.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    app_state.current_system = "SMOKE_F5_QUALITY_SYSTEM"
+    app_state.last_combat_awareness_signature = None
+    reset_dispatcher_runtime_state()
+    combat_events.reset_combat_awareness_state()
+
+    with (
+        patch.object(
+            app_state,
+            "system_value_engine",
+            new=SimpleNamespace(calculate_totals=lambda: {"total": 33_000_000.0}),
+        ),
+        patch("logic.events.combat_awareness.emit_insight") as combat_emit_mock,
+    ):
+        combat_events.handle_status_update(
+            {
+                "StarSystem": "SMOKE_F5_QUALITY_SYSTEM",
+                "InDanger": True,
+                "Hull": 0.55,
+                "ShieldsUp": False,
+                "FSDCooldown": 5.0,
+            },
+            gui_ref=None,
+        )
+        combat_events.handle_status_update(
+            {
+                "StarSystem": "SMOKE_F5_QUALITY_SYSTEM",
+                "InDanger": True,
+                "Hull": 0.80,
+                "ShieldsUp": True,
+                "FSDCooldown": 0.0,
+            },
+            gui_ref=None,
+        )
+        combat_events.handle_status_update(
+            {
+                "StarSystem": "SMOKE_F5_QUALITY_SYSTEM",
+                "InDanger": True,
+                "Hull": 0.55,
+                "ShieldsUp": False,
+                "FSDCooldown": 5.0,
+            },
+            gui_ref=None,
+        )
+
+    assert combat_emit_mock.call_count == 1, "Combat awareness should emit once per active repeated pattern"
+    combat_ctx = dict(combat_emit_mock.call_args.kwargs.get("context") or {})
+    raw_text = str(combat_ctx.get("raw_text") or "").lower()
+    assert "wzorzec ryzyka" in raw_text, f"Expected pattern-only wording, got: {raw_text}"
+    assert "musisz" not in raw_text and "powinienes" not in raw_text, (
+        f"Combat awareness should stay non-coercive, got: {raw_text}"
+    )
+
+    reset_dispatcher_runtime_state()
+    with (
+        patch("logic.insight_dispatcher._notify.DEBOUNCER.can_send", return_value=True),
+        patch("logic.insight_dispatcher._notify._should_speak_tts", side_effect=[True, False, True]),
+        patch("logic.insight_dispatcher._notify.powiedz") as powiedz_mock,
+    ):
+        summary_ok = emit_insight(
+            "summary",
+            message_id="MSG.EXPLORATION_SYSTEM_SUMMARY",
+            source="exploration_summary",
+            event_type="SYSTEM_SUMMARY",
+            context={
+                "system": "SMOKE_F5_QUALITY_SYSTEM",
+                "risk_status": "RISK_MEDIUM",
+                "var_status": "VAR_MEDIUM",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P3_LOW",
+            dedup_key="smoke:f5:quality:summary",
+            cooldown_scope="entity",
+            cooldown_seconds=45.0,
+        )
+        combat_ok = emit_insight(
+            "combat",
+            message_id="MSG.COMBAT_AWARENESS_HIGH",
+            source="combat_awareness",
+            event_type="COMBAT_RISK_PATTERN",
+            context={
+                "system": "SMOKE_F5_QUALITY_SYSTEM",
+                "in_combat": False,
+                "risk_status": "RISK_HIGH",
+                "var_status": "VAR_HIGH",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P1_HIGH",
+            dedup_key="smoke:f5:quality:combat",
+            cooldown_scope="entity",
+            cooldown_seconds=0.0,
+        )
+        nav_ok = emit_insight(
+            "next hop",
+            message_id="MSG.NEXT_HOP",
+            source="navigation_events",
+            event_type="ROUTE_PROGRESS",
+            context={
+                "system": "SMOKE_F5_QUALITY_SYSTEM",
+                "risk_status": "RISK_MEDIUM",
+                "var_status": "VAR_MEDIUM",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P2_NORMAL",
+            dedup_key="smoke:f5:quality:nav",
+            cooldown_scope="entity",
+            cooldown_seconds=30.0,
+        )
+
+    assert summary_ok is True, "Expected summary emit in matrix gate scenario"
+    assert combat_ok is True, "Expected combat preemption in matrix gate scenario"
+    assert nav_ok is False, "Expected lower class/priority suppression after combat"
+    second_ctx = dict(powiedz_mock.call_args_list[1].kwargs.get("context") or {})
+    third_ctx = dict(powiedz_mock.call_args_list[2].kwargs.get("context") or {})
+    assert second_ctx.get("voice_priority_reason") == "matrix_preempt_higher_force", (
+        f"Unexpected combat preemption reason: {second_ctx}"
+    )
+    assert third_ctx.get("voice_priority_reason") == "matrix_suppressed_by_recent_higher_or_equal", (
+        f"Unexpected suppression reason: {third_ctx}"
+    )
+
+    reset_dispatcher_runtime_state()
+    try:
+        last = getattr(notify_module.DEBOUNCER, "_last", None)
+        if isinstance(last, dict):
+            last.clear()
+    except Exception:
+        pass
+
+    with (
+        patch("logic.insight_dispatcher._notify._should_speak_tts", return_value=True),
+        patch("logic.insight_dispatcher._notify.powiedz"),
+    ):
+        ready_blocked = emit_insight(
+            "ready in combat",
+            message_id="MSG.EXOBIO_RANGE_READY",
+            source="exploration_bio_events",
+            event_type="BIO_PROGRESS",
+            context={
+                "system": "SMOKE_F5_QUALITY_SYSTEM",
+                "in_combat": True,
+                "risk_status": "RISK_MEDIUM",
+                "var_status": "VAR_MEDIUM",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P2_NORMAL",
+            dedup_key="smoke:f5:quality:ready",
+            cooldown_scope="entity",
+            cooldown_seconds=10.0,
+        )
+        ready_recovered = emit_insight(
+            "ready after combat",
+            message_id="MSG.EXOBIO_RANGE_READY",
+            source="exploration_bio_events",
+            event_type="BIO_PROGRESS",
+            context={
+                "system": "SMOKE_F5_QUALITY_SYSTEM",
+                "in_combat": False,
+                "risk_status": "RISK_MEDIUM",
+                "var_status": "VAR_MEDIUM",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P2_NORMAL",
+            dedup_key="smoke:f5:quality:ready",
+            cooldown_scope="entity",
+            cooldown_seconds=10.0,
+        )
+        ready_cooldown = emit_insight(
+            "ready second",
+            message_id="MSG.EXOBIO_RANGE_READY",
+            source="exploration_bio_events",
+            event_type="BIO_PROGRESS",
+            context={
+                "system": "SMOKE_F5_QUALITY_SYSTEM",
+                "in_combat": False,
+                "risk_status": "RISK_MEDIUM",
+                "var_status": "VAR_MEDIUM",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P2_NORMAL",
+            dedup_key="smoke:f5:quality:ready",
+            cooldown_scope="entity",
+            cooldown_seconds=10.0,
+        )
+
+    assert ready_blocked is False, "READY should be blocked in combat"
+    assert ready_recovered is True, "READY should recover after leaving combat"
+    assert ready_cooldown is False, "READY should stay non-flood after recovery"
+
+
 def test_f4_cross_module_voice_priority_baseline(_ctx: TestContext) -> None:
     """
     F4 cross-module voice priority baseline:
@@ -3217,6 +3421,7 @@ def run_all_tests() -> int:
         ("test_f5_dispatcher_priority_matrix_baseline", test_f5_dispatcher_priority_matrix_baseline),
         ("test_f5_voice_policy_contract_baseline", test_f5_voice_policy_contract_baseline),
         ("test_f5_anti_spam_regression_baseline", test_f5_anti_spam_regression_baseline),
+        ("test_f5_quality_gates_invariants", test_f5_quality_gates_invariants),
         ("test_f4_cross_module_voice_priority_baseline", test_f4_cross_module_voice_priority_baseline),
         ("test_f4_quality_gates_invariants", test_f4_quality_gates_invariants),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
