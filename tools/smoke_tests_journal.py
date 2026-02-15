@@ -29,6 +29,7 @@ from app.state import app_state  # type: ignore
 from app.route_manager import route_manager  # type: ignore
 from gui import common as gui_common  # type: ignore
 from logic.events import exploration_bio_events as bio_events  # type: ignore
+from logic.events import survival_rebuy_awareness as survival_events  # type: ignore
 
 
 class TestContext:
@@ -533,6 +534,42 @@ def test_journal_f3_exobio_progress_no_flood(ctx: TestContext) -> None:
     )
 
 
+def test_journal_f4_survival_no_rebuy_nonflood(ctx: TestContext) -> None:
+    """
+    F4 journal gate:
+    - repeated no-rebuy journal payload should emit survival insight only once per signature,
+    - payload should be critical with reason no_rebuy.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    app_state.current_system = "SMOKE_T2_F4_SURVIVAL_SYS"
+    app_state.last_survival_rebuy_signature = None
+    survival_events.reset_survival_rebuy_state()
+
+    no_rebuy = {
+        "event": "LoadGame",
+        "StarSystem": "SMOKE_T2_F4_SURVIVAL_SYS",
+        "Credits": 100_000,
+        "Rebuy": 850_000,
+    }
+    handler.handle_event(json.dumps(no_rebuy), gui_ref=None)
+    handler.handle_event(json.dumps(no_rebuy), gui_ref=None)
+
+    batch = ctx.drain_queue()
+    survival_payloads = [
+        item[1]
+        for item in batch
+        if isinstance(item, tuple) and len(item) == 2 and item[0] == "survival_rebuy"
+    ]
+    assert len(survival_payloads) == 1, (
+        "Expected one survival payload in no-rebuy non-flood scenario, "
+        f"got: {survival_payloads}"
+    )
+    payload = survival_payloads[-1] or {}
+    assert payload.get("level") == "critical", f"Expected critical survival payload, got: {payload}"
+    assert payload.get("reason") == "no_rebuy", f"Expected no_rebuy reason, got: {payload}"
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -552,6 +589,7 @@ def run_all_tests() -> int:
         ("test_route_manager_autoschowek_integration", test_route_manager_autoschowek_integration),
         ("test_nav_symbiosis_guard_and_desync", test_nav_symbiosis_guard_and_desync),
         ("test_journal_f3_exobio_progress_no_flood", test_journal_f3_exobio_progress_no_flood),
+        ("test_journal_f4_survival_no_rebuy_nonflood", test_journal_f4_survival_no_rebuy_nonflood),
     ]
 
     print("=== RenataAI Journal / AppState / Debouncer Tests (T2) ===")

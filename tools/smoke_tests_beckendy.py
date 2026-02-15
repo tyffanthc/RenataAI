@@ -1873,6 +1873,151 @@ def test_f4_cross_module_voice_priority_baseline(_ctx: TestContext) -> None:
     assert summary_after_survival is False, "Expected lower-priority summary suppression after survival high"
 
 
+def test_f4_quality_gates_invariants(ctx: TestContext) -> None:
+    """
+    F4 quality gate pack:
+    - Summary auto non-flood,
+    - Cash-In decision space contract (2-3 + Pomijam),
+    - Survival no-rebuy critical non-flood,
+    - Cross-module priority deterministic preemption.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+
+    app_state.current_system = "SMOKE_F4_QUALITY_SYSTEM"
+    app_state.last_exploration_summary_signature = None
+    app_state.last_cash_in_signature = None
+    app_state.cash_in_skip_signature = None
+    app_state.last_survival_rebuy_signature = None
+    reset_dispatcher_runtime_state()
+    survival_events.reset_survival_rebuy_state()
+
+    sample = ExitSummaryData(
+        system_name="SMOKE_F4_QUALITY_SYSTEM",
+        scanned_bodies=9,
+        total_bodies=12,
+        elw_count=1,
+        elw_value=19_000_000.0,
+        ww_count=1,
+        ww_value=3_300_000.0,
+        ww_t_count=1,
+        ww_t_value=3_300_000.0,
+        hmc_t_count=1,
+        hmc_t_value=1_600_000.0,
+        biology_species_count=2,
+        biology_value=5_000_000.0,
+        bonus_discovery=800_000.0,
+        total_value=29_000_000.0,
+    )
+
+    with (
+        patch.object(app_state.exit_summary, "build_summary_data", return_value=sample),
+        patch.object(
+            app_state,
+            "system_value_engine",
+            new=type("DummyEngine", (), {"calculate_totals": lambda self: {"total": 44_000_000.0}})(),
+        ),
+    ):
+        first = summary_events.trigger_exploration_summary(mode="auto", gui_ref=None)
+        second = summary_events.trigger_exploration_summary(mode="auto", gui_ref=None)
+
+    assert first, "Expected first auto summary emit"
+    assert not second, "Expected second auto summary to be signature-suppressed"
+
+    first_batch = ctx.drain_queue()
+    summary_payloads = [
+        item[1]
+        for item in first_batch
+        if isinstance(item, tuple) and len(item) == 2 and item[0] == "exploration_summary"
+    ]
+    cash_payloads = [
+        item[1]
+        for item in first_batch
+        if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+    ]
+    assert len(summary_payloads) == 1, f"Expected one summary payload, got: {summary_payloads}"
+    assert len(cash_payloads) == 1, f"Expected one cash-in payload, got: {cash_payloads}"
+    options = (cash_payloads[-1] or {}).get("options") or []
+    skip_action = (cash_payloads[-1] or {}).get("skip_action") or {}
+    assert 2 <= len(options) <= 3, f"Expected 2-3 cash-in options, got: {options}"
+    assert str(skip_action.get("label") or "").strip() == "Pomijam", (
+        f"Expected Pomijam in cash-in skip action, got: {skip_action}"
+    )
+
+    ctx.clear_queue()
+    survival_events.handle_journal_event(
+        {
+            "event": "LoadGame",
+            "StarSystem": "SMOKE_F4_QUALITY_SYSTEM",
+            "Credits": 100_000,
+            "Rebuy": 900_000,
+        },
+        gui_ref=None,
+    )
+    survival_events.handle_journal_event(
+        {
+            "event": "LoadGame",
+            "StarSystem": "SMOKE_F4_QUALITY_SYSTEM",
+            "Credits": 100_000,
+            "Rebuy": 900_000,
+        },
+        gui_ref=None,
+    )
+    survival_batch = ctx.drain_queue()
+    survival_payloads = [
+        item[1]
+        for item in survival_batch
+        if isinstance(item, tuple) and len(item) == 2 and item[0] == "survival_rebuy"
+    ]
+    assert len(survival_payloads) == 1, f"Expected one survival payload (non-flood), got: {survival_payloads}"
+    assert (survival_payloads[-1] or {}).get("level") == "critical", (
+        f"Expected critical survival payload, got: {survival_payloads[-1]}"
+    )
+
+    reset_dispatcher_runtime_state()
+    base_ctx = {
+        "system": "SMOKE_F4_QUALITY_SYSTEM",
+        "risk_status": "RISK_MEDIUM",
+        "var_status": "VAR_MEDIUM",
+        "trust_status": "TRUST_HIGH",
+        "confidence": "high",
+    }
+    with (
+        patch("logic.insight_dispatcher._notify.DEBOUNCER.can_send", return_value=True),
+        patch("logic.insight_dispatcher._notify._should_speak_tts", side_effect=[True, False]),
+        patch("logic.insight_dispatcher._notify.powiedz") as powiedz_mock,
+    ):
+        summary_ok = emit_insight(
+            "summary",
+            message_id="MSG.EXPLORATION_SYSTEM_SUMMARY",
+            source="exploration_summary",
+            event_type="SYSTEM_SUMMARY",
+            context=base_ctx,
+            priority="P3_LOW",
+            dedup_key="smoke:f4:quality:summary",
+            cooldown_scope="entity",
+            cooldown_seconds=45.0,
+        )
+        cash_ok = emit_insight(
+            "cash-in",
+            message_id="MSG.CASH_IN_ASSISTANT",
+            source="cash_in_assistant",
+            event_type="CASH_IN_REVIEW",
+            context=base_ctx,
+            priority="P2_NORMAL",
+            dedup_key="smoke:f4:quality:cash",
+            cooldown_scope="entity",
+            cooldown_seconds=90.0,
+        )
+
+    assert summary_ok is True, "Expected summary emit in priority gate smoke"
+    assert cash_ok is True, "Expected cash-in preemption in priority gate smoke"
+    second_ctx = powiedz_mock.call_args_list[1].kwargs.get("context") or {}
+    assert second_ctx.get("voice_priority_reason") == "cross_module_preempt_higher_force", (
+        f"Expected deterministic preemption reason, got: {second_ctx}"
+    )
+
+
 def test_trade_station_state_reset_on_system_change(_ctx: TestContext) -> None:
     class DummyVar:
         def __init__(self, value: str = "") -> None:
@@ -2686,6 +2831,7 @@ def run_all_tests() -> int:
         ("test_f4_cash_in_assistant_baseline", test_f4_cash_in_assistant_baseline),
         ("test_f4_survival_rebuy_awareness_baseline", test_f4_survival_rebuy_awareness_baseline),
         ("test_f4_cross_module_voice_priority_baseline", test_f4_cross_module_voice_priority_baseline),
+        ("test_f4_quality_gates_invariants", test_f4_quality_gates_invariants),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
         ("test_trade_station_picker_candidates_and_wiring", test_trade_station_picker_candidates_and_wiring),
         ("test_spansh_feedback_smoke_pack_coverage", test_spansh_feedback_smoke_pack_coverage),
