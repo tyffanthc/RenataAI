@@ -38,5 +38,10 @@ Styl nie moze wymusic emisji, jesli semantyka wskazuje cisze.
 ### Paliwo
 - Ostrzezenia progowe niskiego paliwa (szczegolnie krytyczne progi) nie sa blokowane globalnym cooldown.
 
+## Zasada ogolna dla zdarzen progowych
+- Komunikaty progowe emitujemy na przejsciu stanu (`ponizej progu -> osiagniety prog`), a nie jako ciagly status.
+- Dla takich komunikatow stosujemy `BYPASS_GLOBAL` lub `ALWAYS_SAY` (zalezne od krytycznosci), ale nadal dziala deduplikacja.
+- Dedup prowadzimy per encja/per cykl (np. per probka, per system, per zejscie przez prog), nie globalnie.
+
 ## Zasada koncowa
 Renata mowi tylko wtedy, gdy cisza bylaby gorsza.
