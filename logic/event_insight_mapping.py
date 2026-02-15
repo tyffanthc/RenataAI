@@ -16,6 +16,14 @@ class InsightClassSpec:
     dedup_template: str
 
 
+@dataclass(frozen=True)
+class TTSPolicySpec:
+    message_id: str
+    intent: str
+    category: str
+    cooldown_policy: str = "NORMAL"  # NORMAL | BYPASS_GLOBAL | ALWAYS_SAY
+
+
 INSIGHT_CLASS_BY_MESSAGE_ID: Dict[str, InsightClassSpec] = {
     "MSG.NEXT_HOP": InsightClassSpec(
         class_id="NAV_NEXT_HOP",
@@ -339,9 +347,221 @@ INSIGHT_CLASS_BY_MESSAGE_ID: Dict[str, InsightClassSpec] = {
     ),
 }
 
+TTS_POLICY_BY_MESSAGE_ID: Dict[str, TTSPolicySpec] = {
+    "MSG.FUEL_CRITICAL": TTSPolicySpec(
+        message_id="MSG.FUEL_CRITICAL",
+        intent="critical",
+        category="alert",
+        cooldown_policy="ALWAYS_SAY",
+    ),
+    "MSG.ROUTE_DESYNC": TTSPolicySpec(
+        message_id="MSG.ROUTE_DESYNC",
+        intent="critical",
+        category="route",
+    ),
+    "MSG.ROUTE_FOUND": TTSPolicySpec(
+        message_id="MSG.ROUTE_FOUND",
+        intent="critical",
+        category="route",
+    ),
+    "MSG.ROUTE_COMPLETE": TTSPolicySpec(
+        message_id="MSG.ROUTE_COMPLETE",
+        intent="critical",
+        category="route",
+    ),
+    "MSG.NEXT_HOP": TTSPolicySpec(
+        message_id="MSG.NEXT_HOP",
+        intent="context",
+        category="nav",
+    ),
+    "MSG.JUMPED_SYSTEM": TTSPolicySpec(
+        message_id="MSG.JUMPED_SYSTEM",
+        intent="context",
+        category="nav",
+    ),
+    "MSG.NEXT_HOP_COPIED": TTSPolicySpec(
+        message_id="MSG.NEXT_HOP_COPIED",
+        intent="context",
+        category="nav",
+    ),
+    "MSG.DOCKED": TTSPolicySpec(
+        message_id="MSG.DOCKED",
+        intent="context",
+        category="info",
+    ),
+    "MSG.UNDOCKED": TTSPolicySpec(
+        message_id="MSG.UNDOCKED",
+        intent="context",
+        category="info",
+    ),
+    "MSG.FIRST_DISCOVERY": TTSPolicySpec(
+        message_id="MSG.FIRST_DISCOVERY",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.FIRST_DISCOVERY_OPPORTUNITY": TTSPolicySpec(
+        message_id="MSG.FIRST_DISCOVERY_OPPORTUNITY",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.FOOTFALL": TTSPolicySpec(
+        message_id="MSG.FOOTFALL",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.ELW_DETECTED": TTSPolicySpec(
+        message_id="MSG.ELW_DETECTED",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.WW_DETECTED": TTSPolicySpec(
+        message_id="MSG.WW_DETECTED",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.TERRAFORMABLE_DETECTED": TTSPolicySpec(
+        message_id="MSG.TERRAFORMABLE_DETECTED",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.BIO_SIGNALS_HIGH": TTSPolicySpec(
+        message_id="MSG.BIO_SIGNALS_HIGH",
+        intent="context",
+        category="explore",
+        cooldown_policy="BYPASS_GLOBAL",
+    ),
+    "MSG.DSS_TARGET_HINT": TTSPolicySpec(
+        message_id="MSG.DSS_TARGET_HINT",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.DSS_COMPLETED": TTSPolicySpec(
+        message_id="MSG.DSS_COMPLETED",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.DSS_PROGRESS": TTSPolicySpec(
+        message_id="MSG.DSS_PROGRESS",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.FIRST_MAPPED": TTSPolicySpec(
+        message_id="MSG.FIRST_MAPPED",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.TRADE_JACKPOT": TTSPolicySpec(
+        message_id="MSG.TRADE_JACKPOT",
+        intent="context",
+        category="info",
+    ),
+    "MSG.EXOBIO_SAMPLE_LOGGED": TTSPolicySpec(
+        message_id="MSG.EXOBIO_SAMPLE_LOGGED",
+        intent="context",
+        category="explore",
+        cooldown_policy="ALWAYS_SAY",
+    ),
+    "MSG.EXOBIO_NEW_ENTRY": TTSPolicySpec(
+        message_id="MSG.EXOBIO_NEW_ENTRY",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.EXOBIO_RANGE_READY": TTSPolicySpec(
+        message_id="MSG.EXOBIO_RANGE_READY",
+        intent="context",
+        category="explore",
+        cooldown_policy="BYPASS_GLOBAL",
+    ),
+    "MSG.FSS_PROGRESS_25": TTSPolicySpec(
+        message_id="MSG.FSS_PROGRESS_25",
+        intent="context",
+        category="explore",
+        cooldown_policy="BYPASS_GLOBAL",
+    ),
+    "MSG.FSS_PROGRESS_50": TTSPolicySpec(
+        message_id="MSG.FSS_PROGRESS_50",
+        intent="context",
+        category="explore",
+        cooldown_policy="BYPASS_GLOBAL",
+    ),
+    "MSG.FSS_PROGRESS_75": TTSPolicySpec(
+        message_id="MSG.FSS_PROGRESS_75",
+        intent="context",
+        category="explore",
+        cooldown_policy="BYPASS_GLOBAL",
+    ),
+    "MSG.FSS_LAST_BODY": TTSPolicySpec(
+        message_id="MSG.FSS_LAST_BODY",
+        intent="context",
+        category="explore",
+        cooldown_policy="BYPASS_GLOBAL",
+    ),
+    "MSG.SYSTEM_FULLY_SCANNED": TTSPolicySpec(
+        message_id="MSG.SYSTEM_FULLY_SCANNED",
+        intent="context",
+        category="explore",
+        cooldown_policy="BYPASS_GLOBAL",
+    ),
+    "MSG.MILESTONE_PROGRESS": TTSPolicySpec(
+        message_id="MSG.MILESTONE_PROGRESS",
+        intent="context",
+        category="route",
+    ),
+    "MSG.MILESTONE_REACHED": TTSPolicySpec(
+        message_id="MSG.MILESTONE_REACHED",
+        intent="context",
+        category="route",
+    ),
+    "MSG.STARTUP_SYSTEMS": TTSPolicySpec(
+        message_id="MSG.STARTUP_SYSTEMS",
+        intent="context",
+        category="info",
+    ),
+    "MSG.CASH_IN_ASSISTANT": TTSPolicySpec(
+        message_id="MSG.CASH_IN_ASSISTANT",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.SURVIVAL_REBUY_HIGH": TTSPolicySpec(
+        message_id="MSG.SURVIVAL_REBUY_HIGH",
+        intent="context",
+        category="alert",
+    ),
+    "MSG.SURVIVAL_REBUY_CRITICAL": TTSPolicySpec(
+        message_id="MSG.SURVIVAL_REBUY_CRITICAL",
+        intent="critical",
+        category="alert",
+        cooldown_policy="ALWAYS_SAY",
+    ),
+    "MSG.COMBAT_AWARENESS_HIGH": TTSPolicySpec(
+        message_id="MSG.COMBAT_AWARENESS_HIGH",
+        intent="context",
+        category="alert",
+    ),
+    "MSG.COMBAT_AWARENESS_CRITICAL": TTSPolicySpec(
+        message_id="MSG.COMBAT_AWARENESS_CRITICAL",
+        intent="critical",
+        category="alert",
+        cooldown_policy="ALWAYS_SAY",
+    ),
+}
+
 
 def get_insight_class(message_id: str) -> InsightClassSpec | None:
     return INSIGHT_CLASS_BY_MESSAGE_ID.get(str(message_id or "").strip())
+
+
+def get_tts_policy_spec(message_id: str) -> TTSPolicySpec:
+    msg_id = str(message_id or "").strip()
+    policy = TTS_POLICY_BY_MESSAGE_ID.get(msg_id)
+    if policy is not None:
+        return policy
+    return TTSPolicySpec(
+        message_id=msg_id or "UNKNOWN_MESSAGE",
+        intent="silent",
+        category="info",
+        cooldown_policy="NORMAL",
+    )
 
 
 def _render_dedup_template(template: str, context: Dict[str, Any], message_id: str) -> str:
@@ -376,12 +596,16 @@ def resolve_emit_contract(
     msg_id = str(message_id or "").strip()
     runtime_ctx: Dict[str, Any] = dict(context or {})
     spec = get_insight_class(msg_id)
+    tts_policy = get_tts_policy_spec(msg_id)
 
     if spec is None:
         runtime_ctx.setdefault("canonical_event", str(event_type or "UNKNOWN_EVENT"))
         runtime_ctx.setdefault("insight_class", msg_id or "UNKNOWN_MESSAGE")
         runtime_ctx.setdefault("insight_kind", "general")
         runtime_ctx.setdefault("decision_space", "default")
+        runtime_ctx.setdefault("tts_intent", tts_policy.intent)
+        runtime_ctx.setdefault("tts_category", tts_policy.category)
+        runtime_ctx.setdefault("tts_cooldown_policy", tts_policy.cooldown_policy)
         return {
             "context": runtime_ctx,
             "priority": str(priority or "P2_NORMAL"),
@@ -394,6 +618,9 @@ def resolve_emit_contract(
     runtime_ctx.setdefault("insight_class", spec.class_id)
     runtime_ctx.setdefault("insight_kind", spec.kind)
     runtime_ctx.setdefault("decision_space", spec.decision_space)
+    runtime_ctx.setdefault("tts_intent", tts_policy.intent)
+    runtime_ctx.setdefault("tts_category", tts_policy.category)
+    runtime_ctx.setdefault("tts_cooldown_policy", tts_policy.cooldown_policy)
 
     resolved_priority = str(priority or spec.default_priority)
     resolved_scope = str(cooldown_scope or spec.default_cooldown_scope)

@@ -26,6 +26,17 @@ Styl nie moze wymusic emisji, jesli semantyka wskazuje cisze.
 - `BYPASS_GLOBAL`: omija globalny cooldown, ale nadal dziala deduplikacja.
 - `ALWAYS_SAY`: tylko dla zdarzen progowych lub potwierdzen akcji gracza.
 
+## Kontrakt policy (runtime)
+Kazdy emit przechodzi przez wspolny kontrakt:
+- `message_id -> tts_intent`,
+- `message_id -> tts_category`,
+- `message_id -> tts_cooldown_policy`.
+
+W telemetry context musza byc widoczne:
+- `gate_reason` (dlaczego gate przepuscil/zablokowal),
+- `voice_priority_reason` (dlaczego komunikat zostal wybrany/tlumiony przez dispatcher),
+- `tts_intent`, `tts_category`, `tts_cooldown_policy`.
+
 ## Ustalone wyjatki od global cooldown
 ### Exobiology
 - Pobranie probki (z nazwa obiektu) musi byc slyszalne za kazdym razem.

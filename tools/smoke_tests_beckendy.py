@@ -32,6 +32,7 @@ if ROOT_DIR not in sys.path:
 
 import config  # type: ignore
 from logic.utils import MSG_QUEUE, DEBOUNCER  # type: ignore
+from logic.utils import notify as notify_module  # type: ignore
 
 from app.state import app_state  # type: ignore
 from app.route_manager import route_manager  # type: ignore
@@ -1943,6 +1944,41 @@ def test_f5_dispatcher_priority_matrix_baseline(_ctx: TestContext) -> None:
     )
 
 
+def test_f5_voice_policy_contract_baseline(_ctx: TestContext) -> None:
+    resolved = resolve_emit_contract(
+        message_id="MSG.EXOBIO_RANGE_READY",
+        context={"system": "SMOKE_F5_POLICY"},
+        event_type="BIO_PROGRESS",
+        priority=None,
+        dedup_key=None,
+        cooldown_scope=None,
+        cooldown_seconds=None,
+    )
+    runtime_ctx = dict(resolved.get("context") or {})
+    assert runtime_ctx.get("tts_intent") == "context", f"Unexpected tts_intent: {runtime_ctx}"
+    assert runtime_ctx.get("tts_category") == "explore", f"Unexpected tts_category: {runtime_ctx}"
+    assert runtime_ctx.get("tts_cooldown_policy") == "BYPASS_GLOBAL", (
+        f"Unexpected tts_cooldown_policy: {runtime_ctx}"
+    )
+
+    def _can_send(key, cooldown_sec, context=None):
+        if key == "TTS_GLOBAL":
+            return False
+        return True
+
+    with (
+        patch("logic.utils.notify.has_capability", return_value=False),
+        patch("logic.utils.notify._is_transit_mode", return_value=False),
+        patch.object(notify_module.DEBOUNCER, "can_send", side_effect=_can_send),
+    ):
+        allowed = notify_module._should_speak_tts(
+            "MSG.EXOBIO_RANGE_READY",
+            {"confidence": "high"},
+        )
+
+    assert allowed is True, "BYPASS_GLOBAL contract should allow threshold message despite global cooldown"
+
+
 def test_f4_cross_module_voice_priority_baseline(_ctx: TestContext) -> None:
     """
     F4 cross-module voice priority baseline:
@@ -2323,6 +2359,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_f4_cash_in_assistant_baseline",
         "test_f5_combat_awareness_baseline",
         "test_f5_dispatcher_priority_matrix_baseline",
+        "test_f5_voice_policy_contract_baseline",
     ]
     for test_name in required_tests:
         assert f"def {test_name}(" in self_content, f"Missing regression test function: {test_name}"
@@ -2993,6 +3030,7 @@ def run_all_tests() -> int:
         ("test_f4_survival_rebuy_awareness_baseline", test_f4_survival_rebuy_awareness_baseline),
         ("test_f5_combat_awareness_baseline", test_f5_combat_awareness_baseline),
         ("test_f5_dispatcher_priority_matrix_baseline", test_f5_dispatcher_priority_matrix_baseline),
+        ("test_f5_voice_policy_contract_baseline", test_f5_voice_policy_contract_baseline),
         ("test_f4_cross_module_voice_priority_baseline", test_f4_cross_module_voice_priority_baseline),
         ("test_f4_quality_gates_invariants", test_f4_quality_gates_invariants),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),

@@ -6,92 +6,11 @@ from typing import Any, Callable
 import config
 from logic.tts.text_preprocessor import prepare_tts
 from logic.capabilities import CAP_TTS_ADVANCED_POLICY, CAP_VOICE_STT, has_capability
+from logic.event_insight_mapping import get_tts_policy_spec
 
 
 # Globalna kolejka komunikatów dla GUI (Thread-Safe)
 MSG_QUEUE = queue.Queue()
-
-_TTS_INTENT_MAP = {
-    "MSG.FUEL_CRITICAL": "critical",
-    "MSG.ROUTE_DESYNC": "critical",
-    "MSG.ROUTE_FOUND": "critical",
-    "MSG.ROUTE_COMPLETE": "critical",
-    "MSG.NEXT_HOP": "context",
-    "MSG.JUMPED_SYSTEM": "context",
-    "MSG.NEXT_HOP_COPIED": "context",
-    "MSG.DOCKED": "context",
-    "MSG.UNDOCKED": "context",
-    "MSG.FIRST_DISCOVERY": "context",
-    "MSG.FIRST_DISCOVERY_OPPORTUNITY": "context",
-    "MSG.FOOTFALL": "context",
-    "MSG.ELW_DETECTED": "context",
-    "MSG.SYSTEM_FULLY_SCANNED": "context",
-    "MSG.SMUGGLER_ILLEGAL_CARGO": "context",
-    "MSG.WW_DETECTED": "context",
-    "MSG.TERRAFORMABLE_DETECTED": "context",
-    "MSG.BIO_SIGNALS_HIGH": "context",
-    "MSG.DSS_TARGET_HINT": "context",
-    "MSG.DSS_COMPLETED": "context",
-    "MSG.DSS_PROGRESS": "context",
-    "MSG.FIRST_MAPPED": "context",
-    "MSG.TRADE_JACKPOT": "context",
-    "MSG.EXOBIO_SAMPLE_LOGGED": "context",
-    "MSG.EXOBIO_NEW_ENTRY": "context",
-    "MSG.EXOBIO_RANGE_READY": "context",
-    "MSG.FSS_PROGRESS_25": "context",
-    "MSG.FSS_PROGRESS_50": "context",
-    "MSG.FSS_PROGRESS_75": "context",
-    "MSG.FSS_LAST_BODY": "context",
-    "MSG.MILESTONE_PROGRESS": "context",
-    "MSG.MILESTONE_REACHED": "context",
-    "MSG.STARTUP_SYSTEMS": "context",
-    "MSG.CASH_IN_ASSISTANT": "context",
-    "MSG.SURVIVAL_REBUY_HIGH": "context",
-    "MSG.SURVIVAL_REBUY_CRITICAL": "critical",
-    "MSG.COMBAT_AWARENESS_HIGH": "context",
-    "MSG.COMBAT_AWARENESS_CRITICAL": "critical",
-}
-
-_TTS_CATEGORY_MAP = {
-    "MSG.NEXT_HOP": "nav",
-    "MSG.JUMPED_SYSTEM": "nav",
-    "MSG.NEXT_HOP_COPIED": "nav",
-    "MSG.ROUTE_FOUND": "route",
-    "MSG.ROUTE_COMPLETE": "route",
-    "MSG.ROUTE_DESYNC": "route",
-    "MSG.FUEL_CRITICAL": "alert",
-    "MSG.DOCKED": "info",
-    "MSG.UNDOCKED": "info",
-    "MSG.FIRST_DISCOVERY": "explore",
-    "MSG.FIRST_DISCOVERY_OPPORTUNITY": "explore",
-    "MSG.SYSTEM_FULLY_SCANNED": "explore",
-    "MSG.ELW_DETECTED": "explore",
-    "MSG.FOOTFALL": "explore",
-    "MSG.SMUGGLER_ILLEGAL_CARGO": "alert",
-    "MSG.WW_DETECTED": "explore",
-    "MSG.TERRAFORMABLE_DETECTED": "explore",
-    "MSG.BIO_SIGNALS_HIGH": "explore",
-    "MSG.DSS_TARGET_HINT": "explore",
-    "MSG.DSS_COMPLETED": "explore",
-    "MSG.DSS_PROGRESS": "explore",
-    "MSG.FIRST_MAPPED": "explore",
-    "MSG.TRADE_JACKPOT": "info",
-    "MSG.EXOBIO_SAMPLE_LOGGED": "explore",
-    "MSG.EXOBIO_NEW_ENTRY": "explore",
-    "MSG.EXOBIO_RANGE_READY": "explore",
-    "MSG.FSS_PROGRESS_25": "explore",
-    "MSG.FSS_PROGRESS_50": "explore",
-    "MSG.FSS_PROGRESS_75": "explore",
-    "MSG.FSS_LAST_BODY": "explore",
-    "MSG.MILESTONE_PROGRESS": "route",
-    "MSG.MILESTONE_REACHED": "route",
-    "MSG.STARTUP_SYSTEMS": "info",
-    "MSG.CASH_IN_ASSISTANT": "explore",
-    "MSG.SURVIVAL_REBUY_HIGH": "alert",
-    "MSG.SURVIVAL_REBUY_CRITICAL": "alert",
-    "MSG.COMBAT_AWARENESS_HIGH": "alert",
-    "MSG.COMBAT_AWARENESS_CRITICAL": "alert",
-}
 
 _TTS_DEFAULT_COOLDOWNS = {
     "nav": 20.0,
@@ -103,11 +22,19 @@ _TTS_DEFAULT_COOLDOWNS = {
 
 
 def _tts_category(message_id: str) -> str:
-    return _TTS_CATEGORY_MAP.get(message_id, "info")
+    return get_tts_policy_spec(message_id).category
 
 
 def _tts_intent(message_id: str) -> str:
-    return _TTS_INTENT_MAP.get(message_id, "silent")
+    return get_tts_policy_spec(message_id).intent
+
+
+def _tts_cooldown_policy(message_id: str, context: dict | None = None) -> str:
+    ctx = context or {}
+    override = str(ctx.get("tts_cooldown_policy", "")).strip().upper()
+    if override in {"NORMAL", "BYPASS_GLOBAL", "ALWAYS_SAY"}:
+        return override
+    return str(get_tts_policy_spec(message_id).cooldown_policy or "NORMAL").strip().upper()
 
 
 def _get_category_cooldown(category: str) -> float:
@@ -147,28 +74,37 @@ def _should_speak_tts(message_id: str, context: dict | None) -> bool:
     if confidence in ("low", "mid", "uncertain", "maybe"):
         return False
 
-    if has_capability(CAP_TTS_ADVANCED_POLICY):
-        return _should_speak_legacy(message_id, ctx)
-
     intent = _tts_intent(message_id)
+    category = _tts_category(message_id)
+    cooldown_policy = _tts_cooldown_policy(message_id, ctx)
+
+    if has_capability(CAP_TTS_ADVANCED_POLICY):
+        return _should_speak_legacy(
+            message_id,
+            ctx,
+            intent=intent,
+            category=category,
+            cooldown_policy=cooldown_policy,
+        )
+
     if intent == "silent":
         return False
     if ctx.get("in_transit"):
         return False
-    if _is_transit_mode() and _tts_category(message_id) == "nav":
+    if _is_transit_mode() and category == "nav":
         return False
 
-    try:
-        global_cd = float(config.get("tts.cooldown_global_sec", 8))
-    except Exception:
-        global_cd = 8.0
-    if not DEBOUNCER.can_send("TTS_GLOBAL", global_cd):
-        return False
+    if cooldown_policy not in {"BYPASS_GLOBAL", "ALWAYS_SAY"}:
+        try:
+            global_cd = float(config.get("tts.cooldown_global_sec", 8))
+        except Exception:
+            global_cd = 8.0
+        if not DEBOUNCER.can_send("TTS_GLOBAL", global_cd):
+            return False
 
-    if intent == "critical":
+    if intent == "critical" or cooldown_policy == "ALWAYS_SAY":
         return True
 
-    category = _tts_category(message_id)
     intent_cd = _get_category_cooldown(category)
     if not DEBOUNCER.can_send(
         f"TTS_INTENT:{message_id}",
@@ -179,18 +115,30 @@ def _should_speak_tts(message_id: str, context: dict | None) -> bool:
     return True
 
 
-def _should_speak_legacy(message_id: str, ctx: dict) -> bool:
+def _should_speak_legacy(
+    message_id: str,
+    ctx: dict,
+    *,
+    intent: str,
+    category: str,
+    cooldown_policy: str,
+) -> bool:
     if ctx.get("in_transit"):
         return False
-    if _is_transit_mode() and _tts_category(message_id) == "nav":
+    if _is_transit_mode() and category == "nav":
         return False
-    try:
-        global_cd = float(config.get("tts.cooldown_global_sec", 8))
-    except Exception:
-        global_cd = 8.0
-    if not DEBOUNCER.can_send("TTS_GLOBAL", global_cd):
-        return False
-    category = _tts_category(message_id)
+
+    if cooldown_policy not in {"BYPASS_GLOBAL", "ALWAYS_SAY"}:
+        try:
+            global_cd = float(config.get("tts.cooldown_global_sec", 8))
+        except Exception:
+            global_cd = 8.0
+        if not DEBOUNCER.can_send("TTS_GLOBAL", global_cd):
+            return False
+
+    if intent == "critical" or cooldown_policy == "ALWAYS_SAY":
+        return True
+
     intent_cd = _get_category_cooldown(category)
     if not DEBOUNCER.can_send(
         f"TTS_INTENT:{message_id}",
