@@ -823,6 +823,16 @@ class RenataApp:
                             exc,
                             interval_ms=3000,
                         )
+                elif msg_type == "survival_rebuy":
+                    try:
+                        self.tab_pulpit.update_survival_rebuy(content)
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.survival_rebuy",
+                            "failed to update survival/rebuy card",
+                            exc,
+                            interval_ms=3000,
+                        )
 
                 elif msg_type == "status_neu":
                     txt, col = content

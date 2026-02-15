@@ -56,6 +56,7 @@ class AppState:
         self.last_exploration_summary_signature = None
         self.last_cash_in_signature = None
         self.cash_in_skip_signature = None
+        self.last_survival_rebuy_signature = None
 
         # --- GUI wstrzyknie tu panel eksploracji (EPIC 5) ---
         self.exploration_panel = None

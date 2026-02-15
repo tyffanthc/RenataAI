@@ -37,6 +37,8 @@ ALLOWED_MESSAGES = {
     "MSG.FSS_LAST_BODY",
     "MSG.EXPLORATION_SYSTEM_SUMMARY",
     "MSG.CASH_IN_ASSISTANT",
+    "MSG.SURVIVAL_REBUY_HIGH",
+    "MSG.SURVIVAL_REBUY_CRITICAL",
     "MSG.MILESTONE_PROGRESS",
     "MSG.MILESTONE_REACHED",
     "MSG.STARTUP_SYSTEMS",
@@ -180,6 +182,16 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
             if fixed:
                 return fixed
         return _finalize_tts("Cash-in. Sprawdz decyzje w panelu.")
+
+    if message_id in {"MSG.SURVIVAL_REBUY_HIGH", "MSG.SURVIVAL_REBUY_CRITICAL"}:
+        raw_text = ctx.get("raw_text")
+        if raw_text:
+            fixed = _repair_polish_text(raw_text).strip()
+            if fixed:
+                return fixed
+        if message_id == "MSG.SURVIVAL_REBUY_CRITICAL":
+            return _finalize_tts("Brak rebuy albo krytyczne ryzyko utraty postepu.")
+        return _finalize_tts("Ryzyko przetrwania wzroslo. Sprawdz opcje w panelu.")
 
     if message_id == "MSG.NEXT_HOP":
         system = _normalize_system_name(ctx.get("system"))

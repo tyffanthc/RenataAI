@@ -46,6 +46,8 @@ _TTS_INTENT_MAP = {
     "MSG.MILESTONE_REACHED": "context",
     "MSG.STARTUP_SYSTEMS": "context",
     "MSG.CASH_IN_ASSISTANT": "context",
+    "MSG.SURVIVAL_REBUY_HIGH": "context",
+    "MSG.SURVIVAL_REBUY_CRITICAL": "critical",
 }
 
 _TTS_CATEGORY_MAP = {
@@ -83,6 +85,8 @@ _TTS_CATEGORY_MAP = {
     "MSG.MILESTONE_REACHED": "route",
     "MSG.STARTUP_SYSTEMS": "info",
     "MSG.CASH_IN_ASSISTANT": "explore",
+    "MSG.SURVIVAL_REBUY_HIGH": "alert",
+    "MSG.SURVIVAL_REBUY_CRITICAL": "alert",
 }
 
 _TTS_DEFAULT_COOLDOWNS = {
@@ -211,6 +215,9 @@ def powiedz(tekst, gui_ref=None, *, message_id=None, context=None, force: bool =
     cash_in_payload = ctx.get("cash_in_payload")
     if isinstance(cash_in_payload, dict):
         MSG_QUEUE.put(("cash_in_assistant", cash_in_payload))
+    survival_payload = ctx.get("survival_payload")
+    if isinstance(survival_payload, dict):
+        MSG_QUEUE.put(("survival_rebuy", survival_payload))
     
     # Synteza mowy (tylko przez Text Preprocessor)
     if config.get("voice_enabled", True) and message_id:

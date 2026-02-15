@@ -120,6 +120,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "route_progress_speech": True,    # 25/50/75% itp.
     "exit_summary_enabled": True,     # podsumowanie po skanowaniu
     "voice_exit_summary": True,       # glosowe podsumowanie
+    "survival_rebuy_awareness_enabled": True,  # F4 survival/rebuy awareness
 
     # SCHOWEK / AUTO-COPY
     "auto_clipboard": True,           # auto-schowek (route)

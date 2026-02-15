@@ -171,6 +171,38 @@ class PulpitTab(ttk.Frame):
         )
         self.lbl_cash_in_note.grid(row=2, column=0, padx=8, pady=(2, 6), sticky="w")
 
+        # SURVIVAL / REBUY AWARENESS (F4 baseline)
+        survival_frame = ttk.LabelFrame(self, text="Survival / Rebuy Awareness")
+        survival_frame.pack(fill="x", padx=5, pady=(0, 5))
+        survival_frame.columnconfigure(0, weight=1)
+
+        self.lbl_survival_title = ttk.Label(
+            survival_frame,
+            text="Brak aktywnego alertu survival/rebuy.",
+            font=("Eurostile", 10, "bold"),
+            anchor="w",
+            justify="left",
+        )
+        self.lbl_survival_title.grid(row=0, column=0, padx=8, pady=(6, 2), sticky="w")
+
+        self.lbl_survival_context = ttk.Label(
+            survival_frame,
+            text="Kontekst: -",
+            anchor="w",
+            justify="left",
+            wraplength=960,
+        )
+        self.lbl_survival_context.grid(row=1, column=0, padx=8, pady=2, sticky="w")
+
+        self.lbl_survival_options = ttk.Label(
+            survival_frame,
+            text="Opcje: -",
+            anchor="w",
+            justify="left",
+            wraplength=960,
+        )
+        self.lbl_survival_options.grid(row=2, column=0, padx=8, pady=(2, 6), sticky="w")
+
         # PRZYCISKI / AKCJE
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill="x", padx=5, pady=5)
@@ -547,4 +579,52 @@ class PulpitTab(ttk.Frame):
 
         note = str(payload.get("note") or "Pomijam: dostepne").strip()
         self.lbl_cash_in_note.config(text=f"Pomijam: {note}")
+
+    def update_survival_rebuy(self, payload: dict) -> None:
+        if not isinstance(payload, dict):
+            return
+
+        system = str(payload.get("system") or "-").strip() or "-"
+        level = str(payload.get("level") or "-").strip() or "-"
+        reason = str(payload.get("reason") or "-").strip() or "-"
+        risk = str(payload.get("risk_status") or "-").strip() or "-"
+        var_status = str(payload.get("var_status") or "-").strip() or "-"
+        in_combat = bool(payload.get("in_combat"))
+        hull = payload.get("hull_percent")
+        credits = payload.get("credits")
+        rebuy = payload.get("rebuy_cost")
+        cargo = payload.get("cargo_tons")
+        session_val = payload.get("session_value_estimated")
+
+        def _fmt_num(value):
+            try:
+                return f"{int(round(float(value))):,}".replace(",", " ")
+            except Exception:
+                return "-"
+
+        def _fmt_hull(value):
+            try:
+                return f"{float(value):.0f}%"
+            except Exception:
+                return "-"
+
+        title = (
+            f"Survival: {level.upper()} | System: {system} | powod: {reason} "
+            f"| ryzyko {risk} / {var_status}"
+        )
+        context = (
+            f"Kontekst: combat={'tak' if in_combat else 'nie'} | hull={_fmt_hull(hull)} "
+            f"| credits={_fmt_num(credits)} Cr | rebuy={_fmt_num(rebuy)} Cr "
+            f"| cargo={_fmt_num(cargo)} t | sesja~{_fmt_num(session_val)} Cr"
+        )
+
+        options = payload.get("options") or []
+        if isinstance(options, list) and options:
+            options_text = " || ".join(str(item) for item in options[:3])
+        else:
+            options_text = "-"
+
+        self.lbl_survival_title.config(text=title)
+        self.lbl_survival_context.config(text=context)
+        self.lbl_survival_options.config(text=f"Opcje: {options_text}")
 

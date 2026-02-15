@@ -45,6 +45,7 @@ from logic.events import exploration_misc_events as misc_events  # type: ignore
 from logic.events import exploration_awareness as awareness_events  # type: ignore
 from logic.events import exploration_summary as summary_events  # type: ignore
 from logic.events import cash_in_assistant as cash_in_events  # type: ignore
+from logic.events import survival_rebuy_awareness as survival_events  # type: ignore
 from logic import spansh_payloads
 from logic import spansh_client as spansh_client_logic  # type: ignore
 from logic import neutron as neutron_logic  # type: ignore
@@ -1745,6 +1746,46 @@ def test_f4_cash_in_assistant_baseline(ctx: TestContext) -> None:
     )
 
 
+def test_f4_survival_rebuy_awareness_baseline(ctx: TestContext) -> None:
+    """
+    F4 survival/rebuy baseline smoke:
+    - no-rebuy path emits critical payload,
+    - repeated same signature does not spam,
+    - payload is propagated to queue for UI card rendering.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    app_state.current_system = "SMOKE_F4_SURVIVAL_SYSTEM"
+    app_state.last_survival_rebuy_signature = None
+    survival_events.reset_survival_rebuy_state()
+
+    event = {
+        "event": "LoadGame",
+        "StarSystem": "SMOKE_F4_SURVIVAL_SYSTEM",
+        "Credits": 150_000,
+        "Rebuy": 900_000,
+    }
+
+    first = survival_events.handle_journal_event(event, gui_ref=None)
+    second = survival_events.handle_journal_event(event, gui_ref=None)
+    assert first is None and second is None  # handler is side-effect based
+
+    items = ctx.drain_queue()
+    assert any(
+        isinstance(item, tuple) and len(item) == 2 and item[0] == "log"
+        for item in items
+    ), "Expected survival/rebuy log line in queue"
+    payload_items = [
+        item[1]
+        for item in items
+        if isinstance(item, tuple) and len(item) == 2 and item[0] == "survival_rebuy"
+    ]
+    assert len(payload_items) == 1, f"Expected single non-spam survival payload, got: {payload_items}"
+    payload = payload_items[-1]
+    assert payload.get("level") == "critical", f"Expected critical survival level, got: {payload}"
+    assert payload.get("reason") == "no_rebuy", f"Expected no_rebuy reason, got: {payload}"
+
+
 def test_trade_station_state_reset_on_system_change(_ctx: TestContext) -> None:
     class DummyVar:
         def __init__(self, value: str = "") -> None:
@@ -2165,6 +2206,7 @@ def test_no_wild_emits_in_migrated_event_modules(_ctx: TestContext) -> None:
         os.path.join(ROOT_DIR, "logic/events/exploration_fss_events.py"),
         os.path.join(ROOT_DIR, "logic/events/exploration_dss_events.py"),
         os.path.join(ROOT_DIR, "logic/events/exploration_bio_events.py"),
+        os.path.join(ROOT_DIR, "logic/events/survival_rebuy_awareness.py"),
     ]
 
     for path in migrated_files:
@@ -2194,6 +2236,8 @@ def test_event_insight_mapping_core_contract(_ctx: TestContext) -> None:
         "MSG.EXOBIO_RANGE_READY",
         "MSG.EXOBIO_NEW_ENTRY",
         "MSG.CASH_IN_ASSISTANT",
+        "MSG.SURVIVAL_REBUY_HIGH",
+        "MSG.SURVIVAL_REBUY_CRITICAL",
     ]
     for message_id in required_message_ids:
         spec = get_insight_class(message_id)
@@ -2245,6 +2289,7 @@ def test_no_plan_checks_in_action_modules(_ctx: TestContext) -> None:
         os.path.join(ROOT_DIR, "logic/events/exploration_bio_events.py"),
         os.path.join(ROOT_DIR, "logic/events/exploration_misc_events.py"),
         os.path.join(ROOT_DIR, "logic/events/trade_events.py"),
+        os.path.join(ROOT_DIR, "logic/events/survival_rebuy_awareness.py"),
     ]
     forbidden_plan_conditions = (
         "features.tts.free_policy_enabled",
@@ -2552,6 +2597,7 @@ def run_all_tests() -> int:
         ("test_f3_exploration_cross_module_invariants", test_f3_exploration_cross_module_invariants),
         ("test_f4_exploration_summary_baseline", test_f4_exploration_summary_baseline),
         ("test_f4_cash_in_assistant_baseline", test_f4_cash_in_assistant_baseline),
+        ("test_f4_survival_rebuy_awareness_baseline", test_f4_survival_rebuy_awareness_baseline),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
         ("test_trade_station_picker_candidates_and_wiring", test_trade_station_picker_candidates_and_wiring),
         ("test_spansh_feedback_smoke_pack_coverage", test_spansh_feedback_smoke_pack_coverage),

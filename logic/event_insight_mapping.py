@@ -297,6 +297,26 @@ INSIGHT_CLASS_BY_MESSAGE_ID: Dict[str, InsightClassSpec] = {
         default_cooldown_seconds=90.0,
         dedup_template="cash_in:{system}",
     ),
+    "MSG.SURVIVAL_REBUY_HIGH": InsightClassSpec(
+        class_id="SURVIVAL_REBUY_HIGH",
+        canonical_event="SURVIVAL_RISK_CHANGED",
+        kind="risk",
+        decision_space="survival_warning",
+        default_priority="P1_HIGH",
+        default_cooldown_scope="entity",
+        default_cooldown_seconds=120.0,
+        dedup_template="survival_high:{system}",
+    ),
+    "MSG.SURVIVAL_REBUY_CRITICAL": InsightClassSpec(
+        class_id="SURVIVAL_REBUY_CRITICAL",
+        canonical_event="SURVIVAL_RISK_CHANGED",
+        kind="risk",
+        decision_space="survival_warning",
+        default_priority="P0_CRITICAL",
+        default_cooldown_scope="entity",
+        default_cooldown_seconds=180.0,
+        dedup_template="survival_critical:{system}",
+    ),
 }
 
 
