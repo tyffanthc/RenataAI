@@ -45,6 +45,7 @@ _TTS_INTENT_MAP = {
     "MSG.MILESTONE_PROGRESS": "context",
     "MSG.MILESTONE_REACHED": "context",
     "MSG.STARTUP_SYSTEMS": "context",
+    "MSG.CASH_IN_ASSISTANT": "context",
 }
 
 _TTS_CATEGORY_MAP = {
@@ -81,6 +82,7 @@ _TTS_CATEGORY_MAP = {
     "MSG.MILESTONE_PROGRESS": "route",
     "MSG.MILESTONE_REACHED": "route",
     "MSG.STARTUP_SYSTEMS": "info",
+    "MSG.CASH_IN_ASSISTANT": "explore",
 }
 
 _TTS_DEFAULT_COOLDOWNS = {
@@ -206,6 +208,9 @@ def powiedz(tekst, gui_ref=None, *, message_id=None, context=None, force: bool =
     summary_payload = ctx.get("summary_payload")
     if isinstance(summary_payload, dict):
         MSG_QUEUE.put(("exploration_summary", summary_payload))
+    cash_in_payload = ctx.get("cash_in_payload")
+    if isinstance(cash_in_payload, dict):
+        MSG_QUEUE.put(("cash_in_assistant", cash_in_payload))
     
     # Synteza mowy (tylko przez Text Preprocessor)
     if config.get("voice_enabled", True) and message_id:

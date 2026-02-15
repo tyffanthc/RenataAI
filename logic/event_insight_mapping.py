@@ -287,6 +287,16 @@ INSIGHT_CLASS_BY_MESSAGE_ID: Dict[str, InsightClassSpec] = {
         default_cooldown_seconds=45.0,
         dedup_template="exp_summary:{system}",
     ),
+    "MSG.CASH_IN_ASSISTANT": InsightClassSpec(
+        class_id="EXP_CASH_IN_ASSISTANT",
+        canonical_event="CASH_IN_REVIEW",
+        kind="exploration",
+        decision_space="cash_in_decision",
+        default_priority="P2_NORMAL",
+        default_cooldown_scope="entity",
+        default_cooldown_seconds=90.0,
+        dedup_template="cash_in:{system}",
+    ),
 }
 
 

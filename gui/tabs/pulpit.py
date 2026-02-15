@@ -18,6 +18,8 @@ class PulpitTab(ttk.Frame):
         on_generate_science_excel=None,
         on_generate_modules_data=None,
         on_generate_exploration_summary=None,
+        on_generate_cash_in_assistant=None,
+        on_skip_cash_in_assistant=None,
         app_state=None,
         route_manager=None,
     ):
@@ -28,8 +30,12 @@ class PulpitTab(ttk.Frame):
         self._on_generate_science_excel = on_generate_science_excel
         self._on_generate_modules_data = on_generate_modules_data
         self._on_generate_exploration_summary = on_generate_exploration_summary
+        self._on_generate_cash_in_assistant = on_generate_cash_in_assistant
+        self._on_skip_cash_in_assistant = on_skip_cash_in_assistant
         self._app_state = app_state
         self._route_manager = route_manager
+        self._current_exploration_summary_payload: dict = {}
+        self._current_cash_in_signature: str = ""
 
         self._init_ui()
         self._update_status_from_state()
@@ -133,6 +139,38 @@ class PulpitTab(ttk.Frame):
         )
         self.lbl_exploration_summary_cashin.grid(row=3, column=0, padx=8, pady=(2, 6), sticky="w")
 
+        # CASH-IN ASSISTANT (F4 baseline)
+        cash_in_frame = ttk.LabelFrame(self, text="Cash-In Assistant")
+        cash_in_frame.pack(fill="x", padx=5, pady=(0, 5))
+        cash_in_frame.columnconfigure(0, weight=1)
+
+        self.lbl_cash_in_title = ttk.Label(
+            cash_in_frame,
+            text="Brak aktywnej sugestii cash-in.",
+            font=("Eurostile", 10, "bold"),
+            anchor="w",
+            justify="left",
+        )
+        self.lbl_cash_in_title.grid(row=0, column=0, padx=8, pady=(6, 2), sticky="w")
+
+        self.lbl_cash_in_options = ttk.Label(
+            cash_in_frame,
+            text="Opcje: -",
+            anchor="w",
+            justify="left",
+            wraplength=960,
+        )
+        self.lbl_cash_in_options.grid(row=1, column=0, padx=8, pady=2, sticky="w")
+
+        self.lbl_cash_in_note = ttk.Label(
+            cash_in_frame,
+            text="Pomijam: -",
+            anchor="w",
+            justify="left",
+            wraplength=960,
+        )
+        self.lbl_cash_in_note.grid(row=2, column=0, padx=8, pady=(2, 6), sticky="w")
+
         # PRZYCISKI / AKCJE
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill="x", padx=5, pady=5)
@@ -165,6 +203,20 @@ class PulpitTab(ttk.Frame):
             command=self._on_click_exploration_summary,
         )
         btn_exploration_summary.pack(side="right", padx=(0, 8))
+
+        btn_cash_in_assistant = ttk.Button(
+            btn_frame,
+            text="Asystent cash-in",
+            command=self._on_click_cash_in_assistant,
+        )
+        btn_cash_in_assistant.pack(side="right", padx=(0, 8))
+
+        btn_cash_in_skip = ttk.Button(
+            btn_frame,
+            text="Pomijam cash-in",
+            command=self._on_click_cash_in_skip,
+        )
+        btn_cash_in_skip.pack(side="right", padx=(0, 8))
 
         # LOG
         log_frame = ttk.Frame(self)
@@ -372,6 +424,25 @@ class PulpitTab(ttk.Frame):
         else:
             self.log("[EXPLORATION_SUMMARY] Brak podpiętego callbacku on_generate_exploration_summary.")
 
+    def _on_click_cash_in_assistant(self):
+        if self._on_generate_cash_in_assistant is not None:
+            try:
+                self._on_generate_cash_in_assistant()
+            except Exception as e:
+                self.log(f"[CASH_IN] Blad triggera asystenta cash-in: {e}")
+        else:
+            self.log("[CASH_IN] Brak podpiętego callbacku on_generate_cash_in_assistant.")
+
+    def _on_click_cash_in_skip(self):
+        if self._on_skip_cash_in_assistant is not None:
+            try:
+                self._on_skip_cash_in_assistant()
+                self.lbl_cash_in_note.config(text="Pomijam: aktywne dla biezacego kontekstu.")
+            except Exception as e:
+                self.log(f"[CASH_IN] Blad akcji Pomijam: {e}")
+        else:
+            self.log("[CASH_IN] Brak podpiętego callbacku on_skip_cash_in_assistant.")
+
     # ------------------------------------------------------------
     # LOG
     # ------------------------------------------------------------
@@ -385,10 +456,16 @@ class PulpitTab(ttk.Frame):
         self.log_area.config(state="disabled")
 
 
+    def get_current_exploration_summary_payload(self) -> dict:
+        return dict(self._current_exploration_summary_payload or {})
+
+    def get_current_cash_in_signature(self) -> str:
+        return str(self._current_cash_in_signature or "").strip()
 
     def update_exploration_summary(self, payload: dict) -> None:
         if not isinstance(payload, dict):
             return
+        self._current_exploration_summary_payload = dict(payload)
 
         system = str(payload.get("system") or "-").strip() or "-"
         scanned = payload.get("scanned_bodies")
@@ -423,4 +500,51 @@ class PulpitTab(ttk.Frame):
         self.lbl_exploration_summary_highlights.config(text=f"Highlights: {highlights_text}")
         self.lbl_exploration_summary_next.config(text=f"Co dalej: {next_step}")
         self.lbl_exploration_summary_cashin.config(text=cash_text)
+
+    def update_cash_in_assistant(self, payload: dict) -> None:
+        if not isinstance(payload, dict):
+            return
+
+        self._current_cash_in_signature = str(payload.get("signature") or "").strip()
+        system = str(payload.get("system") or "-").strip() or "-"
+        signal = str(payload.get("signal") or "-").strip() or "-"
+        session_est = payload.get("session_value_estimated")
+        system_est = payload.get("system_value_estimated")
+
+        def _fmt_cr(value):
+            try:
+                return f"{int(round(float(value))):,}".replace(",", " ")
+            except Exception:
+                return "-"
+
+        title = (
+            f"Cash-in ({signal}) | System: {system} | "
+            f"system ~{_fmt_cr(system_est)} Cr | sesja ~{_fmt_cr(session_est)} Cr"
+        )
+        self.lbl_cash_in_title.config(text=title)
+
+        options = payload.get("options") or []
+        option_lines: list[str] = []
+        if isinstance(options, list):
+            for idx, option in enumerate(options[:3], start=1):
+                if not isinstance(option, dict):
+                    continue
+                label = str(option.get("label") or f"Opcja {idx}").strip() or f"Opcja {idx}"
+                eta = option.get("eta_minutes")
+                value = option.get("estimated_value")
+                risk = str(option.get("risk_label") or "-")
+                trust = str(option.get("trust_label") or "-")
+                line = (
+                    f"{idx}) {label} | ~{_fmt_cr(value)} Cr | ETA {eta if eta is not None else '-'} min "
+                    f"| ryzyko {risk} | trust {trust}"
+                )
+                option_lines.append(line)
+
+        if option_lines:
+            self.lbl_cash_in_options.config(text="Opcje: " + " || ".join(option_lines))
+        else:
+            self.lbl_cash_in_options.config(text="Opcje: -")
+
+        note = str(payload.get("note") or "Pomijam: dostepne").strip()
+        self.lbl_cash_in_note.config(text=f"Pomijam: {note}")
 

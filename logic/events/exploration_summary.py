@@ -212,5 +212,14 @@ def trigger_exploration_summary(
         cooldown_scope="entity",
         cooldown_seconds=cooldown_seconds,
     )
-    return True
+    try:
+        from logic.events.cash_in_assistant import trigger_cash_in_assistant
 
+        trigger_cash_in_assistant(
+            gui_ref=gui_ref,
+            mode=mode_norm,
+            summary_payload=asdict(payload),
+        )
+    except Exception:
+        pass
+    return True

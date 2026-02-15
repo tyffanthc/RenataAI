@@ -36,6 +36,7 @@ ALLOWED_MESSAGES = {
     "MSG.FSS_PROGRESS_75",
     "MSG.FSS_LAST_BODY",
     "MSG.EXPLORATION_SYSTEM_SUMMARY",
+    "MSG.CASH_IN_ASSISTANT",
     "MSG.MILESTONE_PROGRESS",
     "MSG.MILESTONE_REACHED",
     "MSG.STARTUP_SYSTEMS",
@@ -171,6 +172,14 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         if system:
             return _finalize_tts(f"Podsumowanie systemu {system} gotowe.")
         return _finalize_tts("Podsumowanie eksploracji gotowe.")
+
+    if message_id == "MSG.CASH_IN_ASSISTANT":
+        raw_text = ctx.get("raw_text")
+        if raw_text:
+            fixed = _repair_polish_text(raw_text).strip()
+            if fixed:
+                return fixed
+        return _finalize_tts("Cash-in. Sprawdz decyzje w panelu.")
 
     if message_id == "MSG.NEXT_HOP":
         system = _normalize_system_name(ctx.get("system"))

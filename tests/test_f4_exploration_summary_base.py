@@ -13,12 +13,18 @@ class F4ExplorationSummaryBaseTests(unittest.TestCase):
     def setUp(self) -> None:
         self._saved_system = getattr(app_state, "current_system", None)
         self._saved_signature = getattr(app_state, "last_exploration_summary_signature", None)
+        self._saved_cash_in_signature = getattr(app_state, "last_cash_in_signature", None)
+        self._saved_cash_in_skip_signature = getattr(app_state, "cash_in_skip_signature", None)
         app_state.current_system = "F4_SUMMARY_TEST_SYSTEM"
         app_state.last_exploration_summary_signature = None
+        app_state.last_cash_in_signature = None
+        app_state.cash_in_skip_signature = None
 
     def tearDown(self) -> None:
         app_state.current_system = self._saved_system
         app_state.last_exploration_summary_signature = self._saved_signature
+        app_state.last_cash_in_signature = self._saved_cash_in_signature
+        app_state.cash_in_skip_signature = self._saved_cash_in_skip_signature
 
     @staticmethod
     def _sample_data() -> ExitSummaryData:
@@ -92,4 +98,3 @@ class F4ExplorationSummaryBaseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -236,6 +236,8 @@ class RenataApp:
             on_generate_science_excel=self.on_generate_science_excel,
             on_generate_modules_data=self.on_generate_modules_data,
             on_generate_exploration_summary=self.on_generate_exploration_summary,
+            on_generate_cash_in_assistant=self.on_generate_cash_in_assistant,
+            on_skip_cash_in_assistant=self.on_skip_cash_in_assistant,
             app_state=app_state,
             route_manager=route_manager,
         )
@@ -811,6 +813,16 @@ class RenataApp:
                             exc,
                             interval_ms=3000,
                         )
+                elif msg_type == "cash_in_assistant":
+                    try:
+                        self.tab_pulpit.update_cash_in_assistant(content)
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.cash_in_assistant",
+                            "failed to update cash-in assistant card",
+                            exc,
+                            interval_ms=3000,
+                        )
 
                 elif msg_type == "status_neu":
                     txt, col = content
@@ -1379,6 +1391,57 @@ class RenataApp:
             _log_app_fallback(
                 "exploration.summary.manual",
                 "manual exploration summary trigger failed",
+                exc,
+                interval_ms=3000,
+            )
+
+    def on_generate_cash_in_assistant(self):
+        """
+        Manual trigger for F4 cash-in assistant baseline.
+        """
+        try:
+            from logic.events.cash_in_assistant import trigger_cash_in_assistant
+
+            summary_payload = {}
+            try:
+                if hasattr(self.tab_pulpit, "get_current_exploration_summary_payload"):
+                    summary_payload = self.tab_pulpit.get_current_exploration_summary_payload() or {}
+            except Exception:
+                summary_payload = {}
+
+            emitted = trigger_cash_in_assistant(
+                gui_ref=self,
+                mode="manual",
+                summary_payload=summary_payload,
+            )
+            if not emitted:
+                self.show_status("Brak danych do oceny cash-in w tym momencie.")
+        except Exception as exc:
+            _log_app_fallback(
+                "cash_in.assistant.manual",
+                "manual cash-in assistant trigger failed",
+                exc,
+                interval_ms=3000,
+            )
+
+    def on_skip_cash_in_assistant(self):
+        """
+        UX action: user intentionally skips current cash-in suggestion.
+        Auto callouts for the same signature are suppressed.
+        """
+        try:
+            signature = ""
+            if hasattr(self.tab_pulpit, "get_current_cash_in_signature"):
+                signature = str(self.tab_pulpit.get_current_cash_in_signature() or "").strip()
+            if signature:
+                app_state.cash_in_skip_signature = signature
+                self.show_status("Cash-in: pomijam dla obecnego kontekstu.")
+            else:
+                self.show_status("Cash-in: brak aktywnej sugestii do pominięcia.")
+        except Exception as exc:
+            _log_app_fallback(
+                "cash_in.assistant.skip",
+                "cash-in skip action failed",
                 exc,
                 interval_ms=3000,
             )

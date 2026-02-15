@@ -44,6 +44,7 @@ from logic.events import exploration_dss_events as dss_events  # type: ignore
 from logic.events import exploration_misc_events as misc_events  # type: ignore
 from logic.events import exploration_awareness as awareness_events  # type: ignore
 from logic.events import exploration_summary as summary_events  # type: ignore
+from logic.events import cash_in_assistant as cash_in_events  # type: ignore
 from logic import spansh_payloads
 from logic import spansh_client as spansh_client_logic  # type: ignore
 from logic import neutron as neutron_logic  # type: ignore
@@ -1693,6 +1694,57 @@ def test_f4_exploration_summary_baseline(ctx: TestContext) -> None:
     assert payload.get("highlights"), f"Missing highlights in summary payload: {payload}"
 
 
+def test_f4_cash_in_assistant_baseline(ctx: TestContext) -> None:
+    """
+    F4 cash-in baseline smoke:
+    - manual trigger emits queue line + structured cash-in payload,
+    - decision space contains 2-3 options + Pomijam.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    app_state.current_system = "SMOKE_F4_CASHIN_SYSTEM"
+    app_state.last_cash_in_signature = None
+    app_state.cash_in_skip_signature = None
+
+    summary_payload = {
+        "system": "SMOKE_F4_CASHIN_SYSTEM",
+        "scanned_bodies": 9,
+        "total_bodies": 12,
+        "cash_in_signal": "wysoki",
+        "cash_in_system_estimated": 19_500_000.0,
+        "cash_in_session_estimated": 42_000_000.0,
+        "trust_status": "TRUST_HIGH",
+        "confidence": "high",
+    }
+
+    ok = cash_in_events.trigger_cash_in_assistant(
+        mode="manual",
+        gui_ref=None,
+        summary_payload=summary_payload,
+    )
+    assert ok, "Expected manual cash-in assistant trigger to emit"
+
+    items = ctx.drain_queue()
+    assert any(
+        isinstance(item, tuple) and len(item) == 2 and item[0] == "log"
+        for item in items
+    ), "Expected cash-in assistant log line in queue"
+    payload_items = [
+        item[1]
+        for item in items
+        if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+    ]
+    assert payload_items, "Expected structured cash_in_assistant payload in queue"
+
+    payload = payload_items[-1]
+    options = payload.get("options") or []
+    assert 2 <= len(options) <= 3, f"Expected 2-3 cash-in options, got: {options}"
+    skip_action = payload.get("skip_action") or {}
+    assert str(skip_action.get("label") or "").strip() == "Pomijam", (
+        f"Expected Pomijam skip action, got: {skip_action}"
+    )
+
+
 def test_trade_station_state_reset_on_system_change(_ctx: TestContext) -> None:
     class DummyVar:
         def __init__(self, value: str = "") -> None:
@@ -1840,6 +1892,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_trade_station_state_reset_on_system_change",
         "test_trade_station_picker_candidates_and_wiring",
         "test_trade_payload_forever_omits_market_age",
+        "test_f4_cash_in_assistant_baseline",
     ]
     for test_name in required_tests:
         assert f"def {test_name}(" in self_content, f"Missing regression test function: {test_name}"
@@ -2140,6 +2193,7 @@ def test_event_insight_mapping_core_contract(_ctx: TestContext) -> None:
         "MSG.EXOBIO_SAMPLE_LOGGED",
         "MSG.EXOBIO_RANGE_READY",
         "MSG.EXOBIO_NEW_ENTRY",
+        "MSG.CASH_IN_ASSISTANT",
     ]
     for message_id in required_message_ids:
         spec = get_insight_class(message_id)
@@ -2497,6 +2551,7 @@ def run_all_tests() -> int:
         ("test_exobio_sample_progress_sequence", test_exobio_sample_progress_sequence),
         ("test_f3_exploration_cross_module_invariants", test_f3_exploration_cross_module_invariants),
         ("test_f4_exploration_summary_baseline", test_f4_exploration_summary_baseline),
+        ("test_f4_cash_in_assistant_baseline", test_f4_cash_in_assistant_baseline),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
         ("test_trade_station_picker_candidates_and_wiring", test_trade_station_picker_candidates_and_wiring),
         ("test_spansh_feedback_smoke_pack_coverage", test_spansh_feedback_smoke_pack_coverage),
