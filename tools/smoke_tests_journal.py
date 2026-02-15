@@ -29,8 +29,10 @@ from app.state import app_state  # type: ignore
 from app.route_manager import route_manager  # type: ignore
 from gui import common as gui_common  # type: ignore
 from logic.events import exploration_bio_events as bio_events  # type: ignore
+from logic.events import fuel_events  # type: ignore
 from logic.events import survival_rebuy_awareness as survival_events  # type: ignore
 from logic.events import combat_awareness as combat_events  # type: ignore
+from logic.insight_dispatcher import reset_dispatcher_runtime_state  # type: ignore
 
 
 class TestContext:
@@ -608,6 +610,119 @@ def test_journal_f5_combat_awareness_nonflood(ctx: TestContext) -> None:
     )
 
 
+def test_journal_f5_anti_spam_transitions_and_exceptions(ctx: TestContext) -> None:
+    """
+    F5 anti-spam integration:
+    - EXOBIO READY blocked in combat should retry once after leaving combat,
+    - READY should not flood after successful emit,
+    - fuel critical should still trigger in combat and remain non-flood.
+    """
+    settings = config.config._settings  # type: ignore[attr-defined]
+    saved_survival_enabled = settings.get("survival_rebuy_awareness_enabled")
+    saved_combat_enabled = settings.get("combat_awareness_enabled")
+    settings["survival_rebuy_awareness_enabled"] = False
+    settings["combat_awareness_enabled"] = False
+
+    try:
+        ctx.clear_queue()
+        ctx.reset_debouncer()
+        reset_dispatcher_runtime_state()
+        app_state.current_system = "SMOKE_T2_F5_ANTI_SPAM_SYS"
+        app_state.last_combat_awareness_signature = None
+        combat_events.reset_combat_awareness_state()
+        app_state.last_survival_rebuy_signature = None
+        survival_events.reset_survival_rebuy_state()
+        bio_events.reset_bio_flags()
+        fuel_events.LOW_FUEL_WARNED = False  # type: ignore[attr-defined]
+        fuel_events.LOW_FUEL_FLAG_PENDING = False  # type: ignore[attr-defined]
+        fuel_events.LOW_FUEL_FLAG_PENDING_TS = 0.0  # type: ignore[attr-defined]
+
+        key = ("smoke_t2_f5_anti_spam_sys", "smoke_t2_f5_anti_spam_body", "aleoida arcus")
+        bio_events.EXOBIO_SAMPLE_COUNT[key] = 1
+        bio_events.EXOBIO_RANGE_TRACKERS[key] = {
+            "lat": 0.0,
+            "lon": 0.0,
+            "radius_m": 6_371_000.0,
+            "threshold_m": 100.0,
+            "pending": False,
+            "body": "smoke_t2_f5_anti_spam_body",
+            "system": "smoke_t2_f5_anti_spam_sys",
+        }
+
+        handler.on_status_update(
+            {
+                "StarSystem": "SMOKE_T2_F5_ANTI_SPAM_SYS",
+                "BodyName": "SMOKE_T2_F5_ANTI_SPAM_BODY",
+                "Latitude": 0.0,
+                "Longitude": 0.002,
+                "PlanetRadius": 6_371_000.0,
+                "in_combat": True,
+                "LowFuel": False,
+            },
+            gui_ref=None,
+        )
+        assert key not in bio_events.EXOBIO_RANGE_READY_WARNED, (
+            "READY should not be latched when blocked by combat silence"
+        )
+
+        handler.on_status_update(
+            {
+                "StarSystem": "SMOKE_T2_F5_ANTI_SPAM_SYS",
+                "BodyName": "SMOKE_T2_F5_ANTI_SPAM_BODY",
+                "Latitude": 0.0,
+                "Longitude": 0.0022,
+                "PlanetRadius": 6_371_000.0,
+                "in_combat": False,
+                "LowFuel": False,
+            },
+            gui_ref=None,
+        )
+        assert key in bio_events.EXOBIO_RANGE_READY_WARNED, "READY should emit once after leaving combat"
+
+        handler.on_status_update(
+            {
+                "StarSystem": "SMOKE_T2_F5_ANTI_SPAM_SYS",
+                "BodyName": "SMOKE_T2_F5_ANTI_SPAM_BODY",
+                "Latitude": 0.0,
+                "Longitude": 0.0024,
+                "PlanetRadius": 6_371_000.0,
+                "in_combat": False,
+                "LowFuel": False,
+            },
+            gui_ref=None,
+        )
+        assert key in bio_events.EXOBIO_RANGE_READY_WARNED, "READY should stay non-flood after successful emit"
+
+        handler.on_status_update(
+            {
+                "StarSystem": "SMOKE_T2_F5_ANTI_SPAM_SYS",
+                "in_combat": True,
+                "Fuel": {"FuelMain": 0.05},
+                "FuelCapacity": {"Main": 10.0},
+                "LowFuel": True,
+            },
+            gui_ref=None,
+        )
+        handler.on_status_update(
+            {
+                "StarSystem": "SMOKE_T2_F5_ANTI_SPAM_SYS",
+                "in_combat": True,
+                "Fuel": {"FuelMain": 0.05},
+                "FuelCapacity": {"Main": 10.0},
+                "LowFuel": True,
+            },
+            gui_ref=None,
+        )
+
+        joined = " | ".join(str(item) for item in ctx.drain_queue()).lower()
+        assert joined.count("warning. fuel reserves critical.") == 1, (
+            "Fuel critical should trigger once and stay non-flood in repeated combat status updates"
+        )
+    finally:
+        settings["survival_rebuy_awareness_enabled"] = saved_survival_enabled
+        settings["combat_awareness_enabled"] = saved_combat_enabled
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -629,6 +744,7 @@ def run_all_tests() -> int:
         ("test_journal_f3_exobio_progress_no_flood", test_journal_f3_exobio_progress_no_flood),
         ("test_journal_f4_survival_no_rebuy_nonflood", test_journal_f4_survival_no_rebuy_nonflood),
         ("test_journal_f5_combat_awareness_nonflood", test_journal_f5_combat_awareness_nonflood),
+        ("test_journal_f5_anti_spam_transitions_and_exceptions", test_journal_f5_anti_spam_transitions_and_exceptions),
     ]
 
     print("=== RenataAI Journal / AppState / Debouncer Tests (T2) ===")

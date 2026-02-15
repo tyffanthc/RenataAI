@@ -1979,6 +1979,190 @@ def test_f5_voice_policy_contract_baseline(_ctx: TestContext) -> None:
     assert allowed is True, "BYPASS_GLOBAL contract should allow threshold message despite global cooldown"
 
 
+def test_f5_anti_spam_regression_baseline(_ctx: TestContext) -> None:
+    """
+    F5 anti-spam regression baseline:
+    - burst combat message (same signature) emits once,
+    - EXOBIO READY is blocked in combat, then recovers once and re-enters cooldown,
+    - FSS threshold bypasses global TTS cooldown but still respects entity cooldown,
+    - fuel critical is never lost during combat burst.
+    """
+    reset_dispatcher_runtime_state()
+    try:
+        last = getattr(notify_module.DEBOUNCER, "_last", None)
+        if isinstance(last, dict):
+            last.clear()
+    except Exception:
+        pass
+
+    with (
+        patch("logic.insight_dispatcher._notify._should_speak_tts", return_value=True),
+        patch("logic.insight_dispatcher._notify.powiedz") as powiedz_mock,
+    ):
+        burst = [
+            emit_insight(
+                "combat burst",
+                message_id="MSG.COMBAT_AWARENESS_HIGH",
+                source="combat_awareness",
+                event_type="COMBAT_RISK_PATTERN",
+                context={
+                    "system": "SMOKE_F5_ANTI_SPAM",
+                    "in_combat": True,
+                    "risk_status": "RISK_HIGH",
+                    "var_status": "VAR_HIGH",
+                    "trust_status": "TRUST_HIGH",
+                    "confidence": "high",
+                },
+                priority="P1_HIGH",
+                dedup_key="smoke:f5:anti:combat:burst",
+                cooldown_scope="entity",
+                cooldown_seconds=75.0,
+            )
+            for _ in range(3)
+        ]
+        assert burst == [False, True, False], f"Unexpected burst anti-spam behavior: {burst}"
+
+        # Separate sub-scenario: clear matrix/debouncer state so READY recovery is
+        # validated against combat silence/cooldown rules, not previous burst memory.
+        reset_dispatcher_runtime_state()
+        try:
+            last = getattr(notify_module.DEBOUNCER, "_last", None)
+            if isinstance(last, dict):
+                last.clear()
+        except Exception:
+            pass
+
+        ready_blocked = emit_insight(
+            "ready in combat",
+            message_id="MSG.EXOBIO_RANGE_READY",
+            source="exploration_bio_events",
+            event_type="BIO_PROGRESS",
+            context={
+                "system": "SMOKE_F5_ANTI_SPAM",
+                "in_combat": True,
+                "risk_status": "RISK_MEDIUM",
+                "var_status": "VAR_MEDIUM",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P2_NORMAL",
+            dedup_key="smoke:f5:anti:ready",
+            cooldown_scope="entity",
+            cooldown_seconds=10.0,
+        )
+        ready_recovered = emit_insight(
+            "ready after combat",
+            message_id="MSG.EXOBIO_RANGE_READY",
+            source="exploration_bio_events",
+            event_type="BIO_PROGRESS",
+            context={
+                "system": "SMOKE_F5_ANTI_SPAM",
+                "in_combat": False,
+                "risk_status": "RISK_MEDIUM",
+                "var_status": "VAR_MEDIUM",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P2_NORMAL",
+            dedup_key="smoke:f5:anti:ready",
+            cooldown_scope="entity",
+            cooldown_seconds=10.0,
+        )
+        ready_cooldown = emit_insight(
+            "ready after combat again",
+            message_id="MSG.EXOBIO_RANGE_READY",
+            source="exploration_bio_events",
+            event_type="BIO_PROGRESS",
+            context={
+                "system": "SMOKE_F5_ANTI_SPAM",
+                "in_combat": False,
+                "risk_status": "RISK_MEDIUM",
+                "var_status": "VAR_MEDIUM",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P2_NORMAL",
+            dedup_key="smoke:f5:anti:ready",
+            cooldown_scope="entity",
+            cooldown_seconds=10.0,
+        )
+        assert ready_blocked is False, "READY should be blocked by combat silence in combat"
+        assert ready_recovered is True, "READY should recover once after leaving combat"
+        assert ready_cooldown is False, "READY should not flood after recovery emit"
+
+        fuel_ok = emit_insight(
+            "fuel critical",
+            message_id="MSG.FUEL_CRITICAL",
+            source="fuel_events",
+            event_type="SHIP_HEALTH_CHANGED",
+            context={
+                "system": "SMOKE_F5_ANTI_SPAM",
+                "in_combat": True,
+                "risk_status": "RISK_CRITICAL",
+                "var_status": "VAR_HIGH",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P0_CRITICAL",
+            dedup_key="smoke:f5:anti:fuel",
+            cooldown_scope="entity",
+            cooldown_seconds=300.0,
+            combat_silence_sensitive=False,
+        )
+        assert fuel_ok is True, "Fuel critical must not be lost during combat burst"
+        fuel_ctx = dict(powiedz_mock.call_args_list[-1].kwargs.get("context") or {})
+        assert fuel_ctx.get("voice_priority_reason") in {"priority_critical", "matrix_p0_critical"}, (
+            f"Unexpected fuel critical voice reason: {fuel_ctx}"
+        )
+
+    reset_dispatcher_runtime_state()
+    try:
+        last = getattr(notify_module.DEBOUNCER, "_last", None)
+        if isinstance(last, dict):
+            last.clear()
+    except Exception:
+        pass
+
+    # Prime global TTS cooldown and verify threshold contract bypasses it.
+    notify_module.DEBOUNCER.can_send("TTS_GLOBAL", 8.0)
+    fss_first = emit_insight(
+        "fss 25",
+        message_id="MSG.FSS_PROGRESS_25",
+        source="exploration_fss_events",
+        event_type="SYSTEM_SCANNED",
+        context={
+            "system": "SMOKE_F5_ANTI_SPAM_FSS",
+            "risk_status": "RISK_MEDIUM",
+            "var_status": "VAR_MEDIUM",
+            "trust_status": "TRUST_HIGH",
+            "confidence": "high",
+        },
+        priority="P2_NORMAL",
+        dedup_key="smoke:f5:anti:fss25",
+        cooldown_scope="entity",
+        cooldown_seconds=120.0,
+    )
+    fss_second = emit_insight(
+        "fss 25 again",
+        message_id="MSG.FSS_PROGRESS_25",
+        source="exploration_fss_events",
+        event_type="SYSTEM_SCANNED",
+        context={
+            "system": "SMOKE_F5_ANTI_SPAM_FSS",
+            "risk_status": "RISK_MEDIUM",
+            "var_status": "VAR_MEDIUM",
+            "trust_status": "TRUST_HIGH",
+            "confidence": "high",
+        },
+        priority="P2_NORMAL",
+        dedup_key="smoke:f5:anti:fss25",
+        cooldown_scope="entity",
+        cooldown_seconds=120.0,
+    )
+    assert fss_first is True, "FSS threshold should bypass global cooldown"
+    assert fss_second is False, "FSS threshold should still respect anti-spam entity cooldown"
+
+
 def test_f4_cross_module_voice_priority_baseline(_ctx: TestContext) -> None:
     """
     F4 cross-module voice priority baseline:
@@ -2360,6 +2544,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_f5_combat_awareness_baseline",
         "test_f5_dispatcher_priority_matrix_baseline",
         "test_f5_voice_policy_contract_baseline",
+        "test_f5_anti_spam_regression_baseline",
     ]
     for test_name in required_tests:
         assert f"def {test_name}(" in self_content, f"Missing regression test function: {test_name}"
@@ -3031,6 +3216,7 @@ def run_all_tests() -> int:
         ("test_f5_combat_awareness_baseline", test_f5_combat_awareness_baseline),
         ("test_f5_dispatcher_priority_matrix_baseline", test_f5_dispatcher_priority_matrix_baseline),
         ("test_f5_voice_policy_contract_baseline", test_f5_voice_policy_contract_baseline),
+        ("test_f5_anti_spam_regression_baseline", test_f5_anti_spam_regression_baseline),
         ("test_f4_cross_module_voice_priority_baseline", test_f4_cross_module_voice_priority_baseline),
         ("test_f4_quality_gates_invariants", test_f4_quality_gates_invariants),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
