@@ -1864,6 +1864,85 @@ def test_f5_combat_awareness_baseline(ctx: TestContext) -> None:
     assert bool(payload.get("in_combat")), f"Expected in_combat=True in combat payload: {payload}"
 
 
+def test_f5_dispatcher_priority_matrix_baseline(_ctx: TestContext) -> None:
+    """
+    F5 dispatcher matrix baseline smoke:
+    - COMBAT message suppresses lower NAV message in active matrix window.
+    - Repeated P2 risk message escalates to P1 then P0.
+    """
+    reset_dispatcher_runtime_state()
+    with (
+        patch("logic.insight_dispatcher._notify.DEBOUNCER.can_send", return_value=True),
+        patch("logic.insight_dispatcher._notify._should_speak_tts", return_value=True),
+        patch("logic.insight_dispatcher._notify.powiedz") as powiedz_mock,
+    ):
+        combat_ok = emit_insight(
+            "combat high",
+            message_id="MSG.COMBAT_AWARENESS_HIGH",
+            source="combat_awareness",
+            event_type="COMBAT_RISK_PATTERN",
+            context={
+                "system": "SMOKE_F5_MATRIX",
+                "risk_status": "RISK_HIGH",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P1_HIGH",
+            dedup_key="combat:smoke",
+            cooldown_scope="entity",
+            cooldown_seconds=0.0,
+        )
+        nav_ok = emit_insight(
+            "nav next hop",
+            message_id="MSG.NEXT_HOP",
+            source="navigation_events",
+            event_type="ROUTE_PROGRESS",
+            context={
+                "system": "SMOKE_F5_MATRIX",
+                "risk_status": "RISK_MEDIUM",
+                "trust_status": "TRUST_HIGH",
+                "confidence": "high",
+            },
+            priority="P2_NORMAL",
+            dedup_key="nav:smoke",
+            cooldown_scope="entity",
+            cooldown_seconds=0.0,
+        )
+
+        for _ in range(3):
+            emit_insight(
+                "escalation candidate",
+                message_id="MSG.TEST_MATRIX_ESC",
+                source="navigation_events",
+                event_type="TEST_EVENT",
+                context={
+                    "system": "SMOKE_F5_MATRIX",
+                    "risk_status": "RISK_CRITICAL",
+                    "var_status": "VAR_HIGH",
+                    "trust_status": "TRUST_HIGH",
+                    "confidence": "high",
+                },
+                priority="P2_NORMAL",
+                dedup_key="matrix:escalate:smoke",
+                cooldown_scope="entity",
+                cooldown_seconds=0.0,
+            )
+
+    assert combat_ok is True, "Expected combat awareness message in matrix baseline"
+    assert nav_ok is False, "Expected navigation suppression after recent combat voice"
+    nav_ctx = dict(powiedz_mock.call_args_list[1].kwargs.get("context") or {})
+    assert nav_ctx.get("voice_priority_reason") == "matrix_suppressed_by_recent_higher_or_equal", (
+        f"Unexpected matrix suppression reason: {nav_ctx}"
+    )
+    escalation_priorities = [
+        dict(call.kwargs.get("context") or {}).get("effective_priority")
+        for call in powiedz_mock.call_args_list[-3:]
+    ]
+    assert escalation_priorities == ["P2_NORMAL", "P1_HIGH", "P0_CRITICAL"], (
+        f"Unexpected controlled escalation priorities: {escalation_priorities}"
+    )
+
+
 def test_f4_cross_module_voice_priority_baseline(_ctx: TestContext) -> None:
     """
     F4 cross-module voice priority baseline:
@@ -2243,6 +2322,7 @@ def test_spansh_feedback_smoke_pack_coverage(_ctx: TestContext) -> None:
         "test_trade_payload_forever_omits_market_age",
         "test_f4_cash_in_assistant_baseline",
         "test_f5_combat_awareness_baseline",
+        "test_f5_dispatcher_priority_matrix_baseline",
     ]
     for test_name in required_tests:
         assert f"def {test_name}(" in self_content, f"Missing regression test function: {test_name}"
@@ -2912,6 +2992,7 @@ def run_all_tests() -> int:
         ("test_f4_cash_in_assistant_baseline", test_f4_cash_in_assistant_baseline),
         ("test_f4_survival_rebuy_awareness_baseline", test_f4_survival_rebuy_awareness_baseline),
         ("test_f5_combat_awareness_baseline", test_f5_combat_awareness_baseline),
+        ("test_f5_dispatcher_priority_matrix_baseline", test_f5_dispatcher_priority_matrix_baseline),
         ("test_f4_cross_module_voice_priority_baseline", test_f4_cross_module_voice_priority_baseline),
         ("test_f4_quality_gates_invariants", test_f4_quality_gates_invariants),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),

@@ -122,6 +122,15 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "voice_exit_summary": True,       # glosowe podsumowanie
     "survival_rebuy_awareness_enabled": True,  # F4 survival/rebuy awareness
     "combat_awareness_enabled": True,  # F5 combat awareness baseline
+    "dispatcher.f4_voice_priority_window_sec": 12.0,
+    "dispatcher.priority_matrix_window_sec": 10.0,
+    "dispatcher.priority_escalation_enabled": True,
+    "dispatcher.priority_escalation_window_sec": 20.0,
+    "dispatcher.class_cooldown.combat": 0.0,
+    "dispatcher.class_cooldown.f4": 0.0,
+    "dispatcher.class_cooldown.exploration": 0.0,
+    "dispatcher.class_cooldown.navigation": 0.0,
+    "dispatcher.class_cooldown.general": 0.0,
 
     # SCHOWEK / AUTO-COPY
     "auto_clipboard": True,           # auto-schowek (route)

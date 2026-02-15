@@ -36,6 +36,77 @@ _CROSS_MODULE_DEFAULT_WINDOW_SEC = {
 
 _CROSS_MODULE_RUNTIME: dict[str, dict[str, object]] = {}
 
+_MODULE_CLASS_BY_MESSAGE = {
+    # Navigation
+    "MSG.NEXT_HOP": "NAVIGATION",
+    "MSG.JUMPED_SYSTEM": "NAVIGATION",
+    "MSG.NEXT_HOP_COPIED": "NAVIGATION",
+    "MSG.DOCKED": "NAVIGATION",
+    "MSG.UNDOCKED": "NAVIGATION",
+    # Exploration (FSS/DSS/Exobio/awareness)
+    "MSG.FSS_PROGRESS_25": "EXPLORATION",
+    "MSG.FSS_PROGRESS_50": "EXPLORATION",
+    "MSG.FSS_PROGRESS_75": "EXPLORATION",
+    "MSG.FSS_LAST_BODY": "EXPLORATION",
+    "MSG.SYSTEM_FULLY_SCANNED": "EXPLORATION",
+    "MSG.FIRST_DISCOVERY": "EXPLORATION",
+    "MSG.FIRST_DISCOVERY_OPPORTUNITY": "EXPLORATION",
+    "MSG.BODY_NO_PREV_DISCOVERY": "EXPLORATION",
+    "MSG.ELW_DETECTED": "EXPLORATION",
+    "MSG.WW_DETECTED": "EXPLORATION",
+    "MSG.TERRAFORMABLE_DETECTED": "EXPLORATION",
+    "MSG.BIO_SIGNALS_HIGH": "EXPLORATION",
+    "MSG.DSS_TARGET_HINT": "EXPLORATION",
+    "MSG.DSS_COMPLETED": "EXPLORATION",
+    "MSG.DSS_PROGRESS": "EXPLORATION",
+    "MSG.FIRST_MAPPED": "EXPLORATION",
+    "MSG.EXOBIO_SAMPLE_LOGGED": "EXPLORATION",
+    "MSG.EXOBIO_RANGE_READY": "EXPLORATION",
+    "MSG.EXOBIO_NEW_ENTRY": "EXPLORATION",
+    "MSG.FOOTFALL": "EXPLORATION",
+    # F4
+    "MSG.EXPLORATION_SYSTEM_SUMMARY": "F4",
+    "MSG.CASH_IN_ASSISTANT": "F4",
+    "MSG.SURVIVAL_REBUY_HIGH": "F4",
+    "MSG.SURVIVAL_REBUY_CRITICAL": "F4",
+    # F5 combat
+    "MSG.COMBAT_AWARENESS_HIGH": "COMBAT",
+    "MSG.COMBAT_AWARENESS_CRITICAL": "COMBAT",
+    "MSG.FUEL_CRITICAL": "COMBAT",
+}
+
+_MODULE_CLASS_RANK = {
+    "COMBAT": 0,
+    "F4": 1,
+    "EXPLORATION": 2,
+    "NAVIGATION": 3,
+    "GENERAL": 4,
+}
+
+_MODULE_CLASS_COOLDOWN_DEFAULT_SEC = {
+    "COMBAT": 0.0,
+    "F4": 0.0,
+    "EXPLORATION": 0.0,
+    "NAVIGATION": 0.0,
+    "GENERAL": 0.0,
+}
+
+_PRIORITY_ESCALATION_ORDER = {
+    "P3_LOW": 3,
+    "P2_NORMAL": 2,
+    "P1_HIGH": 1,
+    "P0_CRITICAL": 0,
+}
+
+_PRIORITY_ESCALATION_NEXT = {
+    "P3_LOW": "P2_NORMAL",
+    "P2_NORMAL": "P1_HIGH",
+    "P1_HIGH": "P0_CRITICAL",
+}
+
+_PRIORITY_MATRIX_RUNTIME: dict[str, object] = {}
+_PRIORITY_ESCALATION_RUNTIME: dict[str, dict[str, object]] = {}
+
 
 @dataclass(frozen=True)
 class Insight:
@@ -88,8 +159,43 @@ def _cross_module_window_sec(group_id: str) -> float:
         return fallback
 
 
+def _priority_matrix_window_sec() -> float:
+    fallback = 10.0
+    try:
+        return max(0.0, float(config.get("dispatcher.priority_matrix_window_sec", fallback)))
+    except Exception:
+        return fallback
+
+
+def _priority_escalation_window_sec() -> float:
+    fallback = 20.0
+    try:
+        return max(0.0, float(config.get("dispatcher.priority_escalation_window_sec", fallback)))
+    except Exception:
+        return fallback
+
+
+def _priority_escalation_enabled() -> bool:
+    try:
+        return bool(config.get("dispatcher.priority_escalation_enabled", True))
+    except Exception:
+        return True
+
+
+def _module_class_cooldown_sec(module_class: str) -> float:
+    norm = str(module_class or "GENERAL").strip().upper() or "GENERAL"
+    setting_key = f"dispatcher.class_cooldown.{norm.lower()}"
+    fallback = float(_MODULE_CLASS_COOLDOWN_DEFAULT_SEC.get(norm, 0.0))
+    try:
+        return max(0.0, float(config.get(setting_key, fallback)))
+    except Exception:
+        return fallback
+
+
 def reset_dispatcher_runtime_state() -> None:
     _CROSS_MODULE_RUNTIME.clear()
+    _PRIORITY_MATRIX_RUNTIME.clear()
+    _PRIORITY_ESCALATION_RUNTIME.clear()
 
 
 def _normalize_risk(value: object) -> str:
@@ -165,6 +271,100 @@ def _gate_context_snapshot(context: dict | None) -> tuple[str, str, str, float, 
         ctx.get("confidence_score", ctx.get("confidence"))
     )
     return risk_status, var_status, trust_status, confidence_score, confidence_label
+
+
+def _module_class_from_source(source: str) -> str:
+    norm = str(source or "").strip().lower()
+    if not norm:
+        return "GENERAL"
+    if norm.startswith("combat_") or "combat" in norm:
+        return "COMBAT"
+    if norm.startswith("survival_"):
+        return "F4"
+    if norm.startswith("cash_in_") or norm.startswith("exploration_summary"):
+        return "F4"
+    if norm.startswith("exploration_"):
+        return "EXPLORATION"
+    if norm.startswith("navigation_") or "auto_clipboard" in norm:
+        return "NAVIGATION"
+    if norm.startswith("fuel_"):
+        return "COMBAT"
+    return "GENERAL"
+
+
+def _module_class_for(insight: Insight) -> str:
+    message_class = _MODULE_CLASS_BY_MESSAGE.get(str(insight.message_id or "").strip())
+    if message_class:
+        return message_class
+    return _module_class_from_source(insight.source)
+
+
+def _escalation_signature(insight: Insight) -> str:
+    dedup = str(insight.dedup_key or "").strip()
+    if dedup:
+        return dedup
+    msg = str(insight.message_id or "").strip() or "UNKNOWN_MSG"
+    src = str(insight.source or "").strip() or "unknown_source"
+    system = ""
+    try:
+        system = str((insight.context or {}).get("system") or "").strip()
+    except Exception:
+        system = ""
+    return f"{msg}:{src}:{system or 'unknown'}"
+
+
+def _try_escalate_priority(insight: Insight, gate: GateDecision) -> tuple[str, str | None]:
+    base_priority = str(insight.priority or "P2_NORMAL").strip().upper()
+    if not _priority_escalation_enabled():
+        return base_priority, None
+    if base_priority not in _PRIORITY_ESCALATION_ORDER:
+        return base_priority, None
+    if base_priority == "P0_CRITICAL":
+        return base_priority, None
+    if gate.risk_status not in {"RISK_HIGH", "RISK_CRITICAL"} and gate.var_status not in {
+        "VAR_HIGH",
+        "VAR_CRITICAL",
+    }:
+        return base_priority, None
+
+    now = time.monotonic()
+    window = _priority_escalation_window_sec()
+    sig = _escalation_signature(insight)
+    state = dict(_PRIORITY_ESCALATION_RUNTIME.get(sig) or {})
+    last_ts = float(state.get("ts") or 0.0)
+    hits = int(state.get("hits") or 0)
+    if last_ts <= 0.0 or (now - last_ts) > window:
+        hits = 1
+    else:
+        hits += 1
+    state["ts"] = now
+    state["hits"] = hits
+    _PRIORITY_ESCALATION_RUNTIME[sig] = state
+
+    if hits < 2:
+        return base_priority, None
+
+    next_priority = str(_PRIORITY_ESCALATION_NEXT.get(base_priority) or base_priority)
+    if gate.risk_status == "RISK_CRITICAL" and hits >= 3 and next_priority == "P1_HIGH":
+        next_priority = "P0_CRITICAL"
+    if next_priority == base_priority:
+        return base_priority, None
+    return next_priority, f"escalated_{base_priority}_to_{next_priority}_hits_{hits}"
+
+
+def _with_priority(insight: Insight, priority: str) -> Insight:
+    return Insight(
+        text=insight.text,
+        message_id=insight.message_id,
+        source=insight.source,
+        context=dict(insight.context or {}),
+        priority=str(priority or insight.priority or "P2_NORMAL"),
+        dedup_key=insight.dedup_key,
+        cooldown_scope=insight.cooldown_scope,
+        cooldown_seconds=insight.cooldown_seconds,
+        combat_silence_sensitive=insight.combat_silence_sensitive,
+        force_tts=insight.force_tts,
+    )
 
 
 def evaluate_risk_trust_gate(insight: Insight) -> GateDecision:
@@ -286,6 +486,19 @@ def _evaluate_should_speak(insight: Insight) -> tuple[bool, str]:
     if cooldown_sec > 0 and not _notify.DEBOUNCER.can_send(gate_key, cooldown_sec, context=gate_ctx):
         return False, "insight_cooldown"
 
+    module_class = _module_class_for(insight)
+    class_cooldown_sec = _module_class_cooldown_sec(module_class)
+    if (
+        class_cooldown_sec > 0.0
+        and priority != "P0_CRITICAL"
+        and not _notify.DEBOUNCER.can_send(
+            f"INSIGHT_CLASS:{module_class}",
+            class_cooldown_sec,
+            context=module_class,
+        )
+    ):
+        return False, "class_cooldown"
+
     if priority == "P0_CRITICAL":
         return True, "priority_critical"
 
@@ -311,8 +524,10 @@ def _apply_cross_module_voice_priority(
 
     now = time.monotonic()
     state = _CROSS_MODULE_RUNTIME.get(group_id) or {}
-    ts = float(state.get("ts") or 0.0)
-    prev_rank = int(state.get("priority_rank") or 999)
+    ts_val = state.get("ts")
+    ts = float(ts_val) if ts_val is not None else 0.0
+    prev_rank_val = state.get("priority_rank")
+    prev_rank = int(prev_rank_val) if prev_rank_val is not None else 999
     rank = _priority_rank(insight.priority)
     window_sec = _cross_module_window_sec(group_id)
 
@@ -340,12 +555,73 @@ def _apply_cross_module_voice_priority(
     return allow_tts, allow_reason, False
 
 
+def _apply_priority_matrix(
+    insight: Insight,
+    *,
+    allow_tts: bool,
+    allow_reason: str,
+) -> tuple[bool, str, bool]:
+    if str(allow_reason or "").startswith("cross_module_"):
+        return allow_tts, allow_reason, False
+
+    module_class = _module_class_for(insight)
+    class_rank = int(_MODULE_CLASS_RANK.get(module_class, _MODULE_CLASS_RANK["GENERAL"]))
+    now = time.monotonic()
+    state = dict(_PRIORITY_MATRIX_RUNTIME.get("last_voice") or {})
+    ts_val = state.get("ts")
+    ts = float(ts_val) if ts_val is not None else 0.0
+    if ts <= 0.0 or (now - ts) > _priority_matrix_window_sec():
+        return allow_tts, allow_reason, False
+
+    prev_priority_rank_val = state.get("priority_rank")
+    prev_priority_rank = int(prev_priority_rank_val) if prev_priority_rank_val is not None else 999
+    prev_class_rank_val = state.get("class_rank")
+    prev_class_rank = (
+        int(prev_class_rank_val)
+        if prev_class_rank_val is not None
+        else int(_MODULE_CLASS_RANK["GENERAL"])
+    )
+    current_priority_rank = _priority_rank(insight.priority)
+    current_pair = (class_rank, current_priority_rank)
+    previous_pair = (prev_class_rank, prev_priority_rank)
+
+    priority = str(insight.priority or "").strip().upper()
+    if priority == "P0_CRITICAL":
+        if allow_tts:
+            return True, "matrix_p0_critical", False
+        if allow_reason == "notify_policy":
+            return True, "matrix_p0_critical_force", True
+        return allow_tts, allow_reason, False
+
+    if current_pair < previous_pair:
+        if allow_tts:
+            return True, "matrix_preempt_higher", False
+        if allow_reason == "notify_policy":
+            return True, "matrix_preempt_higher_force", True
+        return allow_tts, allow_reason, False
+
+    if allow_tts and current_pair >= previous_pair:
+        return False, "matrix_suppressed_by_recent_higher_or_equal", False
+
+    return allow_tts, allow_reason, False
+
+
 def _remember_cross_module_voice(insight: Insight) -> None:
     group_id = _cross_module_group(insight.message_id)
     if not group_id:
-        return
-    _CROSS_MODULE_RUNTIME[group_id] = {
+        pass
+    else:
+        _CROSS_MODULE_RUNTIME[group_id] = {
+            "message_id": str(insight.message_id or ""),
+            "priority_rank": _priority_rank(insight.priority),
+            "ts": time.monotonic(),
+        }
+
+    module_class = _module_class_for(insight)
+    _PRIORITY_MATRIX_RUNTIME["last_voice"] = {
         "message_id": str(insight.message_id or ""),
+        "module_class": module_class,
+        "class_rank": int(_MODULE_CLASS_RANK.get(module_class, _MODULE_CLASS_RANK["GENERAL"])),
         "priority_rank": _priority_rank(insight.priority),
         "ts": time.monotonic(),
     }
@@ -389,14 +665,28 @@ def emit_insight(
         force_tts=bool(force_tts),
     )
 
-    gate = evaluate_risk_trust_gate(insight)
-    allow_tts, allow_reason = _evaluate_should_speak(insight)
+    initial_gate = evaluate_risk_trust_gate(insight)
+    effective_priority, escalation_reason = _try_escalate_priority(insight, initial_gate)
+    effective_insight = insight if effective_priority == insight.priority else _with_priority(insight, effective_priority)
+
+    gate = evaluate_risk_trust_gate(effective_insight)
+    allow_tts, allow_reason = _evaluate_should_speak(effective_insight)
     allow_tts, allow_reason, forced_by_cross_module = _apply_cross_module_voice_priority(
-        insight,
+        effective_insight,
+        allow_tts=allow_tts,
+        allow_reason=allow_reason,
+    )
+    allow_tts, allow_reason, forced_by_matrix = _apply_priority_matrix(
+        effective_insight,
         allow_tts=allow_tts,
         allow_reason=allow_reason,
     )
     runtime_ctx = dict(insight.context or {})
+    runtime_ctx["module_class"] = _module_class_for(effective_insight)
+    runtime_ctx["base_priority"] = str(insight.priority or "P2_NORMAL")
+    runtime_ctx["effective_priority"] = str(effective_insight.priority or "P2_NORMAL")
+    if escalation_reason:
+        runtime_ctx["priority_escalation_reason"] = escalation_reason
     runtime_ctx["risk_status"] = gate.risk_status
     runtime_ctx["var_status"] = gate.var_status
     runtime_ctx["trust_status"] = gate.trust_status
@@ -410,17 +700,19 @@ def emit_insight(
         runtime_ctx["suppress_tts"] = True
     if forced_by_cross_module:
         runtime_ctx["voice_priority_forced"] = True
+    if forced_by_matrix:
+        runtime_ctx["voice_priority_forced"] = True
 
     # Keep log/UI line behavior from existing powiedz() path.
     _notify.powiedz(
-        insight.text,
+        effective_insight.text,
         gui_ref,
-        message_id=insight.message_id,
+        message_id=effective_insight.message_id,
         context=runtime_ctx,
         force=allow_tts,
     )
     if allow_tts:
-        _remember_cross_module_voice(insight)
+        _remember_cross_module_voice(effective_insight)
     return allow_tts
 
 
@@ -428,8 +720,15 @@ def pick_insight_for_emit(insights: Iterable[Insight]) -> Optional[Insight]:
     items = list(insights or [])
     if not items:
         return None
-    # Deterministic: stable sort by priority rank, then original order.
-    ranked = sorted(enumerate(items), key=lambda p: (_priority_rank(p[1].priority), p[0]))
+    # Deterministic: severity first, then module class matrix, then original order.
+    ranked = sorted(
+        enumerate(items),
+        key=lambda p: (
+            _priority_rank(p[1].priority),
+            int(_MODULE_CLASS_RANK.get(_module_class_for(p[1]), _MODULE_CLASS_RANK["GENERAL"])),
+            p[0],
+        ),
+    )
     return ranked[0][1] if ranked else None
 
 
