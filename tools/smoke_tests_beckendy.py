@@ -60,8 +60,10 @@ from logic.exit_summary import ExitSummaryData
 from logic.tts.text_preprocessor import prepare_tts
 from logic.insight_dispatcher import (
     Insight,
+    emit_insight,
     pick_insight_for_emit,
     evaluate_risk_trust_gate,
+    reset_dispatcher_runtime_state,
     should_speak,
 )
 from logic.event_insight_mapping import get_insight_class, resolve_emit_contract
@@ -1786,6 +1788,91 @@ def test_f4_survival_rebuy_awareness_baseline(ctx: TestContext) -> None:
     assert payload.get("reason") == "no_rebuy", f"Expected no_rebuy reason, got: {payload}"
 
 
+def test_f4_cross_module_voice_priority_baseline(_ctx: TestContext) -> None:
+    """
+    F4 cross-module voice priority baseline:
+    - Cash-In preempts Summary in the same window.
+    - Summary is suppressed after recent Survival High.
+    """
+    reset_dispatcher_runtime_state()
+
+    base_ctx = {
+        "system": "SMOKE_F4_PRIORITY_SYSTEM",
+        "risk_status": "RISK_MEDIUM",
+        "var_status": "VAR_MEDIUM",
+        "trust_status": "TRUST_HIGH",
+        "confidence": "high",
+    }
+
+    with (
+        patch("logic.insight_dispatcher._notify.DEBOUNCER.can_send", return_value=True),
+        patch("logic.insight_dispatcher._notify._should_speak_tts", side_effect=[True, False]),
+        patch("logic.insight_dispatcher._notify.powiedz") as powiedz_mock,
+    ):
+        summary_ok = emit_insight(
+            "summary",
+            message_id="MSG.EXPLORATION_SYSTEM_SUMMARY",
+            source="exploration_summary",
+            event_type="SYSTEM_SUMMARY",
+            context=base_ctx,
+            priority="P3_LOW",
+            dedup_key="smoke:f4:summary",
+            cooldown_scope="entity",
+            cooldown_seconds=45.0,
+        )
+        cash_ok = emit_insight(
+            "cash-in",
+            message_id="MSG.CASH_IN_ASSISTANT",
+            source="cash_in_assistant",
+            event_type="CASH_IN_REVIEW",
+            context=base_ctx,
+            priority="P2_NORMAL",
+            dedup_key="smoke:f4:cash",
+            cooldown_scope="entity",
+            cooldown_seconds=90.0,
+        )
+
+    assert summary_ok is True, "Expected summary TTS in first F4 priority step"
+    assert cash_ok is True, "Expected cash-in preemption over summary/global cooldown"
+    second_call = powiedz_mock.call_args_list[1]
+    second_ctx = second_call.kwargs.get("context") or {}
+    assert second_ctx.get("voice_priority_reason") == "cross_module_preempt_higher_force", (
+        f"Expected preemption reason for cash-in, got: {second_ctx}"
+    )
+
+    reset_dispatcher_runtime_state()
+    with (
+        patch("logic.insight_dispatcher._notify.DEBOUNCER.can_send", return_value=True),
+        patch("logic.insight_dispatcher._notify._should_speak_tts", return_value=True),
+        patch("logic.insight_dispatcher._notify.powiedz"),
+    ):
+        survival_ok = emit_insight(
+            "survival",
+            message_id="MSG.SURVIVAL_REBUY_HIGH",
+            source="survival_rebuy_awareness",
+            event_type="SURVIVAL_RISK_CHANGED",
+            context=base_ctx,
+            priority="P1_HIGH",
+            dedup_key="smoke:f4:survival",
+            cooldown_scope="entity",
+            cooldown_seconds=120.0,
+        )
+        summary_after_survival = emit_insight(
+            "summary",
+            message_id="MSG.EXPLORATION_SYSTEM_SUMMARY",
+            source="exploration_summary",
+            event_type="SYSTEM_SUMMARY",
+            context=base_ctx,
+            priority="P3_LOW",
+            dedup_key="smoke:f4:summary2",
+            cooldown_scope="entity",
+            cooldown_seconds=45.0,
+        )
+
+    assert survival_ok is True, "Expected survival high to speak"
+    assert summary_after_survival is False, "Expected lower-priority summary suppression after survival high"
+
+
 def test_trade_station_state_reset_on_system_change(_ctx: TestContext) -> None:
     class DummyVar:
         def __init__(self, value: str = "") -> None:
@@ -2598,6 +2685,7 @@ def run_all_tests() -> int:
         ("test_f4_exploration_summary_baseline", test_f4_exploration_summary_baseline),
         ("test_f4_cash_in_assistant_baseline", test_f4_cash_in_assistant_baseline),
         ("test_f4_survival_rebuy_awareness_baseline", test_f4_survival_rebuy_awareness_baseline),
+        ("test_f4_cross_module_voice_priority_baseline", test_f4_cross_module_voice_priority_baseline),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
         ("test_trade_station_picker_candidates_and_wiring", test_trade_station_picker_candidates_and_wiring),
         ("test_spansh_feedback_smoke_pack_coverage", test_spansh_feedback_smoke_pack_coverage),

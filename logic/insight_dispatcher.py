@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import time
 from typing import Iterable, Optional
 
+import config
 from logic.event_insight_mapping import resolve_emit_contract
 from logic.utils import notify as _notify
 
@@ -20,6 +22,19 @@ _DEFAULT_COOLDOWN_BY_PRIORITY = {
     "P2_NORMAL": 8.0,
     "P3_LOW": 15.0,
 }
+
+_CROSS_MODULE_GROUP_BY_MESSAGE = {
+    "MSG.EXPLORATION_SYSTEM_SUMMARY": "F4_VOICE",
+    "MSG.CASH_IN_ASSISTANT": "F4_VOICE",
+    "MSG.SURVIVAL_REBUY_HIGH": "F4_VOICE",
+    "MSG.SURVIVAL_REBUY_CRITICAL": "F4_VOICE",
+}
+
+_CROSS_MODULE_DEFAULT_WINDOW_SEC = {
+    "F4_VOICE": 12.0,
+}
+
+_CROSS_MODULE_RUNTIME: dict[str, dict[str, object]] = {}
 
 
 @dataclass(frozen=True)
@@ -54,6 +69,27 @@ def _priority_rank(priority: str) -> int:
 def _default_cooldown(priority: str) -> float:
     norm = str(priority or "").strip().upper()
     return float(_DEFAULT_COOLDOWN_BY_PRIORITY.get(norm, _DEFAULT_COOLDOWN_BY_PRIORITY["P2_NORMAL"]))
+
+
+def _cross_module_group(message_id: str) -> str | None:
+    return _CROSS_MODULE_GROUP_BY_MESSAGE.get(str(message_id or "").strip())
+
+
+def _cross_module_window_sec(group_id: str) -> float:
+    key = ""
+    if group_id == "F4_VOICE":
+        key = "dispatcher.f4_voice_priority_window_sec"
+    fallback = float(_CROSS_MODULE_DEFAULT_WINDOW_SEC.get(group_id, 10.0))
+    if not key:
+        return fallback
+    try:
+        return max(0.0, float(config.get(key, fallback)))
+    except Exception:
+        return fallback
+
+
+def reset_dispatcher_runtime_state() -> None:
+    _CROSS_MODULE_RUNTIME.clear()
 
 
 def _normalize_risk(value: object) -> str:
@@ -225,35 +261,94 @@ def _cooldown_gate_for(insight: Insight) -> tuple[str, str | None]:
     return f"INSIGHT_MESSAGE:{insight.message_id}", dedup_key
 
 
-def should_speak(insight: Insight) -> bool:
+def _evaluate_should_speak(insight: Insight) -> tuple[bool, str]:
     message_id = str(insight.message_id or "").strip()
     source = str(insight.source or "").strip()
     if not message_id or not source:
-        return False
+        return False, "missing_message_or_source"
 
     if insight.force_tts:
-        return True
+        return True, "force_tts"
 
     gate = evaluate_risk_trust_gate(insight)
     if not gate.allow_emit:
-        return False
+        return False, str(gate.reason or "gate_blocked")
 
     priority = str(insight.priority or "P2_NORMAL").strip().upper()
     if insight.combat_silence_sensitive and priority != "P0_CRITICAL":
         if _is_combat_silence_active(insight.context):
-            return False
+            return False, "combat_silence"
 
     cooldown_sec = float(
         insight.cooldown_seconds if insight.cooldown_seconds is not None else _default_cooldown(priority)
     )
     gate_key, gate_ctx = _cooldown_gate_for(insight)
     if cooldown_sec > 0 and not _notify.DEBOUNCER.can_send(gate_key, cooldown_sec, context=gate_ctx):
-        return False
+        return False, "insight_cooldown"
 
     if priority == "P0_CRITICAL":
-        return True
+        return True, "priority_critical"
 
-    return bool(_notify._should_speak_tts(message_id, insight.context))
+    if bool(_notify._should_speak_tts(message_id, insight.context)):
+        return True, "notify_policy_allow"
+    return False, "notify_policy"
+
+
+def should_speak(insight: Insight) -> bool:
+    allow, _reason = _evaluate_should_speak(insight)
+    return allow
+
+
+def _apply_cross_module_voice_priority(
+    insight: Insight,
+    *,
+    allow_tts: bool,
+    allow_reason: str,
+) -> tuple[bool, str, bool]:
+    group_id = _cross_module_group(insight.message_id)
+    if not group_id:
+        return allow_tts, allow_reason, False
+
+    now = time.monotonic()
+    state = _CROSS_MODULE_RUNTIME.get(group_id) or {}
+    ts = float(state.get("ts") or 0.0)
+    prev_rank = int(state.get("priority_rank") or 999)
+    rank = _priority_rank(insight.priority)
+    window_sec = _cross_module_window_sec(group_id)
+
+    if ts <= 0.0 or (now - ts) > window_sec:
+        return allow_tts, allow_reason, False
+
+    priority = str(insight.priority or "").strip().upper()
+    if priority == "P0_CRITICAL":
+        if allow_tts:
+            return True, "cross_module_p0_critical", False
+        if allow_reason == "notify_policy":
+            return True, "cross_module_p0_critical_force", True
+        return allow_tts, allow_reason, False
+
+    if rank < prev_rank:
+        if allow_tts:
+            return True, "cross_module_preempt_higher", False
+        if allow_reason == "notify_policy":
+            return True, "cross_module_preempt_higher_force", True
+        return allow_tts, allow_reason, False
+
+    if allow_tts and rank >= prev_rank:
+        return False, "cross_module_suppressed_by_recent_higher_or_equal", False
+
+    return allow_tts, allow_reason, False
+
+
+def _remember_cross_module_voice(insight: Insight) -> None:
+    group_id = _cross_module_group(insight.message_id)
+    if not group_id:
+        return
+    _CROSS_MODULE_RUNTIME[group_id] = {
+        "message_id": str(insight.message_id or ""),
+        "priority_rank": _priority_rank(insight.priority),
+        "ts": time.monotonic(),
+    }
 
 
 def emit_insight(
@@ -295,7 +390,12 @@ def emit_insight(
     )
 
     gate = evaluate_risk_trust_gate(insight)
-    allow_tts = should_speak(insight)
+    allow_tts, allow_reason = _evaluate_should_speak(insight)
+    allow_tts, allow_reason, forced_by_cross_module = _apply_cross_module_voice_priority(
+        insight,
+        allow_tts=allow_tts,
+        allow_reason=allow_reason,
+    )
     runtime_ctx = dict(insight.context or {})
     runtime_ctx["risk_status"] = gate.risk_status
     runtime_ctx["var_status"] = gate.var_status
@@ -303,10 +403,13 @@ def emit_insight(
     runtime_ctx["confidence"] = gate.confidence_label
     runtime_ctx["confidence_score"] = gate.confidence_score
     runtime_ctx["gate_reason"] = gate.reason
+    runtime_ctx["voice_priority_reason"] = allow_reason
     if allow_tts:
         runtime_ctx["force_tts"] = True
     else:
         runtime_ctx["suppress_tts"] = True
+    if forced_by_cross_module:
+        runtime_ctx["voice_priority_forced"] = True
 
     # Keep log/UI line behavior from existing powiedz() path.
     _notify.powiedz(
@@ -316,6 +419,8 @@ def emit_insight(
         context=runtime_ctx,
         force=allow_tts,
     )
+    if allow_tts:
+        _remember_cross_module_voice(insight)
     return allow_tts
 
 
