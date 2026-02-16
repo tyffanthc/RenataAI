@@ -1,8 +1,31 @@
 # CHANGELOG.md
 
-Ostatnia aktualizacja: 2026-02-13
-Zakres: zmiany z sekcji `## Zmiany do dokumentacji w update v0.9.4!`
-w `docs/internal/LAST_TICKET.MD`.
+Ostatnia aktualizacja: 2026-02-16
+Zakres: skondensowane zmiany release na podstawie `docs/internal/LAST_TICKET.MD`.
+
+---
+
+## v0.9.5 - changelog (w trakcie)
+
+### FLOW-F6-RELEASE-HARDENING-AND-SMOKE-01 (P0)
+- Domknieto finalny gate FREE/PUB dla F6:
+  - `py tools/public_repo_guard.py` PASS,
+  - `py tools/public_repo_guard.py --zip release\\Renata_v0.9.4-preview_win_x64.zip` PASS,
+  - `py tools/smoke_tests_beckendy.py` PASS,
+  - `py tools/smoke_tests_journal.py` PASS.
+- Potwierdzono sanity ZIP (brak sciezek private/PRO i runtime/user files) -> `ZIP_SANITY=PASS`.
+- Zaktualizowano publiczne statusy faz F6:
+  - `docs/Flow/public/FLOW.md`,
+  - `docs/Flow/public/README.md`,
+  - `docs/Flow/public/docs/REFAKTOR_STATUS.md`.
+
+### TRADE-SELL-ASSIST-UI-REMOVAL-01 (P1)
+- Usunieto panel `Sell Assist` z zakladki `Trade` (odchudzenie UI i mniej przeladowania informacji).
+- Pozostawiono backendowy kontrakt Sell Assist:
+  - ranking 2-3 opcji,
+  - `skip_action=Pomijam`,
+  - handoff `route_intent` bez auto-route.
+- Usunieto smoke wiring dla compact panelu UI, pozostawiajac testy logiki runtime.
 
 ---
 

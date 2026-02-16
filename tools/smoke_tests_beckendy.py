@@ -3258,25 +3258,6 @@ def test_trade_split_view_layout_wiring(_ctx: TestContext) -> None:
         assert snippet in content, f"Missing trade split-view layout snippet: {snippet}"
 
 
-def test_trade_sell_assist_compact_wiring(_ctx: TestContext) -> None:
-    trade_path = os.path.join(ROOT_DIR, "gui/tabs/spansh/trade.py")
-    with open(trade_path, "r", encoding="utf-8", errors="ignore") as f:
-        content = f.read()
-
-    required_snippets = [
-        "self.var_sell_assist_toggle = tk.StringVar(value=\"Rozwin Sell Assist\")",
-        "self._sell_assist_collapsed: bool = True",
-        "self.sell_assist_wrap = ttk.LabelFrame(fr, text=\"Sell Assist (compact)\")",
-        "command=self._toggle_sell_assist",
-        "def _toggle_sell_assist(self) -> None:",
-        "def _set_sell_assist_collapsed(self, collapsed: bool, *, force: bool = False) -> None:",
-        "self._set_sell_assist_collapsed(True, force=True)",
-        "self.var_sell_assist_toggle.set(\"Ukryj Sell Assist\")",
-    ]
-    for snippet in required_snippets:
-        assert snippet in content, f"Missing trade sell-assist compact snippet: {snippet}"
-
-
 def test_global_scrollbar_style_and_window_chrome_wiring(_ctx: TestContext) -> None:
     app_path = os.path.join(ROOT_DIR, "gui/app.py")
     with open(app_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -3831,7 +3812,6 @@ def run_all_tests() -> int:
         ("test_trade_table_first_map_layout_refresh", test_trade_table_first_map_layout_refresh),
         ("test_startup_window_deferred_show", test_startup_window_deferred_show),
         ("test_trade_split_view_layout_wiring", test_trade_split_view_layout_wiring),
-        ("test_trade_sell_assist_compact_wiring", test_trade_sell_assist_compact_wiring),
         ("test_global_scrollbar_style_and_window_chrome_wiring", test_global_scrollbar_style_and_window_chrome_wiring),
         ("test_insight_dispatcher_conflict_selection_deterministic", test_insight_dispatcher_conflict_selection_deterministic),
         ("test_risk_trust_gate_blocks_low_trust_low_confidence", test_risk_trust_gate_blocks_low_trust_low_confidence),

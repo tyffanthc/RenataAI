@@ -4,13 +4,13 @@ Publiczny opis produktu Renata. Ten plik zawiera tylko informacje przeznaczone
 do publikacji.
 
 ## Status faz (FREE/PUB)
-- Ostatnia aktualizacja: 2026-02-15
+- Ostatnia aktualizacja: 2026-02-16
 - Faza 1: DONE
 - Faza 2: DONE
 - Faza 3: DONE
 - Faza 4: DONE
 - Faza 5: DONE
-- Faza 6: IN PROGRESS (docs/release hardening)
+- Faza 6: DONE (FREE release hardening + smoke)
 
 ## Granica publikacji
 - `docs/Flow/public` zawiera filozofie produktu, zasady UX i polityki wysokiego poziomu.

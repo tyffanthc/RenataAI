@@ -38,6 +38,7 @@
 - Trade: verify split-view behavior:
   - details panel opens after row selection,
   - details panel can be hidden/shown without breaking main table.
+- Trade: Sell Assist panel is intentionally NOT shown in this tab (runtime logic remains backend-only).
 - Trade: verify columns render values (no empty placeholders when payload contains data):
   - `Towar`
   - `Zysk [cr]`

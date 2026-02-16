@@ -3,9 +3,9 @@
 Publiczna dokumentacja Renaty.
 
 ## Status (FREE/PUB)
-- Ostatnia aktualizacja: 2026-02-15
+- Ostatnia aktualizacja: 2026-02-16
 - Fazy 1-5: DONE
-- Faza 6: IN PROGRESS (docs/release hardening)
+- Faza 6: DONE (FREE release hardening + smoke)
 
 ## Zakres
 - filozofia i granice produktu,
