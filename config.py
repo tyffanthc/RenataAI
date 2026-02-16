@@ -84,6 +84,23 @@ DEFAULT_JACKPOT_THRESHOLDS: Dict[str, int] = {
     "Agronomic Treatment": 1000,
 }
 
+DEFAULT_RISK_VALUE_THRESHOLDS: Dict[str, Dict[str, int]] = {
+    "exploration": {
+        "low": 50_000_000,
+        "med": 100_000_000,
+        "high": 150_000_000,
+        "very_high": 200_000_000,
+        "critical": 250_000_000,
+    },
+    "exobio": {
+        "low": 100_000_000,
+        "med": 250_000_000,
+        "high": 500_000_000,
+        "very_high": 750_000_000,
+        "critical": 1_000_000_000,
+    },
+}
+
 # --- DOMYŚLNE USTAWIENIA (JSON) ---------------------------------------------
 
 DEFAULT_SETTINGS: Dict[str, Any] = {
@@ -136,6 +153,17 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "mode.ttl.combat_sec": 45.0,
     "mode.ttl.exploration_sec": 120.0,
     "mode.ttl.mining_sec": 90.0,
+    # F7 risk/rebuy value thresholds (credits).
+    "risk.threshold.exploration.low_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exploration"]["low"],
+    "risk.threshold.exploration.med_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exploration"]["med"],
+    "risk.threshold.exploration.high_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exploration"]["high"],
+    "risk.threshold.exploration.very_high_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exploration"]["very_high"],
+    "risk.threshold.exploration.critical_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exploration"]["critical"],
+    "risk.threshold.exobio.low_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exobio"]["low"],
+    "risk.threshold.exobio.med_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exobio"]["med"],
+    "risk.threshold.exobio.high_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exobio"]["high"],
+    "risk.threshold.exobio.very_high_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exobio"]["very_high"],
+    "risk.threshold.exobio.critical_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exobio"]["critical"],
 
     # SCHOWEK / AUTO-COPY
     "auto_clipboard": True,           # auto-schowek (route)

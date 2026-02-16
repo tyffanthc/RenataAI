@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import config
+
 
 _RISK_RANK = {
     "LOW": 1,
@@ -43,18 +45,71 @@ def _normalize_risk_label(value: Any) -> str:
 
 
 def _value_risk_label(*, exploration_value: float, exobio_value: float) -> str:
+    exploration_thresholds = _resolve_thresholds(prefix="risk.threshold.exploration")
+    exobio_thresholds = _resolve_thresholds(prefix="risk.threshold.exobio")
+
     # VERY_HIGH from product feedback is intentionally collapsed to HIGH for widget contract.
-    if exploration_value >= 250_000_000.0 or exobio_value >= 1_000_000_000.0:
+    if (
+        exploration_value >= exploration_thresholds["critical"]
+        or exobio_value >= exobio_thresholds["critical"]
+    ):
         return "CRIT"
-    if exploration_value >= 200_000_000.0 or exobio_value >= 750_000_000.0:
+    if (
+        exploration_value >= exploration_thresholds["very_high"]
+        or exobio_value >= exobio_thresholds["very_high"]
+    ):
         return "HIGH"
-    if exploration_value >= 150_000_000.0 or exobio_value >= 500_000_000.0:
+    if (
+        exploration_value >= exploration_thresholds["high"]
+        or exobio_value >= exobio_thresholds["high"]
+    ):
         return "HIGH"
-    if exploration_value >= 100_000_000.0 or exobio_value >= 250_000_000.0:
+    if (
+        exploration_value >= exploration_thresholds["med"]
+        or exobio_value >= exobio_thresholds["med"]
+    ):
         return "MED"
-    if exploration_value >= 50_000_000.0 or exobio_value >= 100_000_000.0:
+    if (
+        exploration_value >= exploration_thresholds["low"]
+        or exobio_value >= exobio_thresholds["low"]
+    ):
         return "LOW"
     return "LOW"
+
+
+def _threshold_value(key: str, fallback: float) -> float:
+    try:
+        raw = float(config.get(key, fallback))
+    except Exception:
+        return float(fallback)
+    if raw <= 0:
+        return float(fallback)
+    return float(raw)
+
+
+def _resolve_thresholds(*, prefix: str) -> dict[str, float]:
+    defaults = {
+        "low": 50_000_000.0 if prefix.endswith("exploration") else 100_000_000.0,
+        "med": 100_000_000.0 if prefix.endswith("exploration") else 250_000_000.0,
+        "high": 150_000_000.0 if prefix.endswith("exploration") else 500_000_000.0,
+        "very_high": 200_000_000.0 if prefix.endswith("exploration") else 750_000_000.0,
+        "critical": 250_000_000.0 if prefix.endswith("exploration") else 1_000_000_000.0,
+    }
+    thresholds = {
+        "low": _threshold_value(f"{prefix}.low_cr", defaults["low"]),
+        "med": _threshold_value(f"{prefix}.med_cr", defaults["med"]),
+        "high": _threshold_value(f"{prefix}.high_cr", defaults["high"]),
+        "very_high": _threshold_value(f"{prefix}.very_high_cr", defaults["very_high"]),
+        "critical": _threshold_value(f"{prefix}.critical_cr", defaults["critical"]),
+    }
+    # Guard against accidental inversion/misalconfiguration.
+    ordered = ["low", "med", "high", "very_high", "critical"]
+    prev = 0.0
+    for label in ordered:
+        value = max(prev, float(thresholds[label]))
+        thresholds[label] = value
+        prev = value
+    return thresholds
 
 
 def _rebuy_label(*, credits: float, rebuy_cost: float) -> str:
