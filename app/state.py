@@ -197,6 +197,8 @@ class AppState:
         self.mode_confidence: float = restored_conf
         self.mode_since: float = restored_since
         self.mode_ttl: float | None = restored_ttl
+        self.mode_overlay: str | None = None
+        self.mode_combat_silence: bool = bool(self.mode_id == "COMBAT")
 
         self._mode_signal_docked: bool = bool(self.is_docked)
         self._mode_signal_combat_active: bool = False
@@ -278,6 +280,8 @@ class AppState:
             "mode_confidence": float(self.mode_confidence),
             "mode_since": float(self.mode_since),
             "mode_ttl": (float(self.mode_ttl) if self.mode_ttl is not None else None),
+            "mode_overlay": (str(self.mode_overlay) if self.mode_overlay else None),
+            "mode_combat_silence": bool(self.mode_combat_silence),
         }
 
     def _persist_mode_state_locked(self) -> None:
@@ -295,7 +299,9 @@ class AppState:
         signature = (
             f"{snapshot['mode_id']}:{snapshot['mode_source']}:"
             f"{snapshot['mode_confidence']:.2f}:{int(snapshot['mode_since'])}:"
-            f"{snapshot['mode_ttl'] if snapshot['mode_ttl'] is not None else '-'}"
+            f"{snapshot['mode_ttl'] if snapshot['mode_ttl'] is not None else '-'}:"
+            f"{snapshot['mode_overlay'] if snapshot.get('mode_overlay') else '-'}:"
+            f"{1 if snapshot.get('mode_combat_silence') else 0}"
         )
         if force or signature != self._mode_last_emit_signature:
             self._mode_last_emit_signature = signature
@@ -347,6 +353,27 @@ class AppState:
         if last_signal_ts <= 0:
             return False
         return (now_ts - float(last_signal_ts)) <= float(ttl_seconds)
+
+    def _apply_mode_safety_locked(self, *, auto_mode_id: str) -> bool:
+        mode_norm = self._normalize_mode_id(self.mode_id)
+        auto_norm = self._normalize_mode_id(auto_mode_id)
+        source_norm = self._normalize_mode_source(self.mode_source)
+
+        overlay_mode: str | None = None
+        if source_norm == "MANUAL" and auto_norm == "COMBAT" and mode_norm != "COMBAT":
+            overlay_mode = "COMBAT"
+
+        combat_silence = bool(mode_norm == "COMBAT" or overlay_mode == "COMBAT")
+
+        changed = False
+        if overlay_mode != self.mode_overlay:
+            changed = True
+        if bool(combat_silence) != bool(self.mode_combat_silence):
+            changed = True
+
+        self.mode_overlay = overlay_mode
+        self.mode_combat_silence = bool(combat_silence)
+        return changed
 
     def _set_mode_locked(
         self,
@@ -428,17 +455,34 @@ class AppState:
         return candidates[0]
 
     def _recompute_auto_mode_locked(self, *, source: str = "mode.auto") -> dict:
+        auto_mode_id, auto_ttl = self._resolve_auto_mode_locked()
         if self.mode_source == "MANUAL":
+            safety_changed = self._apply_mode_safety_locked(auto_mode_id=auto_mode_id)
+            if safety_changed:
+                snapshot = self._emit_mode_state_locked()
+                log_event_throttled(
+                    "state.mode",
+                    250,
+                    "STATE",
+                    (
+                        f"Mode id={snapshot['mode_id']} source={snapshot['mode_source']} "
+                        f"overlay={snapshot.get('mode_overlay') or '-'} "
+                        f"combat_silence={bool(snapshot.get('mode_combat_silence'))} "
+                        f"trigger={source}"
+                    ),
+                )
+                return snapshot
             return self._mode_snapshot_locked()
 
-        mode_id, ttl = self._resolve_auto_mode_locked()
+        mode_id, ttl = auto_mode_id, auto_ttl
         changed = self._set_mode_locked(
             mode_id=mode_id,
             mode_source="AUTO",
             mode_confidence=self._mode_confidence_hint(mode_id),
             mode_ttl=ttl,
         )
-        if changed:
+        safety_changed = self._apply_mode_safety_locked(auto_mode_id=auto_mode_id)
+        if changed or safety_changed:
             snapshot = self._emit_mode_state_locked()
             log_event_throttled(
                 "state.mode",
@@ -447,6 +491,8 @@ class AppState:
                 (
                     f"Mode id={snapshot['mode_id']} source={snapshot['mode_source']} "
                     f"confidence={snapshot['mode_confidence']:.2f} ttl={snapshot['mode_ttl']} "
+                    f"overlay={snapshot.get('mode_overlay') or '-'} "
+                    f"combat_silence={bool(snapshot.get('mode_combat_silence'))} "
                     f"trigger={source}"
                 ),
             )
@@ -464,6 +510,55 @@ class AppState:
     def refresh_mode_state(self, *, source: str = "mode.tick") -> dict:
         with self.lock:
             return dict(self._recompute_auto_mode_locked(source=source))
+
+    def set_mode_manual(self, mode_id: str, *, source: str = "mode.manual") -> dict:
+        with self.lock:
+            manual_mode = self._normalize_mode_id(mode_id)
+            changed = self._set_mode_locked(
+                mode_id=manual_mode,
+                mode_source="MANUAL",
+                mode_confidence=1.0,
+                mode_ttl=None,
+            )
+            auto_mode_id, _ttl = self._resolve_auto_mode_locked()
+            safety_changed = self._apply_mode_safety_locked(auto_mode_id=auto_mode_id)
+            if changed or safety_changed:
+                snapshot = self._emit_mode_state_locked(force=True)
+                log_event_throttled(
+                    "state.mode.manual",
+                    250,
+                    "STATE",
+                    (
+                        f"Manual mode={snapshot['mode_id']} overlay={snapshot.get('mode_overlay') or '-'} "
+                        f"combat_silence={bool(snapshot.get('mode_combat_silence'))} source={source}"
+                    ),
+                )
+                return dict(snapshot)
+            return dict(self._mode_snapshot_locked())
+
+    def set_mode_auto(self, *, source: str = "mode.auto.manual_release") -> dict:
+        with self.lock:
+            auto_mode_id, auto_ttl = self._resolve_auto_mode_locked()
+            changed = self._set_mode_locked(
+                mode_id=auto_mode_id,
+                mode_source="AUTO",
+                mode_confidence=self._mode_confidence_hint(auto_mode_id),
+                mode_ttl=auto_ttl,
+            )
+            safety_changed = self._apply_mode_safety_locked(auto_mode_id=auto_mode_id)
+            if changed or safety_changed:
+                snapshot = self._emit_mode_state_locked(force=True)
+                log_event_throttled(
+                    "state.mode.auto",
+                    250,
+                    "STATE",
+                    (
+                        f"Auto mode={snapshot['mode_id']} overlay={snapshot.get('mode_overlay') or '-'} "
+                        f"combat_silence={bool(snapshot.get('mode_combat_silence'))} source={source}"
+                    ),
+                )
+                return dict(snapshot)
+            return dict(self._mode_snapshot_locked())
 
     def update_mode_signal_from_status(self, status: dict | None, *, source: str = "status_json") -> dict:
         status_data = dict(status or {})

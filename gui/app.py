@@ -1269,8 +1269,19 @@ class RenataApp:
         data = dict(snapshot or {})
         mode_id = str(data.get("mode_id") or "NORMAL").strip().upper() or "NORMAL"
         mode_source = str(data.get("mode_source") or "AUTO").strip().upper() or "AUTO"
+        mode_overlay = str(data.get("mode_overlay") or "").strip().upper() or ""
+        if mode_source == "MANUAL":
+            source_label = "MAN"
+        elif mode_source == "RESTORED":
+            source_label = "REST"
+        else:
+            source_label = mode_source
+
+        label = f"MODE: {mode_id} ({source_label})"
+        if mode_overlay:
+            label += f" | SAFE {mode_overlay}"
         if hasattr(self, "overlay_mode_label"):
-            self.overlay_mode_label.config(text=f"MODE: {mode_id} ({mode_source})")
+            self.overlay_mode_label.config(text=label)
 
     def _overlay_update_jump_range(self, data: dict) -> None:
         if not config.get("ui_show_jump_range", True):

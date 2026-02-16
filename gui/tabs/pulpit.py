@@ -84,6 +84,8 @@ class PulpitTab(ttk.Frame):
         self._mode_confidence: float = 0.60
         self._mode_since: float = 0.0
         self._mode_ttl: float | None = None
+        self._mode_overlay: str | None = None
+        self._mode_combat_silence: bool = False
 
         self._widget_vars: dict[str, tk.StringVar] = {}
         self._widget_buttons: dict[str, ttk.Button] = {}
@@ -644,12 +646,33 @@ class PulpitTab(ttk.Frame):
                 since_text = f"{elapsed}s temu"
             except Exception:
                 since_text = "-"
-        self._show_info_panel(
-            "mode",
-            (
-                f"Mode: {self._mode_label} ({self._mode_source}) | "
-                f"confidence={self._mode_confidence:.2f} | ttl={ttl_text} | since={since_text}"
-            ),
+        src_short = self._mode_source_short(self._mode_source)
+        safety_line = "Safety: -"
+        if self._mode_overlay:
+            safety_line = (
+                f"Safety: {self._mode_overlay} overlay | "
+                f"combat-silence={'ON' if self._mode_combat_silence else 'OFF'}"
+            )
+        elif self._mode_combat_silence:
+            safety_line = "Safety: combat-silence=ON"
+
+        actions = [
+            ("AUTO", self._on_click_mode_auto),
+            ("MAN NORMAL", lambda: self._on_click_mode_manual("NORMAL")),
+            ("MAN EXPL", lambda: self._on_click_mode_manual("EXPLORATION")),
+            ("MAN COMBAT", lambda: self._on_click_mode_manual("COMBAT")),
+        ]
+        self._open_panel(
+            domain="mode",
+            mode="Data",
+            lines=[
+                f"Mode: {self._mode_label} ({src_short})",
+                safety_line,
+                f"Confidence: {self._mode_confidence:.2f}",
+                f"TTL: {ttl_text} | Since: {since_text}",
+                "Tryb MANUAL blokuje AUTO switch poza safety COMBAT overlay.",
+            ],
+            actions=actions,
         )
 
     def _render_route_panel(self, force_open: bool = False) -> None:
@@ -659,6 +682,26 @@ class PulpitTab(ttk.Frame):
 
     def _on_cash_intent(self, label: str) -> None:
         self._show_confirm_panel("cash", f"Ustawiono intent: {label}")
+
+    def _apply_mode_selection(self, mode_id: str | None) -> None:
+        if self._app_state is None:
+            self.log("[MODE] Brak app_state - zmiana trybu niedostepna.")
+            return
+        try:
+            if mode_id is None:
+                snapshot = self._app_state.set_mode_auto(source="ui.mode_panel.auto")
+            else:
+                snapshot = self._app_state.set_mode_manual(str(mode_id), source="ui.mode_panel.manual")
+            self.apply_mode_state(snapshot)
+            self._render_mode_panel(force_open=True)
+        except Exception as exc:
+            self.log(f"[MODE] Blad zmiany trybu: {exc}")
+
+    def _on_click_mode_auto(self) -> None:
+        self._apply_mode_selection(None)
+
+    def _on_click_mode_manual(self, mode_id: str) -> None:
+        self._apply_mode_selection(mode_id)
 
     # ------------------------------------------------------------
     # STATUS
@@ -739,6 +782,8 @@ class PulpitTab(ttk.Frame):
         confidence: float | None = None,
         since: float | None = None,
         ttl: float | None = None,
+        overlay: str | None = None,
+        combat_silence: bool | None = None,
     ) -> None:
         norm = str(mode_id or "NORMAL").strip().upper() or "NORMAL"
         src = str(source or "AUTO").strip().upper() or "AUTO"
@@ -762,8 +807,20 @@ class PulpitTab(ttk.Frame):
                 self._mode_ttl = None
         elif ttl is None:
             self._mode_ttl = None
-        self._set_widget_text("mode", f"MODE: {norm} ({src})")
-        self.lbl_header_status.config(text=f"Status: [{norm}] ({src})")
+        self._mode_overlay = str(overlay or "").strip().upper() or None
+        if combat_silence is not None:
+            self._mode_combat_silence = bool(combat_silence)
+        else:
+            self._mode_combat_silence = bool(norm == "COMBAT" or self._mode_overlay == "COMBAT")
+
+        src_short = self._mode_source_short(src)
+        widget_text = f"MODE: {norm} ({src_short})"
+        status_text = f"Status: [{norm}] ({src_short})"
+        if self._mode_overlay:
+            widget_text += f" | SAFE {self._mode_overlay}"
+            status_text += f" [SAFE {self._mode_overlay}]"
+        self._set_widget_text("mode", widget_text)
+        self.lbl_header_status.config(text=status_text)
         if self._panel_domain == "mode":
             self._render_mode_panel(force_open=True)
 
@@ -775,6 +832,8 @@ class PulpitTab(ttk.Frame):
             confidence=snapshot.get("mode_confidence"),
             since=snapshot.get("mode_since"),
             ttl=snapshot.get("mode_ttl"),
+            overlay=snapshot.get("mode_overlay"),
+            combat_silence=snapshot.get("mode_combat_silence"),
         )
 
     def update_ship_state(self, data: dict) -> None:
@@ -1096,6 +1155,15 @@ class PulpitTab(ttk.Frame):
         if s in {"NISKI", "LOW"}:
             return "LOW"
         return s or "-"
+
+    @staticmethod
+    def _mode_source_short(source: str) -> str:
+        src = str(source or "").strip().upper()
+        if src == "MANUAL":
+            return "MAN"
+        if src == "RESTORED":
+            return "REST"
+        return src or "AUTO"
 
     @staticmethod
     def _is_p0_risk(payload: dict) -> bool:

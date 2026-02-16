@@ -446,7 +446,23 @@ def _is_combat_silence_active(context: dict | None) -> bool:
     if bool(ctx.get("in_combat")):
         return True
     state = str(ctx.get("combat_state", "")).strip().lower()
-    return state in {"combat", "enter", "active"}
+    if state in {"combat", "enter", "active"}:
+        return True
+
+    # F7 safety overlay: MANUAL mode can keep explicit mode_id while still
+    # applying combat silence when AUTO detector sees active combat.
+    try:
+        from app.state import app_state  # type: ignore
+
+        snapshot = app_state.get_mode_state_snapshot()
+        source = str(snapshot.get("mode_source") or "").strip().upper()
+        overlay = str(snapshot.get("mode_overlay") or "").strip().upper()
+        if source == "MANUAL" and overlay == "COMBAT":
+            return True
+    except Exception:
+        pass
+
+    return False
 
 
 def _cooldown_gate_for(insight: Insight) -> tuple[str, str | None]:
