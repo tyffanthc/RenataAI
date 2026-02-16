@@ -2,6 +2,7 @@ import config
 import threading
 import pandas as pd
 from datetime import datetime
+import time
 
 from logic import utils
 from logic.science_data import load_science_data
@@ -16,6 +17,56 @@ class AppState:
     Centralny stan Renaty.
     Trzyma pozycję gracza, ustawienia i dane tras.
     """
+
+    _MODE_IDS = {"NORMAL", "EXPLORATION", "COMBAT", "MINING", "DOCKED"}
+    _MODE_SOURCES = {"AUTO", "MANUAL", "RESTORED"}
+    _MODE_TTL_DEFAULTS = {
+        "COMBAT": 45.0,
+        "EXPLORATION": 120.0,
+        "MINING": 90.0,
+    }
+    _MODE_PRIORITY = {
+        "COMBAT": 5,
+        "DOCKED": 4,
+        "EXPLORATION": 3,
+        "MINING": 2,
+        "NORMAL": 1,
+    }
+
+    _MODE_EXPLORATION_EVENTS = {
+        "FSSDiscoveryScan",
+        "FSSAllBodiesFound",
+        "SAASignalsFound",
+        "SAAScanComplete",
+        "ScanOrganic",
+        "CodexEntry",
+        "Scan",
+    }
+    _MODE_MINING_EVENTS = {
+        "ProspectedAsteroid",
+        "MiningRefined",
+        "AsteroidCracked",
+        "AbrasionBlaster",
+        "SubsurfaceDisplacement",
+        "SeismicChargeDetonated",
+    }
+    _MODE_COMBAT_EVENTS = {
+        "Interdicted",
+        "Interdiction",
+        "EscapeInterdiction",
+        "UnderAttack",
+        "HullDamage",
+        "ShieldState",
+    }
+    _MODE_MINING_ITEM_HINTS = (
+        "mininglaser",
+        "abrasionblaster",
+        "subsurfacedisplacementmissile",
+        "seismicchargelauncher",
+        "prospectorlimpetcontroller",
+        "collectorlimpetcontroller",
+        "refinery",
+    )
 
     def __init__(self):
         self.lock = threading.Lock()
@@ -103,6 +154,56 @@ class AppState:
         # Prevents showing stale bootstrap system context as "live" startup state.
         self.has_live_system_event = False
 
+        # F7 mode detector (AUTO as default runtime source of truth for GUI + overlay).
+        has_saved_mode = "mode_id" in config.STATE
+        restored_mode = str(config.STATE.get("mode_id", "NORMAL") or "NORMAL").strip().upper()
+        if restored_mode not in self._MODE_IDS:
+            restored_mode = "NORMAL"
+        restored_source = str(config.STATE.get("mode_source", "RESTORED") or "RESTORED").strip().upper()
+        if restored_source not in self._MODE_SOURCES:
+            restored_source = "RESTORED"
+        if not has_saved_mode:
+            restored_source = "AUTO"
+
+        try:
+            restored_conf = float(config.STATE.get("mode_confidence", 0.6))
+        except Exception:
+            restored_conf = 0.6
+        restored_conf = max(0.0, min(1.0, restored_conf))
+
+        now_ts = time.time()
+        try:
+            restored_since = float(config.STATE.get("mode_since", now_ts) or now_ts)
+        except Exception:
+            restored_since = now_ts
+        if restored_since <= 0:
+            restored_since = now_ts
+
+        restored_ttl = config.STATE.get("mode_ttl")
+        try:
+            restored_ttl = float(restored_ttl) if restored_ttl is not None else None
+        except Exception:
+            restored_ttl = None
+        if restored_ttl is not None and restored_ttl <= 0:
+            restored_ttl = None
+
+        self.mode_id: str = restored_mode
+        self.mode_source: str = restored_source
+        self.mode_confidence: float = restored_conf
+        self.mode_since: float = restored_since
+        self.mode_ttl: float | None = restored_ttl
+
+        self._mode_signal_docked: bool = bool(self.is_docked)
+        self._mode_signal_combat_active: bool = False
+        self._mode_signal_combat_last_ts: float = 0.0
+        self._mode_signal_hardpoints_since: float | None = None
+        self._mode_signal_exploration_active: bool = False
+        self._mode_signal_exploration_last_ts: float = 0.0
+        self._mode_signal_mining_active: bool = False
+        self._mode_signal_mining_last_ts: float = 0.0
+        self._mode_signal_mining_loadout: bool = False
+        self._mode_last_emit_signature: str = ""
+
     def set_system(self, system_name):
         if not system_name:
             return
@@ -120,6 +221,329 @@ class AppState:
         with self.lock:
             self.has_live_system_event = True
 
+    @staticmethod
+    def _safe_int(value) -> int | None:
+        try:
+            if value is None:
+                return None
+            return int(value)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _status_flag(status: dict, bit: int) -> bool:
+        flags_val = AppState._safe_int((status or {}).get("Flags"))
+        if flags_val is None:
+            return False
+        try:
+            return bool(flags_val & (1 << bit))
+        except Exception:
+            return False
+
+    @classmethod
+    def _normalize_mode_id(cls, mode_id: str | None) -> str:
+        norm = str(mode_id or "NORMAL").strip().upper() or "NORMAL"
+        if norm not in cls._MODE_IDS:
+            return "NORMAL"
+        return norm
+
+    @classmethod
+    def _normalize_mode_source(cls, mode_source: str | None) -> str:
+        norm = str(mode_source or "AUTO").strip().upper() or "AUTO"
+        if norm not in cls._MODE_SOURCES:
+            return "AUTO"
+        return norm
+
+    @staticmethod
+    def _mode_confidence_hint(mode_id: str) -> float:
+        if mode_id == "DOCKED":
+            return 1.0
+        if mode_id == "COMBAT":
+            return 0.95
+        if mode_id == "EXPLORATION":
+            return 0.86
+        if mode_id == "MINING":
+            return 0.80
+        return 0.60
+
+    def _mode_snapshot_locked(self) -> dict:
+        return {
+            "mode_id": str(self.mode_id),
+            "mode_source": str(self.mode_source),
+            "mode_confidence": float(self.mode_confidence),
+            "mode_since": float(self.mode_since),
+            "mode_ttl": (float(self.mode_ttl) if self.mode_ttl is not None else None),
+        }
+
+    def _persist_mode_state_locked(self) -> None:
+        config.STATE["mode_id"] = str(self.mode_id)
+        config.STATE["mode_source"] = str(self.mode_source)
+        config.STATE["mode_confidence"] = float(self.mode_confidence)
+        config.STATE["mode_since"] = float(self.mode_since)
+        if self.mode_ttl is None:
+            config.STATE.pop("mode_ttl", None)
+        else:
+            config.STATE["mode_ttl"] = float(self.mode_ttl)
+
+    def _emit_mode_state_locked(self, *, force: bool = False) -> dict:
+        snapshot = self._mode_snapshot_locked()
+        signature = (
+            f"{snapshot['mode_id']}:{snapshot['mode_source']}:"
+            f"{snapshot['mode_confidence']:.2f}:{int(snapshot['mode_since'])}:"
+            f"{snapshot['mode_ttl'] if snapshot['mode_ttl'] is not None else '-'}"
+        )
+        if force or signature != self._mode_last_emit_signature:
+            self._mode_last_emit_signature = signature
+            utils.MSG_QUEUE.put(("mode_state", dict(snapshot)))
+        return snapshot
+
+    @classmethod
+    def _detect_mining_loadout_from_modules(cls, modules: list[dict] | None) -> bool:
+        if not isinstance(modules, list):
+            return False
+        for module in modules:
+            if not isinstance(module, dict):
+                continue
+            item = str(module.get("Item") or "").strip().lower()
+            slot = str(module.get("Slot") or "").strip().lower()
+            text = f"{slot}|{item}"
+            if any(hint in text for hint in cls._MODE_MINING_ITEM_HINTS):
+                return True
+        return False
+
+    def _detect_mining_loadout_locked(self) -> bool:
+        modules = []
+        try:
+            modules = list(getattr(self.ship_state, "modules", []) or [])
+        except Exception:
+            modules = []
+        return self._detect_mining_loadout_from_modules(modules)
+
+    def _set_mode_locked(
+        self,
+        *,
+        mode_id: str,
+        mode_source: str = "AUTO",
+        mode_confidence: float | None = None,
+        mode_ttl: float | None = None,
+    ) -> bool:
+        norm_id = self._normalize_mode_id(mode_id)
+        norm_source = self._normalize_mode_source(mode_source)
+        if mode_confidence is None:
+            mode_confidence = self._mode_confidence_hint(norm_id)
+        try:
+            conf = max(0.0, min(1.0, float(mode_confidence)))
+        except Exception:
+            conf = self._mode_confidence_hint(norm_id)
+        ttl = None
+        if mode_ttl is not None:
+            try:
+                ttl = float(mode_ttl)
+            except Exception:
+                ttl = None
+            if ttl is not None and ttl <= 0:
+                ttl = None
+
+        changed = False
+        if norm_id != self.mode_id or norm_source != self.mode_source:
+            changed = True
+            self.mode_since = time.time()
+        if abs(float(conf) - float(self.mode_confidence)) > 0.02:
+            changed = True
+        if (ttl is None) != (self.mode_ttl is None):
+            changed = True
+        elif ttl is not None and self.mode_ttl is not None and abs(float(ttl) - float(self.mode_ttl)) > 0.1:
+            changed = True
+
+        self.mode_id = norm_id
+        self.mode_source = norm_source
+        self.mode_confidence = conf
+        self.mode_ttl = ttl
+        if changed:
+            self._persist_mode_state_locked()
+        return changed
+
+    def _resolve_auto_mode_locked(self) -> tuple[str, float | None]:
+        now_ts = time.time()
+        combat_active = bool(self._mode_signal_combat_active)
+        if not combat_active and self._mode_signal_combat_last_ts > 0:
+            combat_active = (now_ts - self._mode_signal_combat_last_ts) <= self._MODE_TTL_DEFAULTS["COMBAT"]
+
+        exploration_active = bool(self._mode_signal_exploration_active)
+        if not exploration_active and self._mode_signal_exploration_last_ts > 0:
+            exploration_active = (
+                (now_ts - self._mode_signal_exploration_last_ts)
+                <= self._MODE_TTL_DEFAULTS["EXPLORATION"]
+            )
+
+        mining_active = bool(self._mode_signal_mining_active and self._mode_signal_mining_loadout)
+        if not mining_active and self._mode_signal_mining_last_ts > 0 and self._mode_signal_mining_loadout:
+            mining_active = (now_ts - self._mode_signal_mining_last_ts) <= self._MODE_TTL_DEFAULTS["MINING"]
+
+        candidates = [("NORMAL", None)]
+        if mining_active:
+            candidates.append(("MINING", self._MODE_TTL_DEFAULTS["MINING"]))
+        if exploration_active:
+            candidates.append(("EXPLORATION", self._MODE_TTL_DEFAULTS["EXPLORATION"]))
+        if bool(self._mode_signal_docked):
+            candidates.append(("DOCKED", None))
+        if combat_active:
+            candidates.append(("COMBAT", self._MODE_TTL_DEFAULTS["COMBAT"]))
+
+        candidates.sort(key=lambda item: self._MODE_PRIORITY.get(item[0], 0), reverse=True)
+        return candidates[0]
+
+    def _recompute_auto_mode_locked(self, *, source: str = "mode.auto") -> dict:
+        if self.mode_source == "MANUAL":
+            return self._mode_snapshot_locked()
+
+        mode_id, ttl = self._resolve_auto_mode_locked()
+        changed = self._set_mode_locked(
+            mode_id=mode_id,
+            mode_source="AUTO",
+            mode_confidence=self._mode_confidence_hint(mode_id),
+            mode_ttl=ttl,
+        )
+        if changed:
+            snapshot = self._emit_mode_state_locked()
+            log_event_throttled(
+                "state.mode",
+                250,
+                "STATE",
+                (
+                    f"Mode id={snapshot['mode_id']} source={snapshot['mode_source']} "
+                    f"confidence={snapshot['mode_confidence']:.2f} ttl={snapshot['mode_ttl']} "
+                    f"trigger={source}"
+                ),
+            )
+            return snapshot
+        return self._mode_snapshot_locked()
+
+    def get_mode_state_snapshot(self) -> dict:
+        with self.lock:
+            return dict(self._mode_snapshot_locked())
+
+    def publish_mode_state(self, *, force: bool = False) -> dict:
+        with self.lock:
+            return dict(self._emit_mode_state_locked(force=force))
+
+    def refresh_mode_state(self, *, source: str = "mode.tick") -> dict:
+        with self.lock:
+            return dict(self._recompute_auto_mode_locked(source=source))
+
+    def update_mode_signal_from_status(self, status: dict | None, *, source: str = "status_json") -> dict:
+        status_data = dict(status or {})
+        now_ts = time.time()
+        with self.lock:
+            docked = bool(status_data.get("Docked")) or self._status_flag(status_data, 0)
+            self._mode_signal_docked = bool(docked)
+            if self.is_docked != bool(docked):
+                self.is_docked = bool(docked)
+                config.STATE["is_docked"] = self.is_docked
+
+            in_danger = bool(status_data.get("InDanger")) or self._status_flag(status_data, 22)
+            interdicted = bool(status_data.get("BeingInterdicted")) or self._status_flag(status_data, 23)
+            under_attack = bool(status_data.get("UnderAttack"))
+            hardpoints = bool(status_data.get("HardpointsDeployed")) or self._status_flag(status_data, 6)
+
+            direct_combat_signal = bool(in_danger or interdicted or under_attack)
+            if direct_combat_signal:
+                self._mode_signal_combat_active = True
+                self._mode_signal_combat_last_ts = now_ts
+                self._mode_signal_hardpoints_since = None
+            else:
+                if hardpoints:
+                    if self._mode_signal_hardpoints_since is None:
+                        self._mode_signal_hardpoints_since = now_ts
+                    if (now_ts - float(self._mode_signal_hardpoints_since)) >= 3.0:
+                        self._mode_signal_combat_active = True
+                        self._mode_signal_combat_last_ts = now_ts
+                    else:
+                        self._mode_signal_combat_active = False
+                else:
+                    self._mode_signal_hardpoints_since = None
+                    self._mode_signal_combat_active = False
+
+            focus = self._safe_int(status_data.get("GuiFocus"))
+            in_exploration_focus = focus in {9, 10}
+            self._mode_signal_exploration_active = bool(in_exploration_focus)
+            if in_exploration_focus:
+                self._mode_signal_exploration_last_ts = now_ts
+
+            in_ring = bool(status_data.get("InRing")) or bool(status_data.get("InAsteroidRing"))
+            detected_from_ship = self._detect_mining_loadout_locked()
+            if detected_from_ship:
+                self._mode_signal_mining_loadout = True
+            self._mode_signal_mining_active = bool(in_ring)
+            if in_ring and self._mode_signal_mining_loadout:
+                self._mode_signal_mining_last_ts = now_ts
+
+            return dict(self._recompute_auto_mode_locked(source=source))
+
+    def update_mode_signal_from_journal(self, event: dict | None, *, source: str = "journal") -> dict:
+        ev = dict(event or {})
+        event_name = str(ev.get("event") or "").strip()
+        if not event_name:
+            return self.get_mode_state_snapshot()
+        now_ts = time.time()
+        with self.lock:
+            if event_name == "Docked":
+                self._mode_signal_docked = True
+                self.is_docked = True
+                config.STATE["is_docked"] = True
+                self._mode_signal_combat_active = False
+            elif event_name == "Undocked":
+                self._mode_signal_docked = False
+                self.is_docked = False
+                config.STATE["is_docked"] = False
+            elif event_name in {"Died"}:
+                self._mode_signal_combat_active = False
+
+            if event_name in self._MODE_COMBAT_EVENTS:
+                self._mode_signal_combat_active = True
+                self._mode_signal_combat_last_ts = now_ts
+            if event_name in self._MODE_EXPLORATION_EVENTS:
+                self._mode_signal_exploration_last_ts = now_ts
+            if event_name in self._MODE_MINING_EVENTS:
+                self._mode_signal_mining_last_ts = now_ts
+
+            if event_name == "Loadout":
+                modules = ev.get("Modules")
+                self._mode_signal_mining_loadout = self._detect_mining_loadout_from_modules(modules)
+
+            return dict(self._recompute_auto_mode_locked(source=source))
+
+    def update_mode_signal_from_runtime(
+        self,
+        domain: str,
+        payload: dict | None = None,
+        *,
+        source: str = "runtime",
+    ) -> dict:
+        domain_norm = str(domain or "").strip().lower()
+        data = dict(payload or {})
+        now_ts = time.time()
+        with self.lock:
+            if domain_norm in {"combat_awareness", "survival_rebuy"}:
+                risk = str(data.get("risk_status") or "").strip().upper()
+                in_combat = bool(data.get("in_combat"))
+                if in_combat or ("HIGH" in risk) or ("CRIT" in risk):
+                    self._mode_signal_combat_active = True
+                    self._mode_signal_combat_last_ts = now_ts
+            if domain_norm in {"exploration_summary", "fss", "exo"}:
+                self._mode_signal_exploration_last_ts = now_ts
+            if domain_norm in {"mining", "mining_awareness"}:
+                self._mode_signal_mining_last_ts = now_ts
+            if domain_norm == "ship_state":
+                if "mining_loadout_detected" in data:
+                    self._mode_signal_mining_loadout = bool(data.get("mining_loadout_detected"))
+                if "in_ring" in data:
+                    in_ring = bool(data.get("in_ring"))
+                    self._mode_signal_mining_active = in_ring
+                    if in_ring and self._mode_signal_mining_loadout:
+                        self._mode_signal_mining_last_ts = now_ts
+            return dict(self._recompute_auto_mode_locked(source=source))
+
     def set_station(self, station_name):
         if not station_name:
             return
@@ -132,10 +556,18 @@ class AppState:
         """
         Ustawia flagę dokowania na podstawie eventów Docked/Undocked.
         """
+        changed = False
         with self.lock:
-            self.is_docked = bool(is_docked)
+            value = bool(is_docked)
+            changed = (self.is_docked != value)
+            self.is_docked = value
             config.STATE["is_docked"] = self.is_docked
+            self._mode_signal_docked = self.is_docked
+            if self.is_docked:
+                self._mode_signal_combat_active = False
         log_event_throttled("state.docked", 500, "STATE", f"Docked = {self.is_docked}")
+        if changed:
+            self.refresh_mode_state(source="set_docked")
 
     def set_inventory(self, inv_dict):
         with self.lock:

@@ -45,6 +45,12 @@ class EventHandler:
 
     def on_status_update(self, status_data: dict, gui_ref=None) -> None:
         try:
+            from app.state import app_state
+
+            app_state.update_mode_signal_from_status(status_data, source="status_json")
+        except Exception as exc:
+            _log_router_fallback("status.mode_detector", "status update: mode detector failed", exc)
+        try:
             fuel_events.handle_status_update(status_data, gui_ref)
         except Exception as exc:
             _log_router_fallback("status.fuel", "status update: fuel handler failed", exc)
@@ -120,6 +126,13 @@ class EventHandler:
         typ = ev.get("event")
         if not typ:
             return
+
+        try:
+            from app.state import app_state
+
+            app_state.update_mode_signal_from_journal(ev, source="journal")
+        except Exception as exc:
+            _log_router_fallback("journal.mode_detector", "journal event: mode detector failed", exc)
 
         try:
             survival_rebuy_awareness.handle_journal_event(ev, gui_ref)
