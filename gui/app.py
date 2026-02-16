@@ -833,6 +833,16 @@ class RenataApp:
                             exc,
                             interval_ms=3000,
                         )
+                elif msg_type == "combat_awareness":
+                    try:
+                        self.tab_pulpit.update_combat_awareness(content)
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.combat_awareness",
+                            "failed to update combat awareness widget",
+                            exc,
+                            interval_ms=3000,
+                        )
 
                 elif msg_type == "status_neu":
                     txt, col = content
