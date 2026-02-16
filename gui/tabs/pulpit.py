@@ -612,6 +612,10 @@ class PulpitTab(ttk.Frame):
         in_combat = bool(payload.get("in_combat"))
         level = str(payload.get("level") or "-").upper()
         reason = str(payload.get("reason") or payload.get("pattern_id") or "-")
+        cargo_floor_cr = payload.get("cargo_floor_cr")
+        cargo_expected_cr = payload.get("cargo_expected_cr")
+        cargo_confidence = str(payload.get("cargo_value_confidence") or "-").upper()
+        cargo_source = str(payload.get("cargo_value_source") or "-").strip().lower() or "-"
 
         lines = [
             f"Zrodlo: {source} | system: {system}",
@@ -620,18 +624,17 @@ class PulpitTab(ttk.Frame):
                 f"ValR: source={contract.source_risk_label} / "
                 f"value={contract.value_risk_label} | level: {level}"
             ),
-            f"Powod: {reason}",
             (
-                f"Combat: {'tak' if in_combat else 'nie'} | "
+                f"Powod: {reason} | Combat: {'tak' if in_combat else 'nie'} | "
                 f"Hull: {self._fmt_pct(payload.get('hull_percent'))}"
             ),
             (
-                f"Rebuy: {rebuy_hint} | "
-                f"Cargo: {self._fmt_num(payload.get('cargo_tons'))} t"
+                f"Cargo VaR: floor {self._fmt_cr(cargo_floor_cr)} Cr | "
+                f"exp {self._fmt_cr(cargo_expected_cr)} Cr"
             ),
             (
-                f"Wartosc: explo {self._fmt_m(contract.exploration_value_estimated)} | "
-                f"exobio {self._fmt_m(contract.exobio_value_estimated)}"
+                f"Cargo: {self._fmt_num(payload.get('cargo_tons'))} t | "
+                f"Conf: {cargo_confidence} | Src: {cargo_source}"
             ),
         ]
 

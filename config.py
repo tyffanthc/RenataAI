@@ -101,6 +101,15 @@ DEFAULT_RISK_VALUE_THRESHOLDS: Dict[str, Dict[str, int]] = {
     },
 }
 
+DEFAULT_CARGO_VALUE_FALLBACK_PRICES: Dict[str, int] = {
+    "Gold": 38_000,
+    "Silver": 24_000,
+    "Palladium": 52_000,
+    "Platinum": 68_000,
+    "Tritium": 46_000,
+    "Agronomic Treatment": 3_500,
+}
+
 # --- DOMYŚLNE USTAWIENIA (JSON) ---------------------------------------------
 
 DEFAULT_SETTINGS: Dict[str, Any] = {
@@ -164,6 +173,12 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "risk.threshold.exobio.high_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exobio"]["high"],
     "risk.threshold.exobio.very_high_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exobio"]["very_high"],
     "risk.threshold.exobio.critical_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exobio"]["critical"],
+    # F7 cargo value-at-risk estimator.
+    "risk.cargo.default_unit_price_cr": 20_000,
+    "risk.cargo.floor_factor.market": 0.85,
+    "risk.cargo.floor_factor.cache": 0.70,
+    "risk.cargo.floor_factor.fallback": 0.55,
+    "risk.cargo.fallback_prices": DEFAULT_CARGO_VALUE_FALLBACK_PRICES,
 
     # SCHOWEK / AUTO-COPY
     "auto_clipboard": True,           # auto-schowek (route)

@@ -5,6 +5,7 @@ from typing import Any, Dict
 
 import config
 from app.state import app_state
+from logic.cargo_value_estimator import estimate_cargo_value
 from logic.insight_dispatcher import emit_insight
 
 
@@ -31,6 +32,10 @@ class CombatAwarenessPayload:
     signature: str
     exploration_value_estimated: float = 0.0
     exobio_value_estimated: float = 0.0
+    cargo_floor_cr: float = 0.0
+    cargo_expected_cr: float = 0.0
+    cargo_value_confidence: str = "LOW"
+    cargo_value_source: str = "fallback"
 
 
 _RUNTIME: Dict[str, Any] = {
@@ -161,12 +166,16 @@ def _status_fsd_cooldown(status: Dict[str, Any]) -> float | None:
     return None
 
 
-def _value_snapshot() -> tuple[float, float, float, float, float]:
+def _value_snapshot() -> tuple[float, float, float, float, float, float, float, str, str]:
     session_value = 0.0
     system_value = 0.0
     cargo_tons = 0.0
     exploration_value = 0.0
     exobio_value = 0.0
+    cargo_floor_cr = 0.0
+    cargo_expected_cr = 0.0
+    cargo_value_confidence = "LOW"
+    cargo_value_source = "fallback"
 
     try:
         totals = app_state.system_value_engine.calculate_totals()
@@ -195,22 +204,39 @@ def _value_snapshot() -> tuple[float, float, float, float, float]:
     except Exception:
         cargo_tons = 0.0
 
+    try:
+        cargo_estimate = estimate_cargo_value(cargo_tons=cargo_tons)
+        cargo_tons = max(cargo_tons, float(cargo_estimate.cargo_tons))
+        cargo_floor_cr = float(cargo_estimate.cargo_floor_cr)
+        cargo_expected_cr = float(cargo_estimate.cargo_expected_cr)
+        cargo_value_confidence = str(cargo_estimate.confidence or "LOW").upper()
+        cargo_value_source = str(cargo_estimate.source or "fallback").lower()
+    except Exception:
+        cargo_floor_cr = 0.0
+        cargo_expected_cr = 0.0
+        cargo_value_confidence = "LOW"
+        cargo_value_source = "fallback"
+
     return (
         max(0.0, session_value),
         max(0.0, system_value),
         max(0.0, cargo_tons),
         max(0.0, exploration_value),
         max(0.0, exobio_value),
+        max(0.0, cargo_floor_cr),
+        max(0.0, cargo_expected_cr),
+        cargo_value_confidence,
+        cargo_value_source,
     )
 
 
-def _var_status(session_value: float, system_value: float, cargo_tons: float) -> str:
-    reference = max(session_value, system_value)
-    if reference >= 20_000_000 or cargo_tons >= 120:
+def _var_status(session_value: float, system_value: float, cargo_floor_cr: float) -> str:
+    reference = max(session_value, system_value, cargo_floor_cr)
+    if reference >= 20_000_000:
         return "VAR_HIGH"
-    if reference >= 5_000_000 or cargo_tons >= 30:
+    if reference >= 5_000_000:
         return "VAR_MEDIUM"
-    if reference > 0 or cargo_tons > 0:
+    if reference > 0:
         return "VAR_LOW"
     return "VAR_NEGLIGIBLE"
 
@@ -256,8 +282,18 @@ def _build_payload(mode: str) -> CombatAwarenessPayload | None:
     if not in_combat:
         return None
 
-    session_value, system_value, cargo_tons, exploration_value, exobio_value = _value_snapshot()
-    var_status = _var_status(session_value, system_value, cargo_tons)
+    (
+        session_value,
+        system_value,
+        cargo_tons,
+        exploration_value,
+        exobio_value,
+        cargo_floor_cr,
+        cargo_expected_cr,
+        cargo_value_confidence,
+        cargo_value_source,
+    ) = _value_snapshot()
+    var_status = _var_status(session_value, system_value, cargo_floor_cr)
     active = _active_patterns(var_status)
     _record_pattern_hits(active)
     if not active:
@@ -322,6 +358,10 @@ def _build_payload(mode: str) -> CombatAwarenessPayload | None:
         signature=signature,
         exploration_value_estimated=exploration_value,
         exobio_value_estimated=exobio_value,
+        cargo_floor_cr=cargo_floor_cr,
+        cargo_expected_cr=cargo_expected_cr,
+        cargo_value_confidence=cargo_value_confidence,
+        cargo_value_source=cargo_value_source,
     )
 
 

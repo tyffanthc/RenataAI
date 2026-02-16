@@ -43,6 +43,9 @@ class F4SurvivalRebuyAwarenessBaseTests(unittest.TestCase):
         ctx = dict(kwargs.get("context") or {})
         payload = dict(ctx.get("survival_payload") or {})
         self.assertEqual(payload.get("reason"), "no_rebuy")
+        self.assertIn(payload.get("cargo_value_confidence"), {"HIGH", "MED", "LOW"})
+        self.assertIsNotNone(payload.get("cargo_floor_cr"))
+        self.assertIsNotNone(payload.get("cargo_expected_cr"))
         self.assertTrue(bool(payload.get("options")))
         self.assertTrue(str(ctx.get("raw_text") or "").strip())
 

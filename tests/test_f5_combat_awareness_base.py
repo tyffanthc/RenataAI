@@ -77,6 +77,9 @@ class F5CombatAwarenessBaseTests(unittest.TestCase):
             {"combat_shields_down_exposed", "combat_escape_window_unstable", "combat_high_stake_exposure"},
         )
         self.assertGreaterEqual(int(payload.get("pattern_count") or 0), 2)
+        self.assertIn(payload.get("cargo_value_confidence"), {"HIGH", "MED", "LOW"})
+        self.assertIsNotNone(payload.get("cargo_floor_cr"))
+        self.assertIsNotNone(payload.get("cargo_expected_cr"))
         raw = str(ctx.get("raw_text") or "").lower()
         self.assertNotIn("musisz", raw)
         self.assertNotIn("znowu", raw)

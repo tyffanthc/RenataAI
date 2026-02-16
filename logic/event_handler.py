@@ -12,6 +12,7 @@ from logic.events import trade_events
 from logic.events import smuggler_events
 from logic.events import survival_rebuy_awareness
 from logic.events import combat_awareness
+from logic import cargo_value_estimator
 from logic.utils.renata_log import log_event_throttled
 
 
@@ -74,6 +75,10 @@ class EventHandler:
                 _log_router_fallback("status.ship_state", "status update: ship_state sync failed", exc)
 
     def on_cargo_update(self, cargo_data: dict, gui_ref=None) -> None:
+        try:
+            cargo_value_estimator.update_cargo_snapshot(cargo_data, source="cargo_json")
+        except Exception as exc:
+            _log_router_fallback("cargo.value_estimator", "cargo update: value estimator sync failed", exc)
         if not (config.get("ship_state_enabled") and config.get("ship_state_use_cargo_json")):
             return
         try:
@@ -83,6 +88,10 @@ class EventHandler:
             _log_router_fallback("cargo.ship_state", "cargo update: ship_state sync failed", exc)
 
     def on_market_update(self, market_data: dict, gui_ref=None) -> None:
+        try:
+            cargo_value_estimator.update_market_snapshot(market_data, source="market_json")
+        except Exception as exc:
+            _log_router_fallback("market.value_estimator", "market update: value estimator sync failed", exc)
         try:
             trade_events.handle_market_data(market_data, gui_ref)
         except Exception as exc:
@@ -196,6 +205,10 @@ class EventHandler:
 
         # CARGO
         if typ == "Cargo":
+            try:
+                cargo_value_estimator.update_cargo_snapshot(ev, source="journal.cargo")
+            except Exception as exc:
+                _log_router_fallback("journal.cargo_value", "journal cargo: value estimator sync failed", exc)
             smuggler_events.update_illegal_cargo(ev)
 
         # FOOTFALL
