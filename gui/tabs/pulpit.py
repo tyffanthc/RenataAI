@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import tkinter as tk
+import time
 from tkinter import ttk
 from typing import Callable
 
@@ -80,6 +81,9 @@ class PulpitTab(ttk.Frame):
         self._current_risk_source: str = ""
         self._mode_label = "NORMAL"
         self._mode_source = "AUTO"
+        self._mode_confidence: float = 0.60
+        self._mode_since: float = 0.0
+        self._mode_ttl: float | None = None
 
         self._widget_vars: dict[str, tk.StringVar] = {}
         self._widget_buttons: dict[str, ttk.Button] = {}
@@ -632,10 +636,20 @@ class PulpitTab(ttk.Frame):
     def _render_mode_panel(self, force_open: bool = False) -> None:
         if not force_open and self._panel_domain != "mode":
             return
+        ttl_text = "-" if self._mode_ttl is None else f"{int(self._mode_ttl)}s"
+        since_text = "-"
+        if self._mode_since > 0:
+            try:
+                elapsed = max(0, int(time.time() - float(self._mode_since)))
+                since_text = f"{elapsed}s temu"
+            except Exception:
+                since_text = "-"
         self._show_info_panel(
             "mode",
-            f"Mode: {self._mode_label} ({self._mode_source}). "
-            "AUTO detector i override bedzie domykany w kolejnym tickecie.",
+            (
+                f"Mode: {self._mode_label} ({self._mode_source}) | "
+                f"confidence={self._mode_confidence:.2f} | ttl={ttl_text} | since={since_text}"
+            ),
         )
 
     def _render_route_panel(self, force_open: bool = False) -> None:
@@ -717,13 +731,51 @@ class PulpitTab(ttk.Frame):
             except Exception:
                 pass
 
-    def set_mode_state(self, mode_id: str, source: str = "AUTO") -> None:
+    def set_mode_state(
+        self,
+        mode_id: str,
+        source: str = "AUTO",
+        *,
+        confidence: float | None = None,
+        since: float | None = None,
+        ttl: float | None = None,
+    ) -> None:
         norm = str(mode_id or "NORMAL").strip().upper() or "NORMAL"
         src = str(source or "AUTO").strip().upper() or "AUTO"
         self._mode_label = norm
         self._mode_source = src
+        if confidence is not None:
+            try:
+                self._mode_confidence = max(0.0, min(1.0, float(confidence)))
+            except Exception:
+                pass
+        if since is not None:
+            try:
+                self._mode_since = float(since)
+            except Exception:
+                pass
+        if ttl is not None:
+            try:
+                ttl_val = float(ttl)
+                self._mode_ttl = ttl_val if ttl_val > 0 else None
+            except Exception:
+                self._mode_ttl = None
+        elif ttl is None:
+            self._mode_ttl = None
         self._set_widget_text("mode", f"MODE: {norm} ({src})")
-        self.lbl_header_status.config(text=f"Status: [{norm}]")
+        self.lbl_header_status.config(text=f"Status: [{norm}] ({src})")
+        if self._panel_domain == "mode":
+            self._render_mode_panel(force_open=True)
+
+    def apply_mode_state(self, state: dict | None) -> None:
+        snapshot = dict(state or {})
+        self.set_mode_state(
+            str(snapshot.get("mode_id") or "NORMAL"),
+            str(snapshot.get("mode_source") or "AUTO"),
+            confidence=snapshot.get("mode_confidence"),
+            since=snapshot.get("mode_since"),
+            ttl=snapshot.get("mode_ttl"),
+        )
 
     def update_ship_state(self, data: dict) -> None:
         ship_type = data.get("ship_type") or "-"
@@ -965,11 +1017,6 @@ class PulpitTab(ttk.Frame):
         self._set_widget_text("risk", f"RISK: {risk_short} | {rebuy_hint}")
         self._refresh_widget_strip()
 
-        if bool(payload.get("in_combat")):
-            self.set_mode_state("COMBAT", "AUTO")
-        elif self._mode_label == "COMBAT":
-            self.set_mode_state("NORMAL", "AUTO")
-
         is_p0 = self._is_p0_risk(payload)
         if is_p0:
             self._render_risk_panel(force_open=True)
@@ -987,7 +1034,6 @@ class PulpitTab(ttk.Frame):
         risk_short = self._risk_short(payload.get("risk_status"))
         self._set_widget_text("risk", f"RISK: {risk_short} | COMBAT")
         self._refresh_widget_strip()
-        self.set_mode_state("COMBAT", "AUTO")
 
         is_p0 = self._is_p0_risk(payload)
         if is_p0:

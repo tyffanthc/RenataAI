@@ -315,6 +315,14 @@ class RenataApp:
         # --- OVERLAY / QUICK-VIEW ---
         self._init_overlay()
         self._init_debug_panel()
+        try:
+            mode_snapshot = app_state.get_mode_state_snapshot()
+            if hasattr(self.tab_pulpit, "apply_mode_state"):
+                self.tab_pulpit.apply_mode_state(mode_snapshot)
+            self._overlay_update_mode(mode_snapshot)
+            app_state.publish_mode_state(force=True)
+        except Exception as exc:
+            _log_app_fallback("mode.bootstrap", "failed to bootstrap mode state", exc, interval_ms=3000)
 
         # =========================
         # DANE NAUKOWE (S2-LOGIC-01)
@@ -813,6 +821,19 @@ class RenataApp:
                             exc,
                             interval_ms=3000,
                         )
+                    try:
+                        app_state.update_mode_signal_from_runtime(
+                            "exploration_summary",
+                            content,
+                            source="queue.exploration_summary",
+                        )
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.exploration_summary.mode",
+                            "failed to update mode detector from exploration summary",
+                            exc,
+                            interval_ms=3000,
+                        )
                 elif msg_type == "cash_in_assistant":
                     try:
                         self.tab_pulpit.update_cash_in_assistant(content)
@@ -833,6 +854,19 @@ class RenataApp:
                             exc,
                             interval_ms=3000,
                         )
+                    try:
+                        app_state.update_mode_signal_from_runtime(
+                            "survival_rebuy",
+                            content,
+                            source="queue.survival_rebuy",
+                        )
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.survival_rebuy.mode",
+                            "failed to update mode detector from survival/rebuy",
+                            exc,
+                            interval_ms=3000,
+                        )
                 elif msg_type == "combat_awareness":
                     try:
                         self.tab_pulpit.update_combat_awareness(content)
@@ -840,6 +874,39 @@ class RenataApp:
                         _log_app_fallback(
                             "queue.combat_awareness",
                             "failed to update combat awareness widget",
+                            exc,
+                            interval_ms=3000,
+                        )
+                    try:
+                        app_state.update_mode_signal_from_runtime(
+                            "combat_awareness",
+                            content,
+                            source="queue.combat_awareness",
+                        )
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.combat_awareness.mode",
+                            "failed to update mode detector from combat awareness",
+                            exc,
+                            interval_ms=3000,
+                        )
+                elif msg_type == "mode_state":
+                    try:
+                        if hasattr(self.tab_pulpit, "apply_mode_state"):
+                            self.tab_pulpit.apply_mode_state(content)
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.mode_state.pulpit",
+                            "failed to apply mode state on pulpit",
+                            exc,
+                            interval_ms=3000,
+                        )
+                    try:
+                        self._overlay_update_mode(content)
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.mode_state.overlay",
+                            "failed to apply mode state on overlay",
                             exc,
                             interval_ms=3000,
                         )
@@ -898,6 +965,19 @@ class RenataApp:
                             interval_ms=3000,
                         )
                     self._overlay_update_jump_range(content)
+                    try:
+                        app_state.update_mode_signal_from_runtime(
+                            "ship_state",
+                            content,
+                            source="queue.ship_state",
+                        )
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.ship_state.mode",
+                            "failed to update mode detector from ship state",
+                            exc,
+                            interval_ms=3000,
+                        )
 
                 elif msg_type == "start_label":
                     live_ready = bool(getattr(app_state, "has_live_system_event", False))
@@ -919,6 +999,10 @@ class RenataApp:
         except Exception as exc:
             _log_app_fallback("queue.loop", "queue processing failed", exc, interval_ms=2000)
         finally:
+            try:
+                app_state.refresh_mode_state(source="queue.tick")
+            except Exception as exc:
+                _log_app_fallback("queue.tick.mode", "mode detector tick failed", exc, interval_ms=5000)
             self.root.after(100, self.check_queue)
 
     def update_start_label(self, txt):
@@ -958,6 +1042,15 @@ class RenataApp:
             relief="solid",
         )
 
+        self.overlay_mode_label = tk.Label(
+            self.overlay_frame,
+            text="MODE: NORMAL (AUTO)",
+            bg=self._overlay_bg,
+            fg=self._overlay_sec,
+            font=("Arial", 9, "bold"),
+        )
+        self.overlay_mode_label.pack(anchor="w", padx=8, pady=(6, 2))
+
         self.overlay_status_label = tk.Label(
             self.overlay_frame,
             text="",
@@ -965,7 +1058,7 @@ class RenataApp:
             fg=self._overlay_fg,
             font=("Arial", 9, "bold"),
         )
-        self.overlay_status_label.pack(anchor="w", padx=8, pady=(6, 2))
+        self.overlay_status_label.pack(anchor="w", padx=8, pady=(0, 2))
 
         self.overlay_jr_label = tk.Label(
             self.overlay_frame,
@@ -1171,6 +1264,13 @@ class RenataApp:
             self._overlay_show_for(None)
         else:
             self._overlay_show_for(4.0)
+
+    def _overlay_update_mode(self, snapshot: dict | None) -> None:
+        data = dict(snapshot or {})
+        mode_id = str(data.get("mode_id") or "NORMAL").strip().upper() or "NORMAL"
+        mode_source = str(data.get("mode_source") or "AUTO").strip().upper() or "AUTO"
+        if hasattr(self, "overlay_mode_label"):
+            self.overlay_mode_label.config(text=f"MODE: {mode_id} ({mode_source})")
 
     def _overlay_update_jump_range(self, data: dict) -> None:
         if not config.get("ui_show_jump_range", True):
