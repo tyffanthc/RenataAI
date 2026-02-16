@@ -29,6 +29,8 @@ class CombatAwarenessPayload:
     options: list[str]
     note: str
     signature: str
+    exploration_value_estimated: float = 0.0
+    exobio_value_estimated: float = 0.0
 
 
 _RUNTIME: Dict[str, Any] = {
@@ -159,16 +161,25 @@ def _status_fsd_cooldown(status: Dict[str, Any]) -> float | None:
     return None
 
 
-def _value_snapshot() -> tuple[float, float, float]:
+def _value_snapshot() -> tuple[float, float, float, float, float]:
     session_value = 0.0
     system_value = 0.0
     cargo_tons = 0.0
+    exploration_value = 0.0
+    exobio_value = 0.0
 
     try:
         totals = app_state.system_value_engine.calculate_totals()
-        session_value = float((totals or {}).get("total") or 0.0)
+        totals = totals or {}
+        session_value = float(totals.get("total") or 0.0)
+        cartography_value = float(totals.get("c_cartography") or 0.0)
+        exobio_value = float(totals.get("c_exobiology") or 0.0)
+        discovery_bonus = float(totals.get("bonus_discovery") or 0.0)
+        exploration_value = max(0.0, cartography_value + discovery_bonus)
     except Exception:
         session_value = 0.0
+        exploration_value = 0.0
+        exobio_value = 0.0
 
     try:
         system = _as_text(_RUNTIME.get("system")) or _as_text(getattr(app_state, "current_system", ""))
@@ -184,7 +195,13 @@ def _value_snapshot() -> tuple[float, float, float]:
     except Exception:
         cargo_tons = 0.0
 
-    return max(0.0, session_value), max(0.0, system_value), max(0.0, cargo_tons)
+    return (
+        max(0.0, session_value),
+        max(0.0, system_value),
+        max(0.0, cargo_tons),
+        max(0.0, exploration_value),
+        max(0.0, exobio_value),
+    )
 
 
 def _var_status(session_value: float, system_value: float, cargo_tons: float) -> str:
@@ -239,7 +256,7 @@ def _build_payload(mode: str) -> CombatAwarenessPayload | None:
     if not in_combat:
         return None
 
-    session_value, system_value, cargo_tons = _value_snapshot()
+    session_value, system_value, cargo_tons, exploration_value, exobio_value = _value_snapshot()
     var_status = _var_status(session_value, system_value, cargo_tons)
     active = _active_patterns(var_status)
     _record_pattern_hits(active)
@@ -303,6 +320,8 @@ def _build_payload(mode: str) -> CombatAwarenessPayload | None:
         options=options,
         note=note,
         signature=signature,
+        exploration_value_estimated=exploration_value,
+        exobio_value_estimated=exobio_value,
     )
 
 

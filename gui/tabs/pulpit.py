@@ -6,6 +6,7 @@ from tkinter import ttk
 from typing import Callable
 
 import config
+from logic.risk_rebuy_contract import build_risk_rebuy_contract
 
 
 class PulpitTab(ttk.Frame):
@@ -601,9 +602,11 @@ class PulpitTab(ttk.Frame):
         if not payload:
             self._show_info_panel("risk", "Brak aktywnego alertu ryzyka/rebuy.")
             return
+        contract = build_risk_rebuy_contract(payload)
 
         source = self._current_risk_source or "risk"
-        risk_short = self._risk_short(payload.get("risk_status"))
+        risk_short = contract.risk_label
+        rebuy_hint = contract.rebuy_label
         var_status = str(payload.get("var_status") or "-")
         system = str(payload.get("system") or "-")
         in_combat = bool(payload.get("in_combat"))
@@ -612,15 +615,23 @@ class PulpitTab(ttk.Frame):
 
         lines = [
             f"Zrodlo: {source} | system: {system}",
-            f"Risk: {risk_short} | VAR: {var_status} | level: {level}",
+            f"Risk: {risk_short} | Rebuy: {rebuy_hint} | VAR: {var_status}",
+            (
+                f"ValR: source={contract.source_risk_label} / "
+                f"value={contract.value_risk_label} | level: {level}"
+            ),
             f"Powod: {reason}",
             (
                 f"Combat: {'tak' if in_combat else 'nie'} | "
                 f"Hull: {self._fmt_pct(payload.get('hull_percent'))}"
             ),
             (
-                f"Rebuy: {self._rebuy_hint(payload)} | "
+                f"Rebuy: {rebuy_hint} | "
                 f"Cargo: {self._fmt_num(payload.get('cargo_tons'))} t"
+            ),
+            (
+                f"Wartosc: explo {self._fmt_m(contract.exploration_value_estimated)} | "
+                f"exobio {self._fmt_m(contract.exobio_value_estimated)}"
             ),
         ]
 
@@ -1073,9 +1084,8 @@ class PulpitTab(ttk.Frame):
         self._current_risk_payload = dict(payload)
         self._current_risk_source = "survival_rebuy"
 
-        risk_short = self._risk_short(payload.get("risk_status"))
-        rebuy_hint = self._rebuy_hint(payload)
-        self._set_widget_text("risk", f"RISK: {risk_short} | {rebuy_hint}")
+        contract = build_risk_rebuy_contract(payload)
+        self._set_widget_text("risk", f"RISK: {contract.risk_label} | {contract.rebuy_label}")
         self._refresh_widget_strip()
 
         is_p0 = self._is_p0_risk(payload)
@@ -1092,8 +1102,8 @@ class PulpitTab(ttk.Frame):
         self._current_risk_payload = dict(payload)
         self._current_risk_source = "combat_awareness"
 
-        risk_short = self._risk_short(payload.get("risk_status"))
-        self._set_widget_text("risk", f"RISK: {risk_short} | COMBAT")
+        contract = build_risk_rebuy_contract(payload)
+        self._set_widget_text("risk", f"RISK: {contract.risk_label} | {contract.rebuy_label}")
         self._refresh_widget_strip()
 
         is_p0 = self._is_p0_risk(payload)
@@ -1169,6 +1179,12 @@ class PulpitTab(ttk.Frame):
 
     @staticmethod
     def _is_p0_risk(payload: dict) -> bool:
+        contract = build_risk_rebuy_contract(payload)
+        if contract.rebuy_label == "NO REBUY":
+            return True
+        if contract.risk_label == "CRIT":
+            return True
+
         risk = str(payload.get("risk_status") or "").strip().upper()
         level = str(payload.get("level") or "").strip().lower()
         return "CRIT" in risk or level == "critical"
