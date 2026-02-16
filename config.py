@@ -132,6 +132,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "dispatcher.class_cooldown.exploration": 0.0,
     "dispatcher.class_cooldown.navigation": 0.0,
     "dispatcher.class_cooldown.general": 0.0,
+    # F7 mode system TTL policy (seconds, AUTO detector).
+    "mode.ttl.combat_sec": 45.0,
+    "mode.ttl.exploration_sec": 120.0,
+    "mode.ttl.mining_sec": 90.0,
 
     # SCHOWEK / AUTO-COPY
     "auto_clipboard": True,           # auto-schowek (route)

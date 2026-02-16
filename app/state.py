@@ -25,6 +25,11 @@ class AppState:
         "EXPLORATION": 120.0,
         "MINING": 90.0,
     }
+    _MODE_TTL_CONFIG_KEYS = {
+        "COMBAT": "mode.ttl.combat_sec",
+        "EXPLORATION": "mode.ttl.exploration_sec",
+        "MINING": "mode.ttl.mining_sec",
+    }
     _MODE_PRIORITY = {
         "COMBAT": 5,
         "DOCKED": 4,
@@ -319,6 +324,30 @@ class AppState:
             modules = []
         return self._detect_mining_loadout_from_modules(modules)
 
+    def _resolve_mode_ttl_seconds_locked(self, mode_id: str) -> float | None:
+        norm = self._normalize_mode_id(mode_id)
+        default_ttl = self._MODE_TTL_DEFAULTS.get(norm)
+        if default_ttl is None:
+            return None
+
+        cfg_key = self._MODE_TTL_CONFIG_KEYS.get(norm)
+        raw_value = self.config.get(cfg_key, default_ttl) if cfg_key else default_ttl
+        try:
+            ttl = float(raw_value)
+        except Exception:
+            ttl = float(default_ttl)
+        if ttl <= 0:
+            ttl = float(default_ttl)
+        return float(ttl)
+
+    @staticmethod
+    def _is_mode_signal_alive(last_signal_ts: float, ttl_seconds: float | None, now_ts: float) -> bool:
+        if ttl_seconds is None or ttl_seconds <= 0:
+            return False
+        if last_signal_ts <= 0:
+            return False
+        return (now_ts - float(last_signal_ts)) <= float(ttl_seconds)
+
     def _set_mode_locked(
         self,
         *,
@@ -365,30 +394,35 @@ class AppState:
 
     def _resolve_auto_mode_locked(self) -> tuple[str, float | None]:
         now_ts = time.time()
-        combat_active = bool(self._mode_signal_combat_active)
-        if not combat_active and self._mode_signal_combat_last_ts > 0:
-            combat_active = (now_ts - self._mode_signal_combat_last_ts) <= self._MODE_TTL_DEFAULTS["COMBAT"]
+        combat_ttl = self._resolve_mode_ttl_seconds_locked("COMBAT")
+        exploration_ttl = self._resolve_mode_ttl_seconds_locked("EXPLORATION")
+        mining_ttl = self._resolve_mode_ttl_seconds_locked("MINING")
 
-        exploration_active = bool(self._mode_signal_exploration_active)
-        if not exploration_active and self._mode_signal_exploration_last_ts > 0:
-            exploration_active = (
-                (now_ts - self._mode_signal_exploration_last_ts)
-                <= self._MODE_TTL_DEFAULTS["EXPLORATION"]
-            )
-
-        mining_active = bool(self._mode_signal_mining_active and self._mode_signal_mining_loadout)
-        if not mining_active and self._mode_signal_mining_last_ts > 0 and self._mode_signal_mining_loadout:
-            mining_active = (now_ts - self._mode_signal_mining_last_ts) <= self._MODE_TTL_DEFAULTS["MINING"]
+        combat_active = self._is_mode_signal_alive(
+            self._mode_signal_combat_last_ts,
+            combat_ttl,
+            now_ts,
+        )
+        exploration_active = self._is_mode_signal_alive(
+            self._mode_signal_exploration_last_ts,
+            exploration_ttl,
+            now_ts,
+        )
+        mining_active = bool(self._mode_signal_mining_loadout) and self._is_mode_signal_alive(
+            self._mode_signal_mining_last_ts,
+            mining_ttl,
+            now_ts,
+        )
 
         candidates = [("NORMAL", None)]
         if mining_active:
-            candidates.append(("MINING", self._MODE_TTL_DEFAULTS["MINING"]))
+            candidates.append(("MINING", mining_ttl))
         if exploration_active:
-            candidates.append(("EXPLORATION", self._MODE_TTL_DEFAULTS["EXPLORATION"]))
+            candidates.append(("EXPLORATION", exploration_ttl))
         if bool(self._mode_signal_docked):
             candidates.append(("DOCKED", None))
         if combat_active:
-            candidates.append(("COMBAT", self._MODE_TTL_DEFAULTS["COMBAT"]))
+            candidates.append(("COMBAT", combat_ttl))
 
         candidates.sort(key=lambda item: self._MODE_PRIORITY.get(item[0], 0), reverse=True)
         return candidates[0]
@@ -463,6 +497,9 @@ class AppState:
                 else:
                     self._mode_signal_hardpoints_since = None
                     self._mode_signal_combat_active = False
+                if docked and not hardpoints:
+                    # Docked state should clear stale combat hold from previous encounters.
+                    self._mode_signal_combat_last_ts = 0.0
 
             focus = self._safe_int(status_data.get("GuiFocus"))
             in_exploration_focus = focus in {9, 10}
@@ -492,12 +529,16 @@ class AppState:
                 self.is_docked = True
                 config.STATE["is_docked"] = True
                 self._mode_signal_combat_active = False
+                self._mode_signal_combat_last_ts = 0.0
+                self._mode_signal_hardpoints_since = None
             elif event_name == "Undocked":
                 self._mode_signal_docked = False
                 self.is_docked = False
                 config.STATE["is_docked"] = False
             elif event_name in {"Died"}:
                 self._mode_signal_combat_active = False
+                self._mode_signal_combat_last_ts = 0.0
+                self._mode_signal_hardpoints_since = None
 
             if event_name in self._MODE_COMBAT_EVENTS:
                 self._mode_signal_combat_active = True
@@ -565,6 +606,8 @@ class AppState:
             self._mode_signal_docked = self.is_docked
             if self.is_docked:
                 self._mode_signal_combat_active = False
+                self._mode_signal_combat_last_ts = 0.0
+                self._mode_signal_hardpoints_since = None
         log_event_throttled("state.docked", 500, "STATE", f"Docked = {self.is_docked}")
         if changed:
             self.refresh_mode_state(source="set_docked")
