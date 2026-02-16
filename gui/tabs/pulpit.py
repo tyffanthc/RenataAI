@@ -34,6 +34,7 @@ class PulpitTab(ttk.Frame):
     _PANEL_MAX_RATIO = 0.30
     _PANEL_MIN_HEIGHT = 96
     _PANEL_COLLAPSED_HEIGHT = 44
+    _PANEL_MAX_ACTIONS = 6
 
     _PANEL_TITLES = {
         "mode": "MODE",
@@ -401,7 +402,7 @@ class PulpitTab(ttk.Frame):
 
     def _set_panel_actions(self, actions: list[tuple[str, Callable[[], None]]]) -> None:
         self._clear_panel_actions()
-        safe_actions = actions[:4]
+        safe_actions = actions[: self._PANEL_MAX_ACTIONS]
         if not safe_actions:
             self.panel_actions.pack_forget()
             return
@@ -589,7 +590,7 @@ class PulpitTab(ttk.Frame):
             domain="cash",
             mode="Data",
             lines=lines[:6],
-            actions=actions[:4],
+            actions=actions[: self._PANEL_MAX_ACTIONS],
         )
 
     def _render_risk_panel(self, force_open: bool = False) -> None:
@@ -658,6 +659,7 @@ class PulpitTab(ttk.Frame):
 
         actions = [
             ("AUTO", self._on_click_mode_auto),
+            ("MAN NORMAL", lambda: self._on_click_mode_manual("NORMAL")),
             ("MAN EXPL", lambda: self._on_click_mode_manual("EXPLORATION")),
             ("MAN MINING", lambda: self._on_click_mode_manual("MINING")),
             ("MAN COMBAT", lambda: self._on_click_mode_manual("COMBAT")),
