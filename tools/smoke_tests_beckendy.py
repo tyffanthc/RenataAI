@@ -58,8 +58,10 @@ from logic import elw_route as elw_logic  # type: ignore
 from logic import hmc_route as hmc_logic  # type: ignore
 from logic import exomastery as exomastery_logic  # type: ignore
 from logic import trade as trade_logic  # type: ignore
+from logic import cargo_value_estimator  # type: ignore
 from logic.rows_normalizer import normalize_trade_rows
 from logic.exit_summary import ExitSummaryData
+from logic.risk_rebuy_contract import build_risk_rebuy_contract
 from logic.tts.text_preprocessor import prepare_tts
 from logic.insight_dispatcher import (
     Insight,
@@ -82,6 +84,7 @@ from logic.capabilities import (
     resolve_capabilities,
 )
 from gui import common_tables  # type: ignore
+from gui.tabs.pulpit import PulpitTab  # type: ignore
 from gui.tabs.spansh.trade import TradeTab  # type: ignore
 
 
@@ -2545,6 +2548,193 @@ def test_f6_voice_ethics_compliance_baseline(_ctx: TestContext) -> None:
             assert phrase not in lower, f"Non-neutral wording detected: '{phrase}' in '{text}'"
 
 
+def test_f7_quality_gates_and_smoke_baseline(ctx: TestContext) -> None:
+    """
+    F7 quality gate baseline:
+    - widget strip order and visibility contract,
+    - single-slot panel policy (P0 can override),
+    - mode detector + TTL + manual safety contract,
+    - risk/rebuy deterministic mapping,
+    - cargo VaR fallback/confidence contract.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+
+    assert PulpitTab._WIDGET_ORDER[:4] == ["mode", "risk", "cash", "route"], (
+        f"Unexpected widget prefix: {PulpitTab._WIDGET_ORDER}"
+    )
+    assert set(PulpitTab._WIDGET_ALWAYS) == {"mode", "risk", "cash", "route"}, (
+        f"Unexpected always-visible widgets: {PulpitTab._WIDGET_ALWAYS}"
+    )
+    assert PulpitTab._WIDGET_MAX_VISIBLE == 7, (
+        f"Expected widget visibility cap=7, got: {PulpitTab._WIDGET_MAX_VISIBLE}"
+    )
+    assert PulpitTab._PANEL_MAX_ACTIONS == 6, (
+        f"Expected panel action cap=6, got: {PulpitTab._PANEL_MAX_ACTIONS}"
+    )
+
+    contract = build_risk_rebuy_contract(
+        {
+            "risk_status": "RISK_LOW",
+            "exploration_value_estimated": 0.0,
+            "exobio_value_estimated": 0.0,
+            "credits": 900_000.0,
+            "rebuy_cost": 1_000_000.0,
+        }
+    )
+    assert contract.rebuy_label == "NO REBUY", f"Expected NO REBUY, got: {contract.rebuy_label}"
+    assert contract.risk_label == "CRIT", f"Expected CRIT on NO REBUY, got: {contract.risk_label}"
+
+    cargo_value_estimator.reset_runtime()
+    cargo_value_estimator.update_cargo_snapshot(
+        {"Inventory": [{"Name": "Unknown Cargo", "Count": 5}]},
+        source="smoke.f7.cargo",
+    )
+    estimate = cargo_value_estimator.estimate_cargo_value(cargo_tons=5.0)
+    assert estimate.source == "fallback", f"Expected fallback source, got: {estimate.source}"
+    assert estimate.confidence == "LOW", f"Expected LOW confidence, got: {estimate.confidence}"
+    assert int(round(estimate.cargo_expected_cr)) == 100_000, (
+        f"Unexpected fallback expected value: {estimate.cargo_expected_cr}"
+    )
+    assert estimate.cargo_floor_cr > 0.0, "Cargo floor should stay positive in fallback mode"
+
+    saved_snapshot = app_state.get_mode_state_snapshot()
+    saved_is_docked = bool(getattr(app_state, "is_docked", False))
+    saved_state_keys = {
+        "mode_id": config.STATE.get("mode_id"),
+        "mode_source": config.STATE.get("mode_source"),
+        "mode_confidence": config.STATE.get("mode_confidence"),
+        "mode_since": config.STATE.get("mode_since"),
+        "mode_ttl": config.STATE.get("mode_ttl"),
+        "is_docked": config.STATE.get("is_docked"),
+    }
+    saved_signals = {}
+    for name in (
+        "_mode_signal_docked",
+        "_mode_signal_combat_active",
+        "_mode_signal_combat_last_ts",
+        "_mode_signal_hardpoints_since",
+        "_mode_signal_exploration_active",
+        "_mode_signal_exploration_last_ts",
+        "_mode_signal_mining_active",
+        "_mode_signal_mining_last_ts",
+        "_mode_signal_mining_loadout",
+        "_mode_last_emit_signature",
+    ):
+        saved_signals[name] = getattr(app_state, name)
+    saved_overlay = getattr(app_state, "mode_overlay", None)
+    saved_combat_silence = bool(getattr(app_state, "mode_combat_silence", False))
+
+    settings = getattr(config.config, "_settings", None)  # type: ignore[attr-defined]
+    saved_ttl = {}
+    if isinstance(settings, dict):
+        for key in ("mode.ttl.combat_sec", "mode.ttl.exploration_sec", "mode.ttl.mining_sec"):
+            saved_ttl[key] = settings.get(key)
+        settings["mode.ttl.combat_sec"] = 1.0
+        settings["mode.ttl.exploration_sec"] = 120.0
+        settings["mode.ttl.mining_sec"] = 90.0
+
+    try:
+        with app_state.lock:
+            app_state.mode_id = "NORMAL"
+            app_state.mode_source = "AUTO"
+            app_state.mode_confidence = 0.60
+            app_state.mode_since = time.time()
+            app_state.mode_ttl = None
+            app_state.mode_overlay = None
+            app_state.mode_combat_silence = False
+            app_state.is_docked = False
+            app_state._mode_signal_docked = False
+            app_state._mode_signal_combat_active = False
+            app_state._mode_signal_combat_last_ts = 0.0
+            app_state._mode_signal_hardpoints_since = None
+            app_state._mode_signal_exploration_active = False
+            app_state._mode_signal_exploration_last_ts = 0.0
+            app_state._mode_signal_mining_active = False
+            app_state._mode_signal_mining_last_ts = 0.0
+            app_state._mode_signal_mining_loadout = False
+            app_state._mode_last_emit_signature = ""
+            app_state._persist_mode_state_locked()
+        app_state.publish_mode_state(force=True)
+
+        app_state.set_mode_manual("EXPLORATION", source="smoke.f7.mode.manual")
+        app_state.update_mode_signal_from_runtime(
+            "combat_awareness",
+            {"in_combat": True, "risk_status": "RISK_HIGH"},
+            source="smoke.f7.mode.manual.safety",
+        )
+        snap_manual = app_state.get_mode_state_snapshot()
+        assert snap_manual.get("mode_id") == "EXPLORATION", (
+            f"Manual lock broken by AUTO signal: {snap_manual}"
+        )
+        assert snap_manual.get("mode_source") == "MANUAL", (
+            f"Expected MANUAL source, got: {snap_manual}"
+        )
+        assert snap_manual.get("mode_overlay") == "COMBAT", (
+            f"Expected COMBAT safety overlay, got: {snap_manual}"
+        )
+        assert bool(snap_manual.get("mode_combat_silence")) is True, (
+            f"Expected combat_silence ON under safety overlay, got: {snap_manual}"
+        )
+
+        app_state.set_mode_auto(source="smoke.f7.mode.auto")
+        app_state.update_mode_signal_from_runtime(
+            "combat_awareness",
+            {"in_combat": True, "risk_status": "RISK_HIGH"},
+            source="smoke.f7.mode.auto.signal",
+        )
+        snap_auto = app_state.get_mode_state_snapshot()
+        assert snap_auto.get("mode_id") == "COMBAT", (
+            f"Expected COMBAT in AUTO mode, got: {snap_auto}"
+        )
+        assert snap_auto.get("mode_ttl") == 1.0, (
+            f"Expected COMBAT TTL override=1.0, got: {snap_auto}"
+        )
+
+        with app_state.lock:
+            app_state._mode_signal_combat_active = False
+            app_state._mode_signal_combat_last_ts = time.time() - 2.0
+        app_state.refresh_mode_state(source="smoke.f7.mode.auto.expire")
+        snap_expired = app_state.get_mode_state_snapshot()
+        assert snap_expired.get("mode_id") == "NORMAL", (
+            f"Expected NORMAL after TTL expiry, got: {snap_expired}"
+        )
+        assert snap_expired.get("mode_ttl") is None, (
+            f"Expected empty TTL after expiry, got: {snap_expired}"
+        )
+    finally:
+        with app_state.lock:
+            app_state.mode_id = str(saved_snapshot.get("mode_id") or "NORMAL")
+            app_state.mode_source = str(saved_snapshot.get("mode_source") or "AUTO")
+            app_state.mode_confidence = float(saved_snapshot.get("mode_confidence") or 0.60)
+            app_state.mode_since = float(saved_snapshot.get("mode_since") or time.time())
+            ttl = saved_snapshot.get("mode_ttl")
+            app_state.mode_ttl = float(ttl) if ttl is not None else None
+            app_state.mode_overlay = saved_overlay
+            app_state.mode_combat_silence = saved_combat_silence
+            app_state.is_docked = saved_is_docked
+            for key, value in saved_signals.items():
+                setattr(app_state, key, value)
+            app_state._persist_mode_state_locked()
+
+        for key, value in saved_state_keys.items():
+            if value is None:
+                config.STATE.pop(key, None)
+            else:
+                config.STATE[key] = value
+
+        if isinstance(settings, dict):
+            for key, value in saved_ttl.items():
+                if value is None:
+                    settings.pop(key, None)
+                else:
+                    settings[key] = value
+
+        app_state.publish_mode_state(force=True)
+        cargo_value_estimator.reset_runtime()
+        ctx.clear_queue()
+
+
 def test_f4_cross_module_voice_priority_baseline(_ctx: TestContext) -> None:
     """
     F4 cross-module voice priority baseline:
@@ -3610,6 +3800,7 @@ def run_all_tests() -> int:
         ("test_f5_anti_spam_regression_baseline", test_f5_anti_spam_regression_baseline),
         ("test_f5_quality_gates_invariants", test_f5_quality_gates_invariants),
         ("test_f6_voice_ethics_compliance_baseline", test_f6_voice_ethics_compliance_baseline),
+        ("test_f7_quality_gates_and_smoke_baseline", test_f7_quality_gates_and_smoke_baseline),
         ("test_f4_cross_module_voice_priority_baseline", test_f4_cross_module_voice_priority_baseline),
         ("test_f4_quality_gates_invariants", test_f4_quality_gates_invariants),
         ("test_trade_station_state_reset_on_system_change", test_trade_station_state_reset_on_system_change),
