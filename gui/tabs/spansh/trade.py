@@ -169,6 +169,8 @@ class TradeTab(ttk.Frame):
         self.var_trade_details_toggle = tk.StringVar(value="Pokaz szczegoly kroku")
         self.var_sell_assist_state = tk.StringVar(value="")
         self.var_sell_assist_note = tk.StringVar(value="")
+        self.var_sell_assist_toggle = tk.StringVar(value="Rozwin Sell Assist")
+        self._sell_assist_collapsed: bool = True
         self._sell_assist_dismissed = False
         self._sell_assist_decision_space: dict | None = None
 
@@ -582,7 +584,7 @@ class TradeTab(ttk.Frame):
         self.lbl_status = ttk.Label(center_group, text="Gotowy", font=("Arial", 10, "bold"))
         self.lbl_status.pack(side="left", padx=(20, 0))
 
-        self.sell_assist_wrap = ttk.LabelFrame(fr, text="Sell Assist")
+        self.sell_assist_wrap = ttk.LabelFrame(fr, text="Sell Assist (compact)")
         self.sell_assist_wrap.pack(fill="x", pady=(2, 6))
         sell_header = ttk.Frame(self.sell_assist_wrap)
         sell_header.pack(fill="x", padx=8, pady=(6, 2))
@@ -593,22 +595,34 @@ class TradeTab(ttk.Frame):
             justify="left",
         )
         self.lbl_sell_assist_state.pack(side="left", fill="x", expand=True)
-        self.btn_sell_assist_skip = ttk.Button(
+        self.btn_sell_assist_toggle = ttk.Button(
             sell_header,
-            text="Pomijam",
-            command=self._dismiss_sell_assist,
+            textvariable=self.var_sell_assist_toggle,
+            command=self._toggle_sell_assist,
         )
-        self.btn_sell_assist_skip.pack(side="right")
+        self.btn_sell_assist_toggle.pack(side="right", padx=(6, 0))
+
+        self.sell_assist_details_wrap = ttk.Frame(self.sell_assist_wrap)
+        self.sell_assist_details_wrap.pack(fill="x", padx=8, pady=(0, 8))
+        sell_meta = ttk.Frame(self.sell_assist_details_wrap)
+        sell_meta.pack(fill="x", pady=(0, 4))
         self.lbl_sell_assist_note = ttk.Label(
-            self.sell_assist_wrap,
+            sell_meta,
             textvariable=self.var_sell_assist_note,
             anchor="w",
             justify="left",
         )
-        self.lbl_sell_assist_note.pack(fill="x", padx=8, pady=(0, 4))
-        self.sell_assist_cards_host = ttk.Frame(self.sell_assist_wrap)
-        self.sell_assist_cards_host.pack(fill="x", padx=8, pady=(0, 8))
+        self.lbl_sell_assist_note.pack(side="left", fill="x", expand=True)
+        self.btn_sell_assist_skip = ttk.Button(
+            sell_meta,
+            text="Pomijam",
+            command=self._dismiss_sell_assist,
+        )
+        self.btn_sell_assist_skip.pack(side="right", padx=(8, 0))
+        self.sell_assist_cards_host = ttk.Frame(self.sell_assist_details_wrap)
+        self.sell_assist_cards_host.pack(fill="x")
         self._clear_sell_assist()
+        self._set_sell_assist_collapsed(True, force=True)
 
         self.trade_split = ttk.PanedWindow(fr, orient=tk.VERTICAL)
         self.trade_split.pack(fill="both", expand=True, padx=8, pady=(4, 8))
@@ -735,7 +749,7 @@ class TradeTab(ttk.Frame):
     def _clear_sell_assist(self) -> None:
         self._sell_assist_decision_space = None
         self._sell_assist_dismissed = False
-        self.var_sell_assist_state.set("Sell Assist: brak aktywnego rankingu.")
+        self.var_sell_assist_state.set("Sell Assist: brak aktywnego rankingu (compact).")
         self.var_sell_assist_note.set("Po wyznaczeniu trasy pojawia sie 2-3 opcje + Pomijam.")
         host = getattr(self, "sell_assist_cards_host", None)
         if host is None:
@@ -745,11 +759,35 @@ class TradeTab(ttk.Frame):
                 child.destroy()
             except Exception:
                 pass
+        self._set_sell_assist_collapsed(True)
+
+    def _toggle_sell_assist(self) -> None:
+        self._set_sell_assist_collapsed(not self._sell_assist_collapsed)
+
+    def _set_sell_assist_collapsed(self, collapsed: bool, *, force: bool = False) -> None:
+        if self._sell_assist_collapsed == bool(collapsed) and not force:
+            return
+        self._sell_assist_collapsed = bool(collapsed)
+        if self._sell_assist_collapsed:
+            self.var_sell_assist_toggle.set("Rozwin Sell Assist")
+            try:
+                self.sell_assist_details_wrap.pack_forget()
+            except Exception:
+                pass
+            return
+
+        self.var_sell_assist_toggle.set("Ukryj Sell Assist")
+        try:
+            if not self.sell_assist_details_wrap.winfo_manager():
+                self.sell_assist_details_wrap.pack(fill="x", padx=8, pady=(0, 8))
+        except Exception:
+            pass
 
     def _dismiss_sell_assist(self) -> None:
         self._sell_assist_dismissed = True
         self.var_sell_assist_state.set("Sell Assist: pomijam - decyzja po stronie pilota.")
         self.var_sell_assist_note.set("Mozesz wrzucic nowe dane trasy, aby odswiezyc ranking.")
+        self._set_sell_assist_collapsed(True)
         common.emit_status(
             "INFO",
             "SELL_ASSIST_SKIPPED",
@@ -782,6 +820,7 @@ class TradeTab(ttk.Frame):
         target_display = str(result.get("target_display") or result.get("target_system") or "-")
         self.var_sell_assist_state.set(f"Sell Assist: ustawiono intent -> {target_display}")
         self.var_sell_assist_note.set("Tryb intent aktywny. Bez auto-route i bez automatyzacji mapy gry.")
+        self._set_sell_assist_collapsed(True)
         common.emit_status(
             "OK",
             "SELL_ASSIST_INTENT_SET",
@@ -838,6 +877,8 @@ class TradeTab(ttk.Frame):
         state = f"Sell Assist: {len(options)} opcje (bez top 1)."
         if advisory:
             state += " Tryb orientacyjny."
+        if self._sell_assist_collapsed:
+            state += " Kliknij 'Rozwin Sell Assist'."
         self.var_sell_assist_state.set(state)
         self.var_sell_assist_note.set(str(payload.get("note") or ""))
 
