@@ -658,8 +658,8 @@ class PulpitTab(ttk.Frame):
 
         actions = [
             ("AUTO", self._on_click_mode_auto),
-            ("MAN NORMAL", lambda: self._on_click_mode_manual("NORMAL")),
             ("MAN EXPL", lambda: self._on_click_mode_manual("EXPLORATION")),
+            ("MAN MINING", lambda: self._on_click_mode_manual("MINING")),
             ("MAN COMBAT", lambda: self._on_click_mode_manual("COMBAT")),
         ]
         self._open_panel(
