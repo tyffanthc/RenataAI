@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from gui.tabs.logbook import _to_iso_date
+from gui.tabs.logbook import _merge_default_tags, _to_iso_date
 from logic.entry_repository import EntryRepository
 
 
@@ -92,6 +92,13 @@ class F9FilterPopoverDateAndMultiTagTests(unittest.TestCase):
             sort="title_az",
         )
         self.assertEqual([item.get("title") for item in items], ["Evening", "Morning"])
+
+    def test_default_tag_suggestions_include_trade_and_mining(self) -> None:
+        merged = _merge_default_tags([])
+        self.assertIn("trade", merged)
+        self.assertIn("market", merged)
+        self.assertIn("mining", merged)
+        self.assertIn("prospecting", merged)
 
 
 if __name__ == "__main__":

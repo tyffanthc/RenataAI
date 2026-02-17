@@ -2,6 +2,7 @@ import json
 import os
 import re
 import tkinter as tk
+import time
 from datetime import datetime, timezone
 from tkinter import messagebox, simpledialog, ttk
 
@@ -29,6 +30,45 @@ COLOR_ACCENT = "#1f2833"
 
 _CATEGORY_ALL = "(Wszystkie)"
 _CATEGORY_FALLBACK = "Dziennik/Ogolne"
+_DEFAULT_METADATA_TAGS = [
+    "exploration",
+    "scan",
+    "dss",
+    "navigation",
+    "jump",
+    "station",
+    "docked",
+    "undocked",
+    "trade",
+    "market",
+    "marketbuy",
+    "marketsell",
+    "mining",
+    "prospecting",
+    "asteroid",
+]
+
+
+def _merge_default_tags(local_tags: list[str] | set[str] | tuple[str, ...]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+
+    for raw_tag in list(local_tags):
+        tag = str(raw_tag or "").strip().lower()
+        if not tag or tag in seen:
+            continue
+        seen.add(tag)
+        out.append(tag)
+
+    for raw_tag in _DEFAULT_METADATA_TAGS:
+        tag = str(raw_tag or "").strip().lower()
+        if not tag or tag in seen:
+            continue
+        seen.add(tag)
+        out.append(tag)
+
+    out.sort()
+    return out
 
 
 def _to_iso_date(value: str, *, end_of_day: bool = False) -> str | None:
@@ -129,8 +169,9 @@ class LogbookTab(tk.Frame):
         self.logbook_status_var = tk.StringVar(value="Feed pusty.")
         self._logbook_feed_limit = 250
         self._selected_filter_tags: set[str] = set()
-        self._active_popover: tk.Toplevel | None = None
+        self._active_popover: tk.Widget | None = None
         self._active_popover_anchor: tk.Widget | None = None
+        self._active_popover_opened_at: float = 0.0
 
         self._configure_style()
         self._build_ui()
@@ -270,9 +311,10 @@ class LogbookTab(tk.Frame):
             relief="flat",
             state="readonly",
             readonlybackground=COLOR_ACCENT,
+            cursor="hand2",
         )
         self.entry_filter_tags.grid(row=0, column=3, sticky="ew", padx=(4, 12))
-        self.entry_filter_tags.bind("<Button-1>", self._on_tags_filter_click)
+        self.entry_filter_tags.bind("<ButtonRelease-1>", self._on_tags_filter_click)
 
         tk.Label(filters, text="Od (YYYY-MM-DD):", bg=COLOR_BG, fg=COLOR_FG).grid(
             row=1, column=0, sticky="w", pady=(6, 0)
@@ -286,13 +328,12 @@ class LogbookTab(tk.Frame):
             relief="flat",
             state="readonly",
             readonlybackground=COLOR_ACCENT,
+            cursor="hand2",
         )
         self.entry_filter_date_from.grid(
             row=1, column=1, sticky="ew", padx=(4, 12), pady=(6, 0)
         )
-        self.entry_filter_date_from.bind(
-            "<Button-1>", lambda _e: self._open_date_filter_popover("from", self.entry_filter_date_from)
-        )
+        self.entry_filter_date_from.bind("<ButtonRelease-1>", self._on_filter_date_from_click)
 
         tk.Label(filters, text="Do (YYYY-MM-DD):", bg=COLOR_BG, fg=COLOR_FG).grid(
             row=1, column=2, sticky="w", pady=(6, 0)
@@ -306,11 +347,10 @@ class LogbookTab(tk.Frame):
             relief="flat",
             state="readonly",
             readonlybackground=COLOR_ACCENT,
+            cursor="hand2",
         )
         self.entry_filter_date_to.grid(row=1, column=3, sticky="ew", padx=(4, 12), pady=(6, 0))
-        self.entry_filter_date_to.bind(
-            "<Button-1>", lambda _e: self._open_date_filter_popover("to", self.entry_filter_date_to)
-        )
+        self.entry_filter_date_to.bind("<ButtonRelease-1>", self._on_filter_date_to_click)
 
         tk.Label(filters, text="Sort:", bg=COLOR_BG, fg=COLOR_FG).grid(
             row=0, column=4, sticky="w"
@@ -1061,6 +1101,7 @@ class LogbookTab(tk.Frame):
         popover = self._active_popover
         self._active_popover = None
         self._active_popover_anchor = None
+        self._active_popover_opened_at = 0.0
         if popover is not None:
             try:
                 if popover.winfo_exists():
@@ -1071,6 +1112,8 @@ class LogbookTab(tk.Frame):
     def _on_global_click_maybe_close_popover(self, event) -> None:
         popover = self._active_popover
         if popover is None:
+            return
+        if (time.monotonic() - float(self._active_popover_opened_at)) < 0.18:
             return
         try:
             if not popover.winfo_exists():
@@ -1096,46 +1139,26 @@ class LogbookTab(tk.Frame):
     def _open_popover(self, anchor_widget: tk.Widget, builder) -> None:
         self._close_active_popover()
 
-        popover = tk.Toplevel(self)
-        popover.overrideredirect(True)
-        popover.transient(self.winfo_toplevel())
-        popover.configure(bg=COLOR_BG, bd=1, relief="solid")
-        try:
-            popover.attributes("-topmost", True)
-        except Exception:
-            pass
-
-        frame = tk.Frame(popover, bg=COLOR_BG, bd=0, highlightthickness=0)
-        frame.pack(fill="both", expand=True)
-        builder(frame)
-
+        popover = tk.Frame(self, bg=COLOR_BG, bd=1, relief="solid", highlightthickness=0)
+        builder(popover)
         popover.update_idletasks()
-        x = int(anchor_widget.winfo_rootx())
-        y = int(anchor_widget.winfo_rooty() + anchor_widget.winfo_height() + 2)
-        popover.geometry(f"+{x}+{y}")
+        x = int(anchor_widget.winfo_rootx() - self.winfo_rootx())
+        y = int(anchor_widget.winfo_rooty() - self.winfo_rooty() + anchor_widget.winfo_height() + 2)
+        popover.place(x=x, y=y)
+        popover.lift()
 
         self._active_popover = popover
         self._active_popover_anchor = anchor_widget
-
-        def _on_focus_out(_event=None) -> None:
-            def _maybe_close() -> None:
-                current = self.focus_get()
-                if current is not None:
-                    try:
-                        if current.winfo_toplevel() == popover:
-                            return
-                    except Exception:
-                        pass
-                self._close_active_popover()
-
-            self.after(30, _maybe_close)
-
-        popover.bind("<FocusOut>", _on_focus_out)
+        self._active_popover_opened_at = time.monotonic()
         popover.bind("<Escape>", lambda _event: self._close_active_popover())
-        try:
-            popover.focus_force()
-        except Exception:
-            pass
+
+    def _on_filter_date_from_click(self, _event=None):
+        self.after_idle(lambda: self._open_date_filter_popover("from", self.entry_filter_date_from))
+        return "break"
+
+    def _on_filter_date_to_click(self, _event=None):
+        self.after_idle(lambda: self._open_date_filter_popover("to", self.entry_filter_date_to))
+        return "break"
 
     def _open_date_filter_popover(self, which: str, anchor_widget: tk.Widget) -> None:
         date_var = self.filter_date_from_var if which == "from" else self.filter_date_to_var
@@ -1262,7 +1285,11 @@ class LogbookTab(tk.Frame):
 
         self._open_popover(anchor_widget, _builder)
 
-    def _on_tags_filter_click(self, _event=None) -> None:
+    def _on_tags_filter_click(self, _event=None):
+        self.after_idle(self._open_tags_filter_popover)
+        return "break"
+
+    def _open_tags_filter_popover(self) -> None:
         available_tags = self._collect_available_tags()
         selected = set(self._selected_filter_tags)
         for tag in list(selected):
@@ -1588,17 +1615,14 @@ class LogbookTab(tk.Frame):
         return out
 
     def _collect_available_tags(self) -> list[str]:
-        seen: set[str] = set()
         out: list[str] = []
         for entry in self.repository.list_entries(sort="updated_desc"):
             for raw_tag in list(entry.get("tags") or []):
                 normalized = str(raw_tag or "").strip().lower()
-                if not normalized or normalized in seen:
+                if not normalized:
                     continue
-                seen.add(normalized)
                 out.append(normalized)
-        out.sort()
-        return out
+        return _merge_default_tags(out)
 
     def _ensure_category_saved(self, category: str) -> None:
         normalized = str(category or "").strip().strip("/")
@@ -1617,7 +1641,7 @@ class LogbookTab(tk.Frame):
         dialog.grab_set()
 
         dialog.columnconfigure(0, weight=1)
-        dialog.rowconfigure(3, weight=1)
+        dialog.rowconfigure(2, weight=1)
 
         current_category = str(entry.get("category_path") or "").strip().strip("/")
         categories = self._collect_available_categories()
@@ -1639,7 +1663,7 @@ class LogbookTab(tk.Frame):
 
         tags_box = tk.LabelFrame(
             dialog,
-            text="Tagi (lokalne z bazy)",
+            text="Tagi (lokalne + domyslne)",
             bg=COLOR_BG,
             fg=COLOR_FG,
             relief="solid",
@@ -1656,11 +1680,7 @@ class LogbookTab(tk.Frame):
             for raw_tag in list(entry.get("tags") or [])
             if str(raw_tag or "").strip()
         ]
-        tags = self._collect_available_tags()
-        for tag in current_tags:
-            if tag not in tags:
-                tags.append(tag)
-        tags.sort()
+        tags = _merge_default_tags(self._collect_available_tags() + current_tags)
 
         tag_vars: dict[str, tk.BooleanVar] = {}
         tag_checks: dict[str, tk.Checkbutton] = {}

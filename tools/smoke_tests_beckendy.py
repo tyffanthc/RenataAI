@@ -98,6 +98,7 @@ from logic.capabilities import (
 from gui import common_tables  # type: ignore
 from gui.tabs.pulpit import PulpitTab  # type: ignore
 from gui.tabs.spansh.trade import TradeTab  # type: ignore
+from gui.tabs.logbook import _merge_default_tags  # type: ignore
 
 
 # --- POMOCNICZY KONTEKST TESTÓW ----------------------------------------------
@@ -4023,6 +4024,10 @@ def test_f9_filter_popover_contract(_ctx: TestContext) -> None:
         )
         assert [item.get("title") for item in day_items] == ["Trade Risk", "Trade Safe"], (
             f"Unexpected end-of-day range result: {day_items}"
+        )
+        merged = _merge_default_tags([])
+        assert "trade" in merged and "mining" in merged, (
+            f"Default tag suggestions missing trade/mining: {merged}"
         )
 
 
