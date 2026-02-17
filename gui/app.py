@@ -811,6 +811,18 @@ class RenataApp:
                 if msg_type == "log":
                     self.tab_pulpit.log(content)
 
+                elif msg_type == "logbook_journal_feed":
+                    try:
+                        if hasattr(self.tab_journal, "append_logbook_feed_item"):
+                            self.tab_journal.append_logbook_feed_item(content)
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.logbook_feed",
+                            "failed to append logbook journal feed item",
+                            exc,
+                            interval_ms=3000,
+                        )
+
                 elif msg_type == "exploration_summary":
                     try:
                         self.tab_pulpit.update_exploration_summary(content)

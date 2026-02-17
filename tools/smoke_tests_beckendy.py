@@ -15,6 +15,7 @@ import queue
 import re
 import time
 import ast
+import tempfile
 from typing import Callable, List, Tuple
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -72,6 +73,17 @@ from logic.insight_dispatcher import (
     should_speak,
 )
 from logic.event_insight_mapping import get_insight_class, get_tts_policy_spec, resolve_emit_contract
+from logic.entry_repository import EntryRepository
+from logic.entry_templates import build_template_entry
+from logic.journal_entry_mapping import build_mvp_entry_draft
+from logic.journal_navigation import (
+    extract_navigation_chips,
+    resolve_chip_nav_target,
+    resolve_entry_nav_target,
+    resolve_entry_nav_target_typed,
+    resolve_logbook_nav_target,
+)
+from logic.logbook_feed import build_logbook_feed_item
 from logic.capabilities import (
     CAP_SETTINGS_FULL,
     CAP_TTS_ADVANCED_POLICY,
@@ -3759,6 +3771,152 @@ def test_f2_sell_intent_route_cross_module(ctx: TestContext) -> None:
             route_manager.clear_route()
 
 
+# --- TESTY: F8 QUALITY PACK --------------------------------------------------
+
+
+def test_f8_quality_pack_baseline(ctx: TestContext) -> None:
+    """
+    Smoke dla paczki F8:
+    - feed logbook (whitelist + chips),
+    - mapowanie Journal -> Entry,
+    - pinboard filter,
+    - templates (mining + trade),
+    - nawigacja przez route intent (bez auto-route).
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+
+    saved_awareness = app_state.get_route_awareness_snapshot()
+    try:
+        market_event = {
+            "event": "MarketSell",
+            "timestamp": "2026-02-16T22:30:00Z",
+            "StarSystem": "Diagaundri",
+            "StationName": "Ray Gateway",
+            "BodyName": "Diagaundri A 1",
+            "Type": "Gold",
+            "Count": 64,
+            "SellPrice": 12000,
+        }
+
+        feed_item = build_logbook_feed_item(market_event)
+        assert isinstance(feed_item, dict), "Expected logbook feed item for MarketSell"
+        assert str(feed_item.get("default_category") or "") == "Handel/Transakcje", (
+            f"Unexpected default category: {feed_item}"
+        )
+        assert str(resolve_logbook_nav_target(feed_item) or "") == "Ray Gateway", (
+            f"Expected station target from logbook feed, got: {feed_item}"
+        )
+
+        chips = extract_navigation_chips(feed_item)
+        assert len(chips) >= 2, f"Expected navigation chips SYSTEM/STATION, got: {chips}"
+        chip_targets = [resolve_chip_nav_target(chip) for chip in chips]
+        assert "Ray Gateway" in chip_targets, f"Expected STATION chip target, got: {chips}"
+
+        draft = build_mvp_entry_draft(feed_item.get("raw_event") or {})
+        assert isinstance(draft, dict), "Expected MVP draft from logbook raw_event"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_path = os.path.join(tmp, "entries.jsonl")
+            repo = EntryRepository(path=repo_path)
+
+            created = repo.create_entry(draft)
+            target = str(resolve_entry_nav_target(created) or "")
+            assert target == "Ray Gateway", f"Expected entry nav target to station, got: {created}"
+
+            repo.pin_entry(str(created.get("id")), True)
+            pinned = repo.list_entries(filters={"is_pinned": True}, sort="updated_desc")
+            assert len(pinned) == 1, f"Expected one pinned entry, got: {pinned}"
+
+            mining_template = build_template_entry(
+                "mining_hotspot",
+                {
+                    "commodity": "Platinum",
+                    "system_name": "Colonia",
+                    "body_name": "Colonia AB 2 Ring A",
+                    "ring_type": "Metallic",
+                },
+            )
+            trade_template = build_template_entry(
+                "trade_route",
+                {
+                    "from_system": "Diagaundri",
+                    "from_station": "Ray Gateway",
+                    "to_system": "Achenar",
+                    "to_station": "Dawes Hub",
+                    "profit_per_t": 12000,
+                    "pad_size": "L",
+                    "distance_ls": 84,
+                    "permit_required": False,
+                },
+            )
+            mining_entry = repo.create_entry(mining_template)
+            trade_entry = repo.create_entry(trade_template)
+
+            assert str(mining_entry.get("entry_type") or "") == "mining_hotspot", (
+                f"Unexpected mining template entry contract: {mining_entry}"
+            )
+            assert str(trade_entry.get("entry_type") or "") == "trade_route", (
+                f"Unexpected trade template entry contract: {trade_entry}"
+            )
+
+        snap = app_state.set_route_intent("Ray Gateway", source="smoke.f8.quality.intent")
+        assert str(snap.get("route_mode") or "") == "intent", f"Expected intent mode, got: {snap}"
+        assert str(snap.get("route_target") or "") == "Ray Gateway", (
+            f"Expected route target Ray Gateway, got: {snap}"
+        )
+        assert int(snap.get("route_progress_percent") or 0) == 0, (
+            f"Expected zero progress on intent setup, got: {snap}"
+        )
+    finally:
+        app_state.update_route_awareness(
+            route_mode=str(saved_awareness.get("route_mode") or "idle"),
+            route_target=str(saved_awareness.get("route_target") or ""),
+            route_progress_percent=int(saved_awareness.get("route_progress_percent") or 0),
+            next_system=str(saved_awareness.get("next_system") or ""),
+            is_off_route=bool(saved_awareness.get("is_off_route")),
+            source="smoke.f8.quality.restore",
+        )
+
+
+def test_f9_entry_context_menu_contract(_ctx: TestContext) -> None:
+    """
+    Smoke dla F9 ticket #1:
+    - typowany target wpisu (STATION/BODY/SYSTEM),
+    - przeniesienie wpisu miedzy kategoriami bez utraty metadanych.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = EntryRepository(path=os.path.join(tmp, "entries.jsonl"))
+        created = repo.create_entry(
+            {
+                "category_path": "Handel/Trasy",
+                "title": "Trasa A-B",
+                "body": "Opis",
+                "location": {
+                    "system_name": "Diagaundri",
+                    "station_name": "Ray Gateway",
+                    "body_name": "Diagaundri A 1",
+                },
+                "source": {"kind": "manual"},
+                "payload": {"note": "f9"},
+            }
+        )
+        resolved = resolve_entry_nav_target_typed(created)
+        assert resolved == ("STATION", "Ray Gateway"), f"Unexpected typed target: {resolved}"
+
+        moved = repo.update_entry(
+            str(created.get("id")),
+            {"category_path": "Eksploracja/Odkrycia"},
+        )
+        assert str(moved.get("category_path") or "") == "Eksploracja/Odkrycia", (
+            f"Category move failed: {moved}"
+        )
+        assert str((moved.get("payload") or {}).get("note") or "") == "f9", (
+            f"Payload unexpectedly changed after move: {moved}"
+        )
+        assert resolve_entry_nav_target(moved) == "Ray Gateway", f"Fallback changed: {moved}"
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -3835,6 +3993,8 @@ def run_all_tests() -> int:
         ("test_neutron_payload_snapshot", test_neutron_payload_snapshot),
         ("test_start_system_fallback_source", test_start_system_fallback_source),
         ("test_resolve_planner_jump_range_auto", test_resolve_planner_jump_range_auto),
+        ("test_f8_quality_pack_baseline", test_f8_quality_pack_baseline),
+        ("test_f9_entry_context_menu_contract", test_f9_entry_context_menu_contract),
         ("test_route_planner_modules_smoke", test_route_planner_modules_smoke),
     ]
 

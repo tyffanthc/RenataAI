@@ -13,6 +13,8 @@ from logic.events import smuggler_events
 from logic.events import survival_rebuy_awareness
 from logic.events import combat_awareness
 from logic import cargo_value_estimator
+from logic.logbook_feed import build_logbook_feed_item
+from logic.utils import MSG_QUEUE
 from logic.utils.renata_log import log_event_throttled
 
 
@@ -135,6 +137,18 @@ class EventHandler:
         typ = ev.get("event")
         if not typ:
             return
+
+        try:
+            feed_item = build_logbook_feed_item(ev)
+            if feed_item is not None:
+                MSG_QUEUE.put(("logbook_journal_feed", feed_item))
+        except Exception as exc:
+            _log_router_fallback(
+                "journal.logbook_feed",
+                "journal event: logbook feed enqueue failed",
+                exc,
+                event=typ,
+            )
 
         try:
             from app.state import app_state
