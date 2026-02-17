@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 import shutil
+import threading
+from contextlib import contextmanager
 from typing import Any, Dict
+
+from logic.context_state_contract import (
+    contract_with_runtime_state,
+    load_state_contract_file,
+    migrate_state_contract_payload,
+    restart_loss_audit_contract,
+    runtime_state_from_contract,
+    save_state_contract_file,
+)
 
 # --- ŚCIEŻKI / PLIKI ---------------------------------------------------------
 
@@ -23,6 +35,16 @@ def _settings_path() -> str:
     return os.path.join(BASE_DIR, "user_settings.json")
 
 
+def _state_path() -> str:
+    override = os.getenv("RENATA_STATE_PATH")
+    if override:
+        return override
+    appdata = os.getenv("APPDATA") or os.getenv("LOCALAPPDATA")
+    if appdata:
+        return os.path.join(appdata, "RenataAI", "app_state.json")
+    return os.path.join(BASE_DIR, "app_state.json")
+
+
 def _settings_source() -> str:
     if os.getenv("RENATA_SETTINGS_PATH"):
         return "override"
@@ -32,6 +54,7 @@ def _settings_source() -> str:
 
 
 SETTINGS_FILE = _settings_path()
+STATE_FILE = _state_path()
 
 
 def _migrate_settings_if_needed(target_path: str) -> bool:
@@ -46,6 +69,25 @@ def _migrate_settings_if_needed(target_path: str) -> bool:
             os.makedirs(target_dir, exist_ok=True)
         shutil.copy2(legacy_path, target_path)
         print(f"[CONFIG] Migrated settings to {target_path}")
+        return True
+    except Exception:
+        return False
+
+
+def _migrate_state_if_needed(target_path: str) -> bool:
+    try:
+        legacy_path = os.path.join(BASE_DIR, "app_state.json")
+        if os.path.abspath(legacy_path) == os.path.abspath(target_path):
+            return False
+        if not os.path.isfile(legacy_path):
+            return False
+        if os.path.isfile(target_path):
+            return False
+        target_dir = os.path.dirname(target_path)
+        if target_dir:
+            os.makedirs(target_dir, exist_ok=True)
+        shutil.copy2(legacy_path, target_path)
+        print(f"[CONFIG] Migrated state to {target_path}")
         return True
     except Exception:
         return False
@@ -455,17 +497,146 @@ def save(new_data: dict) -> None:
 
 DOWNLOADS_DIR = os.path.join(os.path.expanduser("~"), "Downloads")
 
-STATE = {
-    "sys": "Nieznany",
-    "trasa": [],
-    "rtr_data": {},
-    "idx": 0,
-    "receptura": None,
-    "inventory": {},
-    "ciala_tot": 0,
-    "ciala_odk": 0,
-    "milestones": []
-}
+class _PersistentStateDict(dict):
+    """
+    Legacy-compatible runtime dict with write-through persistence.
+    """
+
+    def __init__(self, *args, on_change=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._on_change = on_change
+        self._suspend_depth = 0
+
+    @contextmanager
+    def suspend_callbacks(self):
+        self._suspend_depth += 1
+        try:
+            yield self
+        finally:
+            self._suspend_depth = max(0, self._suspend_depth - 1)
+
+    def _emit_change(self) -> None:
+        if self._suspend_depth > 0:
+            return
+        if callable(self._on_change):
+            self._on_change(dict(self))
+
+    def __setitem__(self, key, value):
+        changed = (key not in self) or (self.get(key) != value)
+        super().__setitem__(key, value)
+        if changed:
+            self._emit_change()
+
+    def __delitem__(self, key):
+        existed = key in self
+        super().__delitem__(key)
+        if existed:
+            self._emit_change()
+
+    def pop(self, key, default=None):
+        existed = key in self
+        value = super().pop(key, default)
+        if existed:
+            self._emit_change()
+        return value
+
+    def clear(self) -> None:
+        if not self:
+            return
+        super().clear()
+        self._emit_change()
+
+    def setdefault(self, key, default=None):
+        if key in self:
+            return self[key]
+        value = super().setdefault(key, default)
+        self._emit_change()
+        return value
+
+    def update(self, *args, **kwargs):
+        before = dict(self)
+        super().update(*args, **kwargs)
+        if before != dict(self):
+            self._emit_change()
+
+    def replace_all(self, payload: Dict[str, Any], *, notify: bool = False) -> None:
+        with self.suspend_callbacks():
+            super().clear()
+            super().update(payload or {})
+        if notify:
+            self._emit_change()
+
+
+_STATE_LOCK = threading.RLock()
+_STATE_WRITE_ERROR_LOGGED = False
+
+
+def _load_state_contract() -> Dict[str, Any]:
+    _migrate_state_if_needed(STATE_FILE)
+    contract = load_state_contract_file(STATE_FILE)
+    normalized = migrate_state_contract_payload(contract)
+    try:
+        save_state_contract_file(STATE_FILE, normalized)
+    except Exception:
+        pass
+    return normalized
+
+
+def _persist_runtime_state_snapshot(snapshot: Dict[str, Any]) -> None:
+    global _STATE_CONTRACT, _STATE_WRITE_ERROR_LOGGED
+    with _STATE_LOCK:
+        candidate = contract_with_runtime_state(_STATE_CONTRACT, snapshot or {})
+        _STATE_CONTRACT = candidate
+        try:
+            save_state_contract_file(STATE_FILE, candidate)
+            _STATE_WRITE_ERROR_LOGGED = False
+        except Exception as exc:
+            if not _STATE_WRITE_ERROR_LOGGED:
+                _STATE_WRITE_ERROR_LOGGED = True
+                print(f"[CONFIG] State persistence error: {exc}")
+
+
+_STATE_CONTRACT = _load_state_contract()
+STATE = _PersistentStateDict(
+    runtime_state_from_contract(_STATE_CONTRACT),
+    on_change=_persist_runtime_state_snapshot,
+)
+
+
+def get_state_contract() -> Dict[str, Any]:
+    with _STATE_LOCK:
+        return copy.deepcopy(migrate_state_contract_payload(_STATE_CONTRACT))
+
+
+def save_state_contract(contract_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Persist layered state contract and refresh legacy config.STATE snapshot.
+    """
+    global _STATE_CONTRACT, _STATE_WRITE_ERROR_LOGGED
+    normalized = migrate_state_contract_payload(contract_payload)
+    with _STATE_LOCK:
+        _STATE_CONTRACT = normalized
+        try:
+            save_state_contract_file(STATE_FILE, normalized)
+            _STATE_WRITE_ERROR_LOGGED = False
+        except Exception as exc:
+            if not _STATE_WRITE_ERROR_LOGGED:
+                _STATE_WRITE_ERROR_LOGGED = True
+                print(f"[CONFIG] State persistence error: {exc}")
+        STATE.replace_all(runtime_state_from_contract(_STATE_CONTRACT), notify=False)
+        return copy.deepcopy(_STATE_CONTRACT)
+
+
+def persist_runtime_state() -> Dict[str, Any]:
+    """
+    Force flush of current legacy runtime state into layered contract.
+    """
+    _persist_runtime_state_snapshot(dict(STATE))
+    return get_state_contract()
+
+
+def get_restart_loss_audit() -> Dict[str, Dict[str, str]]:
+    return restart_loss_audit_contract()
 
 RECEPTURY = {
     "FSD V5": {"arsenic": 10, "dataminedwakeexceptions": 10, "chemicalmanipulators": 10},
