@@ -223,7 +223,13 @@ class F6VoiceEthicsComplianceTests(unittest.TestCase):
                 prepare_tts("MSG.FSS_PROGRESS_75", {}) or "",
                 prepare_tts("MSG.FSS_LAST_BODY", {}) or "",
                 prepare_tts("MSG.SYSTEM_FULLY_SCANNED", {}) or "",
+                prepare_tts("MSG.BODY_NO_PREV_DISCOVERY", {"body": "SOL A 1"}) or "",
                 prepare_tts("MSG.FUEL_CRITICAL", {}) or "",
+                prepare_tts(
+                    "MSG.SMUGGLER_ILLEGAL_CARGO",
+                    {"raw_text": "Uwaga. Nielegalny ladunek na pokladzie."},
+                )
+                or "",
                 prepare_tts("MSG.MILESTONE_PROGRESS", {"percent": 50, "target": "LHS 20"}) or "",
                 prepare_tts(
                     "MSG.MILESTONE_REACHED",

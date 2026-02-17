@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from logic.event_insight_mapping import get_tts_policy_spec, resolve_emit_contract
 from logic.insight_dispatcher import emit_insight, reset_dispatcher_runtime_state
+from logic.tts.text_preprocessor import prepare_tts
 from logic.utils import notify as notify_module
 
 
@@ -104,7 +105,17 @@ class F5VoicePolicyContractTests(unittest.TestCase):
         self.assertEqual(runtime_ctx.get("tts_cooldown_policy"), "BYPASS_GLOBAL")
         self.assertTrue(bool(runtime_ctx.get("gate_reason")))
 
+    def test_smuggler_tts_policy_is_voice_enabled(self) -> None:
+        policy = get_tts_policy_spec("MSG.SMUGGLER_ILLEGAL_CARGO")
+        self.assertEqual(policy.intent, "critical")
+        self.assertEqual(policy.category, "alert")
+        self.assertEqual(policy.cooldown_policy, "BYPASS_GLOBAL")
+
+    def test_body_no_prev_discovery_has_tts_template(self) -> None:
+        rendered = prepare_tts("MSG.BODY_NO_PREV_DISCOVERY", {"body": "SOL A 1"})
+        self.assertTrue(rendered)
+        self.assertIn("odkrywcy", str(rendered).lower())
+
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -455,6 +455,12 @@ TTS_POLICY_BY_MESSAGE_ID: Dict[str, TTSPolicySpec] = {
         intent="context",
         category="info",
     ),
+    "MSG.SMUGGLER_ILLEGAL_CARGO": TTSPolicySpec(
+        message_id="MSG.SMUGGLER_ILLEGAL_CARGO",
+        intent="critical",
+        category="alert",
+        cooldown_policy="BYPASS_GLOBAL",
+    ),
     "MSG.EXOBIO_SAMPLE_LOGGED": TTSPolicySpec(
         message_id="MSG.EXOBIO_SAMPLE_LOGGED",
         intent="context",

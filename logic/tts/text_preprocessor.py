@@ -15,6 +15,7 @@ ALLOWED_MESSAGES = {
     "MSG.UNDOCKED",
     "MSG.FIRST_DISCOVERY",
     "MSG.FIRST_DISCOVERY_OPPORTUNITY",
+    "MSG.BODY_NO_PREV_DISCOVERY",
     "MSG.SYSTEM_FULLY_SCANNED",
     "MSG.ELW_DETECTED",
     "MSG.FOOTFALL",
@@ -246,6 +247,12 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
 
     if message_id == "MSG.FIRST_DISCOVERY_OPPORTUNITY":
         return _finalize_tts("Wygląda na okazję pierwszego odkrycia. Czekam na potwierdzenie.")
+
+    if message_id == "MSG.BODY_NO_PREV_DISCOVERY":
+        body = _repair_polish_text(ctx.get("body")).strip() if ctx.get("body") else ""
+        if body:
+            return _finalize_tts(f"Potwierdzono. {body}. Bez wcześniejszego odkrywcy.")
+        return _finalize_tts("Potwierdzono. To ciało nie ma wcześniejszego odkrywcy.")
 
     if message_id == "MSG.SYSTEM_FULLY_SCANNED":
         return _finalize_tts("Skan systemu zakończony.")

@@ -1427,6 +1427,14 @@ def test_tts_polish_diacritics_global(_ctx: TestContext) -> None:
     startup = prepare_tts("MSG.STARTUP_SYSTEMS", {"version": "v1"})
     assert startup and "Startuję wszystkie systemy." in startup, "Expected Polish diacritics in startup text"
 
+    body_no_prev = prepare_tts("MSG.BODY_NO_PREV_DISCOVERY", {"body": "SOL A 1"})
+    assert body_no_prev and "odkrywcy" in body_no_prev.lower(), "Expected BODY_NO_PREV_DISCOVERY TTS template"
+
+    smuggler = prepare_tts(
+        "MSG.SMUGGLER_ILLEGAL_CARGO",
+        {"raw_text": "Uwaga. Nielegalny ladunek na pokladzie."},
+    )
+    assert smuggler and "nielegalny" in smuggler.lower(), "Expected smuggler voice text from raw_text"
     repaired = prepare_tts(
         "MSG.TRADE_JACKPOT",
         {"raw_text": "To Ĺ›wietna okazja. Cena: 100 kredytĂłw."},
