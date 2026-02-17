@@ -3917,6 +3917,49 @@ def test_f9_entry_context_menu_contract(_ctx: TestContext) -> None:
         assert resolve_entry_nav_target(moved) == "Ray Gateway", f"Fallback changed: {moved}"
 
 
+def test_f9_manual_metadata_edit_contract(_ctx: TestContext) -> None:
+    """
+    Smoke dla F9 ticket #2:
+    - reczna zmiana kategorii i tagow,
+    - brak naruszenia entry_type/source/payload.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = EntryRepository(path=os.path.join(tmp, "entries.jsonl"))
+        created = repo.create_entry(
+            {
+                "category_path": "Handel/Transakcje",
+                "title": "Sprzedaz",
+                "body": "Test",
+                "tags": ["trade", "auto"],
+                "entry_type": "trade_route",
+                "source": {"kind": "journal_event", "event_name": "MarketSell"},
+                "payload": {"rank": 1},
+            }
+        )
+        updated = repo.update_entry(
+            str(created.get("id")),
+            {
+                "category_path": "Moje/Ulubione",
+                "tags": ["auto", "manualny", "manualny"],
+            },
+        )
+        assert str(updated.get("category_path") or "") == "Moje/Ulubione", (
+            f"Category edit failed: {updated}"
+        )
+        assert list(updated.get("tags") or []) == ["auto", "manualny"], (
+            f"Tag edit failed: {updated}"
+        )
+        assert str(updated.get("entry_type") or "") == "trade_route", (
+            f"entry_type changed unexpectedly: {updated}"
+        )
+        assert str((updated.get("source") or {}).get("event_name") or "") == "MarketSell", (
+            f"source changed unexpectedly: {updated}"
+        )
+        assert int((updated.get("payload") or {}).get("rank") or 0) == 1, (
+            f"payload changed unexpectedly: {updated}"
+        )
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -3995,6 +4038,7 @@ def run_all_tests() -> int:
         ("test_resolve_planner_jump_range_auto", test_resolve_planner_jump_range_auto),
         ("test_f8_quality_pack_baseline", test_f8_quality_pack_baseline),
         ("test_f9_entry_context_menu_contract", test_f9_entry_context_menu_contract),
+        ("test_f9_manual_metadata_edit_contract", test_f9_manual_metadata_edit_contract),
         ("test_route_planner_modules_smoke", test_route_planner_modules_smoke),
     ]
 

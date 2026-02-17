@@ -481,6 +481,10 @@ class LogbookTab(tk.Frame):
             label="Kopiuj system",
             command=self._copy_selected_system,
         )
+        self._entry_context_menu.add_command(
+            label="Edytuj metadane...",
+            command=self._edit_selected_entry_metadata,
+        )
         self._entry_context_menu.add_separator()
         self._entry_move_menu = tk.Menu(self._entry_context_menu, tearoff=0)
         self._entry_context_menu.add_cascade(
@@ -1207,6 +1211,19 @@ class LogbookTab(tk.Frame):
         out.sort(key=lambda value: value.lower())
         return out
 
+    def _collect_available_tags(self) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for entry in self.repository.list_entries(sort="updated_desc"):
+            for raw_tag in list(entry.get("tags") or []):
+                normalized = str(raw_tag or "").strip().lower()
+                if not normalized or normalized in seen:
+                    continue
+                seen.add(normalized)
+                out.append(normalized)
+        out.sort()
+        return out
+
     def _ensure_category_saved(self, category: str) -> None:
         normalized = str(category or "").strip().strip("/")
         if not normalized:
@@ -1215,6 +1232,189 @@ class LogbookTab(tk.Frame):
             self._saved_categories.append(normalized)
             self._saved_categories.sort(key=lambda value: value.lower())
             self._save_saved_categories()
+
+    def _open_entry_metadata_dialog(self, entry: dict) -> dict | None:
+        dialog = tk.Toplevel(self)
+        dialog.title("Edytuj metadane wpisu")
+        dialog.configure(bg=COLOR_BG)
+        dialog.transient(self.winfo_toplevel())
+        dialog.grab_set()
+
+        dialog.columnconfigure(0, weight=1)
+        dialog.rowconfigure(3, weight=1)
+
+        current_category = str(entry.get("category_path") or "").strip().strip("/")
+        categories = self._collect_available_categories()
+        if current_category and current_category not in categories:
+            categories.append(current_category)
+            categories.sort(key=lambda value: value.lower())
+
+        tk.Label(
+            dialog,
+            text="Kategoria:",
+            bg=COLOR_BG,
+            fg=COLOR_FG,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 2))
+
+        category_combo = ttk.Combobox(dialog, values=categories, state="normal")
+        category_combo.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 8))
+        category_combo.set(current_category)
+
+        tags_box = tk.LabelFrame(
+            dialog,
+            text="Tagi (lokalne z bazy)",
+            bg=COLOR_BG,
+            fg=COLOR_FG,
+            relief="solid",
+            borderwidth=1,
+            labelanchor="nw",
+        )
+        tags_box.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 8))
+        tags_box.columnconfigure(0, weight=1)
+        tags_box.columnconfigure(1, weight=1)
+        tags_box.columnconfigure(2, weight=1)
+
+        current_tags = [
+            str(raw_tag or "").strip().lower()
+            for raw_tag in list(entry.get("tags") or [])
+            if str(raw_tag or "").strip()
+        ]
+        tags = self._collect_available_tags()
+        for tag in current_tags:
+            if tag not in tags:
+                tags.append(tag)
+        tags.sort()
+
+        tag_vars: dict[str, tk.BooleanVar] = {}
+        tag_checks: dict[str, tk.Checkbutton] = {}
+
+        def _place_tag_checkbox(tag: str) -> None:
+            idx = len(tag_checks)
+            row = idx // 3
+            col = idx % 3
+            var = tk.BooleanVar(value=tag in current_tags)
+            chk = tk.Checkbutton(
+                tags_box,
+                text=tag,
+                variable=var,
+                bg=COLOR_BG,
+                fg=COLOR_FG,
+                selectcolor=COLOR_ACCENT,
+                activebackground=COLOR_BG,
+                activeforeground=COLOR_FG,
+                anchor="w",
+            )
+            chk.grid(row=row, column=col, sticky="w", padx=(8, 8), pady=(4, 2))
+            tag_vars[tag] = var
+            tag_checks[tag] = chk
+
+        empty_label = tk.Label(
+            tags_box,
+            text="Brak tagow w bazie. Dodaj pierwszy tag recznie.",
+            bg=COLOR_BG,
+            fg=COLOR_SEC,
+            anchor="w",
+            justify="left",
+        )
+        empty_label.grid(row=0, column=0, columnspan=3, sticky="w", padx=8, pady=(6, 4))
+
+        for tag in tags:
+            _place_tag_checkbox(tag)
+
+        if tag_checks:
+            empty_label.grid_remove()
+
+        add_row = tk.Frame(dialog, bg=COLOR_BG)
+        add_row.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 8))
+        add_row.columnconfigure(0, weight=1)
+
+        tk.Label(
+            add_row,
+            text="Nowy tag:",
+            bg=COLOR_BG,
+            fg=COLOR_FG,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w")
+
+        tag_input = tk.Entry(
+            add_row,
+            bg=COLOR_ACCENT,
+            fg=COLOR_FG,
+            insertbackground=COLOR_FG,
+            relief="flat",
+        )
+        tag_input.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+
+        def _add_manual_tag(_event=None) -> None:
+            value = str(tag_input.get() or "").strip().lower()
+            if not value:
+                return
+            if value in tag_vars:
+                tag_vars[value].set(True)
+                tag_input.delete(0, "end")
+                return
+            _place_tag_checkbox(value)
+            empty_label.grid_remove()
+            tag_input.delete(0, "end")
+
+        tk.Button(
+            add_row,
+            text="Dodaj tag",
+            bg=COLOR_ACCENT,
+            fg=COLOR_FG,
+            relief="flat",
+            command=_add_manual_tag,
+        ).grid(row=1, column=1, sticky="w", padx=(8, 0))
+        tag_input.bind("<Return>", _add_manual_tag)
+
+        buttons = tk.Frame(dialog, bg=COLOR_BG)
+        buttons.grid(row=4, column=0, sticky="e", padx=10, pady=(0, 10))
+
+        result: dict[str, dict] = {"value": {}}
+
+        def _confirm() -> None:
+            category = str(category_combo.get() or "").strip().strip("/")
+            if not category:
+                messagebox.showerror(
+                    "Edycja metadanych",
+                    "Kategoria nie moze byc pusta.",
+                    parent=dialog,
+                )
+                return
+            selected_tags = sorted(
+                [tag for tag, enabled in tag_vars.items() if bool(enabled.get())]
+            )
+            result["value"] = {
+                "category_path": category,
+                "tags": selected_tags,
+            }
+            dialog.destroy()
+
+        def _cancel() -> None:
+            dialog.destroy()
+
+        tk.Button(
+            buttons,
+            text="Zapisz",
+            bg=COLOR_ACCENT,
+            fg=COLOR_FG,
+            relief="flat",
+            command=_confirm,
+        ).pack(side="left", padx=(0, 6))
+        tk.Button(
+            buttons,
+            text="Anuluj",
+            bg=COLOR_ACCENT,
+            fg=COLOR_FG,
+            relief="flat",
+            command=_cancel,
+        ).pack(side="left")
+
+        dialog.bind("<Escape>", lambda _event: _cancel())
+        self.wait_window(dialog)
+        value = result.get("value")
+        return dict(value) if isinstance(value, dict) and value else None
 
     def _rebuild_entry_move_menu(self, entry: dict) -> None:
         if not hasattr(self, "_entry_move_menu"):
@@ -1652,6 +1852,36 @@ class LogbookTab(tk.Frame):
             self.status_var.set("Pusta nazwa kategorii - anulowano.")
             return
         self._move_selected_entry_to_category(target_category)
+
+    def _edit_selected_entry_metadata(self) -> None:
+        entry = self._selected_entry()
+        if not entry:
+            self.status_var.set("Wybierz wpis.")
+            return
+
+        metadata = self._open_entry_metadata_dialog(entry)
+        if not metadata:
+            return
+
+        patch = {
+            "category_path": str(metadata.get("category_path") or "").strip().strip("/"),
+            "tags": list(metadata.get("tags") or []),
+        }
+        if not patch["category_path"]:
+            self.status_var.set("Kategoria nie moze byc pusta.")
+            return
+
+        try:
+            self.repository.update_entry(str(entry.get("id")), patch)
+        except EntryValidationError as exc:
+            messagebox.showerror("Walidacja wpisu", str(exc), parent=self)
+            return
+
+        self._ensure_category_saved(str(patch["category_path"]))
+        self._selected_entry_id = str(entry.get("id"))
+        self.status_var.set("Metadane wpisu zaktualizowane.")
+        self._refresh_categories()
+        self._refresh_entries()
 
     def _set_target_from_selected_entry(self) -> None:
         entry = self._selected_entry()
