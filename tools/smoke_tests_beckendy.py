@@ -3960,6 +3960,72 @@ def test_f9_manual_metadata_edit_contract(_ctx: TestContext) -> None:
         )
 
 
+def test_f9_filter_popover_contract(_ctx: TestContext) -> None:
+    """
+    Smoke dla F9 ticket #3:
+    - multi-tag mode ALL/ANY,
+    - data Do liczona do konca dnia.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = EntryRepository(path=os.path.join(tmp, "entries.jsonl"))
+        repo.create_entry(
+            {
+                "category_path": "Test/A",
+                "title": "Trade Safe",
+                "body": "",
+                "tags": ["trade", "safe"],
+                "created_at": "2026-02-17T08:00:00Z",
+                "updated_at": "2026-02-17T08:00:00Z",
+            }
+        )
+        repo.create_entry(
+            {
+                "category_path": "Test/B",
+                "title": "Trade Risk",
+                "body": "",
+                "tags": ["trade", "risk"],
+                "created_at": "2026-02-17T22:30:00Z",
+                "updated_at": "2026-02-17T22:30:00Z",
+            }
+        )
+        repo.create_entry(
+            {
+                "category_path": "Test/C",
+                "title": "Next Day",
+                "body": "",
+                "tags": ["exploration"],
+                "created_at": "2026-02-18T00:10:00Z",
+                "updated_at": "2026-02-18T00:10:00Z",
+            }
+        )
+
+        all_items = repo.list_entries(
+            filters={"tags": ["trade", "safe"], "tags_mode": "all"},
+            sort="title_az",
+        )
+        any_items = repo.list_entries(
+            filters={"tags": ["trade", "safe"], "tags_mode": "any"},
+            sort="title_az",
+        )
+        day_items = repo.list_entries(
+            filters={
+                "date_from": "2026-02-17T00:00:00Z",
+                "date_to": "2026-02-17T23:59:59Z",
+            },
+            sort="title_az",
+        )
+
+        assert [item.get("title") for item in all_items] == ["Trade Safe"], (
+            f"Unexpected ALL mode result: {all_items}"
+        )
+        assert [item.get("title") for item in any_items] == ["Trade Risk", "Trade Safe"], (
+            f"Unexpected ANY mode result: {any_items}"
+        )
+        assert [item.get("title") for item in day_items] == ["Trade Risk", "Trade Safe"], (
+            f"Unexpected end-of-day range result: {day_items}"
+        )
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -4039,6 +4105,7 @@ def run_all_tests() -> int:
         ("test_f8_quality_pack_baseline", test_f8_quality_pack_baseline),
         ("test_f9_entry_context_menu_contract", test_f9_entry_context_menu_contract),
         ("test_f9_manual_metadata_edit_contract", test_f9_manual_metadata_edit_contract),
+        ("test_f9_filter_popover_contract", test_f9_filter_popover_contract),
         ("test_route_planner_modules_smoke", test_route_planner_modules_smoke),
     ]
 

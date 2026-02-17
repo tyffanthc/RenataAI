@@ -43,19 +43,8 @@ def _to_iso_date(value: str, *, end_of_day: bool = False) -> str | None:
     return parsed.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _split_tags(raw: str) -> list[str]:
-    if not raw:
-        return []
-    seen: set[str] = set()
-    out: list[str] = []
-    for chunk in str(raw).split(","):
-        for item in chunk.split():
-            tag = item.strip().lower()
-            if not tag or tag in seen:
-                continue
-            seen.add(tag)
-            out.append(tag)
-    return out
+def _today_date_text() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
 
 
 def _format_ts(iso_text: str) -> str:
@@ -128,9 +117,10 @@ class LogbookTab(tk.Frame):
         self._saved_categories = self._load_saved_categories()
 
         self.filter_text_var = tk.StringVar()
-        self.filter_tag_var = tk.StringVar()
-        self.filter_date_from_var = tk.StringVar()
-        self.filter_date_to_var = tk.StringVar()
+        self.filter_tag_var = tk.StringVar(value="Wszystkie (ALL)")
+        self.filter_date_from_var = tk.StringVar(value="forever")
+        self.filter_date_to_var = tk.StringVar(value=_today_date_text())
+        self.filter_tag_mode_var = tk.StringVar(value="ALL")
         self.filter_pinned_only_var = tk.BooleanVar(value=False)
         self.sort_var = tk.StringVar(value="Najnowsze")
         self.status_var = tk.StringVar(value="")
@@ -138,9 +128,14 @@ class LogbookTab(tk.Frame):
         self.preview_meta_var = tk.StringVar(value="-")
         self.logbook_status_var = tk.StringVar(value="Feed pusty.")
         self._logbook_feed_limit = 250
+        self._selected_filter_tags: set[str] = set()
+        self._active_popover: tk.Toplevel | None = None
+        self._active_popover_anchor: tk.Widget | None = None
 
         self._configure_style()
         self._build_ui()
+        self._set_filter_tag_display()
+        self.bind_all("<Button-1>", self._on_global_click_maybe_close_popover, add="+")
         self._refresh_categories()
         self._refresh_entries()
 
@@ -273,9 +268,11 @@ class LogbookTab(tk.Frame):
             fg=COLOR_FG,
             insertbackground=COLOR_FG,
             relief="flat",
+            state="readonly",
+            readonlybackground=COLOR_ACCENT,
         )
         self.entry_filter_tags.grid(row=0, column=3, sticky="ew", padx=(4, 12))
-        self.entry_filter_tags.bind("<KeyRelease>", lambda _e: self._on_filters_changed())
+        self.entry_filter_tags.bind("<Button-1>", self._on_tags_filter_click)
 
         tk.Label(filters, text="Od (YYYY-MM-DD):", bg=COLOR_BG, fg=COLOR_FG).grid(
             row=1, column=0, sticky="w", pady=(6, 0)
@@ -287,11 +284,15 @@ class LogbookTab(tk.Frame):
             fg=COLOR_FG,
             insertbackground=COLOR_FG,
             relief="flat",
+            state="readonly",
+            readonlybackground=COLOR_ACCENT,
         )
         self.entry_filter_date_from.grid(
             row=1, column=1, sticky="ew", padx=(4, 12), pady=(6, 0)
         )
-        self.entry_filter_date_from.bind("<KeyRelease>", lambda _e: self._on_filters_changed())
+        self.entry_filter_date_from.bind(
+            "<Button-1>", lambda _e: self._open_date_filter_popover("from", self.entry_filter_date_from)
+        )
 
         tk.Label(filters, text="Do (YYYY-MM-DD):", bg=COLOR_BG, fg=COLOR_FG).grid(
             row=1, column=2, sticky="w", pady=(6, 0)
@@ -303,9 +304,13 @@ class LogbookTab(tk.Frame):
             fg=COLOR_FG,
             insertbackground=COLOR_FG,
             relief="flat",
+            state="readonly",
+            readonlybackground=COLOR_ACCENT,
         )
         self.entry_filter_date_to.grid(row=1, column=3, sticky="ew", padx=(4, 12), pady=(6, 0))
-        self.entry_filter_date_to.bind("<KeyRelease>", lambda _e: self._on_filters_changed())
+        self.entry_filter_date_to.bind(
+            "<Button-1>", lambda _e: self._open_date_filter_popover("to", self.entry_filter_date_to)
+        )
 
         tk.Label(filters, text="Sort:", bg=COLOR_BG, fg=COLOR_FG).grid(
             row=0, column=4, sticky="w"
@@ -1031,6 +1036,359 @@ class LogbookTab(tk.Frame):
         self._sync_pinboard_button_label()
         self._refresh_entries()
 
+    def _set_filter_tag_display(self) -> None:
+        if not self._selected_filter_tags:
+            self.filter_tag_var.set(f"Wszystkie ({self.filter_tag_mode_var.get()})")
+            return
+        tags = sorted(self._selected_filter_tags)
+        head = ", ".join(tags[:3])
+        if len(tags) > 3:
+            head += ", ..."
+        self.filter_tag_var.set(f"{head} ({self.filter_tag_mode_var.get()})")
+
+    @staticmethod
+    def _point_inside_widget(widget: tk.Widget, x_root: int, y_root: int) -> bool:
+        try:
+            left = int(widget.winfo_rootx())
+            top = int(widget.winfo_rooty())
+            right = left + int(widget.winfo_width())
+            bottom = top + int(widget.winfo_height())
+            return left <= int(x_root) <= right and top <= int(y_root) <= bottom
+        except Exception:
+            return False
+
+    def _close_active_popover(self) -> None:
+        popover = self._active_popover
+        self._active_popover = None
+        self._active_popover_anchor = None
+        if popover is not None:
+            try:
+                if popover.winfo_exists():
+                    popover.destroy()
+            except Exception:
+                pass
+
+    def _on_global_click_maybe_close_popover(self, event) -> None:
+        popover = self._active_popover
+        if popover is None:
+            return
+        try:
+            if not popover.winfo_exists():
+                self._active_popover = None
+                self._active_popover_anchor = None
+                return
+        except Exception:
+            self._active_popover = None
+            self._active_popover_anchor = None
+            return
+
+        x_root = int(getattr(event, "x_root", -1))
+        y_root = int(getattr(event, "y_root", -1))
+        if self._point_inside_widget(popover, x_root, y_root):
+            return
+
+        anchor = self._active_popover_anchor
+        if anchor is not None and self._point_inside_widget(anchor, x_root, y_root):
+            return
+
+        self._close_active_popover()
+
+    def _open_popover(self, anchor_widget: tk.Widget, builder) -> None:
+        self._close_active_popover()
+
+        popover = tk.Toplevel(self)
+        popover.overrideredirect(True)
+        popover.transient(self.winfo_toplevel())
+        popover.configure(bg=COLOR_BG, bd=1, relief="solid")
+        try:
+            popover.attributes("-topmost", True)
+        except Exception:
+            pass
+
+        frame = tk.Frame(popover, bg=COLOR_BG, bd=0, highlightthickness=0)
+        frame.pack(fill="both", expand=True)
+        builder(frame)
+
+        popover.update_idletasks()
+        x = int(anchor_widget.winfo_rootx())
+        y = int(anchor_widget.winfo_rooty() + anchor_widget.winfo_height() + 2)
+        popover.geometry(f"+{x}+{y}")
+
+        self._active_popover = popover
+        self._active_popover_anchor = anchor_widget
+
+        def _on_focus_out(_event=None) -> None:
+            def _maybe_close() -> None:
+                current = self.focus_get()
+                if current is not None:
+                    try:
+                        if current.winfo_toplevel() == popover:
+                            return
+                    except Exception:
+                        pass
+                self._close_active_popover()
+
+            self.after(30, _maybe_close)
+
+        popover.bind("<FocusOut>", _on_focus_out)
+        popover.bind("<Escape>", lambda _event: self._close_active_popover())
+        try:
+            popover.focus_force()
+        except Exception:
+            pass
+
+    def _open_date_filter_popover(self, which: str, anchor_widget: tk.Widget) -> None:
+        date_var = self.filter_date_from_var if which == "from" else self.filter_date_to_var
+        current_text = str(date_var.get() or "").strip()
+
+        today = datetime.now()
+        default_date = today
+        try:
+            if current_text and current_text.lower() not in {"forever", "dzisiaj", "today"}:
+                default_date = datetime.strptime(current_text, "%Y-%m-%d")
+        except Exception:
+            default_date = today
+
+        year_var = tk.IntVar(value=int(default_date.year))
+        month_var = tk.IntVar(value=int(default_date.month))
+        day_var = tk.IntVar(value=int(default_date.day))
+
+        def _builder(frame: tk.Frame) -> None:
+            title = "Data Od" if which == "from" else "Data Do"
+            tk.Label(
+                frame,
+                text=title,
+                bg=COLOR_BG,
+                fg=COLOR_FG,
+                font=("Segoe UI", 9, "bold"),
+                anchor="w",
+            ).grid(row=0, column=0, columnspan=4, sticky="ew", padx=8, pady=(6, 4))
+
+            tk.Label(frame, text="Rok", bg=COLOR_BG, fg=COLOR_SEC).grid(
+                row=1, column=0, sticky="w", padx=(8, 4)
+            )
+            tk.Label(frame, text="Msc", bg=COLOR_BG, fg=COLOR_SEC).grid(
+                row=1, column=1, sticky="w", padx=(0, 4)
+            )
+            tk.Label(frame, text="Dzien", bg=COLOR_BG, fg=COLOR_SEC).grid(
+                row=1, column=2, sticky="w"
+            )
+
+            tk.Spinbox(
+                frame,
+                from_=2000,
+                to=3300,
+                textvariable=year_var,
+                width=6,
+                bg=COLOR_ACCENT,
+                fg=COLOR_FG,
+                insertbackground=COLOR_FG,
+                relief="flat",
+            ).grid(row=2, column=0, sticky="w", padx=(8, 4), pady=(0, 6))
+            tk.Spinbox(
+                frame,
+                from_=1,
+                to=12,
+                textvariable=month_var,
+                width=4,
+                bg=COLOR_ACCENT,
+                fg=COLOR_FG,
+                insertbackground=COLOR_FG,
+                relief="flat",
+            ).grid(row=2, column=1, sticky="w", padx=(0, 4), pady=(0, 6))
+            tk.Spinbox(
+                frame,
+                from_=1,
+                to=31,
+                textvariable=day_var,
+                width=4,
+                bg=COLOR_ACCENT,
+                fg=COLOR_FG,
+                insertbackground=COLOR_FG,
+                relief="flat",
+            ).grid(row=2, column=2, sticky="w", pady=(0, 6))
+
+            actions = tk.Frame(frame, bg=COLOR_BG)
+            actions.grid(row=3, column=0, columnspan=4, sticky="ew", padx=8, pady=(0, 8))
+
+            def _set_today() -> None:
+                now = datetime.now()
+                year_var.set(int(now.year))
+                month_var.set(int(now.month))
+                day_var.set(int(now.day))
+
+            def _apply_date() -> None:
+                try:
+                    parsed = datetime(int(year_var.get()), int(month_var.get()), int(day_var.get()))
+                    date_var.set(parsed.strftime("%Y-%m-%d"))
+                except Exception:
+                    self.status_var.set("Niepoprawna data filtra.")
+                    return
+                self._close_active_popover()
+                self._refresh_entries()
+
+            def _clear_or_default() -> None:
+                if which == "from":
+                    date_var.set("forever")
+                else:
+                    date_var.set(_today_date_text())
+                self._close_active_popover()
+                self._refresh_entries()
+
+            tk.Button(
+                actions,
+                text="Dzisiaj",
+                bg=COLOR_ACCENT,
+                fg=COLOR_FG,
+                relief="flat",
+                command=_set_today,
+            ).pack(side="left", padx=(0, 6))
+            tk.Button(
+                actions,
+                text="Domyslne",
+                bg=COLOR_ACCENT,
+                fg=COLOR_FG,
+                relief="flat",
+                command=_clear_or_default,
+            ).pack(side="left", padx=(0, 6))
+            tk.Button(
+                actions,
+                text="Zastosuj",
+                bg=COLOR_ACCENT,
+                fg=COLOR_FG,
+                relief="flat",
+                command=_apply_date,
+            ).pack(side="left")
+
+        self._open_popover(anchor_widget, _builder)
+
+    def _on_tags_filter_click(self, _event=None) -> None:
+        available_tags = self._collect_available_tags()
+        selected = set(self._selected_filter_tags)
+        for tag in list(selected):
+            if tag not in available_tags:
+                available_tags.append(tag)
+        available_tags.sort()
+        mode_var = tk.StringVar(value=str(self.filter_tag_mode_var.get() or "ALL").upper())
+
+        def _builder(frame: tk.Frame) -> None:
+            tk.Label(
+                frame,
+                text="Filtr tagow",
+                bg=COLOR_BG,
+                fg=COLOR_FG,
+                font=("Segoe UI", 9, "bold"),
+                anchor="w",
+            ).grid(row=0, column=0, columnspan=3, sticky="ew", padx=8, pady=(6, 4))
+
+            mode_row = tk.Frame(frame, bg=COLOR_BG)
+            mode_row.grid(row=1, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 4))
+
+            tk.Label(mode_row, text="Tryb:", bg=COLOR_BG, fg=COLOR_SEC).pack(side="left", padx=(0, 6))
+            tk.Radiobutton(
+                mode_row,
+                text="ALL",
+                value="ALL",
+                variable=mode_var,
+                bg=COLOR_BG,
+                fg=COLOR_FG,
+                selectcolor=COLOR_ACCENT,
+                activebackground=COLOR_BG,
+                activeforeground=COLOR_FG,
+            ).pack(side="left", padx=(0, 6))
+            tk.Radiobutton(
+                mode_row,
+                text="ANY",
+                value="ANY",
+                variable=mode_var,
+                bg=COLOR_BG,
+                fg=COLOR_FG,
+                selectcolor=COLOR_ACCENT,
+                activebackground=COLOR_BG,
+                activeforeground=COLOR_FG,
+            ).pack(side="left")
+
+            checks_frame = tk.Frame(frame, bg=COLOR_BG)
+            checks_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=8, pady=(0, 4))
+            checks_frame.columnconfigure(0, weight=1)
+            checks_frame.columnconfigure(1, weight=1)
+            checks_frame.columnconfigure(2, weight=1)
+
+            tag_vars: dict[str, tk.BooleanVar] = {}
+            if available_tags:
+                for idx, tag in enumerate(available_tags):
+                    row = idx // 3
+                    col = idx % 3
+                    var = tk.BooleanVar(value=tag in selected)
+                    tag_vars[tag] = var
+                    tk.Checkbutton(
+                        checks_frame,
+                        text=tag,
+                        variable=var,
+                        bg=COLOR_BG,
+                        fg=COLOR_FG,
+                        selectcolor=COLOR_ACCENT,
+                        activebackground=COLOR_BG,
+                        activeforeground=COLOR_FG,
+                        anchor="w",
+                    ).grid(row=row, column=col, sticky="w", padx=(0, 8), pady=(0, 2))
+            else:
+                tk.Label(
+                    checks_frame,
+                    text="Brak tagow w lokalnej bazie wpisow.",
+                    bg=COLOR_BG,
+                    fg=COLOR_SEC,
+                    anchor="w",
+                ).grid(row=0, column=0, columnspan=3, sticky="w")
+
+            actions = tk.Frame(frame, bg=COLOR_BG)
+            actions.grid(row=3, column=0, columnspan=3, sticky="ew", padx=8, pady=(0, 8))
+
+            def _select_all() -> None:
+                for var in tag_vars.values():
+                    var.set(True)
+
+            def _clear_all() -> None:
+                for var in tag_vars.values():
+                    var.set(False)
+
+            def _apply() -> None:
+                self._selected_filter_tags = {
+                    tag for tag, enabled in tag_vars.items() if bool(enabled.get())
+                }
+                mode = str(mode_var.get() or "ALL").upper()
+                self.filter_tag_mode_var.set("ANY" if mode == "ANY" else "ALL")
+                self._set_filter_tag_display()
+                self._close_active_popover()
+                self._refresh_entries()
+
+            tk.Button(
+                actions,
+                text="Wszystkie",
+                bg=COLOR_ACCENT,
+                fg=COLOR_FG,
+                relief="flat",
+                command=_select_all,
+            ).pack(side="left", padx=(0, 6))
+            tk.Button(
+                actions,
+                text="Wyczysc",
+                bg=COLOR_ACCENT,
+                fg=COLOR_FG,
+                relief="flat",
+                command=_clear_all,
+            ).pack(side="left", padx=(0, 6))
+            tk.Button(
+                actions,
+                text="Zastosuj",
+                bg=COLOR_ACCENT,
+                fg=COLOR_FG,
+                relief="flat",
+                command=_apply,
+            ).pack(side="left")
+
+        self._open_popover(self.entry_filter_tags, _builder)
+
     def _sync_pinboard_button_label(self) -> None:
         if not hasattr(self, "btn_pinboard_toggle"):
             return
@@ -1094,15 +1452,33 @@ class LogbookTab(tk.Frame):
         if text:
             filters["text"] = text
 
-        tags = _split_tags(self.filter_tag_var.get().strip())
+        tags = sorted(self._selected_filter_tags)
         if tags:
             filters["tags"] = tags
+            mode = str(self.filter_tag_mode_var.get() or "ALL").strip().upper()
+            filters["tags_mode"] = "any" if mode == "ANY" else "all"
 
         date_from_text = self.filter_date_from_var.get().strip()
         date_to_text = self.filter_date_to_var.get().strip()
         try:
-            date_from = _to_iso_date(date_from_text, end_of_day=False) if date_from_text else None
-            date_to = _to_iso_date(date_to_text, end_of_day=True) if date_to_text else None
+            from_norm = date_from_text.lower()
+            to_norm = date_to_text.lower()
+
+            if not from_norm or from_norm in {"forever", "od zawsze"}:
+                date_from = None
+            elif from_norm in {"today", "dzisiaj"}:
+                date_from = _to_iso_date(_today_date_text(), end_of_day=False)
+            else:
+                date_from = _to_iso_date(date_from_text, end_of_day=False)
+
+            if not to_norm:
+                date_to = _to_iso_date(_today_date_text(), end_of_day=True)
+            elif to_norm in {"today", "dzisiaj"}:
+                date_to = _to_iso_date(_today_date_text(), end_of_day=True)
+            elif to_norm in {"forever", "bez limitu"}:
+                date_to = None
+            else:
+                date_to = _to_iso_date(date_to_text, end_of_day=True)
         except ValueError:
             self.status_var.set("Niepoprawny format daty. Uzyj YYYY-MM-DD.")
             return None

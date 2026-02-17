@@ -412,6 +412,9 @@ class EntryRepository:
 
         text = _normalize_optional_text(filters.get("text"))
         tags = _normalize_tags(filters.get("tags")) if "tags" in filters else []
+        tags_mode = str(filters.get("tags_mode") or "all").strip().lower()
+        if tags_mode not in {"all", "any"}:
+            tags_mode = "all"
         entry_type = _normalize_optional_text(filters.get("entry_type"))
         source_kind = _normalize_optional_text(filters.get("source_kind"))
         category_prefix = _normalize_optional_text(filters.get("category_path_prefix"))
@@ -444,8 +447,12 @@ class EntryRepository:
 
             if tags:
                 item_tags = set(_normalize_tags(item.get("tags")))
-                if not set(tags).issubset(item_tags):
-                    continue
+                if tags_mode == "any":
+                    if not set(tags).intersection(item_tags):
+                        continue
+                else:
+                    if not set(tags).issubset(item_tags):
+                        continue
 
             if entry_type and str(item.get("entry_type") or "").lower() != entry_type.lower():
                 continue
