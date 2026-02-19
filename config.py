@@ -199,6 +199,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "cash_in.show_tariff_meta": True,
     "cash_in.hutton_guard_ls_threshold": 500_000,
     "cash_in.hutton_guard_score_penalty": 18,
+    "cash_in.startjump_callout_enabled": True,
+    "cash_in.startjump_callout_cooldown_sec": 35.0,
     "survival_rebuy_awareness_enabled": True,  # F4 survival/rebuy awareness
     "combat_awareness_enabled": True,  # F5 combat awareness baseline
     "dispatcher.f4_voice_priority_window_sec": 12.0,

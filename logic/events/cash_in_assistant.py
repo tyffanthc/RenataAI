@@ -11,6 +11,7 @@ from logic.cash_in_station_candidates import (
     station_candidates_for_system_from_providers,
 )
 from logic.insight_dispatcher import emit_insight
+from logic.utils import DEBOUNCER
 
 
 @dataclass
@@ -986,6 +987,199 @@ def _build_tts_line(payload: CashInAssistantPayload) -> str:
     if count == 2:
         return "Cash-in: mam dwie opcje w panelu. Rozwaz teraz albo pozniej."
     return "Cash-in: sprawdz opcje w panelu i zdecyduj."
+
+
+def _normalize_confidence_level(value: Any) -> str:
+    norm = _as_text(value).lower()
+    if norm in {"high", "mid", "low"}:
+        return norm
+    if norm == "medium":
+        return "mid"
+    return ""
+
+
+def _resolve_startjump_confidence(
+    *,
+    system_value: float,
+    session_value: float,
+    has_system_summary: bool,
+) -> str:
+    if has_system_summary and system_value > 0 and session_value > 0:
+        return "high"
+    if max(system_value, session_value) > 0:
+        return "mid"
+    return "low"
+
+
+def _round_orientational_value(value: float) -> int:
+    amount = max(0.0, float(value or 0.0))
+    if amount >= 1_000_000.0:
+        step = 1_000_000.0
+    elif amount >= 100_000.0:
+        step = 100_000.0
+    else:
+        step = 10_000.0
+    return int(round(amount / step) * step)
+
+
+def _signal_to_var_tier(signal: str) -> str:
+    sig = _as_text(signal).lower()
+    if sig == "wysoki":
+        return "HIGH"
+    if sig == "sredni":
+        return "MED"
+    return "LOW"
+
+
+def _build_startjump_tts_line(
+    *,
+    confidence: str,
+    system_value: float,
+    session_value: float,
+    signal: str,
+) -> str:
+    conf = _normalize_confidence_level(confidence) or "low"
+    if conf == "high":
+        return (
+            "Cash-in: Twoje dane naukowe sa warte "
+            f"{_format_cr(session_value)} Cr, a w ostatnim systemie zarobiles "
+            f"{_format_cr(system_value)} Cr."
+        )
+    if conf == "mid":
+        session_approx = _round_orientational_value(session_value)
+        system_approx = _round_orientational_value(system_value)
+        return (
+            "Cash-in orientacyjnie: lacznie okolo "
+            f"{_format_cr(session_approx)} Cr, a ostatni system okolo "
+            f"{_format_cr(system_approx)} Cr."
+        )
+    return f"Cash-in: niska pewnosc wyceny. VaR(Data): {_signal_to_var_tier(signal)}."
+
+
+def trigger_startjump_cash_in_callout(
+    *,
+    event: dict[str, Any] | None = None,
+    gui_ref=None,
+) -> bool:
+    if not bool(config.get("cash_in.startjump_callout_enabled", True)):
+        return False
+
+    ev = dict(event or {})
+    if _as_text(ev.get("event")).lower() != "startjump":
+        return False
+
+    jump_type = _as_text(ev.get("JumpType")).lower()
+    if jump_type and jump_type != "hyperspace":
+        return False
+
+    if bool(getattr(app_state, "bootstrap_replay", False)):
+        return False
+
+    system_name = (
+        _as_text(getattr(app_state, "current_system", ""))
+        or _as_text(ev.get("StarSystem"))
+        or "unknown"
+    )
+
+    has_system_summary = False
+    system_value = 0.0
+    try:
+        summary_data = app_state.exit_summary.build_summary_data(system_name=system_name)
+        if summary_data is not None:
+            has_system_summary = True
+            system_value = _safe_float(getattr(summary_data, "total_value", 0.0))
+    except Exception:
+        has_system_summary = False
+        system_value = 0.0
+
+    session_value = 0.0
+    try:
+        totals = app_state.system_value_engine.calculate_totals()
+        if isinstance(totals, dict):
+            session_value = _safe_float(totals.get("total"))
+    except Exception:
+        session_value = 0.0
+
+    explicit_confidence = _normalize_confidence_level(
+        ev.get("cash_in_confidence")
+        or ev.get("cashInConfidence")
+        or ev.get("confidence")
+    )
+    confidence = explicit_confidence or _resolve_startjump_confidence(
+        system_value=system_value,
+        session_value=session_value,
+        has_system_summary=has_system_summary,
+    )
+    signal = _cash_signal_from_values(system_value, session_value)
+
+    cooldown_seconds = float(
+        config.get("cash_in.startjump_callout_cooldown_sec", 35.0) or 35.0
+    )
+    system_bucket = int(round(system_value / 1_000_000.0))
+    session_bucket = int(round(session_value / 1_000_000.0))
+    signature = (
+        f"{system_name}:{signal}:{confidence}:{system_bucket}:{session_bucket}"
+    )
+    if not DEBOUNCER.is_allowed(
+        "cash_in_startjump_callout",
+        cooldown_seconds,
+        context=signature,
+    ):
+        return False
+
+    raw_text = _build_startjump_tts_line(
+        confidence=confidence,
+        system_value=system_value,
+        session_value=session_value,
+        signal=signal,
+    )
+    risk_status = "RISK_MEDIUM" if signal == "wysoki" else "RISK_LOW"
+    var_status = (
+        "VAR_HIGH"
+        if signal == "wysoki"
+        else "VAR_MEDIUM" if signal == "sredni" else "VAR_LOW"
+    )
+    confidence_policy = (
+        "HIGH_EXACT"
+        if confidence == "high"
+        else "MED_APPROX" if confidence == "mid" else "LOW_TIER_ONLY"
+    )
+    priority = "P1_HIGH" if confidence == "low" else "P2_NORMAL"
+
+    context = {
+        "system": system_name,
+        "raw_text": raw_text,
+        "risk_status": risk_status,
+        "var_status": var_status,
+        "trust_status": "TRUST_HIGH",
+        "confidence": confidence,
+        "confidence_policy": confidence_policy,
+        # StartJump callout musi przechodzic przy MID/LOW confidence,
+        # ale dalej respektuje anti-spam/cooldown z dispatchera.
+        "force_tts": True,
+        "cash_in_startjump_payload": {
+            "system": system_name,
+            "system_value_estimated": int(round(system_value)),
+            "session_value_estimated": int(round(session_value)),
+            "signal": signal,
+            "confidence": confidence,
+            "confidence_policy": confidence_policy,
+        },
+    }
+
+    emit_insight(
+        raw_text,
+        gui_ref=gui_ref,
+        message_id="MSG.CASH_IN_STARTJUMP",
+        source="cash_in_assistant",
+        event_type="CASH_IN_STARTJUMP",
+        context=context,
+        priority=priority,
+        dedup_key=f"cash_in_startjump:{signature}",
+        cooldown_scope="entity",
+        cooldown_seconds=cooldown_seconds,
+    )
+    return True
 
 
 def trigger_cash_in_assistant(

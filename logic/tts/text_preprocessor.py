@@ -38,6 +38,7 @@ ALLOWED_MESSAGES = {
     "MSG.FSS_LAST_BODY",
     "MSG.EXPLORATION_SYSTEM_SUMMARY",
     "MSG.CASH_IN_ASSISTANT",
+    "MSG.CASH_IN_STARTJUMP",
     "MSG.SURVIVAL_REBUY_HIGH",
     "MSG.SURVIVAL_REBUY_CRITICAL",
     "MSG.COMBAT_AWARENESS_HIGH",
@@ -185,6 +186,14 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
             if fixed:
                 return fixed
         return _finalize_tts("Cash-in. Sprawdz decyzje w panelu.")
+
+    if message_id == "MSG.CASH_IN_STARTJUMP":
+        raw_text = ctx.get("raw_text")
+        if raw_text:
+            fixed = _repair_polish_text(raw_text).strip()
+            if fixed:
+                return fixed
+        return _finalize_tts("Cash-in. Punkt kontrolny danych gotowy.")
 
     if message_id in {"MSG.SURVIVAL_REBUY_HIGH", "MSG.SURVIVAL_REBUY_CRITICAL"}:
         raw_text = ctx.get("raw_text")

@@ -10,6 +10,7 @@ from logic.events import exploration_misc_events
 from logic.events import navigation_events
 from logic.events import trade_events
 from logic.events import smuggler_events
+from logic.events import cash_in_assistant
 from logic.events import survival_rebuy_awareness
 from logic.events import combat_awareness
 from logic import cargo_value_estimator
@@ -165,6 +166,16 @@ class EventHandler:
             combat_awareness.handle_journal_event(ev, gui_ref)
         except Exception as exc:
             _log_router_fallback("journal.combat_awareness", "journal event: combat awareness handler failed", exc)
+
+        if typ == "StartJump":
+            try:
+                cash_in_assistant.trigger_startjump_cash_in_callout(event=ev, gui_ref=gui_ref)
+            except Exception as exc:
+                _log_router_fallback(
+                    "journal.cash_in_startjump",
+                    "journal event: cash-in startjump callout failed",
+                    exc,
+                )
 
         # AUTO-SCHOWEK
         if typ == "FSDJump":

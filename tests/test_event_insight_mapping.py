@@ -28,6 +28,7 @@ class EventInsightMappingTests(unittest.TestCase):
             "MSG.EXOBIO_NEW_ENTRY",
             "MSG.EXPLORATION_SYSTEM_SUMMARY",
             "MSG.CASH_IN_ASSISTANT",
+            "MSG.CASH_IN_STARTJUMP",
             "MSG.SURVIVAL_REBUY_HIGH",
             "MSG.SURVIVAL_REBUY_CRITICAL",
             "MSG.COMBAT_AWARENESS_HIGH",

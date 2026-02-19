@@ -305,6 +305,16 @@ INSIGHT_CLASS_BY_MESSAGE_ID: Dict[str, InsightClassSpec] = {
         default_cooldown_seconds=90.0,
         dedup_template="cash_in:{system}",
     ),
+    "MSG.CASH_IN_STARTJUMP": InsightClassSpec(
+        class_id="EXP_CASH_IN_STARTJUMP",
+        canonical_event="CASH_IN_STARTJUMP",
+        kind="exploration",
+        decision_space="cash_in_checkpoint",
+        default_priority="P2_NORMAL",
+        default_cooldown_scope="entity",
+        default_cooldown_seconds=35.0,
+        dedup_template="cash_in_startjump:{system}",
+    ),
     "MSG.SURVIVAL_REBUY_HIGH": InsightClassSpec(
         class_id="SURVIVAL_REBUY_HIGH",
         canonical_event="SURVIVAL_RISK_CHANGED",
@@ -525,6 +535,11 @@ TTS_POLICY_BY_MESSAGE_ID: Dict[str, TTSPolicySpec] = {
     ),
     "MSG.CASH_IN_ASSISTANT": TTSPolicySpec(
         message_id="MSG.CASH_IN_ASSISTANT",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.CASH_IN_STARTJUMP": TTSPolicySpec(
+        message_id="MSG.CASH_IN_STARTJUMP",
         intent="context",
         category="explore",
     ),
