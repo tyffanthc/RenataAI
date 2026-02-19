@@ -74,6 +74,16 @@ class MainLoop:
             self._log_error(f"Bootstrap error: {e}")
             return
 
+        try:
+            from logic.events import exploration_bio_events
+
+            exploration_bio_events.bootstrap_exobio_state_from_journal_lines(
+                lines,
+                max_lines=max_lines,
+            )
+        except Exception as e:
+            self._log_error(f"Bootstrap exobio recovery error: {e}")
+
         app_state.bootstrap_replay = True
 
         for line in reversed(lines):

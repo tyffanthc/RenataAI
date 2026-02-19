@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import time
 from typing import Any, Dict
@@ -22,6 +23,11 @@ EXOBIO_SAMPLE_COMPLETE = set()  # (system, body, species) -> sample sequence com
 EXOBIO_RANGE_READY_WARNED = set()  # (system, body, species) -> range-ready already spoken
 EXOBIO_RANGE_TRACKERS = {}  # (system, body, species) -> distance tracker state
 EXOBIO_LAST_STATUS_POS = {}  # last known position from Status.json
+EXOBIO_RECOVERY_UNCERTAIN_KEYS = set()  # (system, body, species) -> numbering uncertainty
+
+_EXOBIO_KEY_DELIM = "||"
+_EXOBIO_PERSIST_MIN_INTERVAL_SEC = 2.0
+_EXOBIO_LAST_PERSIST_TS = 0.0
 
 
 def _exc_text(exc: Exception) -> str:
@@ -39,11 +45,12 @@ def _log_exobio_fallback(key: str, message: str, exc: Exception, *, interval_ms:
     )
 
 
-def reset_bio_flags() -> None:
+def reset_bio_flags(*, persist: bool = False) -> None:
     """Reset local anti-spam flags for biology helpers."""
     global DSS_BIO_WARNED_BODIES, EXOBIO_SCAN_WARNED, EXOBIO_CODEX_WARNED
     global EXOBIO_SAMPLE_COUNT, EXOBIO_SAMPLE_COMPLETE
     global EXOBIO_RANGE_READY_WARNED, EXOBIO_RANGE_TRACKERS, EXOBIO_LAST_STATUS_POS
+    global EXOBIO_RECOVERY_UNCERTAIN_KEYS
     DSS_BIO_WARNED_BODIES = set()
     EXOBIO_SCAN_WARNED = set()
     EXOBIO_CODEX_WARNED = set()
@@ -52,6 +59,9 @@ def reset_bio_flags() -> None:
     EXOBIO_RANGE_READY_WARNED = set()
     EXOBIO_RANGE_TRACKERS = {}
     EXOBIO_LAST_STATUS_POS = {}
+    EXOBIO_RECOVERY_UNCERTAIN_KEYS = set()
+    if persist:
+        _persist_exobio_state(force=True)
 
 
 def _as_text(value: Any) -> str:
@@ -67,6 +77,350 @@ def _as_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _normalize_exobio_key_parts(system_name: Any, body_name: Any, species_name: Any) -> tuple[str, str, str] | None:
+    system = _as_text(system_name).lower()
+    body = _as_text(body_name).lower()
+    species = _as_text(species_name).lower()
+    if not system or not body or not species:
+        return None
+    return system, body, species
+
+
+def _encode_exobio_key(key: Any) -> str:
+    if not isinstance(key, (list, tuple)) or len(key) != 3:
+        return ""
+    normalized = _normalize_exobio_key_parts(key[0], key[1], key[2])
+    if not normalized:
+        return ""
+    return _EXOBIO_KEY_DELIM.join(normalized)
+
+
+def _decode_exobio_key(raw: Any) -> tuple[str, str, str] | None:
+    if isinstance(raw, (list, tuple)) and len(raw) == 3:
+        return _normalize_exobio_key_parts(raw[0], raw[1], raw[2])
+    token = _as_text(raw)
+    if not token:
+        return None
+    parts = token.split(_EXOBIO_KEY_DELIM, 2)
+    if len(parts) != 3:
+        return None
+    return _normalize_exobio_key_parts(parts[0], parts[1], parts[2])
+
+
+def _serialize_exobio_key_set(keys: set) -> list[str]:
+    out: list[str] = []
+    for key in keys or set():
+        token = _encode_exobio_key(key)
+        if token:
+            out.append(token)
+    return sorted(set(out))
+
+
+def _serialize_exobio_sample_count() -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    for key, raw_count in (EXOBIO_SAMPLE_COUNT or {}).items():
+        token = _encode_exobio_key(key)
+        if not token:
+            continue
+        try:
+            count = int(raw_count or 0)
+        except Exception:
+            count = 0
+        count = max(0, min(3, count))
+        out[token] = count
+    return out
+
+
+def _serialize_exobio_trackers() -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for key, tracker in (EXOBIO_RANGE_TRACKERS or {}).items():
+        token = _encode_exobio_key(key)
+        if not token or not isinstance(tracker, dict):
+            continue
+        row: Dict[str, Any] = {}
+        for numeric_key in ("threshold_m", "lat", "lon", "radius_m"):
+            numeric_value = _as_float(tracker.get(numeric_key))
+            if numeric_value is not None:
+                row[numeric_key] = numeric_value
+        row["pending"] = bool(tracker.get("pending", False))
+        body = _as_text(tracker.get("body")).lower()
+        system = _as_text(tracker.get("system")).lower()
+        if body:
+            row["body"] = body
+        if system:
+            row["system"] = system
+        if row:
+            out[token] = row
+    return out
+
+
+def _snapshot_exobio_state_payload() -> Dict[str, Any]:
+    status_payload: Dict[str, Any] = {}
+    last_pos = EXOBIO_LAST_STATUS_POS if isinstance(EXOBIO_LAST_STATUS_POS, dict) else {}
+    for numeric_key in ("lat", "lon", "radius_m", "ts"):
+        numeric_value = _as_float(last_pos.get(numeric_key))
+        if numeric_value is not None:
+            status_payload[numeric_key] = numeric_value
+    body = _as_text(last_pos.get("body")).lower()
+    system = _as_text(last_pos.get("system")).lower()
+    if body:
+        status_payload["body"] = body
+    if system:
+        status_payload["system"] = system
+
+    return {
+        "schema_version": 1,
+        "sample_count_by_key": _serialize_exobio_sample_count(),
+        "sample_complete_keys": _serialize_exobio_key_set(EXOBIO_SAMPLE_COMPLETE),
+        "range_ready_warned_keys": _serialize_exobio_key_set(EXOBIO_RANGE_READY_WARNED),
+        "range_trackers": _serialize_exobio_trackers(),
+        "uncertain_sequence_keys": _serialize_exobio_key_set(EXOBIO_RECOVERY_UNCERTAIN_KEYS),
+        "last_status_pos": status_payload,
+        "updated_at": int(time.time()),
+    }
+
+
+def _persist_exobio_state(*, force: bool = False) -> bool:
+    global _EXOBIO_LAST_PERSIST_TS
+
+    now = time.time()
+    if (not force) and (_EXOBIO_LAST_PERSIST_TS > 0.0):
+        if (now - _EXOBIO_LAST_PERSIST_TS) < _EXOBIO_PERSIST_MIN_INTERVAL_SEC:
+            return False
+
+    payload = _snapshot_exobio_state_payload()
+    try:
+        config.update_anti_spam_state({"exobio": payload})
+        _EXOBIO_LAST_PERSIST_TS = now
+        return True
+    except Exception:
+        try:
+            config.STATE["exobio_state"] = payload
+            _EXOBIO_LAST_PERSIST_TS = now
+            return True
+        except Exception:
+            return False
+
+
+def _apply_exobio_state_payload(payload: Dict[str, Any]) -> Dict[str, int]:
+    global EXOBIO_SAMPLE_COUNT, EXOBIO_SAMPLE_COMPLETE
+    global EXOBIO_RANGE_READY_WARNED, EXOBIO_RANGE_TRACKERS, EXOBIO_LAST_STATUS_POS
+    global EXOBIO_RECOVERY_UNCERTAIN_KEYS
+
+    sample_count: Dict[tuple[str, str, str], int] = {}
+    sample_complete: set[tuple[str, str, str]] = set()
+    range_ready_warned: set[tuple[str, str, str]] = set()
+    range_trackers: Dict[tuple[str, str, str], Dict[str, Any]] = {}
+    uncertain_keys: set[tuple[str, str, str]] = set()
+
+    raw_counts = payload.get("sample_count_by_key", {})
+    if isinstance(raw_counts, dict):
+        for raw_key, raw_value in raw_counts.items():
+            key = _decode_exobio_key(raw_key)
+            if not key:
+                continue
+            try:
+                count = int(raw_value or 0)
+            except Exception:
+                count = 0
+            count = max(0, min(3, count))
+            if count > 0:
+                sample_count[key] = count
+            if count >= 3:
+                sample_complete.add(key)
+
+    for raw_key in payload.get("sample_complete_keys", []) or []:
+        key = _decode_exobio_key(raw_key)
+        if not key:
+            continue
+        sample_complete.add(key)
+        sample_count[key] = max(3, int(sample_count.get(key, 0) or 0))
+
+    for raw_key in payload.get("range_ready_warned_keys", []) or []:
+        key = _decode_exobio_key(raw_key)
+        if key:
+            range_ready_warned.add(key)
+
+    for raw_key in payload.get("uncertain_sequence_keys", []) or []:
+        key = _decode_exobio_key(raw_key)
+        if key:
+            uncertain_keys.add(key)
+
+    raw_trackers = payload.get("range_trackers", {})
+    if isinstance(raw_trackers, dict):
+        for raw_key, raw_tracker in raw_trackers.items():
+            key = _decode_exobio_key(raw_key)
+            if not key or not isinstance(raw_tracker, dict):
+                continue
+            row: Dict[str, Any] = {"pending": bool(raw_tracker.get("pending", False))}
+            for numeric_key in ("threshold_m", "lat", "lon", "radius_m"):
+                numeric_value = _as_float(raw_tracker.get(numeric_key))
+                if numeric_value is not None:
+                    row[numeric_key] = numeric_value
+            body = _as_text(raw_tracker.get("body")).lower()
+            system = _as_text(raw_tracker.get("system")).lower()
+            if body:
+                row["body"] = body
+            if system:
+                row["system"] = system
+            if row:
+                range_trackers[key] = row
+
+    status_payload: Dict[str, Any] = {}
+    raw_last_status = payload.get("last_status_pos", {})
+    if isinstance(raw_last_status, dict):
+        for numeric_key in ("lat", "lon", "radius_m", "ts"):
+            numeric_value = _as_float(raw_last_status.get(numeric_key))
+            if numeric_value is not None:
+                status_payload[numeric_key] = numeric_value
+        body = _as_text(raw_last_status.get("body")).lower()
+        system = _as_text(raw_last_status.get("system")).lower()
+        if body:
+            status_payload["body"] = body
+        if system:
+            status_payload["system"] = system
+
+    # Completed sample cycles should not keep active trackers or pending ready-warn flags.
+    for key in list(sample_complete):
+        range_trackers.pop(key, None)
+        range_ready_warned.discard(key)
+
+    EXOBIO_SAMPLE_COUNT = sample_count
+    EXOBIO_SAMPLE_COMPLETE = sample_complete
+    EXOBIO_RANGE_READY_WARNED = range_ready_warned
+    EXOBIO_RANGE_TRACKERS = range_trackers
+    EXOBIO_LAST_STATUS_POS = status_payload
+    EXOBIO_RECOVERY_UNCERTAIN_KEYS = uncertain_keys
+
+    return {
+        "sample_keys": len(EXOBIO_SAMPLE_COUNT),
+        "complete_keys": len(EXOBIO_SAMPLE_COMPLETE),
+        "tracker_keys": len(EXOBIO_RANGE_TRACKERS),
+        "ready_warned_keys": len(EXOBIO_RANGE_READY_WARNED),
+    }
+
+
+def load_exobio_state_from_contract(*, force: bool = False) -> Dict[str, Any]:
+    has_runtime_state = bool(
+        EXOBIO_SAMPLE_COUNT
+        or EXOBIO_SAMPLE_COMPLETE
+        or EXOBIO_RANGE_READY_WARNED
+        or EXOBIO_RANGE_TRACKERS
+    )
+    if has_runtime_state and not force:
+        return {"loaded": False, "reason": "runtime_state_present"}
+
+    payload: Dict[str, Any] = {}
+    try:
+        anti_spam_state = config.get_anti_spam_state(default={})
+        raw = anti_spam_state.get("exobio") if isinstance(anti_spam_state, dict) else {}
+        if isinstance(raw, dict):
+            payload = raw
+    except Exception:
+        payload = {}
+
+    if not payload:
+        try:
+            raw = config.STATE.get("exobio_state", {})
+            if isinstance(raw, dict):
+                payload = raw
+        except Exception:
+            payload = {}
+
+    if not payload:
+        return {"loaded": False, "reason": "no_persisted_payload"}
+
+    stats = _apply_exobio_state_payload(payload)
+    loaded = bool(stats.get("sample_keys", 0) or stats.get("tracker_keys", 0))
+    return {"loaded": loaded, "reason": "ok", **stats}
+
+
+def recover_exobio_from_journal_lines(
+    lines: list[str] | tuple[str, ...] | None,
+    *,
+    max_lines: int = 4000,
+    persist: bool = True,
+) -> Dict[str, Any]:
+    if not isinstance(lines, (list, tuple)) or not lines:
+        return {"recovered": False, "events": 0, "keys": len(EXOBIO_SAMPLE_COUNT)}
+
+    events_recovered = 0
+    used_system_fallback = 0
+    current_system = _as_text(getattr(app_state, "current_system", ""))
+
+    for raw_line in list(lines)[-max_lines:]:
+        try:
+            ev = json.loads(raw_line)
+        except Exception:
+            continue
+        if not isinstance(ev, dict):
+            continue
+
+        event_name = _as_text(ev.get("event"))
+        if event_name in ("Location", "FSDJump", "CarrierJump"):
+            next_system = _as_text(ev.get("StarSystem"))
+            if next_system:
+                current_system = next_system
+            continue
+
+        if event_name != "ScanOrganic":
+            continue
+
+        species = _species_name(ev)
+        body = _as_text(ev.get("BodyName")) or _as_text(ev.get("Body")) or _as_text(ev.get("BodyID"))
+        system_name = _as_text(ev.get("StarSystem"))
+        used_fallback_for_event = False
+        if not system_name:
+            system_name = current_system
+            if system_name:
+                used_system_fallback += 1
+                used_fallback_for_event = True
+
+        if not (species and body and system_name):
+            continue
+
+        key = (system_name.lower(), body.lower(), species.lower())
+        previous = int(EXOBIO_SAMPLE_COUNT.get(key, 0) or 0)
+        next_count = max(0, min(3, previous + 1))
+        if next_count == previous:
+            continue
+        EXOBIO_SAMPLE_COUNT[key] = next_count
+        events_recovered += 1
+
+        if next_count >= 3:
+            EXOBIO_SAMPLE_COMPLETE.add(key)
+            EXOBIO_RANGE_TRACKERS.pop(key, None)
+            EXOBIO_RANGE_READY_WARNED.discard(key)
+
+        if _is_numeric_token(_as_text(body)) or used_fallback_for_event:
+            EXOBIO_RECOVERY_UNCERTAIN_KEYS.add(key)
+
+    if events_recovered and persist:
+        _persist_exobio_state(force=True)
+
+    return {
+        "recovered": bool(events_recovered),
+        "events": events_recovered,
+        "keys": len(EXOBIO_SAMPLE_COUNT),
+        "used_system_fallback": used_system_fallback,
+    }
+
+
+def bootstrap_exobio_state_from_journal_lines(
+    lines: list[str] | tuple[str, ...] | None,
+    *,
+    max_lines: int = 4000,
+) -> Dict[str, Any]:
+    loaded = load_exobio_state_from_contract(force=True)
+    if bool(loaded.get("loaded")):
+        return {"source": "state", **loaded}
+
+    recovered = recover_exobio_from_journal_lines(lines, max_lines=max_lines, persist=True)
+    if bool(recovered.get("recovered")):
+        return {"source": "journal_recovery", **recovered}
+    return {"source": "none", **recovered}
 
 
 def _current_system(ev: Dict[str, Any]) -> str:
@@ -393,6 +747,7 @@ def handle_exobio_status_position(status: Dict[str, Any], gui_ref=None) -> None:
     if lat is None or lon is None or radius_m is None:
         return
 
+    state_changed = False
     EXOBIO_LAST_STATUS_POS.update(
         {
             "lat": lat,
@@ -403,6 +758,7 @@ def handle_exobio_status_position(status: Dict[str, Any], gui_ref=None) -> None:
             "ts": time.time(),
         }
     )
+    state_changed = True
 
     for key, tracker in list(EXOBIO_RANGE_TRACKERS.items()):
         sample_count = int(EXOBIO_SAMPLE_COUNT.get(key, 0) or 0)
@@ -426,6 +782,7 @@ def handle_exobio_status_position(status: Dict[str, Any], gui_ref=None) -> None:
             tracker["pending"] = False
             if (not tracker.get("body")) and body:
                 tracker["body"] = body
+            state_changed = True
             continue
 
         t_lat = _as_float(tracker.get("lat"))
@@ -446,6 +803,7 @@ def handle_exobio_status_position(status: Dict[str, Any], gui_ref=None) -> None:
             continue
 
         EXOBIO_RANGE_READY_WARNED.add(key)
+        state_changed = True
         msg = "Osiągnięto odpowiednią odległość. Pobierz kolejną próbkę."
         key_system, key_body, key_species = key
         ctx = _exobio_context(
@@ -470,6 +828,10 @@ def handle_exobio_status_position(status: Dict[str, Any], gui_ref=None) -> None:
         if not allow_tts:
             # Retry on next position update if TTS was suppressed (e.g. combat silence).
             EXOBIO_RANGE_READY_WARNED.discard(key)
+            state_changed = True
+
+    if state_changed:
+        _persist_exobio_state(force=False)
 
 
 def handle_dss_bio_signals(ev: Dict[str, Any], gui_ref=None) -> None:
@@ -570,15 +932,27 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
         previous_count = int(EXOBIO_SAMPLE_COUNT.get(key, 0) or 0)
         if previous_count >= 3:
             EXOBIO_SAMPLE_COMPLETE.add(key)
+            _persist_exobio_state(force=True)
             return
 
         sample_count = previous_count + 1
         EXOBIO_SAMPLE_COUNT[key] = sample_count
 
+        raw_body_token = _as_text(ev.get("BodyName")) or _as_text(ev.get("Body")) or _as_text(ev.get("BodyID"))
+        event_uncertain = (not _as_text(ev.get("StarSystem"))) or _is_numeric_token(raw_body_token)
+        if event_uncertain:
+            EXOBIO_RECOVERY_UNCERTAIN_KEYS.add(key)
+        else:
+            EXOBIO_RECOVERY_UNCERTAIN_KEYS.discard(key)
+
         subject = species or body or "obiektu biologicznego"
+        sequence_uncertain = key in EXOBIO_RECOVERY_UNCERTAIN_KEYS
 
         if sample_count == 1:
-            msg = f"Pierwsza próbka {subject} pobrana."
+            if sequence_uncertain:
+                msg = f"Kolejna próbka {subject} pobrana."
+            else:
+                msg = f"Pierwsza próbka {subject} pobrana."
             ctx = _exobio_context(system_name=system_name, body_name=body, species=species, payload=ev)
             ctx["raw_text"] = msg
             emit_insight(
@@ -594,7 +968,10 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
                 cooldown_seconds=0.0,
             )
         elif sample_count == 2:
-            msg = f"Druga próbka {subject} pobrana."
+            if sequence_uncertain:
+                msg = f"Kolejna próbka {subject} pobrana."
+            else:
+                msg = f"Druga próbka {subject} pobrana."
             ctx = _exobio_context(system_name=system_name, body_name=body, species=species, payload=ev)
             ctx["raw_text"] = msg
             emit_insight(
@@ -635,6 +1012,8 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
             EXOBIO_SCAN_WARNED.add(key)
             EXOBIO_RANGE_TRACKERS.pop(key, None)
             EXOBIO_RANGE_READY_WARNED.discard(key)
+            EXOBIO_RECOVERY_UNCERTAIN_KEYS.discard(key)
+            _persist_exobio_state(force=True)
             return
 
         # Real distance tracker based on science data + status position.
@@ -644,6 +1023,7 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
         if tracker_state == "unavailable":
             EXOBIO_RANGE_TRACKERS.pop(key, None)
             EXOBIO_RANGE_READY_WARNED.discard(key)
+        _persist_exobio_state(force=True)
         return
 
     if not _is_biology_codex(ev):
@@ -673,3 +1053,9 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
         cooldown_scope="entity",
         cooldown_seconds=120.0,
     )
+
+
+try:
+    load_exobio_state_from_contract(force=True)
+except Exception:
+    pass

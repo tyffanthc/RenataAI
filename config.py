@@ -743,6 +743,32 @@ def update_last_context(
     return get_last_context()
 
 
+def get_anti_spam_state(default: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    contract = get_state_contract()
+    value = contract.get("anti_spam_state")
+    if not isinstance(value, dict):
+        value = {}
+    if isinstance(default, dict):
+        return _deep_merge_dict(default, value)
+    return copy.deepcopy(value)
+
+
+def save_anti_spam_state(anti_spam_state: Dict[str, Any]) -> Dict[str, Any]:
+    contract = get_state_contract()
+    contract["anti_spam_state"] = (
+        dict(anti_spam_state or {}) if isinstance(anti_spam_state, dict) else {}
+    )
+    saved = save_state_contract(contract)
+    out = saved.get("anti_spam_state")
+    return copy.deepcopy(out) if isinstance(out, dict) else {}
+
+
+def update_anti_spam_state(patch: Dict[str, Any]) -> Dict[str, Any]:
+    base = get_anti_spam_state(default={})
+    merged = _deep_merge_dict(base, patch if isinstance(patch, dict) else {})
+    return save_anti_spam_state(merged)
+
+
 _PREFERENCES_DEFAULTS: Dict[str, Any] = {
     "verbosity": "normal",
     "trade_choice_bias": "balanced",
