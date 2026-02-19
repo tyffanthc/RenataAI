@@ -238,6 +238,7 @@ class RenataApp:
             on_generate_exploration_summary=self.on_generate_exploration_summary,
             on_generate_cash_in_assistant=self.on_generate_cash_in_assistant,
             on_skip_cash_in_assistant=self.on_skip_cash_in_assistant,
+            on_cash_in_action=self.on_cash_in_assistant_action,
             app_state=app_state,
             route_manager=route_manager,
         )
@@ -1627,5 +1628,61 @@ class RenataApp:
                 "cash-in skip action failed",
                 exc,
                 interval_ms=3000,
+            )
+
+    def on_cash_in_assistant_action(self, action: str, option=None):
+        """
+        User-consent-only handoff for Cash-In options.
+        Never auto-generates full route.
+        """
+        action_norm = str(action or "").strip().lower()
+        option_payload = dict(option or {}) if isinstance(option, dict) else {}
+
+        try:
+            from logic.events.cash_in_assistant import (
+                handoff_cash_in_to_route_intent,
+                resolve_cash_in_option_target,
+            )
+
+            if action_norm == "set_route":
+                result = handoff_cash_in_to_route_intent(
+                    option_payload,
+                    set_route_intent=app_state.set_route_intent,
+                    source="cash_in.ui.intent",
+                    allow_auto_route=False,
+                )
+                if bool(result.get("ok")):
+                    target_display = str(result.get("target_display") or result.get("target_system") or "-")
+                    route_profile = str(result.get("route_profile") or "SAFE").strip().upper() or "SAFE"
+                    if route_profile == "FAST_NEUTRON":
+                        profile_hint = "FAST/NEUTRON"
+                    else:
+                        profile_hint = route_profile
+                    self.show_status(f"Cash-in: ustawiono intent trasy -> {target_display} ({profile_hint}).")
+                else:
+                    self.show_status("Cash-in: brak celu do ustawienia intentu trasy.")
+                return
+
+            if action_norm == "copy_next_hop":
+                target = resolve_cash_in_option_target(option_payload)
+                next_hop = str(target.get("target_system") or "").strip()
+                if not next_hop:
+                    self.show_status("Cash-in: brak celu next hop do skopiowania.")
+                    return
+                copied = common.copy_text_to_clipboard(next_hop, context="cash_in.next_hop")
+                if copied:
+                    self.show_status(f"Cash-in: skopiowano next hop -> {next_hop}.")
+                else:
+                    self.show_status("Cash-in: nie udalo sie skopiowac next hop.")
+                return
+
+            self.show_status("Cash-in: nieznana akcja.")
+        except Exception as exc:
+            _log_app_fallback(
+                "cash_in.assistant.action",
+                "cash-in action handler failed",
+                exc,
+                interval_ms=3000,
+                action=action_norm,
             )
 

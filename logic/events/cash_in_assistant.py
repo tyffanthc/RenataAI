@@ -772,6 +772,101 @@ def _build_profiled_options(
     return options, ranking_meta
 
 
+def resolve_cash_in_option_target(option: dict[str, Any] | None) -> dict[str, str]:
+    payload = option if isinstance(option, dict) else {}
+    target = payload.get("target") if isinstance(payload.get("target"), dict) else {}
+
+    target_system = str(
+        target.get("system_name")
+        or payload.get("target_system")
+        or payload.get("system")
+        or ""
+    ).strip()
+    target_station = str(
+        target.get("name")
+        or payload.get("target_station")
+        or payload.get("station")
+        or ""
+    ).strip()
+    profile = str(payload.get("profile") or "").strip().upper()
+
+    target_display = target_system
+    if target_station and target_system:
+        target_display = f"{target_system} ({target_station})"
+    elif target_station:
+        target_display = target_station
+
+    route_profile = "SAFE"
+    if profile == "FAST":
+        route_profile = "FAST_NEUTRON"
+    elif profile == "SECURE":
+        route_profile = "SECURE"
+
+    return {
+        "target_system": target_system,
+        "target_station": target_station,
+        "target_display": target_display,
+        "profile": profile,
+        "route_profile": route_profile,
+    }
+
+
+def handoff_cash_in_to_route_intent(
+    option: dict[str, Any] | None,
+    *,
+    set_route_intent: Any,
+    source: str = "cash_in.intent",
+    allow_auto_route: bool = False,
+) -> dict[str, Any]:
+    """
+    Handoff contract for Cash-In Assistant -> Route Intent.
+
+    Guardrail:
+    - this function only sets route intent,
+    - auto-route side effects are forbidden.
+    """
+    if allow_auto_route:
+        raise ValueError("AUTO_ROUTE_FORBIDDEN_CASH_IN")
+
+    if not callable(set_route_intent):
+        return {
+            "ok": False,
+            "reason": "intent_setter_missing",
+            "target_system": "",
+            "target_station": "",
+            "target_display": "",
+            "profile": "",
+            "route_profile": "",
+            "snapshot": {},
+        }
+
+    target = resolve_cash_in_option_target(option)
+    target_system = str(target.get("target_system") or "").strip()
+    if not target_system:
+        return {
+            "ok": False,
+            "reason": "target_missing",
+            "target_system": "",
+            "target_station": str(target.get("target_station") or "").strip(),
+            "target_display": str(target.get("target_display") or "").strip(),
+            "profile": str(target.get("profile") or "").strip(),
+            "route_profile": str(target.get("route_profile") or "").strip(),
+            "snapshot": {},
+        }
+
+    snapshot = set_route_intent(target_system, source=source) or {}
+    return {
+        "ok": True,
+        "reason": "intent_set",
+        "target_system": target_system,
+        "target_station": str(target.get("target_station") or "").strip(),
+        "target_display": str(target.get("target_display") or "").strip(),
+        "profile": str(target.get("profile") or "").strip(),
+        "route_profile": str(target.get("route_profile") or "").strip(),
+        "snapshot": snapshot,
+    }
+
+
 def _station_candidates_confidence(
     *,
     candidates_count: int,

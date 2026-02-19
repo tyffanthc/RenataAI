@@ -60,6 +60,7 @@ class PulpitTab(ttk.Frame):
         on_generate_exploration_summary=None,
         on_generate_cash_in_assistant=None,
         on_skip_cash_in_assistant=None,
+        on_cash_in_action=None,
         app_state=None,
         route_manager=None,
     ):
@@ -71,12 +72,14 @@ class PulpitTab(ttk.Frame):
         self._on_generate_exploration_summary = on_generate_exploration_summary
         self._on_generate_cash_in_assistant = on_generate_cash_in_assistant
         self._on_skip_cash_in_assistant = on_skip_cash_in_assistant
+        self._on_cash_in_action = on_cash_in_action
         self._app_state = app_state
         self._route_manager = route_manager
 
         self._current_exploration_summary_payload: dict = {}
         self._current_cash_in_payload: dict = {}
         self._current_cash_in_signature: str = ""
+        self._cash_selected_option_id: str = ""
         self._current_survival_payload: dict = {}
         self._current_combat_payload: dict = {}
         self._current_risk_payload: dict = {}
@@ -558,6 +561,8 @@ class PulpitTab(ttk.Frame):
             return
 
         options = payload.get("options") or []
+        selected_option = self._get_selected_cash_option()
+        selected_id = str((selected_option or {}).get("option_id") or "").strip()
         lines = [
             f"System: {payload.get('system') or '-'} | sygnal: {(payload.get('signal') or '-').upper()}",
             (
@@ -573,7 +578,9 @@ class PulpitTab(ttk.Frame):
             eta = option.get("eta_minutes")
             eta_text = "-" if eta is None else str(eta)
             value_text = self._fmt_cr(option.get("estimated_value"))
-            lines.append(f"{idx}. {label} | ~{value_text} Cr | ETA {eta_text} min")
+            option_id = str(option.get("option_id") or "").strip()
+            marker = "*" if selected_id and option_id == selected_id else "-"
+            lines.append(f"{idx}. [{marker}] {label} | ~{value_text} Cr | ETA {eta_text} min")
 
         note = str(payload.get("note") or "").strip()
         if note:
@@ -583,8 +590,10 @@ class PulpitTab(ttk.Frame):
         for idx, option in enumerate(options[:3], start=1):
             if not isinstance(option, dict):
                 continue
-            label = str(option.get("label") or f"Opcja {idx}").strip() or f"Opcja {idx}"
-            actions.append((f"{idx}. Intent", lambda l=label: self._on_cash_intent(l)))
+            option_id = str(option.get("option_id") or "").strip()
+            actions.append((f"{idx}. Intent", lambda oid=option_id: self._on_cash_intent(oid)))
+        actions.append(("Ustaw trase", self._on_cash_set_route))
+        actions.append(("Copy next hop", self._on_cash_copy_next_hop))
         actions.append(("Pomijam", self._on_click_cash_in_skip))
 
         self._open_panel(
@@ -696,8 +705,76 @@ class PulpitTab(ttk.Frame):
             return
         self._show_info_panel("route", self.lbl_status_route.cget("text"))
 
-    def _on_cash_intent(self, label: str) -> None:
-        self._show_confirm_panel("cash", f"Ustawiono intent: {label}")
+    def _cash_options(self) -> list[dict]:
+        payload = dict(self._current_cash_in_payload or {})
+        rows = payload.get("options") or []
+        if not isinstance(rows, list):
+            return []
+        return [dict(item) for item in rows if isinstance(item, dict)]
+
+    def _get_selected_cash_option(self) -> dict | None:
+        options = self._cash_options()
+        if not options:
+            return None
+
+        selected = str(self._cash_selected_option_id or "").strip()
+        if selected:
+            for option in options:
+                option_id = str(option.get("option_id") or "").strip()
+                if option_id and option_id == selected:
+                    return option
+
+        first = dict(options[0])
+        self._cash_selected_option_id = str(first.get("option_id") or "").strip()
+        return first
+
+    def _on_cash_intent(self, option_id: str) -> None:
+        options = self._cash_options()
+        picked = None
+        oid = str(option_id or "").strip()
+        for option in options:
+            if str(option.get("option_id") or "").strip() == oid:
+                picked = option
+                break
+
+        if picked is None:
+            self._show_info_panel("cash", "Cash-in: brak opcji do ustawienia intentu.")
+            return
+
+        self._cash_selected_option_id = str(picked.get("option_id") or "").strip()
+        label = str(picked.get("label") or "Opcja").strip() or "Opcja"
+        self._show_confirm_panel("cash", f"Intent aktywny: {label}")
+        self._render_cash_panel(force_open=True)
+
+    def _on_cash_set_route(self) -> None:
+        option = self._get_selected_cash_option()
+        if option is None:
+            self._show_info_panel("cash", "Cash-in: brak wybranej opcji trasy.")
+            return
+        if not callable(self._on_cash_in_action):
+            self.log("[CASH_IN] Brak podpietego callbacku on_cash_in_action.")
+            self._show_info_panel("cash", "Cash-in: akcja route handoff niedostepna.")
+            return
+        try:
+            self._on_cash_in_action("set_route", dict(option))
+        except Exception as exc:
+            self.log(f"[CASH_IN] Blad handoff route intent: {exc}")
+            self._show_info_panel("cash", "Cash-in: nie udalo sie ustawic intentu trasy.")
+
+    def _on_cash_copy_next_hop(self) -> None:
+        option = self._get_selected_cash_option()
+        if option is None:
+            self._show_info_panel("cash", "Cash-in: brak wybranej opcji next hop.")
+            return
+        if not callable(self._on_cash_in_action):
+            self.log("[CASH_IN] Brak podpietego callbacku on_cash_in_action.")
+            self._show_info_panel("cash", "Cash-in: akcja Copy next hop niedostepna.")
+            return
+        try:
+            self._on_cash_in_action("copy_next_hop", dict(option))
+        except Exception as exc:
+            self.log(f"[CASH_IN] Blad copy next hop: {exc}")
+            self._show_info_panel("cash", "Cash-in: nie udalo sie skopiowac next hop.")
 
     def _apply_mode_selection(self, mode_id: str | None) -> None:
         if self._app_state is None:
@@ -1066,9 +1143,15 @@ class PulpitTab(ttk.Frame):
             return
         self._current_cash_in_payload = dict(payload)
         self._current_cash_in_signature = str(payload.get("signature") or "").strip()
+        options = self._cash_options()
+        selected = str(self._cash_selected_option_id or "").strip()
+        selected_exists = False
+        if selected:
+            selected_exists = any(str(row.get("option_id") or "").strip() == selected for row in options)
+        if not selected_exists:
+            self._cash_selected_option_id = str((options[0].get("option_id") if options else "") or "").strip()
 
         signal = str(payload.get("signal") or "-").strip().upper() or "-"
-        options = payload.get("options") or []
         option_count = len(options) if isinstance(options, list) else 0
         value_hint = self._fmt_m(payload.get("session_value_estimated"))
         self._set_widget_text(
