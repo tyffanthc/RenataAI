@@ -843,6 +843,77 @@ def set_last_route_data(route, text, sig):
         _LAST_ROUTE_SIG = sig
     _LAST_ROUTE_SYSTEMS = _extract_route_systems(route)
 
+
+def _persist_last_route_context(route, text, sig, *, source: str | None = None) -> None:
+    systems = _extract_route_systems(route)
+    if not systems:
+        return
+    route_text = str(text or "").strip()
+    if not route_text:
+        route_text = format_route_for_clipboard(systems)
+    route_sig = str(sig or "").strip()
+    if not route_sig:
+        route_sig = str(compute_route_signature(systems) or "").strip()
+
+    source_norm = str(source or "").strip()
+    plan_id = route_sig
+    if source_norm and route_sig:
+        plan_id = f"{source_norm}:{route_sig}"
+    elif source_norm and not route_sig:
+        plan_id = source_norm
+
+    payload = {
+        "route": list(systems),
+        "text": route_text,
+        "sig": route_sig,
+        "source": source_norm,
+        "updated_at": int(time.time()),
+    }
+    try:
+        config.update_last_context(last_route=payload, last_plan_id=plan_id)
+    except Exception:
+        try:
+            config.STATE["last_route"] = payload
+            config.STATE["last_plan_id"] = plan_id
+        except Exception:
+            pass
+
+
+def load_last_route_context_from_domain_state(*, force: bool = False) -> bool:
+    global _LAST_ROUTE_TEXT, _LAST_ROUTE_SIG, _LAST_ROUTE_SYSTEMS
+
+    if _LAST_ROUTE_SYSTEMS and not force:
+        return False
+
+    payload = {}
+    try:
+        context = config.get_last_context()
+        raw = context.get("last_route")
+        if isinstance(raw, dict):
+            payload = raw
+    except Exception:
+        try:
+            raw = config.STATE.get("last_route", {})
+            if isinstance(raw, dict):
+                payload = raw
+        except Exception:
+            payload = {}
+
+    systems = _extract_route_systems(payload.get("route") or payload.get("systems") or [])
+    if not systems:
+        return False
+
+    text = str(payload.get("text") or "").strip()
+    if not text:
+        text = format_route_for_clipboard(systems)
+    sig = payload.get("sig")
+    if not sig:
+        sig = compute_route_signature(systems)
+
+    set_last_route_data(systems, text, sig)
+    return True
+
+
 def get_last_route_text():
     return _LAST_ROUTE_TEXT or ""
 
@@ -900,6 +971,7 @@ def handle_route_ready_autoclipboard(
     text = format_route_for_clipboard(route)
     sig = compute_route_signature(route)
     set_last_route_data(route, text, sig)
+    _persist_last_route_context(route, text, sig, source=source or status_target)
     _set_active_route_data(route, text, sig, source or status_target)
     if utils.DEBOUNCER.is_allowed("tts_route_found", cooldown_sec=2.0, context=source or status_target):
         utils.powiedz("Trasa wyznaczona.", message_id="MSG.ROUTE_FOUND")
@@ -1017,3 +1089,4 @@ def _on_table_listbox_refreshed(listbox, schema_id: str, lines: list[str], visib
 
 
 set_listbox_refresh_observer(_on_table_listbox_refreshed)
+load_last_route_context_from_domain_state()

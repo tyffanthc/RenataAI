@@ -2410,6 +2410,52 @@ class TradeTab(ttk.Frame):
         if collapse:
             self._set_trade_details_collapsed(True)
 
+    @staticmethod
+    def _extract_primary_commodity_name(row: dict) -> str:
+        if not isinstance(row, dict):
+            return ""
+        for key in ("commodity_primary", "commodity_display", "commodity"):
+            value = str(row.get(key) or "").strip()
+            if value:
+                return value
+        raw_items = row.get("commodities_raw")
+        if isinstance(raw_items, list):
+            for item in raw_items:
+                if not isinstance(item, dict):
+                    continue
+                value = str(item.get("name") or "").strip()
+                if value:
+                    return value
+        return ""
+
+    def _build_last_commodity_payload(self, row: dict, *, source: str) -> dict:
+        name = self._extract_primary_commodity_name(row)
+        if not name:
+            return {}
+        return {
+            "name": name,
+            "from_system": str(row.get("from_system") or "").strip(),
+            "from_station": str(row.get("from_station") or "").strip(),
+            "to_system": str(row.get("to_system") or "").strip(),
+            "to_station": str(row.get("to_station") or "").strip(),
+            "source": str(source or "").strip(),
+            "updated_at": datetime.utcnow().isoformat(timespec="seconds"),
+        }
+
+    def _persist_last_commodity_context(self, row: dict | None, *, source: str) -> None:
+        if not isinstance(row, dict):
+            return
+        payload = self._build_last_commodity_payload(row, source=source)
+        if not payload:
+            return
+        try:
+            config.update_last_context(last_commodity=payload)
+        except Exception:
+            try:
+                config.STATE["last_commodity"] = payload
+            except Exception:
+                pass
+
     def _iter_leg_commodities(self, row: dict) -> list[dict]:
         commodities = row.get("commodities_raw")
         if isinstance(commodities, list) and commodities:
@@ -2447,6 +2493,7 @@ class TradeTab(ttk.Frame):
             return
 
         row = self._results_rows[idx]
+        self._persist_last_commodity_context(row, source="spansh.trade.selection")
         self._set_trade_details_collapsed(False)
         from_system = (row.get("from_system") or "-").strip() or "-"
         from_station = (row.get("from_station") or "-").strip() or "-"
@@ -2985,6 +3032,10 @@ class TradeTab(ttk.Frame):
                         self._hide_empty_state()
                         self._update_trade_summary(rows)
                         self._update_sell_assist(rows, max_hop)
+                        self._persist_last_commodity_context(
+                            rows[0] if rows else None,
+                            source="spansh.trade.route_found",
+                        )
                         self._select_first_result_row()
                         common.handle_route_ready_autoclipboard(self, tr, status_target="trade")
                         common.emit_status(

@@ -683,6 +683,66 @@ def update_ui_state(patch: Dict[str, Any]) -> Dict[str, Any]:
     return save_ui_state(merged)
 
 
+def get_domain_state(default: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    contract = get_state_contract()
+    value = contract.get("domain_state")
+    if not isinstance(value, dict):
+        value = {}
+    if isinstance(default, dict):
+        return _deep_merge_dict(default, value)
+    return copy.deepcopy(value)
+
+
+def save_domain_state(domain_state: Dict[str, Any]) -> Dict[str, Any]:
+    contract = get_state_contract()
+    contract["domain_state"] = dict(domain_state or {}) if isinstance(domain_state, dict) else {}
+    saved = save_state_contract(contract)
+    out = saved.get("domain_state")
+    return copy.deepcopy(out) if isinstance(out, dict) else {}
+
+
+def update_domain_state(patch: Dict[str, Any]) -> Dict[str, Any]:
+    base = get_domain_state(default={})
+    merged = _deep_merge_dict(base, patch if isinstance(patch, dict) else {})
+    return save_domain_state(merged)
+
+
+def get_last_context(default: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    domain = get_domain_state(default={})
+    out = {
+        "last_route": copy.deepcopy(domain.get("last_route"))
+        if isinstance(domain.get("last_route"), dict)
+        else {},
+        "last_commodity": copy.deepcopy(domain.get("last_commodity"))
+        if isinstance(domain.get("last_commodity"), dict)
+        else {},
+        "last_plan_id": str(domain.get("last_plan_id") or ""),
+    }
+    if isinstance(default, dict):
+        return _deep_merge_dict(default, out)
+    return out
+
+
+def update_last_context(
+    *,
+    last_route: Dict[str, Any] | None = None,
+    last_commodity: Dict[str, Any] | None = None,
+    last_plan_id: Any = None,
+) -> Dict[str, Any]:
+    patch: Dict[str, Any] = {}
+    if last_route is not None:
+        patch["last_route"] = copy.deepcopy(last_route) if isinstance(last_route, dict) else {}
+    if last_commodity is not None:
+        patch["last_commodity"] = (
+            copy.deepcopy(last_commodity) if isinstance(last_commodity, dict) else {}
+        )
+    if last_plan_id is not None:
+        patch["last_plan_id"] = str(last_plan_id or "")
+    if patch:
+        update_domain_state(patch)
+    return get_last_context()
+
+
 _PREFERENCES_DEFAULTS: Dict[str, Any] = {
     "verbosity": "normal",
     "trade_choice_bias": "balanced",

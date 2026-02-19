@@ -30,6 +30,10 @@ LEGACY_DOMAIN_STATE_DEFAULTS: Dict[str, Any] = {
     "route_progress_percent": 0,
     "route_next_system": "",
     "route_is_off_route": False,
+    # F10: minimal resume context (UX only, no auto-actions).
+    "last_route": {},
+    "last_commodity": {},
+    "last_plan_id": "",
 }
 
 _DEFAULT_STATE_CONTRACT: Dict[str, Any] = {
