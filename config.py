@@ -164,6 +164,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
 
     # GŁOS / DŹWIĘK
     "voice_enabled": True,            # globalny TTS
+    "tts_enabled": True,              # alias preferencji dla globalnego TTS
+    "verbosity": "normal",            # preference layer mirror
+    "trade_choice_bias": "balanced",  # preference layer mirror
     "tts.engine": "auto",             # auto | piper | pyttsx3
     "tts.piper_bin": "",
     "tts.piper_model_path": "",
@@ -431,8 +434,27 @@ class ConfigManager:
         for key, value in new_data.items():
             updated[key] = value
 
+        if "voice_enabled" in new_data and "tts_enabled" not in new_data:
+            updated["tts_enabled"] = bool(updated.get("voice_enabled", True))
+        if "tts_enabled" in new_data and "voice_enabled" not in new_data:
+            updated["voice_enabled"] = bool(updated.get("tts_enabled", True))
+
         self._settings = updated
         self._write_file()
+
+        preference_patch: Dict[str, Any] = {}
+        if "voice_enabled" in new_data or "tts_enabled" in new_data:
+            preference_patch["tts_enabled"] = bool(updated.get("voice_enabled", True))
+        if "verbosity" in new_data:
+            preference_patch["verbosity"] = updated.get("verbosity")
+        if "trade_choice_bias" in new_data:
+            preference_patch["trade_choice_bias"] = updated.get("trade_choice_bias")
+
+        if preference_patch:
+            try:
+                update_preferences(preference_patch)
+            except Exception:
+                pass
 
     def get(self, key: str, default: Any | None = None) -> Any:
         """
@@ -661,6 +683,133 @@ def update_ui_state(patch: Dict[str, Any]) -> Dict[str, Any]:
     return save_ui_state(merged)
 
 
+_PREFERENCES_DEFAULTS: Dict[str, Any] = {
+    "verbosity": "normal",
+    "trade_choice_bias": "balanced",
+    "tts_enabled": True,
+}
+_PREFERENCES_ALLOWED_VERBOSITY = {"low", "normal", "high"}
+_PREFERENCES_ALLOWED_TRADE_BIAS = {"balanced", "profit", "safety", "speed"}
+
+
+def _normalize_preference_verbosity(value: Any) -> str:
+    norm = str(value or "").strip().lower()
+    if norm in _PREFERENCES_ALLOWED_VERBOSITY:
+        return norm
+    return str(_PREFERENCES_DEFAULTS["verbosity"])
+
+
+def _normalize_preference_trade_bias(value: Any) -> str:
+    norm = str(value or "").strip().lower()
+    if norm in _PREFERENCES_ALLOWED_TRADE_BIAS:
+        return norm
+    return str(_PREFERENCES_DEFAULTS["trade_choice_bias"])
+
+
+def _normalize_preference_tts_enabled(value: Any, *, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value or "").strip().lower()
+    if text in {"1", "true", "yes", "on", "enabled"}:
+        return True
+    if text in {"0", "false", "no", "off", "disabled"}:
+        return False
+    return bool(default)
+
+
+def _normalize_preferences_payload(
+    payload: Any,
+    *,
+    fill_defaults: bool,
+) -> Dict[str, Any]:
+    source = payload if isinstance(payload, dict) else {}
+    out: Dict[str, Any] = dict(_PREFERENCES_DEFAULTS) if fill_defaults else {}
+
+    if fill_defaults or "verbosity" in source:
+        out["verbosity"] = _normalize_preference_verbosity(source.get("verbosity", out.get("verbosity")))
+
+    if fill_defaults or "trade_choice_bias" in source:
+        out["trade_choice_bias"] = _normalize_preference_trade_bias(
+            source.get("trade_choice_bias", out.get("trade_choice_bias"))
+        )
+
+    if fill_defaults or "tts_enabled" in source:
+        default_tts = bool(out.get("tts_enabled", True))
+        out["tts_enabled"] = _normalize_preference_tts_enabled(
+            source.get("tts_enabled", default_tts),
+            default=default_tts,
+        )
+
+    return out
+
+
+def _apply_preferences_to_runtime_settings(preferences: Any, *, explicit_only: bool) -> Dict[str, Any]:
+    runtime_settings = getattr(config, "_settings", None)  # type: ignore[attr-defined]
+    if not isinstance(runtime_settings, dict):
+        return _normalize_preferences_payload(preferences, fill_defaults=True)
+
+    incoming = preferences if isinstance(preferences, dict) else {}
+    resolved = _normalize_preferences_payload(incoming, fill_defaults=True)
+    if explicit_only:
+        keys_to_apply = {
+            key for key in ("verbosity", "trade_choice_bias", "tts_enabled")
+            if key in incoming
+        }
+    else:
+        keys_to_apply = {"verbosity", "trade_choice_bias", "tts_enabled"}
+
+    if "verbosity" in keys_to_apply:
+        runtime_settings["verbosity"] = str(resolved["verbosity"])
+
+    if "trade_choice_bias" in keys_to_apply:
+        runtime_settings["trade_choice_bias"] = str(resolved["trade_choice_bias"])
+
+    if "tts_enabled" in keys_to_apply:
+        tts_enabled = bool(resolved["tts_enabled"])
+        runtime_settings["tts_enabled"] = tts_enabled
+        runtime_settings["voice_enabled"] = tts_enabled
+
+    return resolved
+
+
+def get_preferences(default: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    contract = get_state_contract()
+    raw = contract.get("preferences")
+    resolved = _normalize_preferences_payload(raw, fill_defaults=True)
+    if isinstance(default, dict):
+        return _deep_merge_dict(default, resolved)
+    return copy.deepcopy(resolved)
+
+
+def save_preferences(preferences: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = _normalize_preferences_payload(preferences, fill_defaults=True)
+    contract = get_state_contract()
+    contract["preferences"] = copy.deepcopy(normalized)
+    save_state_contract(contract)
+    _apply_preferences_to_runtime_settings(normalized, explicit_only=False)
+    return copy.deepcopy(normalized)
+
+
+def update_preferences(patch: Dict[str, Any]) -> Dict[str, Any]:
+    base = get_preferences(default={})
+    patch_norm = _normalize_preferences_payload(patch, fill_defaults=False)
+    merged = dict(base)
+    merged.update(patch_norm)
+    return save_preferences(merged)
+
+
+def _bootstrap_preferences_from_state_contract() -> None:
+    try:
+        with _STATE_LOCK:
+            raw = (_STATE_CONTRACT or {}).get("preferences", {})
+        if isinstance(raw, dict) and raw:
+            _apply_preferences_to_runtime_settings(raw, explicit_only=True)
+    except Exception:
+        pass
+
+
 def persist_runtime_state() -> Dict[str, Any]:
     """
     Force flush of current legacy runtime state into layered contract.
@@ -671,6 +820,9 @@ def persist_runtime_state() -> Dict[str, Any]:
 
 def get_restart_loss_audit() -> Dict[str, Dict[str, str]]:
     return restart_loss_audit_contract()
+
+
+_bootstrap_preferences_from_state_contract()
 
 RECEPTURY = {
     "FSD V5": {"arsenic": 10, "dataminedwakeexceptions": 10, "chemicalmanipulators": 10},
