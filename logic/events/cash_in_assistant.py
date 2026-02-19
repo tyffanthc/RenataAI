@@ -5,6 +5,11 @@ from typing import Any
 
 import config
 from app.state import app_state
+from logic.cash_in_station_candidates import (
+    build_station_candidates,
+    filter_candidates_by_service,
+    station_candidates_for_system_from_providers,
+)
 from logic.insight_dispatcher import emit_insight
 
 
@@ -24,6 +29,8 @@ class CashInAssistantPayload:
     note: str
     signature: str
     payout_contract: dict[str, Any] = field(default_factory=dict)
+    station_candidates: list[dict[str, Any]] = field(default_factory=list)
+    station_candidates_meta: dict[str, Any] = field(default_factory=dict)
 
 
 def _as_text(value: Any) -> str:
@@ -405,6 +412,105 @@ def _build_options(
     return options
 
 
+def _station_candidates_confidence(
+    *,
+    candidates_count: int,
+    uc_count: int,
+    vista_count: int,
+    source_status: str,
+) -> str:
+    source = _as_text(source_status).lower()
+    if candidates_count <= 0:
+        return "low"
+    if source.startswith("providers") and (uc_count > 0 or vista_count > 0):
+        return "high"
+    if uc_count > 0 or vista_count > 0:
+        return "mid"
+    return "low"
+
+
+def _build_station_candidates_runtime(
+    *,
+    raw_payload: dict[str, Any],
+    system: str,
+    freshness_ts: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    source_status = "none"
+    limit = max(4, int(config.get("cash_in.station_candidates_limit", 24) or 24))
+    candidates: list[dict[str, Any]] = []
+
+    raw_candidates = raw_payload.get("station_candidates") or raw_payload.get("stationCandidates")
+    if isinstance(raw_candidates, list) and raw_candidates:
+        candidates = build_station_candidates(
+            raw_candidates,
+            default_system=system,
+            source_hint="RUNTIME_PAYLOAD",
+            freshness_ts=freshness_ts,
+            limit=limit,
+        )
+        source_status = "payload"
+
+    if not candidates:
+        station_names = raw_payload.get("station_names") or raw_payload.get("stationNames")
+        if isinstance(station_names, list) and station_names:
+            candidates = build_station_candidates(
+                station_names,
+                default_system=system,
+                source_hint="RUNTIME_NAMES",
+                freshness_ts=freshness_ts,
+                limit=limit,
+            )
+            source_status = "payload_names"
+
+    lookup_enabled = bool(config.get("cash_in.station_candidates_lookup_enabled", False))
+    if not candidates and lookup_enabled:
+        include_edsm = bool(config.get("features.providers.edsm_enabled", False))
+        include_spansh = bool(config.get("features.trade.station_lookup_online", False))
+        candidates = station_candidates_for_system_from_providers(
+            system,
+            include_edsm=include_edsm,
+            include_spansh=include_spansh,
+            freshness_ts=freshness_ts,
+            limit=limit,
+        )
+        source_status = "providers" if candidates else "providers_empty"
+
+    if not candidates:
+        current_station = _as_text(getattr(app_state, "current_station", ""))
+        if current_station:
+            candidates = build_station_candidates(
+                [
+                    {
+                        "name": current_station,
+                        "system_name": system,
+                        "type": "station",
+                        "source": "RUNTIME_LOCAL",
+                    }
+                ],
+                default_system=system,
+                source_hint="RUNTIME_LOCAL",
+                freshness_ts=freshness_ts,
+                limit=limit,
+            )
+            source_status = "local_fallback"
+
+    uc_candidates = filter_candidates_by_service(candidates, service="uc")
+    vista_candidates = filter_candidates_by_service(candidates, service="vista")
+    meta = {
+        "source_status": source_status,
+        "count": len(candidates),
+        "uc_count": len(uc_candidates),
+        "vista_count": len(vista_candidates),
+        "confidence": _station_candidates_confidence(
+            candidates_count=len(candidates),
+            uc_count=len(uc_candidates),
+            vista_count=len(vista_candidates),
+            source_status=source_status,
+        ),
+    }
+    return candidates, meta
+
+
 def _signature(payload: CashInAssistantPayload) -> str:
     return (
         f"{payload.system}:{int(round(payload.system_value_estimated))}:"
@@ -478,6 +584,11 @@ def trigger_cash_in_assistant(
         vista_fc_policy_mode=vista_fc_policy_mode,
         freshness_ts=freshness_ts,
     )
+    station_candidates, station_candidates_meta = _build_station_candidates_runtime(
+        raw_payload=raw,
+        system=system,
+        freshness_ts=freshness_ts,
+    )
 
     payload = CashInAssistantPayload(
         system=system,
@@ -494,6 +605,8 @@ def trigger_cash_in_assistant(
         note="To jest rekomendacja orientacyjna. Ostateczna decyzja nalezy do Ciebie.",
         signature="",
         payout_contract=payout_contract,
+        station_candidates=station_candidates,
+        station_candidates_meta=station_candidates_meta,
     )
     payload.signature = _signature(payload)
 

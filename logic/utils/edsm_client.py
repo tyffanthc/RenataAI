@@ -1,5 +1,5 @@
 import time
-from typing import List
+from typing import Any, Dict, List
 
 import requests
 
@@ -24,6 +24,7 @@ _CACHE_MAX_ITEMS = 200
 _CACHE: dict[str, tuple[float, object]] = {}
 _STATIONS_CACHE: dict[str, tuple[float, list[str]]] = {}
 _STATIONS_TTL_SECONDS = 24 * 60 * 60
+_STATIONS_DETAILS_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
 
 def _normalize_query(query: str) -> str:
@@ -62,6 +63,21 @@ def _stations_cache_get(key: str) -> list[str] | None:
 
 def _stations_cache_set(key: str, data: list[str]) -> None:
     _STATIONS_CACHE[key] = (time.monotonic(), list(data))
+
+
+def _stations_details_cache_get(key: str) -> list[dict[str, Any]] | None:
+    item = _STATIONS_DETAILS_CACHE.get(key)
+    if not item:
+        return None
+    ts, data = item
+    if time.monotonic() - ts > _STATIONS_TTL_SECONDS:
+        _STATIONS_DETAILS_CACHE.pop(key, None)
+        return None
+    return [dict(row) for row in data]
+
+
+def _stations_details_cache_set(key: str, data: list[dict[str, Any]]) -> None:
+    _STATIONS_DETAILS_CACHE[key] = (time.monotonic(), [dict(row) for row in data])
 
 
 def _throttle() -> None:
@@ -242,3 +258,103 @@ def fetch_system_stations(system_name: str, *, timeout: float | None = None) -> 
         _stations_cache_set(cache_key, names)
 
     return names
+
+
+def fetch_system_stations_details(
+    system_name: str,
+    *,
+    timeout: float | None = None,
+) -> List[Dict[str, Any]]:
+    """
+    Szczegoly stacji EDSM dla systemu (best-effort schema):
+    - name
+    - type
+    - distance_ls (distanceToArrival)
+    - services (otherServices + inferred flags)
+    """
+    sys_name = (system_name or "").strip()
+    if not sys_name:
+        return []
+
+    cache_key = f"stations_details:{_normalize_query(sys_name)}"
+    cached = _stations_details_cache_get(cache_key)
+    if isinstance(cached, list):
+        return [dict(item) for item in cached if isinstance(item, dict)]
+
+    _throttle()
+    url = "https://www.edsm.net/api-system-v1/stations"
+    headers = {"User-Agent": "RENATA/1.0", "Accept": "application/json"}
+    timeout_val = _DEFAULT_TIMEOUT if timeout is None else float(timeout)
+
+    try:
+        res = requests.get(
+            url,
+            params={"systemName": sys_name},
+            headers=headers,
+            timeout=timeout_val,
+        )
+    except requests.Timeout as e:
+        raise Edsmtimeout(str(e)) from e
+    except requests.RequestException as e:
+        raise Edsmunavailable(str(e)) from e
+
+    if res.status_code != 200:
+        raise Edsmunavailable(f"HTTP {res.status_code}")
+
+    try:
+        data = res.json()
+    except Exception as e:
+        raise Edsmbadresponse(str(e)) from e
+
+    if not isinstance(data, dict):
+        raise Edsmbadresponse("Unexpected response")
+
+    items = data.get("stations") or []
+    details: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = (
+            item.get("name")
+            or item.get("station")
+            or item.get("stationName")
+            or ""
+        )
+        name = str(name).strip()
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        services: list[str] = []
+        other_services = item.get("otherServices")
+        if isinstance(other_services, list):
+            for service in other_services:
+                if service is None:
+                    continue
+                text = str(service).strip()
+                if text:
+                    services.append(text)
+
+        # EDSM bywa niespojne dla fleet carriers; wspieramy oba tropy.
+        station_type = str(item.get("type") or "").strip()
+        is_fleet_carrier = "carrier" in station_type.lower() or bool(item.get("isFleetCarrier"))
+        if is_fleet_carrier:
+            station_type = "fleet_carrier"
+
+        row: Dict[str, Any] = {
+            "name": name,
+            "system": sys_name,
+            "type": station_type or "station",
+            "distance_ls": item.get("distanceToArrival"),
+            "services": services,
+            "source": "EDSM",
+        }
+        details.append(row)
+
+    if details:
+        _stations_details_cache_set(cache_key, details)
+    return details

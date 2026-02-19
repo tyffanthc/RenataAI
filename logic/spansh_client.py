@@ -388,6 +388,125 @@ class SpanshClient:
 
         return []
 
+    def stations_for_system_details(self, system: str, q: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Szczegoly stacji dla systemu:
+        -> GET /api/stations?system=<system>[&q=<prefix>]
+
+        Zwraca liste obiektow stacji (best-effort, schema-agnostic):
+        - jesli endpoint zwraca slowniki -> przepuszczamy je po lekkiej normalizacji,
+        - jesli endpoint zwraca nazwy (str) -> mapujemy do {"name": "..."}.
+        """
+        system = (system or "").strip()
+        if not system:
+            return []
+
+        q = (q or "").strip()
+        ctx = f"{system.lower()}|{q.lower()}" if q else system.lower()
+        if not DEBOUNCER.is_allowed(
+            key="spansh_stations_details",
+            cooldown_sec=0.8,
+            context=ctx,
+        ):
+            return []
+
+        self._reload_config()
+
+        url = f"{self.base_url}/stations"
+        params: Dict[str, Any] = {"system": system}
+        if q:
+            params["q"] = q
+
+        headers = self._headers(referer="https://spansh.co.uk/trade")
+        for attempt in range(max(1, self.default_retries)):
+            try:
+                res = requests.get(
+                    url,
+                    params=params,
+                    headers=headers,
+                    timeout=self.default_timeout,
+                )
+            except Exception as e:  # noqa: BLE001
+                self._log_warn(
+                    "SPANSH:stations_details_exception",
+                    "stations details request exception",
+                    system=system,
+                    query=q,
+                    attempt=attempt + 1,
+                    error=f"{type(e).__name__}: {e}",
+                )
+                return []
+
+            if res.status_code == 200:
+                try:
+                    data = res.json()
+                except Exception as e:  # noqa: BLE001
+                    self._log_warn(
+                        "SPANSH:stations_details_json_error",
+                        "stations details json decode error",
+                        system=system,
+                        query=q,
+                        error=f"{type(e).__name__}: {e}",
+                    )
+                    return []
+
+                items = self._extract_item_list(
+                    data,
+                    container_keys=("stations", "result", "bodies", "data", "items"),
+                    limit=200,
+                )
+                details: List[Dict[str, Any]] = []
+                seen: set[str] = set()
+                for item in items:
+                    if isinstance(item, str):
+                        name = item.strip()
+                        if not name:
+                            continue
+                        key = f"{system.casefold()}::{name.casefold()}"
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        details.append({"name": name, "system": system, "source": "SPANSH"})
+                        continue
+                    if not isinstance(item, dict):
+                        continue
+                    row = dict(item)
+                    name = str(
+                        row.get("name")
+                        or row.get("station")
+                        or row.get("stationName")
+                        or ""
+                    ).strip()
+                    if not name:
+                        continue
+                    key = f"{system.casefold()}::{name.casefold()}"
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    row.setdefault("name", name)
+                    row.setdefault("system", system)
+                    row.setdefault("source", "SPANSH")
+                    details.append(row)
+                self._log_debug(
+                    "stations details response",
+                    system=system,
+                    query=q,
+                    results=len(details),
+                )
+                return details
+
+            self._log_warn(
+                "SPANSH:stations_details_http",
+                "stations details http status",
+                system=system,
+                query=q,
+                status_code=res.status_code,
+            )
+            if res.status_code in (400, 401, 403, 404):
+                break
+
+        return []
+
     def _extract_name_list(
         self,
         data: Any,
@@ -440,6 +559,29 @@ class SpanshClient:
         if limit is not None and limit > 0:
             names = names[:limit]
         return names
+
+    def _extract_item_list(
+        self,
+        data: Any,
+        *,
+        container_keys: tuple[str, ...],
+        limit: int | None = None,
+    ) -> List[Any]:
+        if isinstance(data, list):
+            items: List[Any] = list(data)
+        elif isinstance(data, dict):
+            items = []
+            for key in container_keys:
+                candidate = data.get(key)
+                if isinstance(candidate, list):
+                    items = list(candidate)
+                    break
+        else:
+            items = []
+
+        if limit is not None and limit > 0:
+            return items[:limit]
+        return items
 
     def route(
         self,

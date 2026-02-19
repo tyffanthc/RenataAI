@@ -4,6 +4,7 @@ from logic.utils.edsm_client import (
     Edsmbadresponse,
     Edsmunavailable,
     Edsmtimeout,
+    fetch_system_stations_details,
     fetch_system_stations,
     fetch_systems,
 )
@@ -56,6 +57,33 @@ def edsm_stations_for_system(system_name: str) -> list[str]:
         stations = fetch_system_stations(sys_name)
         MSG_QUEUE.put(("log", f"[EDSM] stations system={sys_name!r} count={len(stations)}"))
         return stations
+    except Edsmtimeout as e:
+        MSG_QUEUE.put(("log", f"[WARN] EDSM timeout: {e}"))
+        return []
+    except Edsmunavailable as e:
+        MSG_QUEUE.put(("log", f"[WARN] EDSM unavailable: {e}"))
+        return []
+    except Edsmbadresponse as e:
+        MSG_QUEUE.put(("log", f"[WARN] EDSM bad response: {e}"))
+        return []
+    except Exception as e:  # noqa: BLE001
+        MSG_QUEUE.put(("log", f"[WARN] EDSM lookup failed: {e}"))
+        return []
+
+
+def edsm_station_details_for_system(system_name: str) -> list[dict]:
+    if not is_edsm_enabled():
+        return []
+    sys_name = (system_name or "").strip()
+    if not sys_name:
+        return []
+    if not DEBOUNCER.is_allowed("edsm_stations_details", cooldown_sec=0.8, context=sys_name.lower()):
+        MSG_QUEUE.put(("log", f"[EDSM] station details debounce system={sys_name!r}"))
+        return []
+    try:
+        rows = fetch_system_stations_details(sys_name)
+        MSG_QUEUE.put(("log", f"[EDSM] station details system={sys_name!r} count={len(rows)}"))
+        return rows
     except Edsmtimeout as e:
         MSG_QUEUE.put(("log", f"[WARN] EDSM timeout: {e}"))
         return []
