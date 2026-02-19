@@ -608,6 +608,16 @@ def get_state_contract() -> Dict[str, Any]:
         return copy.deepcopy(migrate_state_contract_payload(_STATE_CONTRACT))
 
 
+def _deep_merge_dict(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = copy.deepcopy(base or {})
+    for key, value in (patch or {}).items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _deep_merge_dict(out.get(key) or {}, value)
+            continue
+        out[key] = copy.deepcopy(value)
+    return out
+
+
 def save_state_contract(contract_payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Persist layered state contract and refresh legacy config.STATE snapshot.
@@ -625,6 +635,30 @@ def save_state_contract(contract_payload: Dict[str, Any]) -> Dict[str, Any]:
                 print(f"[CONFIG] State persistence error: {exc}")
         STATE.replace_all(runtime_state_from_contract(_STATE_CONTRACT), notify=False)
         return copy.deepcopy(_STATE_CONTRACT)
+
+
+def get_ui_state(default: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    contract = get_state_contract()
+    value = contract.get("ui_state")
+    if not isinstance(value, dict):
+        value = {}
+    if isinstance(default, dict):
+        return _deep_merge_dict(default, value)
+    return copy.deepcopy(value)
+
+
+def save_ui_state(ui_state: Dict[str, Any]) -> Dict[str, Any]:
+    contract = get_state_contract()
+    contract["ui_state"] = dict(ui_state or {}) if isinstance(ui_state, dict) else {}
+    saved = save_state_contract(contract)
+    out = saved.get("ui_state")
+    return copy.deepcopy(out) if isinstance(out, dict) else {}
+
+
+def update_ui_state(patch: Dict[str, Any]) -> Dict[str, Any]:
+    base = get_ui_state(default={})
+    merged = _deep_merge_dict(base, patch if isinstance(patch, dict) else {})
+    return save_ui_state(merged)
 
 
 def persist_runtime_state() -> Dict[str, Any]:

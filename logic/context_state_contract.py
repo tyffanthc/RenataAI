@@ -4,6 +4,8 @@ import copy
 import json
 import math
 import os
+import tempfile
+import time
 from typing import Any, Dict
 
 STATE_SCHEMA_VERSION = 1
@@ -278,8 +280,33 @@ def save_state_contract_file(path: str, payload: Dict[str, Any]) -> Dict[str, An
     if directory:
         os.makedirs(directory, exist_ok=True)
 
-    tmp_path = f"{path}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as handle:
-        json.dump(contract, handle, indent=2, ensure_ascii=False)
-    os.replace(tmp_path, path)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=f"{os.path.basename(path)}.",
+        suffix=".tmp",
+        dir=(directory or None),
+        text=True,
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(contract, handle, indent=2, ensure_ascii=False)
+
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                os.replace(tmp_path, path)
+                last_error = None
+                break
+            except OSError as exc:
+                last_error = exc
+                if attempt >= 2:
+                    raise
+                time.sleep(0.03)
+        if last_error is not None:
+            raise last_error
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
     return contract

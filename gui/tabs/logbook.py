@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timezone
 from tkinter import messagebox, simpledialog, ttk
 
+import config
 from app.state import app_state
 from gui.dialogs.add_entry import AddEntryDialog
 from logic.entry_repository import EntryRepository, EntryValidationError
@@ -172,13 +173,19 @@ class LogbookTab(tk.Frame):
         self._active_popover: tk.Widget | None = None
         self._active_popover_anchor: tk.Widget | None = None
         self._active_popover_opened_at: float = 0.0
+        self._ui_state_suppress_persist = True
+        self._pending_subtab_key = "entries"
+        self._load_ui_state()
 
         self._configure_style()
         self._build_ui()
+        self.sub_notebook.bind("<<NotebookTabChanged>>", self._on_subtab_changed, add="+")
+        self._restore_subtab_from_ui_state()
         self._set_filter_tag_display()
         self.bind_all("<Button-1>", self._on_global_click_maybe_close_popover, add="+")
         self._refresh_categories()
         self._refresh_entries()
+        self._ui_state_suppress_persist = False
 
     def _configure_style(self) -> None:
         style = ttk.Style()
@@ -1072,8 +1079,109 @@ class LogbookTab(tk.Frame):
         except Exception:
             self.status_var.set("Nie udalo sie zapisac listy kategorii.")
 
+    def _load_ui_state(self) -> None:
+        try:
+            ui_state = config.get_ui_state(default={})
+            journal_state = ui_state.get("journal") if isinstance(ui_state, dict) else {}
+            if not isinstance(journal_state, dict):
+                journal_state = {}
+
+            filters = journal_state.get("filters")
+            if isinstance(filters, dict):
+                text = str(filters.get("text") or "").strip()
+                if text:
+                    self.filter_text_var.set(text)
+
+                date_from = str(filters.get("date_from") or "").strip()
+                if date_from:
+                    self.filter_date_from_var.set(date_from)
+
+                date_to = str(filters.get("date_to") or "").strip()
+                if date_to:
+                    self.filter_date_to_var.set(date_to)
+
+                tag_mode = str(filters.get("tag_mode") or "").strip().upper()
+                if tag_mode in {"ALL", "ANY"}:
+                    self.filter_tag_mode_var.set(tag_mode)
+
+                pinned_only = filters.get("pinned_only")
+                if pinned_only is not None:
+                    self.filter_pinned_only_var.set(bool(pinned_only))
+
+                sort_label = str(filters.get("sort") or "").strip()
+                valid_sorts = {"Najnowsze", "Najstarsze", "System A-Z", "Tytul A-Z"}
+                if sort_label in valid_sorts:
+                    self.sort_var.set(sort_label)
+
+                raw_tags = filters.get("tags")
+                if isinstance(raw_tags, list):
+                    self._selected_filter_tags = {
+                        str(raw_tag or "").strip().lower()
+                        for raw_tag in raw_tags
+                        if str(raw_tag or "").strip()
+                    }
+
+            selected_category = str(journal_state.get("selected_category") or "").strip()
+            if selected_category:
+                self._selected_category = selected_category
+
+            subtab_key = str(journal_state.get("active_subtab_key") or "").strip().lower()
+            if subtab_key in {"entries", "feed"}:
+                self._pending_subtab_key = subtab_key
+        except Exception:
+            pass
+
+    def _resolve_active_subtab_key(self) -> str:
+        try:
+            selected = str(self.sub_notebook.select() or "")
+        except Exception:
+            return str(self._pending_subtab_key or "entries")
+        if selected == str(self.tab_feed):
+            return "feed"
+        return "entries"
+
+    def _restore_subtab_from_ui_state(self) -> None:
+        if self._pending_subtab_key == "feed":
+            try:
+                self.sub_notebook.select(self.tab_feed)
+            except Exception:
+                pass
+            return
+        try:
+            self.sub_notebook.select(self.tab_entries)
+        except Exception:
+            pass
+
+    def _persist_ui_state(self) -> None:
+        if bool(getattr(self, "_ui_state_suppress_persist", False)):
+            return
+        try:
+            config.update_ui_state(
+                {
+                    "journal": {
+                        "active_subtab_key": self._resolve_active_subtab_key(),
+                        "selected_category": str(self._selected_category or _CATEGORY_ALL),
+                        "filters": {
+                            "text": str(self.filter_text_var.get() or "").strip(),
+                            "date_from": str(self.filter_date_from_var.get() or "").strip(),
+                            "date_to": str(self.filter_date_to_var.get() or "").strip(),
+                            "tag_mode": str(self.filter_tag_mode_var.get() or "ALL").upper(),
+                            "tags": sorted(self._selected_filter_tags),
+                            "pinned_only": bool(self.filter_pinned_only_var.get()),
+                            "sort": str(self.sort_var.get() or "Najnowsze"),
+                        },
+                    }
+                }
+            )
+        except Exception:
+            pass
+
+    def _on_subtab_changed(self, _event=None) -> None:
+        self._persist_ui_state()
+
     def _on_filters_changed(self) -> None:
         self._sync_pinboard_button_label()
+        self._persist_ui_state()
         self._refresh_entries()
 
     def _set_filter_tag_display(self) -> None:
@@ -1248,6 +1356,7 @@ class LogbookTab(tk.Frame):
                     self.status_var.set("Niepoprawna data filtra.")
                     return
                 self._close_active_popover()
+                self._persist_ui_state()
                 self._refresh_entries()
 
             def _clear_or_default() -> None:
@@ -1256,6 +1365,7 @@ class LogbookTab(tk.Frame):
                 else:
                     date_var.set(_today_date_text())
                 self._close_active_popover()
+                self._persist_ui_state()
                 self._refresh_entries()
 
             tk.Button(
@@ -1387,6 +1497,7 @@ class LogbookTab(tk.Frame):
                 self.filter_tag_mode_var.set("ANY" if mode == "ANY" else "ALL")
                 self._set_filter_tag_display()
                 self._close_active_popover()
+                self._persist_ui_state()
                 self._refresh_entries()
 
             tk.Button(
@@ -1425,6 +1536,7 @@ class LogbookTab(tk.Frame):
     def _toggle_pinboard_filter(self) -> None:
         self.filter_pinned_only_var.set(not bool(self.filter_pinned_only_var.get()))
         self._sync_pinboard_button_label()
+        self._persist_ui_state()
         self._refresh_entries()
 
     def _on_category_selected(self, _event=None) -> None:
@@ -1434,6 +1546,7 @@ class LogbookTab(tk.Frame):
         else:
             display = self.category_list.get(selection[0])
             self._selected_category = self._category_display_to_path.get(display, _CATEGORY_ALL)
+        self._persist_ui_state()
         self._refresh_entries()
 
     def _refresh_categories(self) -> None:

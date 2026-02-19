@@ -152,6 +152,7 @@ class TradeTab(ttk.Frame):
         self.var_avoid_loops = tk.BooleanVar(value=True)
 
         self.var_allow_permits = tk.BooleanVar(value=True)
+        self._ui_state_suppress_persist = True
 
 
 
@@ -195,6 +196,7 @@ class TradeTab(ttk.Frame):
         )
 
         self._market_age_updating = False
+        self._restore_trade_ui_state()
 
 
 
@@ -231,6 +233,7 @@ class TradeTab(ttk.Frame):
         self.var_start_station.trace_add("write", lambda *_a: self._update_station_hint())
 
         self.bind("<Visibility>", self._on_visibility)
+        self._bind_trade_ui_state_persistence()
 
 
 
@@ -238,6 +241,72 @@ class TradeTab(ttk.Frame):
 
         self.refresh_from_app_state()
         self._update_station_hint()
+
+    def _collect_trade_ui_state_flags(self) -> dict[str, bool]:
+        return {
+            "large_pad": bool(self.var_large_pad.get()),
+            "planetary": bool(self.var_planetary.get()),
+            "player_owned": bool(self.var_player_owned.get()),
+            "restricted": bool(self.var_restricted.get()),
+            "prohibited": bool(self.var_prohibited.get()),
+            "avoid_loops": bool(self.var_avoid_loops.get()),
+            "allow_permits": bool(self.var_allow_permits.get()),
+        }
+
+    def _restore_trade_ui_state(self) -> None:
+        try:
+            ui_state = config.get_ui_state(default={})
+            spansh_state = ui_state.get("spansh") if isinstance(ui_state, dict) else {}
+            trade_state = (spansh_state or {}).get("trade")
+            flags = (trade_state or {}).get("flags") if isinstance(trade_state, dict) else {}
+            if not isinstance(flags, dict):
+                return
+            mapping = {
+                "large_pad": self.var_large_pad,
+                "planetary": self.var_planetary,
+                "player_owned": self.var_player_owned,
+                "restricted": self.var_restricted,
+                "prohibited": self.var_prohibited,
+                "avoid_loops": self.var_avoid_loops,
+                "allow_permits": self.var_allow_permits,
+            }
+            for key, var in mapping.items():
+                if key in flags:
+                    var.set(bool(flags.get(key)))
+        except Exception:
+            pass
+
+    def _persist_trade_ui_state(self) -> None:
+        if bool(getattr(self, "_ui_state_suppress_persist", False)):
+            return
+        try:
+            config.update_ui_state(
+                {
+                    "spansh": {
+                        "trade": {
+                            "flags": self._collect_trade_ui_state_flags(),
+                        }
+                    }
+                }
+            )
+        except Exception:
+            pass
+
+    def _on_trade_flag_var_changed(self, *_args) -> None:
+        self._persist_trade_ui_state()
+
+    def _bind_trade_ui_state_persistence(self) -> None:
+        for var in (
+            self.var_large_pad,
+            self.var_planetary,
+            self.var_player_owned,
+            self.var_restricted,
+            self.var_prohibited,
+            self.var_avoid_loops,
+            self.var_allow_permits,
+        ):
+            var.trace_add("write", self._on_trade_flag_var_changed)
+        self._ui_state_suppress_persist = False
 
 
 

@@ -16,6 +16,8 @@ class SpanshTab(ttk.Frame):
         super().__init__(parent)
         self.root = root_window
         self.pack(fill="both", expand=1)
+        self._tab_key_to_widget = {}
+        self._tab_widget_to_key = {}
 
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=1, padx=5, pady=5)
@@ -41,6 +43,7 @@ class SpanshTab(ttk.Frame):
 
         self.tab_trade = TradeTab(self.nb, root_window)
         self.nb.add(self.tab_trade, text=ui.TAB_SPANSH_TRADE)
+        self._register_core_tab_keys()
 
         tab_defs = [
             {
@@ -66,6 +69,50 @@ class SpanshTab(ttk.Frame):
         ]
         for tab_def in tab_defs:
             self._add_optional_tab(tab_def)
+        self._restore_tab_from_ui_state()
+
+    def _register_core_tab_keys(self) -> None:
+        self._tab_key_to_widget = {
+            "neutron": self.tab_neutron,
+            "riches": self.tab_riches,
+            "ammonia": self.tab_ammonia,
+            "elw": self.tab_elw,
+            "hmc": self.tab_hmc,
+            "exo": self.tab_exo,
+            "trade": self.tab_trade,
+        }
+        self._tab_widget_to_key = {str(widget): key for key, widget in self._tab_key_to_widget.items()}
+
+    def _resolve_active_tab_key(self) -> str | None:
+        if not isinstance(self._tab_widget_to_key, dict):
+            return None
+        try:
+            selected = str(self.nb.select() or "")
+        except Exception:
+            return None
+        if not selected:
+            return None
+        return self._tab_widget_to_key.get(selected)
+
+    def _persist_tab_ui_state(self) -> None:
+        tab_key = self._resolve_active_tab_key()
+        if not tab_key:
+            return
+        try:
+            config.update_ui_state({"spansh": {"active_tab_key": tab_key}})
+        except Exception:
+            pass
+
+    def _restore_tab_from_ui_state(self) -> None:
+        try:
+            ui_state = config.get_ui_state(default={})
+            spansh_state = ui_state.get("spansh") if isinstance(ui_state, dict) else {}
+            tab_key = str((spansh_state or {}).get("active_tab_key") or "").strip().lower()
+            tab = self._tab_key_to_widget.get(tab_key)
+            if tab is not None:
+                self.nb.select(tab)
+        except Exception:
+            pass
 
     def _add_placeholder(self, title):
         fr = ttk.Frame(self.nb)
@@ -116,6 +163,7 @@ class SpanshTab(ttk.Frame):
 
     def _on_tab_changed(self, _event):
         self.hide_suggestions()
+        self._persist_tab_ui_state()
 
     def hide_suggestions(self):
         for t in [self.tab_neutron, self.tab_riches, self.tab_ammonia,

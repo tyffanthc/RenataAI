@@ -289,6 +289,8 @@ class RenataApp:
             self._tab_map["edtools"] = self.tab_edtools
         if self.tab_engi is not None:
             self._tab_map["engineer"] = self.tab_engi
+        self._tab_widget_to_key = {str(tab): key for key, tab in self._tab_map.items()}
+        self._restore_main_tab_from_ui_state()
 
         # =========================
         # PASEK MENU
@@ -352,6 +354,44 @@ class RenataApp:
     def _on_tab_changed(self, _event):
         if hasattr(self.tab_spansh, "hide_suggestions"):
             self.tab_spansh.hide_suggestions()
+        self._persist_main_tab_ui_state()
+
+    def _resolve_active_main_tab_key(self) -> str | None:
+        tab_map = getattr(self, "_tab_widget_to_key", None)
+        if not isinstance(tab_map, dict):
+            return None
+        try:
+            selected = str(self.main_nb.select() or "")
+        except Exception:
+            return None
+        if not selected:
+            return None
+        return tab_map.get(selected)
+
+    def _restore_main_tab_from_ui_state(self) -> None:
+        try:
+            ui_state = config.get_ui_state(default={})
+            main_state = ui_state.get("main") if isinstance(ui_state, dict) else {}
+            tab_key = str((main_state or {}).get("active_tab_key") or "").strip().lower()
+            tab = self._tab_map.get(tab_key)
+            if tab is not None:
+                self.main_nb.select(tab)
+        except Exception as exc:
+            _log_app_fallback("ui_state.main.restore", "failed to restore main tab state", exc)
+
+    def _persist_main_tab_ui_state(self) -> None:
+        tab_key = self._resolve_active_main_tab_key()
+        if not tab_key:
+            return
+        try:
+            config.update_ui_state({"main": {"active_tab_key": tab_key}})
+        except Exception as exc:
+            _log_app_fallback(
+                "ui_state.main.persist",
+                "failed to persist main tab state",
+                exc,
+                tab=tab_key,
+            )
 
     def _switch_tab(self, tab_key: str):
         tab = self._tab_map.get(tab_key)
