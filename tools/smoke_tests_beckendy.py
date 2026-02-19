@@ -4115,6 +4115,152 @@ def test_f10_quality_gates_and_smoke_baseline(ctx: TestContext) -> None:
             smuggler_events.reset_smuggler_runtime_state()
 
 
+def test_f11_quality_gates_and_smoke_baseline(ctx: TestContext) -> None:
+    """
+    Smoke dla paczki F11:
+    - cash-in payload z jednolitym kontraktem UI opcji,
+    - route handoff tylko po jawnej akcji usera (bez auto-route side effects),
+    - StartJump callout confidence + anti-spam nonflood.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    reset_dispatcher_runtime_state()
+
+    saved_system = str(getattr(app_state, "current_system", "") or "")
+    saved_station = str(getattr(app_state, "current_station", "") or "")
+    saved_last_sig = getattr(app_state, "last_cash_in_signature", None)
+    saved_skip_sig = getattr(app_state, "cash_in_skip_signature", None)
+    saved_route_awareness = app_state.get_route_awareness_snapshot()
+    settings = config.config._settings  # type: ignore[attr-defined]
+    saved_show_tariff = settings.get("cash_in.show_tariff_meta")
+    saved_startjump_enabled = settings.get("cash_in.startjump_callout_enabled")
+    saved_startjump_cd = settings.get("cash_in.startjump_callout_cooldown_sec")
+
+    try:
+        settings["cash_in.show_tariff_meta"] = True
+        settings["cash_in.startjump_callout_enabled"] = True
+        settings["cash_in.startjump_callout_cooldown_sec"] = 35.0
+
+        app_state.current_system = "SMOKE_F11_SYSTEM"
+        app_state.current_station = ""
+        app_state.last_cash_in_signature = None
+        app_state.cash_in_skip_signature = None
+
+        payload = {
+            "system": "SMOKE_F11_SYSTEM",
+            "cash_in_signal": "wysoki",
+            "cash_in_system_estimated": 6_000_000.0,
+            "cash_in_session_estimated": 18_000_000.0,
+            "confidence": "high",
+            "service": "uc",
+            "tariff_percent": 9.0,
+            "freshness_ts": "2026-02-22T16:20:00Z",
+            "station_candidates": [
+                {
+                    "name": "Safe Station",
+                    "system_name": "SMOKE_F11_SYSTEM",
+                    "type": "station",
+                    "services": ["Universal Cartographics"],
+                    "distance_ly": 12.0,
+                    "distance_ls": 1_500.0,
+                    "source": "EDSM",
+                },
+                {
+                    "name": "Fast Carrier",
+                    "system_name": "SMOKE_F11_SYSTEM",
+                    "type": "fleet_carrier",
+                    "services": ["Universal Cartographics", "Vista Genomics"],
+                    "distance_ly": 8.0,
+                    "distance_ls": 2_100.0,
+                    "source": "SPANSH",
+                },
+            ],
+        }
+        ok = cash_in_events.trigger_cash_in_assistant(mode="manual", summary_payload=payload, gui_ref=None)
+        assert ok is True, "F11 smoke: expected manual cash-in emit"
+
+        queue_batch = ctx.drain_queue()
+        payload_items = [
+            item[1]
+            for item in queue_batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+        ]
+        assert payload_items, "F11 smoke: expected structured cash_in_assistant payload in queue"
+        structured = dict(payload_items[-1] or {})
+        options = [dict(item) for item in (structured.get("options") or []) if isinstance(item, dict)]
+        assert 2 <= len(options) <= 3, f"F11 smoke: expected 2-3 options, got {len(options)}"
+        for option in options:
+            assert str(option.get("ui_contract_version") or "") == "F11_UI_V1", (
+                f"F11 smoke: missing ui_contract_version in option: {option}"
+            )
+            ui = dict(option.get("ui_contract") or {})
+            assert list(ui.get("actions") or []) == ["set_route", "copy_next_hop", "skip"], (
+                f"F11 smoke: unexpected actions contract: {ui}"
+            )
+
+        pre_route = list(getattr(route_manager, "route", []) or [])
+        selected = dict(options[0])
+        handoff = cash_in_events.handoff_cash_in_to_route_intent(
+            selected,
+            set_route_intent=app_state.set_route_intent,
+            source="smoke.f11.intent",
+            allow_auto_route=False,
+        )
+        assert bool(handoff.get("ok")), f"F11 smoke: route handoff failed: {handoff}"
+        post_route = list(getattr(route_manager, "route", []) or [])
+        assert post_route == pre_route, "F11 smoke: route handoff must not mutate route_manager.route"
+
+        ctx.clear_queue()
+        with (
+            patch.object(
+                app_state.exit_summary,
+                "build_summary_data",
+                return_value=ExitSummaryData(system_name="SMOKE_F11_SYSTEM", total_value=4_800_000.0),
+            ),
+            patch.object(
+                app_state,
+                "system_value_engine",
+                new=SimpleNamespace(calculate_totals=lambda: {"total": 19_200_000.0}),
+            ),
+        ):
+            first = cash_in_events.trigger_startjump_cash_in_callout(
+                event={"event": "StartJump", "JumpType": "Hyperspace"},
+                gui_ref=None,
+            )
+            second = cash_in_events.trigger_startjump_cash_in_callout(
+                event={"event": "StartJump", "JumpType": "Hyperspace"},
+                gui_ref=None,
+            )
+        assert first is True, "F11 smoke: expected first StartJump callout emit"
+        assert second is False, "F11 smoke: expected second StartJump callout suppressed by anti-spam"
+
+        callout_logs = [
+            str(item[1] or "")
+            for item in ctx.drain_queue()
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "log"
+        ]
+        joined_logs = " | ".join(callout_logs)
+        assert "Cash-in:" in joined_logs, (
+            "F11 smoke: expected StartJump cash-in line in logs"
+        )
+    finally:
+        app_state.current_system = saved_system
+        app_state.current_station = saved_station
+        app_state.last_cash_in_signature = saved_last_sig
+        app_state.cash_in_skip_signature = saved_skip_sig
+        app_state.update_route_awareness(
+            route_mode=str(saved_route_awareness.get("route_mode") or "idle"),
+            route_target=str(saved_route_awareness.get("route_target") or ""),
+            route_progress_percent=int(saved_route_awareness.get("route_progress_percent") or 0),
+            next_system=str(saved_route_awareness.get("next_system") or ""),
+            is_off_route=bool(saved_route_awareness.get("is_off_route")),
+            source="smoke.f11.restore",
+        )
+        settings["cash_in.show_tariff_meta"] = saved_show_tariff
+        settings["cash_in.startjump_callout_enabled"] = saved_startjump_enabled
+        settings["cash_in.startjump_callout_cooldown_sec"] = saved_startjump_cd
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -4196,6 +4342,7 @@ def run_all_tests() -> int:
         ("test_f9_manual_metadata_edit_contract", test_f9_manual_metadata_edit_contract),
         ("test_f9_filter_popover_contract", test_f9_filter_popover_contract),
         ("test_f10_quality_gates_and_smoke_baseline", test_f10_quality_gates_and_smoke_baseline),
+        ("test_f11_quality_gates_and_smoke_baseline", test_f11_quality_gates_and_smoke_baseline),
         ("test_route_planner_modules_smoke", test_route_planner_modules_smoke),
     ]
 

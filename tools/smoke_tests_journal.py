@@ -15,6 +15,8 @@ import json
 import traceback
 import queue
 from typing import Callable, List, Tuple
+from types import SimpleNamespace
+from unittest.mock import patch
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(THIS_DIR)
@@ -33,6 +35,7 @@ from logic.events import fuel_events  # type: ignore
 from logic.events import survival_rebuy_awareness as survival_events  # type: ignore
 from logic.events import combat_awareness as combat_events  # type: ignore
 from logic.insight_dispatcher import reset_dispatcher_runtime_state  # type: ignore
+from logic.exit_summary import ExitSummaryData  # type: ignore
 
 
 class TestContext:
@@ -801,6 +804,66 @@ def test_journal_f5_quality_gates_cross_module_nonflood(ctx: TestContext) -> Non
         settings["combat_awareness_enabled"] = saved_combat_enabled
 
 
+def test_journal_f11_startjump_cash_in_nonflood(ctx: TestContext) -> None:
+    """
+    F11 journal smoke:
+    - StartJump (Hyperspace) emituje cash-in callout,
+    - drugi identyczny event jest stlumiony przez anti-spam.
+    """
+    settings = config.config._settings  # type: ignore[attr-defined]
+    saved_startjump_enabled = settings.get("cash_in.startjump_callout_enabled")
+    saved_startjump_cd = settings.get("cash_in.startjump_callout_cooldown_sec")
+    saved_system = str(getattr(app_state, "current_system", "") or "")
+
+    try:
+        settings["cash_in.startjump_callout_enabled"] = True
+        settings["cash_in.startjump_callout_cooldown_sec"] = 35.0
+        ctx.clear_queue()
+        ctx.reset_debouncer()
+        reset_dispatcher_runtime_state()
+        app_state.current_system = "SMOKE_T2_F11_STARTJUMP_SYS"
+
+        startjump_line = json.dumps(
+            {
+                "event": "StartJump",
+                "JumpType": "Hyperspace",
+                "StarSystem": "SMOKE_T2_F11_STARTJUMP_SYS",
+            }
+        )
+        with (
+            patch.object(
+                app_state.exit_summary,
+                "build_summary_data",
+                return_value=ExitSummaryData(
+                    system_name="SMOKE_T2_F11_STARTJUMP_SYS",
+                    total_value=5_000_000.0,
+                ),
+            ),
+            patch.object(
+                app_state,
+                "system_value_engine",
+                new=SimpleNamespace(calculate_totals=lambda: {"total": 16_000_000.0}),
+            ),
+        ):
+            handler.handle_event(startjump_line, gui_ref=None)
+            handler.handle_event(startjump_line, gui_ref=None)
+
+        logs = [
+            str(item[1] or "")
+            for item in ctx.drain_queue()
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "log"
+        ]
+        callouts = [line for line in logs if "Cash-in:" in line]
+        assert len(callouts) == 1, (
+            "Expected one StartJump cash-in callout in nonflood journal scenario, "
+            f"got: {callouts}"
+        )
+    finally:
+        settings["cash_in.startjump_callout_enabled"] = saved_startjump_enabled
+        settings["cash_in.startjump_callout_cooldown_sec"] = saved_startjump_cd
+        app_state.current_system = saved_system
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -824,6 +887,7 @@ def run_all_tests() -> int:
         ("test_journal_f5_combat_awareness_nonflood", test_journal_f5_combat_awareness_nonflood),
         ("test_journal_f5_anti_spam_transitions_and_exceptions", test_journal_f5_anti_spam_transitions_and_exceptions),
         ("test_journal_f5_quality_gates_cross_module_nonflood", test_journal_f5_quality_gates_cross_module_nonflood),
+        ("test_journal_f11_startjump_cash_in_nonflood", test_journal_f11_startjump_cash_in_nonflood),
     ]
 
     print("=== RenataAI Journal / AppState / Debouncer Tests (T2) ===")
