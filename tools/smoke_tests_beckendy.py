@@ -40,6 +40,7 @@ from app.route_manager import route_manager  # type: ignore
 
 from logic.events import fuel_events  # type: ignore
 from logic.events import trade_events  # type: ignore
+from logic.events import smuggler_events  # type: ignore
 from logic.events import navigation_events  # type: ignore
 from logic.events import exploration_fss_events as fss_events  # type: ignore
 from logic.events import exploration_bio_events as bio_events  # type: ignore
@@ -4039,6 +4040,81 @@ def test_f9_filter_popover_contract(_ctx: TestContext) -> None:
         )
 
 
+def test_f10_quality_gates_and_smoke_baseline(ctx: TestContext) -> None:
+    """
+    Smoke dla paczki F10:
+    - restart-contract restore dla ui/preferences/domain,
+    - anti-spam persistence po restarcie (trade/smuggler) bez floodu.
+    """
+    from logic.context_state_contract import default_state_contract, load_state_contract_file
+
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    reset_dispatcher_runtime_state()
+    trade_events.reset_jackpot_runtime_state()
+    smuggler_events.reset_smuggler_runtime_state()
+
+    old_state_file = config.STATE_FILE
+    old_contract = config.get_state_contract()
+    saved_system = str(getattr(app_state, "current_system", "") or "")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        state_path = os.path.join(tmp, "smoke_f10_state.json")
+        try:
+            config.STATE_FILE = state_path
+            config.save_state_contract(default_state_contract())
+
+            config.update_ui_state({"main": {"active_tab_key": "journal"}})
+            config.update_preferences({"verbosity": "high", "trade_choice_bias": "safety", "tts_enabled": False})
+            config.update_domain_state({"sys": "SMOKE_F10_SYSTEM", "route_mode": "awareness"})
+
+            restored = load_state_contract_file(state_path)
+            config.save_state_contract(restored)
+
+            ui = config.get_ui_state(default={})
+            prefs = config.get_preferences(default={})
+            domain = config.get_domain_state(default={})
+            assert (ui.get("main") or {}).get("active_tab_key") == "journal", (
+                f"F10 smoke: ui_state restore mismatch: {ui}"
+            )
+            assert str(prefs.get("verbosity") or "") == "high", (
+                f"F10 smoke: preferences restore mismatch: {prefs}"
+            )
+            assert str(domain.get("sys") or "") == "SMOKE_F10_SYSTEM", (
+                f"F10 smoke: domain_state restore mismatch: {domain}"
+            )
+
+            app_state.current_system = "SMOKE_F10_TRADE_SYSTEM"
+            market_data = {
+                "StationName": "SMOKE_F10_TRADE_STATION",
+                "Items": [{"Name_Localised": "Gold", "Stock": 100, "BuyPrice": 7000}],
+            }
+            with patch("logic.events.trade_events.powiedz") as trade_tts:
+                trade_events.handle_market_data(market_data, gui_ref=None)
+                assert trade_tts.call_count == 1, "F10 smoke: expected first trade jackpot callout"
+            trade_events.reset_jackpot_runtime_state()
+            with patch("logic.events.trade_events.powiedz") as trade_tts:
+                trade_events.handle_market_data(market_data, gui_ref=None)
+                assert trade_tts.call_count == 0, "F10 smoke: trade jackpot flood after restart"
+
+            smuggler_events.CARGO_HAS_ILLEGAL = True
+            smuggler_event = {"event": "DockingRequested", "StationName": "SMOKE_F10_SMUGGLER_STATION"}
+            with patch("logic.events.smuggler_events.powiedz") as smuggler_tts:
+                smuggler_events.handle_smuggler_alert(smuggler_event, gui_ref=None)
+                assert smuggler_tts.call_count == 1, "F10 smoke: expected first smuggler callout"
+            smuggler_events.reset_smuggler_runtime_state()
+            smuggler_events.CARGO_HAS_ILLEGAL = True
+            with patch("logic.events.smuggler_events.powiedz") as smuggler_tts:
+                smuggler_events.handle_smuggler_alert(smuggler_event, gui_ref=None)
+                assert smuggler_tts.call_count == 0, "F10 smoke: smuggler flood after restart"
+        finally:
+            app_state.current_system = saved_system
+            config.STATE_FILE = old_state_file
+            config.save_state_contract(old_contract)
+            trade_events.reset_jackpot_runtime_state()
+            smuggler_events.reset_smuggler_runtime_state()
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -4119,6 +4195,7 @@ def run_all_tests() -> int:
         ("test_f9_entry_context_menu_contract", test_f9_entry_context_menu_contract),
         ("test_f9_manual_metadata_edit_contract", test_f9_manual_metadata_edit_contract),
         ("test_f9_filter_popover_contract", test_f9_filter_popover_contract),
+        ("test_f10_quality_gates_and_smoke_baseline", test_f10_quality_gates_and_smoke_baseline),
         ("test_route_planner_modules_smoke", test_route_planner_modules_smoke),
     ]
 
