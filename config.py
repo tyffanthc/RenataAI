@@ -194,6 +194,11 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "voice_exit_summary": True,       # glosowe podsumowanie
     "cash_in.station_candidates_lookup_enabled": False,
     "cash_in.station_candidates_limit": 24,
+    "cash_in.avoid_carriers_for_uc": True,
+    "cash_in.carrier_ok_for_fast_mode": True,
+    "cash_in.show_tariff_meta": True,
+    "cash_in.hutton_guard_ls_threshold": 500_000,
+    "cash_in.hutton_guard_score_penalty": 18,
     "survival_rebuy_awareness_enabled": True,  # F4 survival/rebuy awareness
     "combat_awareness_enabled": True,  # F5 combat awareness baseline
     "dispatcher.f4_voice_priority_window_sec": 12.0,

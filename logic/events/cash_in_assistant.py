@@ -28,9 +28,11 @@ class CashInAssistantPayload:
     skip_action: dict[str, str]
     note: str
     signature: str
+    service: str = "uc"
     payout_contract: dict[str, Any] = field(default_factory=dict)
     station_candidates: list[dict[str, Any]] = field(default_factory=list)
     station_candidates_meta: dict[str, Any] = field(default_factory=dict)
+    ranking_meta: dict[str, Any] = field(default_factory=dict)
 
 
 def _as_text(value: Any) -> str:
@@ -412,6 +414,364 @@ def _build_options(
     return options
 
 
+def _normalize_cash_in_service(value: Any) -> str:
+    svc = _as_text(value).lower()
+    if svc in {"vista", "exobio", "exobiology", "genomics"}:
+        return "vista"
+    return "uc"
+
+
+def _candidate_is_carrier(candidate: dict[str, Any]) -> bool:
+    return _target_type_normalized(candidate.get("type")) == "fleet_carrier"
+
+
+def _candidate_name(candidate: dict[str, Any]) -> str:
+    return _as_text(candidate.get("name")) or "Unknown Station"
+
+
+def _candidate_system(candidate: dict[str, Any]) -> str:
+    return _as_text(candidate.get("system_name")) or "unknown"
+
+
+def _candidate_distance_ly(candidate: dict[str, Any]) -> float:
+    value = _safe_optional_float(candidate.get("distance_ly"))
+    if value is None:
+        return 1e12
+    return max(0.0, value)
+
+
+def _candidate_distance_ls(candidate: dict[str, Any]) -> float:
+    value = _safe_optional_float(candidate.get("distance_ls"))
+    if value is None:
+        return 1e12
+    return max(0.0, value)
+
+
+def _is_hutton_guard(candidate: dict[str, Any], *, threshold_ls: float) -> bool:
+    distance_ls = _safe_optional_float(candidate.get("distance_ls"))
+    if distance_ls is None:
+        return False
+    return distance_ls >= max(0.0, float(threshold_ls))
+
+
+def _candidate_sort_key(
+    candidate: dict[str, Any],
+    *,
+    profile: str,
+    service: str,
+    avoid_carriers_for_uc: bool,
+    carrier_ok_for_fast_mode: bool,
+    hutton_threshold_ls: float,
+) -> tuple[float, float, float, float, str]:
+    is_carrier = _candidate_is_carrier(candidate)
+    hutton_guard = _is_hutton_guard(candidate, threshold_ls=hutton_threshold_ls)
+    dist_ly = _candidate_distance_ly(candidate)
+    dist_ls = _candidate_distance_ls(candidate)
+    name_key = _candidate_name(candidate).casefold()
+
+    carrier_penalty = 0.0
+    hutton_penalty = 1.0 if hutton_guard else 0.0
+
+    if profile == "SAFE":
+        if service == "uc" and is_carrier:
+            carrier_penalty += 1.0
+            if avoid_carriers_for_uc:
+                carrier_penalty += 2.0
+        return (carrier_penalty, hutton_penalty, dist_ly, dist_ls, name_key)
+
+    if profile == "FAST":
+        if service == "uc" and is_carrier and not carrier_ok_for_fast_mode:
+            carrier_penalty += 2.0
+        return (carrier_penalty, dist_ly, hutton_penalty, dist_ls, name_key)
+
+    # SECURE fallback path uses SAFE key.
+    if service == "uc" and is_carrier:
+        carrier_penalty += 1.0
+    return (carrier_penalty, hutton_penalty, dist_ly, dist_ls, name_key)
+
+
+def _resolve_payout_for_candidate(
+    *,
+    service: str,
+    candidate: dict[str, Any],
+    payout_contract: dict[str, Any],
+) -> dict[str, Any]:
+    contracts = dict(payout_contract.get("contracts") or {})
+    contract_key = (
+        f"{service}_fleet_carrier"
+        if _candidate_is_carrier(candidate)
+        else f"{service}_non_carrier"
+    )
+    row = dict(contracts.get(contract_key) or {})
+    if row:
+        return row
+    return {
+        "service": service.upper(),
+        "target_type": "fleet_carrier" if _candidate_is_carrier(candidate) else "non_carrier",
+        "status": "UNKNOWN",
+        "assumption": True,
+        "fallback_applied": False,
+        "policy_source": "MISSING_CONTRACT",
+        "payout_ratio": 1.0,
+        "fee_note": "",
+        "freshness_ts": "",
+        "tariff_meta": {},
+        "brutto": int(round(float(payout_contract.get("brutto") or 0))),
+        "fee": int(round(float(payout_contract.get("fee") or 0))),
+        "netto": int(round(float(payout_contract.get("netto") or 0))),
+    }
+
+
+def _estimate_eta_minutes(
+    *,
+    profile: str,
+    distance_ly: float | None,
+    docked_here: bool = False,
+) -> int | None:
+    if docked_here and profile == "SECURE":
+        return 0
+    if distance_ly is None:
+        return None
+    ly = max(0.0, float(distance_ly))
+    factor = 0.42
+    if profile == "FAST":
+        factor = 0.30
+    elif profile == "SAFE":
+        factor = 0.45
+    return max(2, int(round(ly * factor)) + 2)
+
+
+def _build_profile_option(
+    *,
+    profile: str,
+    candidate: dict[str, Any],
+    service: str,
+    trust_score: int,
+    payout_contract: dict[str, Any],
+    hutton_threshold_ls: float,
+    hutton_penalty_score: int,
+    secure_fallback_to_safe: bool = False,
+    docked_here: bool = False,
+) -> dict[str, Any]:
+    payout = _resolve_payout_for_candidate(
+        service=service,
+        candidate=candidate,
+        payout_contract=payout_contract,
+    )
+    dist_ly_raw = _safe_optional_float(candidate.get("distance_ly"))
+    eta_minutes = _estimate_eta_minutes(
+        profile=profile,
+        distance_ly=dist_ly_raw,
+        docked_here=docked_here,
+    )
+
+    time_score = 55
+    if eta_minutes is not None:
+        time_score = _clamp_0_100(100 - min(90, eta_minutes * 2))
+    if docked_here and profile == "SECURE":
+        time_score = 99
+
+    payout_ratio = float(payout.get("payout_ratio") or 1.0)
+    profit_score = _clamp_0_100(55 + (payout_ratio * 40.0))
+    risk_score = 72
+    if profile == "SAFE":
+        risk_score = 84
+    elif profile == "FAST":
+        risk_score = 68
+    elif profile == "SECURE":
+        risk_score = 90 if docked_here else 78
+
+    hutton_guard = _is_hutton_guard(candidate, threshold_ls=hutton_threshold_ls)
+    warnings: list[str] = []
+    if hutton_guard:
+        risk_score = max(0, risk_score - int(max(0, hutton_penalty_score)))
+        warnings.append("distance_ls_high")
+
+    option_id = f"cash_in_{profile.lower()}_{_candidate_name(candidate).lower().replace(' ', '_')[:24]}"
+    option = {
+        "option_id": option_id,
+        "label": f"{profile} -> {_candidate_name(candidate)} ({_candidate_system(candidate)})",
+        "strategy": f"{profile.lower()}_station_candidate",
+        "profile": profile,
+        "service": service,
+        "target": {
+            "name": _candidate_name(candidate),
+            "system_name": _candidate_system(candidate),
+            "type": _as_text(candidate.get("type")) or "station",
+            "distance_ly": dist_ly_raw,
+            "distance_ls": _safe_optional_float(candidate.get("distance_ls")),
+            "source": _as_text(candidate.get("source")),
+            "freshness_ts": _as_text(candidate.get("freshness_ts")),
+        },
+        "estimated_value": int(round(float(payout.get("netto") or 0.0))),
+        "eta_minutes": eta_minutes,
+        "risk_label": _risk_label(risk_score),
+        "trust_label": _trust_label(trust_score),
+        "payout": {
+            "brutto": int(round(float(payout.get("brutto") or 0.0))),
+            "fee": int(round(float(payout.get("fee") or 0.0))),
+            "netto": int(round(float(payout.get("netto") or 0.0))),
+            "status": _as_text(payout.get("status")),
+            "assumption": bool(payout.get("assumption")),
+            "freshness_ts": _as_text(payout.get("freshness_ts")),
+            "fee_note": _as_text(payout.get("fee_note")),
+            "tariff_meta": dict(payout.get("tariff_meta") or {}),
+        },
+        "scores": {
+            "time_score": time_score,
+            "profit_score": profit_score,
+            "risk_score": risk_score,
+            "trust_score": trust_score,
+        },
+        "warnings": warnings,
+        "secure_fallback_to_safe": bool(secure_fallback_to_safe),
+    }
+    option["scores"]["overall_score"] = _score_overall(
+        time_score=option["scores"]["time_score"],
+        profit_score=option["scores"]["profit_score"],
+        risk_score=option["scores"]["risk_score"],
+        trust_score=option["scores"]["trust_score"],
+    )
+    option["reasoning"] = {
+        "time_text": (
+            "docked i usluga dostepna, cash-in tu i teraz"
+            if docked_here and profile == "SECURE"
+            else f"ETA ~{eta_minutes} min" if eta_minutes is not None else "ETA nieznane"
+        ),
+        "profit_text": (
+            f"netto {_format_cr(option['estimated_value'])} Cr (brutto {_format_cr(option['payout']['brutto'])})"
+        ),
+        "risk_text": (
+            "Hutton guard: bardzo duzy dystans LS"
+            if hutton_guard
+            else "profil ryzyka dopasowany do trybu"
+        ),
+        "trust_text": _trust_label(trust_score),
+    }
+    return option
+
+
+def _build_profiled_options(
+    *,
+    service: str,
+    candidates: list[dict[str, Any]],
+    payout_contract: dict[str, Any],
+    trust_status: str,
+    confidence: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    trust_score = _trust_score(trust_status, confidence)
+    service_norm = _normalize_cash_in_service(service)
+    filtered = filter_candidates_by_service(candidates, service=service_norm)
+    if not filtered:
+        return [], {"enabled": False, "reason": "no_service_candidates", "service": service_norm}
+
+    avoid_carriers_for_uc = bool(config.get("cash_in.avoid_carriers_for_uc", True))
+    carrier_ok_for_fast_mode = bool(config.get("cash_in.carrier_ok_for_fast_mode", True))
+    hutton_threshold_ls = float(config.get("cash_in.hutton_guard_ls_threshold", 500_000.0) or 500_000.0)
+    hutton_penalty_score = int(config.get("cash_in.hutton_guard_score_penalty", 18) or 18)
+
+    docked = bool(getattr(app_state, "is_docked", False))
+    current_station = _as_text(getattr(app_state, "current_station", ""))
+    current_system = _as_text(getattr(app_state, "current_system", ""))
+    secure_candidate: dict[str, Any] | None = None
+    secure_fallback = False
+
+    if docked and current_station:
+        for candidate in filtered:
+            if _candidate_name(candidate).casefold() != current_station.casefold():
+                continue
+            candidate_system = _candidate_system(candidate)
+            if current_system and candidate_system and candidate_system.casefold() != current_system.casefold():
+                continue
+            secure_candidate = candidate
+            break
+
+    safe_sorted = sorted(
+        filtered,
+        key=lambda row: _candidate_sort_key(
+            row,
+            profile="SAFE",
+            service=service_norm,
+            avoid_carriers_for_uc=avoid_carriers_for_uc,
+            carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
+            hutton_threshold_ls=hutton_threshold_ls,
+        ),
+    )
+    fast_sorted = sorted(
+        filtered,
+        key=lambda row: _candidate_sort_key(
+            row,
+            profile="FAST",
+            service=service_norm,
+            avoid_carriers_for_uc=avoid_carriers_for_uc,
+            carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
+            hutton_threshold_ls=hutton_threshold_ls,
+        ),
+    )
+
+    safe_candidate = safe_sorted[0] if safe_sorted else None
+    fast_candidate = fast_sorted[0] if fast_sorted else None
+    if secure_candidate is None:
+        secure_candidate = safe_candidate
+        secure_fallback = docked and safe_candidate is not None
+
+    options: list[dict[str, Any]] = []
+    if secure_candidate is not None:
+        options.append(
+            _build_profile_option(
+                profile="SECURE",
+                candidate=secure_candidate,
+                service=service_norm,
+                trust_score=trust_score,
+                payout_contract=payout_contract,
+                hutton_threshold_ls=hutton_threshold_ls,
+                hutton_penalty_score=hutton_penalty_score,
+                secure_fallback_to_safe=secure_fallback,
+                docked_here=(not secure_fallback and docked),
+            )
+        )
+    if safe_candidate is not None:
+        options.append(
+            _build_profile_option(
+                profile="SAFE",
+                candidate=safe_candidate,
+                service=service_norm,
+                trust_score=trust_score,
+                payout_contract=payout_contract,
+                hutton_threshold_ls=hutton_threshold_ls,
+                hutton_penalty_score=hutton_penalty_score,
+            )
+        )
+    if fast_candidate is not None:
+        options.append(
+            _build_profile_option(
+                profile="FAST",
+                candidate=fast_candidate,
+                service=service_norm,
+                trust_score=trust_score,
+                payout_contract=payout_contract,
+                hutton_threshold_ls=hutton_threshold_ls,
+                hutton_penalty_score=hutton_penalty_score,
+            )
+        )
+
+    if len(options) > 3:
+        options = options[:3]
+
+    ranking_meta = {
+        "enabled": True,
+        "service": service_norm,
+        "profiles": [str((opt or {}).get("profile") or "") for opt in options],
+        "docked": docked,
+        "secure_fallback_to_safe": secure_fallback,
+        "hard_filter_count": len(filtered),
+        "hutton_guard_threshold_ls": hutton_threshold_ls,
+        "avoid_carriers_for_uc": avoid_carriers_for_uc,
+        "carrier_ok_for_fast_mode": carrier_ok_for_fast_mode,
+    }
+    return options, ranking_meta
+
+
 def _station_candidates_confidence(
     *,
     candidates_count: int,
@@ -512,11 +872,15 @@ def _build_station_candidates_runtime(
 
 
 def _signature(payload: CashInAssistantPayload) -> str:
+    station_meta = dict(payload.station_candidates_meta or {})
+    ranking_meta = dict(payload.ranking_meta or {})
     return (
         f"{payload.system}:{int(round(payload.system_value_estimated))}:"
         f"{int(round(payload.session_value_estimated))}:{payload.signal}:"
         f"{payload.scanned_bodies or 'na'}/{payload.total_bodies or 'na'}:"
-        f"{payload.trust_status}:{payload.confidence}"
+        f"{payload.trust_status}:{payload.confidence}:"
+        f"{payload.service}:{station_meta.get('count', 0)}:{station_meta.get('source_status', 'na')}:"
+        f"{ranking_meta.get('hard_filter_count', 0)}"
     )
 
 
@@ -549,6 +913,11 @@ def trigger_cash_in_assistant(
     signal = _as_text(raw.get("cash_in_signal")).lower() or _cash_signal_from_values(system_value, session_value)
     trust_status = _as_text(raw.get("trust_status")).upper() or "TRUST_HIGH"
     confidence = _as_text(raw.get("confidence")).lower() or "mid"
+    service = _normalize_cash_in_service(
+        raw.get("cash_in_service")
+        or raw.get("cashInService")
+        or raw.get("service")
+    )
     tariff_percent = _safe_optional_float(
         raw.get("tariff_percent")
         or raw.get("tariffPercent")
@@ -569,15 +938,6 @@ def trigger_cash_in_assistant(
         or config.get("cash_in.vista_fc_policy_mode", "ASSUMED_100")
     )
 
-    options = _build_options(
-        signal=signal,
-        system_value=system_value,
-        session_value=session_value,
-        trust_status=trust_status,
-        confidence=confidence,
-        scanned_bodies=scanned,
-        total_bodies=total,
-    )
     payout_contract = _build_payout_contract(
         gross_value=session_value,
         tariff_percent=tariff_percent,
@@ -589,6 +949,29 @@ def trigger_cash_in_assistant(
         system=system,
         freshness_ts=freshness_ts,
     )
+    options, ranking_meta = _build_profiled_options(
+        service=service,
+        candidates=station_candidates,
+        payout_contract=payout_contract,
+        trust_status=trust_status,
+        confidence=confidence,
+    )
+    if not options:
+        options = _build_options(
+            signal=signal,
+            system_value=system_value,
+            session_value=session_value,
+            trust_status=trust_status,
+            confidence=confidence,
+            scanned_bodies=scanned,
+            total_bodies=total,
+        )
+        ranking_meta = {
+            "enabled": False,
+            "reason": "fallback_legacy_options",
+            "service": service,
+            "hard_filter_count": 0,
+        }
 
     payload = CashInAssistantPayload(
         system=system,
@@ -604,9 +987,11 @@ def trigger_cash_in_assistant(
         skip_action={"id": "skip", "label": "Pomijam"},
         note="To jest rekomendacja orientacyjna. Ostateczna decyzja nalezy do Ciebie.",
         signature="",
+        service=service,
         payout_contract=payout_contract,
         station_candidates=station_candidates,
         station_candidates_meta=station_candidates_meta,
+        ranking_meta=ranking_meta,
     )
     payload.signature = _signature(payload)
 
