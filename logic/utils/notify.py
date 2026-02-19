@@ -278,9 +278,200 @@ class NotificationDebouncer:
       w logice gameplay (np. FSS_25_WARNED, LOW_FUEL_WARNED) – działa
       jako dodatkowy bezpiecznik na wypadek glitchy w danych.
     """
+    _STATE_SCHEMA_VERSION = 1
+    _STATE_SECTION = "dispatcher_debouncer_windows"
+
     def __init__(self):
         self._last = {}
         self._lock = threading.Lock()
+        self._loaded_from_contract = False
+        self._last_persist_ts = 0.0
+
+    @staticmethod
+    def _retention_ttl_sec() -> float:
+        try:
+            return max(30.0, float(config.get("anti_spam.debouncer.ttl_sec", 900.0)))
+        except Exception:
+            return 900.0
+
+    @staticmethod
+    def _max_keys() -> int:
+        try:
+            return max(64, int(config.get("anti_spam.debouncer.max_keys", 800)))
+        except Exception:
+            return 800
+
+    @staticmethod
+    def _persist_min_interval_sec() -> float:
+        try:
+            return max(0.5, float(config.get("anti_spam.persist_min_interval_sec", 2.0)))
+        except Exception:
+            return 2.0
+
+    @staticmethod
+    def _normalize_key(full_key: Any) -> tuple[str, str | None] | None:
+        if isinstance(full_key, tuple) and len(full_key) == 2:
+            key = str(full_key[0] or "").strip()
+            context_raw = full_key[1]
+            context = str(context_raw).strip() if context_raw is not None else None
+            if not key:
+                return None
+            return key, (context if context else None)
+        key = str(full_key or "").strip()
+        if not key:
+            return None
+        return key, None
+
+    @staticmethod
+    def _as_full_key(key: str, context: str | None) -> Any:
+        return (key, context) if context is not None else key
+
+    @staticmethod
+    def _as_timestamp(value: Any) -> float | None:
+        try:
+            ts = float(value)
+        except Exception:
+            return None
+        if ts <= 0:
+            return None
+        return ts
+
+    def _prune_unlocked(self, now: float | None = None) -> bool:
+        import time
+
+        changed = False
+        ts_now = float(now if now is not None else time.time())
+        ttl = self._retention_ttl_sec()
+        if ttl > 0:
+            stale_before = ts_now - ttl
+            stale_keys = [
+                full_key
+                for full_key, last_ts in list(self._last.items())
+                if self._as_timestamp(last_ts) is None or float(last_ts) < stale_before
+            ]
+            for full_key in stale_keys:
+                self._last.pop(full_key, None)
+                changed = True
+
+        max_keys = self._max_keys()
+        if len(self._last) > max_keys:
+            ordered = sorted(self._last.items(), key=lambda item: float(item[1]))
+            for full_key, _ in ordered[: max(0, len(self._last) - max_keys)]:
+                self._last.pop(full_key, None)
+                changed = True
+        return changed
+
+    def _snapshot_unlocked(self, now: float | None = None) -> dict[str, Any]:
+        import time
+
+        ts_now = float(now if now is not None else time.time())
+        self._prune_unlocked(ts_now)
+        entries: list[dict[str, Any]] = []
+        for full_key, last_ts in self._last.items():
+            normalized = self._normalize_key(full_key)
+            ts = self._as_timestamp(last_ts)
+            if not normalized or ts is None:
+                continue
+            key, context = normalized
+            row: dict[str, Any] = {"key": key, "last_ts": ts}
+            if context is not None:
+                row["context"] = context
+            entries.append(row)
+        entries.sort(key=lambda row: float(row.get("last_ts") or 0.0), reverse=True)
+        return {
+            "schema_version": self._STATE_SCHEMA_VERSION,
+            "updated_at": int(ts_now),
+            "entries": entries[: self._max_keys()],
+        }
+
+    def export_state(self) -> dict[str, Any]:
+        with self._lock:
+            return self._snapshot_unlocked()
+
+    def import_state(self, payload: dict[str, Any], *, replace: bool = True) -> int:
+        import time
+
+        if not isinstance(payload, dict):
+            return 0
+
+        loaded: dict[Any, float] = {}
+        entries = payload.get("entries", [])
+        if isinstance(entries, list):
+            for row in entries:
+                if not isinstance(row, dict):
+                    continue
+                key = str(row.get("key") or "").strip()
+                if not key:
+                    continue
+                raw_ctx = row.get("context")
+                context = str(raw_ctx).strip() if raw_ctx is not None else None
+                if context == "":
+                    context = None
+                ts = self._as_timestamp(row.get("last_ts"))
+                if ts is None:
+                    continue
+                loaded[self._as_full_key(key, context)] = ts
+        elif isinstance(entries, dict):
+            for raw_key, raw_ts in entries.items():
+                key = str(raw_key or "").strip()
+                ts = self._as_timestamp(raw_ts)
+                if key and ts is not None:
+                    loaded[key] = ts
+
+        with self._lock:
+            if replace:
+                self._last = {}
+            self._last.update(loaded)
+            self._prune_unlocked(time.time())
+            self._loaded_from_contract = True
+            return len(self._last)
+
+    def load_from_contract(self, *, force: bool = False) -> dict[str, Any]:
+        with self._lock:
+            if self._loaded_from_contract and not force:
+                return {"loaded": False, "reason": "already_loaded", "keys": len(self._last)}
+
+        payload: dict[str, Any] = {}
+        try:
+            anti_spam_state = config.get_anti_spam_state(default={})
+            raw = anti_spam_state.get(self._STATE_SECTION) if isinstance(anti_spam_state, dict) else {}
+            if isinstance(raw, dict):
+                payload = raw
+        except Exception:
+            payload = {}
+
+        if not payload:
+            with self._lock:
+                self._loaded_from_contract = True
+            return {"loaded": False, "reason": "no_payload", "keys": 0}
+
+        keys = self.import_state(payload, replace=True)
+        return {"loaded": bool(keys), "reason": "ok", "keys": keys}
+
+    def persist_to_contract(self, *, force: bool = False) -> bool:
+        import time
+
+        with self._lock:
+            now = time.time()
+            if (not force) and (self._last_persist_ts > 0.0):
+                if (now - self._last_persist_ts) < self._persist_min_interval_sec():
+                    return False
+            payload = self._snapshot_unlocked(now)
+            self._last_persist_ts = now
+
+        try:
+            config.update_anti_spam_state({self._STATE_SECTION: payload})
+            return True
+        except Exception:
+            return False
+
+    def reset(self, *, persist: bool = False) -> None:
+        with self._lock:
+            self._last = {}
+            self._loaded_from_contract = False
+            self._last_persist_ts = 0.0
+        if persist:
+            self.persist_to_contract(force=True)
 
     def can_send(self, key: str, cooldown_sec: float, context: str | None = None) -> bool:
         """
@@ -289,15 +480,23 @@ class NotificationDebouncer:
         """
         import time
 
+        self.load_from_contract()
         now = time.time()
         full_key = (key, context) if context is not None else key
 
+        changed = False
         with self._lock:
+            if self._prune_unlocked(now):
+                changed = True
             last = self._last.get(full_key, 0)
             if now - last < cooldown_sec:
                 return False
             self._last[full_key] = now
-            return True
+            changed = True
+
+        if changed:
+            self.persist_to_contract()
+        return True
 
     def is_allowed(self, key: str, cooldown_sec: float, context: str | None = None) -> bool:
         """
@@ -311,6 +510,7 @@ class NotificationDebouncer:
 
 # Globalny debouncer do użycia w całej aplikacji
 DEBOUNCER = NotificationDebouncer()
+DEBOUNCER.load_from_contract(force=True)
 
 
 def is_voice_stt_available() -> bool:

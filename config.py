@@ -207,6 +207,17 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "mode.ttl.combat_sec": 45.0,
     "mode.ttl.exploration_sec": 120.0,
     "mode.ttl.mining_sec": 90.0,
+    # F10 anti-spam persistence TTL/limits.
+    "anti_spam.persist_min_interval_sec": 2.0,
+    "anti_spam.debouncer.ttl_sec": 900.0,
+    "anti_spam.debouncer.max_keys": 800,
+    "anti_spam.route_milestone.ttl_sec": 1800.0,
+    "anti_spam.route_milestone.max_routes": 24,
+    "anti_spam.trade_jackpot.ttl_sec": 1200.0,
+    "anti_spam.trade_jackpot.max_stations": 256,
+    "anti_spam.trade_jackpot.max_items": 1024,
+    "anti_spam.smuggler_warned.ttl_sec": 1200.0,
+    "anti_spam.smuggler_warned.max_targets": 512,
     # F7 risk/rebuy value thresholds (credits).
     "risk.threshold.exploration.low_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exploration"]["low"],
     "risk.threshold.exploration.med_cr": DEFAULT_RISK_VALUE_THRESHOLDS["exploration"]["med"],

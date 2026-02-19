@@ -44,6 +44,252 @@ _ACTIVE_ROUTE_TABLE_SCHEMA: str | None = None
 _ACTIVE_ROUTE_TABLE_ROWS: list[dict] = []
 _ACTIVE_ROUTE_TABLE_VISIBLE: list[str] | None = None
 
+_ROUTE_MILESTONE_CACHE_SCHEMA_VERSION = 1
+_ROUTE_MILESTONE_CACHE_SECTION = "route_milestone_progress_cache"
+_ROUTE_MILESTONE_CACHE: dict[str, dict] = {}
+_ROUTE_MILESTONE_CACHE_LOADED = False
+_ROUTE_MILESTONE_CACHE_LAST_PERSIST_TS = 0.0
+
+
+def _route_milestone_ttl_sec() -> float:
+    try:
+        return max(60.0, float(config.get("anti_spam.route_milestone.ttl_sec", 1800.0)))
+    except Exception:
+        return 1800.0
+
+
+def _route_milestone_max_routes() -> int:
+    try:
+        return max(2, int(config.get("anti_spam.route_milestone.max_routes", 24)))
+    except Exception:
+        return 24
+
+
+def _route_milestone_persist_min_interval_sec() -> float:
+    try:
+        return max(0.5, float(config.get("anti_spam.persist_min_interval_sec", 2.0)))
+    except Exception:
+        return 2.0
+
+
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return int(default)
+
+
+def _route_sig_for_cache() -> str:
+    sig = str(_ACTIVE_ROUTE_SIG or "").strip()
+    if sig:
+        return sig
+    if _ACTIVE_ROUTE_SYSTEMS_RAW:
+        try:
+            return str(compute_route_signature(_ACTIVE_ROUTE_SYSTEMS_RAW) or "").strip()
+        except Exception:
+            return ""
+    return ""
+
+
+def _prune_route_milestone_cache(*, now: float | None = None) -> bool:
+    global _ROUTE_MILESTONE_CACHE
+
+    changed = False
+    ts_now = float(now if now is not None else time.time())
+    stale_before = ts_now - _route_milestone_ttl_sec()
+    stale_sigs = []
+    for sig, row in list(_ROUTE_MILESTONE_CACHE.items()):
+        if not isinstance(row, dict):
+            stale_sigs.append(sig)
+            continue
+        updated_at = float(_safe_int(row.get("updated_at"), 0))
+        if updated_at <= 0 or updated_at < stale_before:
+            stale_sigs.append(sig)
+    for sig in stale_sigs:
+        _ROUTE_MILESTONE_CACHE.pop(sig, None)
+        changed = True
+
+    max_routes = _route_milestone_max_routes()
+    if len(_ROUTE_MILESTONE_CACHE) > max_routes:
+        ordered = sorted(
+            _ROUTE_MILESTONE_CACHE.items(),
+            key=lambda item: _safe_int((item[1] or {}).get("updated_at"), 0),
+            reverse=True,
+        )
+        keep = {sig for sig, _ in ordered[:max_routes]}
+        for sig in list(_ROUTE_MILESTONE_CACHE.keys()):
+            if sig not in keep:
+                _ROUTE_MILESTONE_CACHE.pop(sig, None)
+                changed = True
+    return changed
+
+
+def _snapshot_route_milestone_cache(*, now: float | None = None) -> dict:
+    ts_now = float(now if now is not None else time.time())
+    _prune_route_milestone_cache(now=ts_now)
+    routes = [dict(row) for row in _ROUTE_MILESTONE_CACHE.values() if isinstance(row, dict)]
+    routes.sort(key=lambda row: _safe_int(row.get("updated_at"), 0), reverse=True)
+    return {
+        "schema_version": _ROUTE_MILESTONE_CACHE_SCHEMA_VERSION,
+        "updated_at": int(ts_now),
+        "routes": routes[: _route_milestone_max_routes()],
+    }
+
+
+def _persist_route_milestone_cache(*, force: bool = False) -> bool:
+    global _ROUTE_MILESTONE_CACHE_LAST_PERSIST_TS
+
+    now = time.time()
+    if (not force) and (_ROUTE_MILESTONE_CACHE_LAST_PERSIST_TS > 0.0):
+        if (now - _ROUTE_MILESTONE_CACHE_LAST_PERSIST_TS) < _route_milestone_persist_min_interval_sec():
+            return False
+
+    payload = _snapshot_route_milestone_cache(now=now)
+    try:
+        config.update_anti_spam_state({_ROUTE_MILESTONE_CACHE_SECTION: payload})
+        _ROUTE_MILESTONE_CACHE_LAST_PERSIST_TS = now
+        return True
+    except Exception:
+        return False
+
+
+def _load_route_milestone_cache(*, force: bool = False) -> dict:
+    global _ROUTE_MILESTONE_CACHE, _ROUTE_MILESTONE_CACHE_LOADED
+
+    if _ROUTE_MILESTONE_CACHE_LOADED and not force:
+        return {"loaded": False, "reason": "already_loaded", "routes": len(_ROUTE_MILESTONE_CACHE)}
+
+    payload = {}
+    try:
+        anti_spam_state = config.get_anti_spam_state(default={})
+        raw = anti_spam_state.get(_ROUTE_MILESTONE_CACHE_SECTION) if isinstance(anti_spam_state, dict) else {}
+        if isinstance(raw, dict):
+            payload = raw
+    except Exception:
+        payload = {}
+
+    loaded: dict[str, dict] = {}
+    routes = payload.get("routes", [])
+    if isinstance(routes, list):
+        for row in routes:
+            if not isinstance(row, dict):
+                continue
+            sig = str(row.get("route_sig") or "").strip()
+            if not sig:
+                continue
+            loaded[sig] = dict(row)
+
+    _ROUTE_MILESTONE_CACHE = loaded
+    _ROUTE_MILESTONE_CACHE_LOADED = True
+    _prune_route_milestone_cache()
+    return {"loaded": bool(_ROUTE_MILESTONE_CACHE), "reason": "ok", "routes": len(_ROUTE_MILESTONE_CACHE)}
+
+
+def _save_active_milestone_progress_cache(*, force: bool = False) -> bool:
+    route_sig = _route_sig_for_cache()
+    if not route_sig:
+        return False
+    _load_route_milestone_cache()
+
+    has_target = _ACTIVE_MILESTONE_TARGET_INDEX is not None and _ACTIVE_MILESTONE_TARGET_INDEX >= 0
+    announced_values = set()
+    for value in _ACTIVE_MILESTONE_ANNOUNCED:
+        threshold = _safe_int(value, -1)
+        if threshold in {25, 50, 75, 100}:
+            announced_values.add(threshold)
+    announced = sorted(announced_values)
+    if not has_target and not announced:
+        if route_sig in _ROUTE_MILESTONE_CACHE:
+            _ROUTE_MILESTONE_CACHE.pop(route_sig, None)
+            return _persist_route_milestone_cache(force=force)
+        return False
+
+    target_index = _safe_int(_ACTIVE_MILESTONE_TARGET_INDEX, -1)
+    if target_index >= len(_ACTIVE_ROUTE_SYSTEMS):
+        target_index = len(_ACTIVE_ROUTE_SYSTEMS) - 1
+    if target_index < 0:
+        if route_sig in _ROUTE_MILESTONE_CACHE:
+            _ROUTE_MILESTONE_CACHE.pop(route_sig, None)
+            return _persist_route_milestone_cache(force=force)
+        return False
+
+    target_norm = normalize_system_name(_ACTIVE_MILESTONE_TARGET_NORM or "")
+    if not target_norm and 0 <= target_index < len(_ACTIVE_ROUTE_SYSTEMS):
+        target_norm = _ACTIVE_ROUTE_SYSTEMS[target_index]
+
+    target_raw = str(_ACTIVE_MILESTONE_TARGET_RAW or "").strip()
+    if not target_raw and 0 <= target_index < len(_ACTIVE_ROUTE_SYSTEMS_RAW):
+        target_raw = _ACTIVE_ROUTE_SYSTEMS_RAW[target_index]
+
+    row = {
+        "route_sig": route_sig,
+        "target_norm": target_norm,
+        "target_raw": target_raw,
+        "target_index": int(target_index),
+        "start_index": int(max(0, _safe_int(_ACTIVE_MILESTONE_START_INDEX, 0))),
+        "start_remaining": (
+            int(max(1, _safe_int(_ACTIVE_MILESTONE_START_REMAINING, 1)))
+            if _ACTIVE_MILESTONE_START_REMAINING is not None
+            else None
+        ),
+        "announced": announced,
+        "updated_at": int(time.time()),
+    }
+    _ROUTE_MILESTONE_CACHE[route_sig] = row
+    _prune_route_milestone_cache()
+    return _persist_route_milestone_cache(force=force)
+
+
+def _restore_active_milestone_progress_cache() -> bool:
+    global _ACTIVE_MILESTONE_TARGET_NORM, _ACTIVE_MILESTONE_TARGET_RAW
+    global _ACTIVE_MILESTONE_TARGET_INDEX, _ACTIVE_MILESTONE_START_INDEX
+    global _ACTIVE_MILESTONE_ANNOUNCED, _ACTIVE_MILESTONE_START_REMAINING
+
+    route_sig = _route_sig_for_cache()
+    if not route_sig:
+        return False
+    _load_route_milestone_cache()
+    row = _ROUTE_MILESTONE_CACHE.get(route_sig)
+    if not isinstance(row, dict):
+        return False
+
+    target_index = _safe_int(row.get("target_index"), -1)
+    if target_index < 0 or target_index >= len(_ACTIVE_ROUTE_SYSTEMS):
+        return False
+
+    target_norm = normalize_system_name(row.get("target_norm") or "")
+    route_target_norm = _ACTIVE_ROUTE_SYSTEMS[target_index]
+    if target_norm and route_target_norm and target_norm != route_target_norm:
+        return False
+
+    target_raw = str(row.get("target_raw") or "").strip()
+    if not target_raw and 0 <= target_index < len(_ACTIVE_ROUTE_SYSTEMS_RAW):
+        target_raw = _ACTIVE_ROUTE_SYSTEMS_RAW[target_index]
+
+    start_index = _safe_int(row.get("start_index"), 0)
+    start_index = max(0, min(start_index, target_index))
+
+    start_remaining_raw = row.get("start_remaining")
+    start_remaining = None
+    if start_remaining_raw is not None:
+        start_remaining = max(1, _safe_int(start_remaining_raw, 1))
+
+    announced_raw = row.get("announced", [])
+    announced = set()
+    if isinstance(announced_raw, list):
+        for value in announced_raw:
+            threshold = _safe_int(value, 0)
+            if threshold in {25, 50, 75, 100}:
+                announced.add(threshold)
+
+    _ACTIVE_MILESTONE_TARGET_INDEX = target_index
+    _ACTIVE_MILESTONE_TARGET_NORM = route_target_norm
+    _ACTIVE_MILESTONE_TARGET_RAW = target_raw
+    _ACTIVE_MILESTONE_START_INDEX = start_index
+    _ACTIVE_MILESTONE_START_REMAINING = start_remaining
+    _ACTIVE_MILESTONE_ANNOUNCED = announced
+    return True
+
 
 STATUS_TEXTS = {
     "NEXT_HOP_COPIED": "Skopiowano nastepny system.",
@@ -186,6 +432,7 @@ def _set_active_route_data(route, text, sig, source: str | None) -> None:
     _ACTIVE_MILESTONE_START_INDEX = 0
     _ACTIVE_MILESTONE_ANNOUNCED = set()
     _ACTIVE_MILESTONE_START_REMAINING = None
+    _restore_active_milestone_progress_cache()
 
     if _ACTIVE_ROUTE_SYSTEMS_RAW:
         _sync_route_awareness_state(
@@ -555,6 +802,7 @@ def _maybe_emit_milestone_progress(current_index: int, source: str | None) -> No
         and 100 not in _ACTIVE_MILESTONE_ANNOUNCED
     ):
         _ACTIVE_MILESTONE_ANNOUNCED.add(100)
+        _save_active_milestone_progress_cache()
         next_target = ""
         if target_norm != prev_target_norm:
             next_target = target_raw
@@ -586,10 +834,12 @@ def _maybe_emit_milestone_progress(current_index: int, source: str | None) -> No
         _ACTIVE_MILESTONE_START_INDEX = max(0, int(current_index))
         _ACTIVE_MILESTONE_START_REMAINING = None
         _ACTIVE_MILESTONE_ANNOUNCED = set()
+        _save_active_milestone_progress_cache()
 
     if current_index < _ACTIVE_MILESTONE_START_INDEX:
         _ACTIVE_MILESTONE_START_INDEX = current_index
         _ACTIVE_MILESTONE_ANNOUNCED = set()
+        _save_active_milestone_progress_cache()
 
     start = _ACTIVE_MILESTONE_START_INDEX
     total = max(0, target_index - start)
@@ -605,6 +855,7 @@ def _maybe_emit_milestone_progress(current_index: int, source: str | None) -> No
         return
     threshold = max(pending)
     _ACTIVE_MILESTONE_ANNOUNCED.add(threshold)
+    _save_active_milestone_progress_cache()
 
     if threshold >= 100:
         utils.powiedz(
@@ -660,6 +911,7 @@ def _maybe_emit_milestone_progress_from_navroute(current_norm: str, source: str 
         _ACTIVE_MILESTONE_START_INDEX = max(0, int(_ACTIVE_ROUTE_INDEX))
         _ACTIVE_MILESTONE_START_REMAINING = None
         _ACTIVE_MILESTONE_ANNOUNCED = set()
+        _save_active_milestone_progress_cache()
 
     remaining = _get_navroute_remaining_to_target(current_norm, target_norm)
     if remaining is None:
@@ -667,10 +919,12 @@ def _maybe_emit_milestone_progress_from_navroute(current_norm: str, source: str 
 
     if _ACTIVE_MILESTONE_START_REMAINING is None:
         _ACTIVE_MILESTONE_START_REMAINING = max(remaining, 1)
+        _save_active_milestone_progress_cache()
     elif remaining > _ACTIVE_MILESTONE_START_REMAINING:
         # Route was replanned/extended; restart progress window for this milestone.
         _ACTIVE_MILESTONE_START_REMAINING = remaining
         _ACTIVE_MILESTONE_ANNOUNCED = set()
+        _save_active_milestone_progress_cache()
 
     total = max(1, int(_ACTIVE_MILESTONE_START_REMAINING))
     done = max(0, total - int(remaining))
@@ -682,6 +936,7 @@ def _maybe_emit_milestone_progress_from_navroute(current_norm: str, source: str 
         return
     threshold = max(pending)
     _ACTIVE_MILESTONE_ANNOUNCED.add(threshold)
+    _save_active_milestone_progress_cache()
 
     utils.powiedz(
         f"Do boosta. {threshold}% drogi.",
