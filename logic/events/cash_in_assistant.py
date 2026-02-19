@@ -130,6 +130,15 @@ def _safe_optional_float(value: Any) -> float | None:
         return None
 
 
+def _safe_optional_int(value: Any) -> int | None:
+    try:
+        if value is None:
+            return None
+        return int(round(float(value)))
+    except Exception:
+        return None
+
+
 def _normalize_vista_fc_policy_mode(value: Any) -> str:
     mode = _as_text(value).upper()
     if mode == "UNKNOWN":
@@ -142,6 +151,13 @@ def _target_type_normalized(value: Any) -> str:
     if target in {"carrier", "fleet_carrier", "fleetcarrier"}:
         return "fleet_carrier"
     return "non_carrier"
+
+
+def _ui_target_type_label(value: Any) -> str:
+    target = _target_type_normalized(value)
+    if target == "fleet_carrier":
+        return "carrier"
+    return "non-carrier"
 
 
 def _build_breakdown(*, gross_value: float, payout_ratio: float) -> dict[str, int]:
@@ -413,6 +429,122 @@ def _build_options(
     if len(options) > 3:
         options = options[:3]
     return options
+
+
+def _infer_profile_for_option(option: dict[str, Any]) -> str:
+    profile = _as_text(option.get("profile")).upper()
+    if profile in {"SAFE", "FAST", "SECURE"}:
+        return profile
+    option_id = _as_text(option.get("option_id")).lower()
+    strategy = _as_text(option.get("strategy")).lower()
+    combined = f"{option_id}:{strategy}"
+    if "now" in combined or "secure" in combined:
+        return "SECURE"
+    if "later" in combined or "fast" in combined:
+        return "FAST"
+    return "SAFE"
+
+
+def _build_ui_contract_for_option(option: dict[str, Any]) -> dict[str, Any]:
+    profile = _infer_profile_for_option(option)
+    target = dict(option.get("target") or {})
+    target_name = _as_text(target.get("name") or option.get("target_station"))
+    target_system = _as_text(
+        target.get("system_name")
+        or option.get("target_system")
+        or option.get("system")
+    )
+    target_type = _as_text(target.get("type") or option.get("target_type") or "station")
+    target_kind = _ui_target_type_label(target_type)
+
+    target_display = target_system
+    if target_name and target_system:
+        target_display = f"{target_name} ({target_system})"
+    elif target_name:
+        target_display = target_name
+
+    payout_raw = dict(option.get("payout") or {})
+    brutto = _safe_optional_int(payout_raw.get("brutto"))
+    fee = _safe_optional_int(payout_raw.get("fee"))
+    netto = _safe_optional_int(
+        payout_raw.get("netto")
+        if payout_raw.get("netto") is not None
+        else option.get("estimated_value")
+    )
+    payout_unknown = any(item is None for item in (brutto, fee, netto))
+    payout_status = _as_text(payout_raw.get("status")) or ("UNKNOWN" if payout_unknown else "CONFIRMED")
+    payout_assumption = bool(payout_raw.get("assumption"))
+    payout_freshness = _as_text(payout_raw.get("freshness_ts") or target.get("freshness_ts"))
+    tariff_meta = dict(payout_raw.get("tariff_meta") or {})
+    tariff_percent = _safe_optional_float(tariff_meta.get("tariff_percent"))
+    show_tariff_meta = bool(config.get("cash_in.show_tariff_meta", True))
+    assumption_label = ""
+    if payout_assumption or payout_status in {"ASSUMED_100", "UNKNOWN"}:
+        assumption_label = "assumption"
+
+    reasoning = dict(option.get("reasoning") or {})
+    risk_reason = _as_text(reasoning.get("risk_text"))
+    if not risk_reason and (option.get("warnings") or []):
+        risk_reason = ",".join(str(item) for item in (option.get("warnings") or []))
+    why_parts = [
+        _as_text(reasoning.get("time_text")),
+        _as_text(reasoning.get("profit_text")),
+        _as_text(reasoning.get("risk_text")),
+    ]
+    why = " | ".join(part for part in why_parts if part)
+
+    risk_tier = _as_text(option.get("risk_label")).upper() or "UNKNOWN"
+    eta_minutes = _safe_optional_int(option.get("eta_minutes"))
+    return {
+        "label": profile,
+        "target": {
+            "name": target_name,
+            "system": target_system,
+            "kind": target_kind,
+            "display": target_display or "-",
+        },
+        "payout": {
+            "brutto": brutto,
+            "fee": fee,
+            "netto": netto,
+            "unknown": payout_unknown,
+            "status": payout_status,
+            "assumption": payout_assumption,
+            "assumption_label": assumption_label,
+            "freshness_ts": payout_freshness,
+            "fee_note": _as_text(payout_raw.get("fee_note")),
+            "tariff_meta": {
+                "show": show_tariff_meta,
+                "available": bool(tariff_meta.get("available")),
+                "percent": tariff_percent,
+                "applies_to_payout": bool(tariff_meta.get("applies_to_payout")),
+                "note": _as_text(tariff_meta.get("note")),
+            },
+        },
+        "eta": {
+            "minutes": eta_minutes,
+            "text": "-" if eta_minutes is None else f"{eta_minutes} min",
+        },
+        "risk": {
+            "tier": risk_tier,
+            "reason": risk_reason,
+        },
+        "why": why,
+        "actions": ["set_route", "copy_next_hop", "skip"],
+    }
+
+
+def _apply_ui_transparency_contract(options: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for raw in options or []:
+        if not isinstance(raw, dict):
+            continue
+        option = dict(raw)
+        option["profile"] = _infer_profile_for_option(option)
+        option["ui_contract_version"] = "F11_UI_V1"
+        option["ui_contract"] = _build_ui_contract_for_option(option)
+        normalized.append(option)
+    return normalized
 
 
 def _normalize_cash_in_service(value: Any) -> str:
@@ -1261,6 +1393,7 @@ def trigger_cash_in_assistant(
             "service": service,
             "hard_filter_count": 0,
         }
+    options = _apply_ui_transparency_contract(options)
 
     payload = CashInAssistantPayload(
         system=system,

@@ -3,7 +3,7 @@
 import tkinter as tk
 import time
 from tkinter import ttk
-from typing import Callable
+from typing import Any, Callable
 
 import config
 from logic.risk_rebuy_contract import build_risk_rebuy_contract
@@ -560,27 +560,94 @@ class PulpitTab(ttk.Frame):
             self._show_info_panel("cash", "Brak aktywnej sugestii cash-in.")
             return
 
-        options = payload.get("options") or []
+        options = self._cash_options()
         selected_option = self._get_selected_cash_option()
         selected_id = str((selected_option or {}).get("option_id") or "").strip()
+        selected_idx = 0
+        for idx, option in enumerate(options[:3], start=1):
+            option_id = str(option.get("option_id") or "").strip()
+            if selected_id and option_id == selected_id:
+                selected_idx = idx
+                break
+        if selected_idx <= 0 and selected_option:
+            selected_idx = 1
+
+        selected_ui = self._cash_ui_contract(selected_option)
+        selected_label = str(selected_ui.get("label") or "SAFE").strip().upper() or "SAFE"
+        selected_target = str((selected_ui.get("target") or {}).get("display") or "-")
+
         lines = [
             f"System: {payload.get('system') or '-'} | sygnal: {(payload.get('signal') or '-').upper()}",
             (
                 f"Wartosc: {self._fmt_cr(payload.get('system_value_estimated'))} Cr (system) | "
                 f"{self._fmt_cr(payload.get('session_value_estimated'))} Cr (sesja)"
             ),
+            f"Wybrana: {selected_idx}. {selected_label} -> {selected_target}",
         ]
 
+        option_tokens: list[str] = []
         for idx, option in enumerate(options[:3], start=1):
             if not isinstance(option, dict):
                 continue
-            label = str(option.get("label") or f"Opcja {idx}").strip() or f"Opcja {idx}"
-            eta = option.get("eta_minutes")
-            eta_text = "-" if eta is None else str(eta)
-            value_text = self._fmt_cr(option.get("estimated_value"))
             option_id = str(option.get("option_id") or "").strip()
             marker = "*" if selected_id and option_id == selected_id else "-"
-            lines.append(f"{idx}. [{marker}] {label} | ~{value_text} Cr | ETA {eta_text} min")
+            ui = self._cash_ui_contract(option)
+            profile = str(ui.get("label") or f"OPT{idx}").strip().upper() or f"OPT{idx}"
+            target_display = str((ui.get("target") or {}).get("display") or "-")
+            option_tokens.append(f"{idx}[{marker}]{profile}:{target_display}")
+        if option_tokens:
+            lines.append("Opcje: " + " | ".join(option_tokens))
+
+        if selected_option:
+            target = dict(selected_ui.get("target") or {})
+            payout = dict(selected_ui.get("payout") or {})
+            eta = dict(selected_ui.get("eta") or {})
+            risk = dict(selected_ui.get("risk") or {})
+
+            kind = str(target.get("kind") or "-")
+            lines.append(
+                f"Target: {target.get('display') or '-'} | "
+                f"{'carrier' if kind == 'carrier' else 'non-carrier'}"
+            )
+
+            if bool(payout.get("unknown")):
+                payout_line = "Payout: unknown"
+            else:
+                payout_line = (
+                    f"Payout brutto/fee/netto: "
+                    f"{self._fmt_cr(payout.get('brutto'))}/"
+                    f"{self._fmt_cr(payout.get('fee'))}/"
+                    f"{self._fmt_cr(payout.get('netto'))} Cr"
+                )
+            status = str(payout.get("status") or "-")
+            assumption_label = str(payout.get("assumption_label") or "").strip()
+            freshness = str(payout.get("freshness_ts") or "").strip()
+            if assumption_label:
+                payout_line += f" | {assumption_label}"
+            if freshness:
+                payout_line += f" | freshness {freshness}"
+            lines.append(payout_line)
+
+            tariff_meta = dict(payout.get("tariff_meta") or {})
+            if bool(tariff_meta.get("show")) and bool(tariff_meta.get("available")):
+                tariff_text = "-"
+                if tariff_meta.get("percent") is not None:
+                    try:
+                        tariff_text = f"{float(tariff_meta.get('percent')):.1f}%"
+                    except Exception:
+                        tariff_text = str(tariff_meta.get("percent"))
+                lines.append(f"Tariff meta: {tariff_text} (informacyjne)")
+            elif status:
+                lines.append(f"Status payout: {status}")
+
+            eta_text = str(eta.get("text") or "-")
+            risk_tier = str(risk.get("tier") or "-").strip().upper() or "-"
+            risk_reason = str(risk.get("reason") or "-").strip() or "-"
+            lines.append(f"ETA: {eta_text} | Risk: {risk_tier} ({risk_reason})")
+
+            why = str(selected_ui.get("why") or "").strip()
+            if why:
+                lines.append(f"Dlaczego ta opcja: {why}")
 
         note = str(payload.get("note") or "").strip()
         if note:
@@ -599,7 +666,7 @@ class PulpitTab(ttk.Frame):
         self._open_panel(
             domain="cash",
             mode="Data",
-            lines=lines[:6],
+            lines=lines,
             actions=actions[: self._PANEL_MAX_ACTIONS],
         )
 
@@ -711,6 +778,54 @@ class PulpitTab(ttk.Frame):
         if not isinstance(rows, list):
             return []
         return [dict(item) for item in rows if isinstance(item, dict)]
+
+    def _cash_ui_contract(self, option: dict | None) -> dict[str, Any]:
+        row = dict(option or {}) if isinstance(option, dict) else {}
+        ui = row.get("ui_contract")
+        if isinstance(ui, dict):
+            return dict(ui)
+
+        profile = str(row.get("profile") or "SAFE").strip().upper() or "SAFE"
+        target = row.get("target") if isinstance(row.get("target"), dict) else {}
+        target_name = str(target.get("name") or row.get("target_station") or "").strip()
+        target_system = str(target.get("system_name") or row.get("target_system") or row.get("system") or "").strip()
+        target_display = target_system or "-"
+        if target_name and target_system:
+            target_display = f"{target_name} ({target_system})"
+        elif target_name:
+            target_display = target_name
+        target_type = str(target.get("type") or "station").strip().lower()
+        target_kind = "carrier" if "carrier" in target_type else "non-carrier"
+        payout = row.get("payout") if isinstance(row.get("payout"), dict) else {}
+        return {
+            "label": profile,
+            "target": {
+                "display": target_display,
+                "kind": target_kind,
+            },
+            "payout": {
+                "brutto": payout.get("brutto"),
+                "fee": payout.get("fee"),
+                "netto": payout.get("netto") if payout.get("netto") is not None else row.get("estimated_value"),
+                "unknown": False,
+                "status": payout.get("status"),
+                "assumption_label": "assumption" if payout.get("assumption") else "",
+                "freshness_ts": payout.get("freshness_ts"),
+                "tariff_meta": {
+                    "show": bool(config.get("cash_in.show_tariff_meta", True)),
+                    "available": bool((payout.get("tariff_meta") or {}).get("available")),
+                    "percent": (payout.get("tariff_meta") or {}).get("tariff_percent"),
+                },
+            },
+            "eta": {
+                "text": "-" if row.get("eta_minutes") is None else f"{row.get('eta_minutes')} min",
+            },
+            "risk": {
+                "tier": str(row.get("risk_label") or "-").upper(),
+                "reason": str((row.get("reasoning") or {}).get("risk_text") or "-"),
+            },
+            "why": "",
+        }
 
     def _get_selected_cash_option(self) -> dict | None:
         options = self._cash_options()

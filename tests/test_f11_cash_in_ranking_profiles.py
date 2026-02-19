@@ -206,6 +206,81 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
         self.assertTrue(bool(secure.get("secure_fallback_to_safe")))
         self.assertTrue(bool(meta.get("secure_fallback_to_safe")))
 
+    def test_options_include_ui_transparency_contract_shape(self) -> None:
+        candidates = [
+            {
+                "name": "Safe Station",
+                "system_name": "F11_RANKING_SYSTEM",
+                "type": "station",
+                "services": {"has_uc": True, "has_vista": False},
+                "distance_ly": 18.0,
+                "distance_ls": 2_000.0,
+                "source": "EDSM",
+                "freshness_ts": "2026-02-21T12:00:00Z",
+            },
+            {
+                "name": "Fast Carrier",
+                "system_name": "F11_RANKING_SYSTEM",
+                "type": "fleet_carrier",
+                "services": {"has_uc": True, "has_vista": False},
+                "distance_ly": 8.0,
+                "distance_ls": 2_000.0,
+                "source": "SPANSH",
+                "freshness_ts": "2026-02-21T12:00:00Z",
+            },
+        ]
+        options, _ = cash_in_assistant._build_profiled_options(
+            service="uc",
+            candidates=candidates,
+            payout_contract=self._base_payout(),
+            trust_status="TRUST_HIGH",
+            confidence="high",
+        )
+        enriched = cash_in_assistant._apply_ui_transparency_contract(options)
+        self.assertGreaterEqual(len(enriched), 2)
+        first = dict(enriched[0])
+        self.assertEqual(first.get("ui_contract_version"), "F11_UI_V1")
+        ui = dict(first.get("ui_contract") or {})
+        self.assertIn(ui.get("label"), {"SAFE", "FAST", "SECURE"})
+        self.assertIn("target", ui)
+        self.assertIn("payout", ui)
+        self.assertIn("eta", ui)
+        self.assertIn("risk", ui)
+        self.assertEqual(list(ui.get("actions") or []), ["set_route", "copy_next_hop", "skip"])
+
+    def test_ui_contract_marks_vista_fc_assumption_with_freshness(self) -> None:
+        candidates = [
+            {
+                "name": "Vista FC",
+                "system_name": "F11_RANKING_SYSTEM",
+                "type": "fleet_carrier",
+                "services": {"has_uc": False, "has_vista": True},
+                "distance_ly": 3.0,
+                "distance_ls": 900.0,
+                "source": "SPANSH",
+                "freshness_ts": "2026-02-21T13:40:00Z",
+            }
+        ]
+        payout = cash_in_assistant._build_payout_contract(
+            gross_value=10_000_000.0,
+            tariff_percent=None,
+            vista_fc_policy_mode="ASSUMED_100",
+            freshness_ts="2026-02-21T13:40:00Z",
+        )
+        options, _ = cash_in_assistant._build_profiled_options(
+            service="vista",
+            candidates=candidates,
+            payout_contract=payout,
+            trust_status="TRUST_HIGH",
+            confidence="high",
+        )
+        enriched = cash_in_assistant._apply_ui_transparency_contract(options)
+        self.assertGreaterEqual(len(enriched), 1)
+        ui = dict((enriched[0].get("ui_contract") or {}))
+        payout_ui = dict(ui.get("payout") or {})
+        self.assertEqual(str(payout_ui.get("assumption_label") or ""), "assumption")
+        self.assertTrue(bool(str(payout_ui.get("freshness_ts") or "").strip()))
+
 
 if __name__ == "__main__":
     unittest.main()
