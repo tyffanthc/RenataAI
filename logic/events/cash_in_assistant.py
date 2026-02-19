@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import config
@@ -23,6 +23,7 @@ class CashInAssistantPayload:
     skip_action: dict[str, str]
     note: str
     signature: str
+    payout_contract: dict[str, Any] = field(default_factory=dict)
 
 
 def _as_text(value: Any) -> str:
@@ -105,6 +106,164 @@ def _format_cr(value: float) -> str:
         return f"{int(round(float(value))):,}".replace(",", " ")
     except Exception:
         return "0"
+
+
+def _safe_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    text = _as_text(value).replace(",", ".")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except Exception:
+        return None
+
+
+def _normalize_vista_fc_policy_mode(value: Any) -> str:
+    mode = _as_text(value).upper()
+    if mode == "UNKNOWN":
+        return "UNKNOWN"
+    return "ASSUMED_100"
+
+
+def _target_type_normalized(value: Any) -> str:
+    target = _as_text(value).lower()
+    if target in {"carrier", "fleet_carrier", "fleetcarrier"}:
+        return "fleet_carrier"
+    return "non_carrier"
+
+
+def _build_breakdown(*, gross_value: float, payout_ratio: float) -> dict[str, int]:
+    gross = int(round(max(0.0, float(gross_value or 0.0))))
+    ratio = max(0.0, min(1.0, float(payout_ratio)))
+    net = int(round(float(gross) * ratio))
+    fee = max(0, gross - net)
+    return {
+        "brutto": gross,
+        "fee": fee,
+        "netto": net,
+    }
+
+
+def _build_single_payout_contract(
+    *,
+    service: str,
+    target_type: str,
+    gross_value: float,
+    tariff_percent: float | None,
+    vista_fc_policy_mode: str,
+    freshness_ts: str,
+) -> dict[str, Any]:
+    svc = _as_text(service).upper() or "UC"
+    target = _target_type_normalized(target_type)
+    tariff_meta = {
+        "tariff_percent": tariff_percent,
+        "available": tariff_percent is not None,
+        "applies_to_payout": False,
+        "note": "Tariff % jest meta-info i nie zmienia payout UC w MVP.",
+    }
+
+    status = "CONFIRMED"
+    assumption = False
+    fallback_applied = False
+    policy_source = "MVP_POLICY"
+    fee_note = ""
+
+    if svc == "UC":
+        payout_ratio = 0.75 if target == "fleet_carrier" else 1.0
+        if target == "fleet_carrier":
+            fee_note = "UC fee 25% (fixed on carriers)"
+    else:
+        # Vista policy: non-carrier confirmed 100%, FC assumption/unknown with fallback ASSUMED_100.
+        if target == "fleet_carrier":
+            payout_ratio = 1.0
+            if vista_fc_policy_mode == "UNKNOWN":
+                status = "UNKNOWN"
+                fallback_applied = True
+                assumption = True
+                policy_source = "UNKNOWN_FALLBACK_ASSUMED_100"
+                fee_note = "Vista payout unknown; applied ASSUMED_100 fallback."
+            else:
+                status = "ASSUMED_100"
+                assumption = True
+                policy_source = "ASSUMED_100_NEEDS_REVALIDATION"
+                fee_note = "Vista payout on FC is assumption (needs revalidation)."
+        else:
+            payout_ratio = 1.0
+
+    breakdown = _build_breakdown(gross_value=gross_value, payout_ratio=payout_ratio)
+    return {
+        "service": svc,
+        "target_type": target,
+        "status": status,
+        "assumption": assumption,
+        "fallback_applied": fallback_applied,
+        "policy_source": policy_source,
+        "payout_ratio": payout_ratio,
+        "fee_note": fee_note,
+        "freshness_ts": freshness_ts,
+        "tariff_meta": tariff_meta,
+        **breakdown,
+    }
+
+
+def _build_payout_contract(
+    *,
+    gross_value: float,
+    tariff_percent: float | None,
+    vista_fc_policy_mode: str,
+    freshness_ts: str,
+) -> dict[str, Any]:
+    uc_non_carrier = _build_single_payout_contract(
+        service="UC",
+        target_type="non_carrier",
+        gross_value=gross_value,
+        tariff_percent=tariff_percent,
+        vista_fc_policy_mode=vista_fc_policy_mode,
+        freshness_ts=freshness_ts,
+    )
+    uc_fleet_carrier = _build_single_payout_contract(
+        service="UC",
+        target_type="fleet_carrier",
+        gross_value=gross_value,
+        tariff_percent=tariff_percent,
+        vista_fc_policy_mode=vista_fc_policy_mode,
+        freshness_ts=freshness_ts,
+    )
+    vista_non_carrier = _build_single_payout_contract(
+        service="VISTA",
+        target_type="non_carrier",
+        gross_value=gross_value,
+        tariff_percent=tariff_percent,
+        vista_fc_policy_mode=vista_fc_policy_mode,
+        freshness_ts=freshness_ts,
+    )
+    vista_fleet_carrier = _build_single_payout_contract(
+        service="VISTA",
+        target_type="fleet_carrier",
+        gross_value=gross_value,
+        tariff_percent=tariff_percent,
+        vista_fc_policy_mode=vista_fc_policy_mode,
+        freshness_ts=freshness_ts,
+    )
+
+    # Runtime default preview: UC non-carrier (safe baseline in current F4/F11 flow).
+    return {
+        "brutto": uc_non_carrier["brutto"],
+        "fee": uc_non_carrier["fee"],
+        "netto": uc_non_carrier["netto"],
+        "reference_service": "UC",
+        "reference_target_type": "non_carrier",
+        "vista_fc_policy_mode": vista_fc_policy_mode,
+        "tariff_meta": dict(uc_non_carrier.get("tariff_meta") or {}),
+        "contracts": {
+            "uc_non_carrier": uc_non_carrier,
+            "uc_fleet_carrier": uc_fleet_carrier,
+            "vista_non_carrier": vista_non_carrier,
+            "vista_fleet_carrier": vista_fleet_carrier,
+        },
+    }
 
 
 def _build_options(
@@ -284,6 +443,25 @@ def trigger_cash_in_assistant(
     signal = _as_text(raw.get("cash_in_signal")).lower() or _cash_signal_from_values(system_value, session_value)
     trust_status = _as_text(raw.get("trust_status")).upper() or "TRUST_HIGH"
     confidence = _as_text(raw.get("confidence")).lower() or "mid"
+    tariff_percent = _safe_optional_float(
+        raw.get("tariff_percent")
+        or raw.get("tariffPercent")
+        or raw.get("fleet_carrier_tariff_percent")
+        or raw.get("fleetCarrierTariffPercent")
+    )
+    freshness_ts = (
+        _as_text(raw.get("freshness_ts"))
+        or _as_text(raw.get("freshnessTs"))
+        or _as_text(raw.get("station_freshness_ts"))
+        or _as_text(raw.get("stationFreshnessTs"))
+    )
+    vista_fc_policy_mode = _normalize_vista_fc_policy_mode(
+        raw.get("vista_fc_policy_mode")
+        or raw.get("vistaFcPolicyMode")
+        or raw.get("vista_fc_policy")
+        or raw.get("vistaFcPolicy")
+        or config.get("cash_in.vista_fc_policy_mode", "ASSUMED_100")
+    )
 
     options = _build_options(
         signal=signal,
@@ -293,6 +471,12 @@ def trigger_cash_in_assistant(
         confidence=confidence,
         scanned_bodies=scanned,
         total_bodies=total,
+    )
+    payout_contract = _build_payout_contract(
+        gross_value=session_value,
+        tariff_percent=tariff_percent,
+        vista_fc_policy_mode=vista_fc_policy_mode,
+        freshness_ts=freshness_ts,
     )
 
     payload = CashInAssistantPayload(
@@ -309,6 +493,7 @@ def trigger_cash_in_assistant(
         skip_action={"id": "skip", "label": "Pomijam"},
         note="To jest rekomendacja orientacyjna. Ostateczna decyzja nalezy do Ciebie.",
         signature="",
+        payout_contract=payout_contract,
     )
     payload.signature = _signature(payload)
 
@@ -354,4 +539,3 @@ def trigger_cash_in_assistant(
         cooldown_seconds=cooldown_seconds,
     )
     return True
-
