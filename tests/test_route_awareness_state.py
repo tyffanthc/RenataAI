@@ -14,6 +14,7 @@ class RouteAwarenessStateTests(unittest.TestCase):
             "route_target": config.STATE.get("route_target"),
             "route_progress_percent": config.STATE.get("route_progress_percent"),
             "route_next_system": config.STATE.get("route_next_system"),
+            "route_profile": config.STATE.get("route_profile"),
             "route_is_off_route": config.STATE.get("route_is_off_route"),
         }
         self._saved_nav_route = dict(getattr(app_state, "nav_route", {}) or {})
@@ -58,6 +59,7 @@ class RouteAwarenessStateTests(unittest.TestCase):
         self.assertEqual(snap.get("route_mode"), "intent")
         self.assertEqual(snap.get("route_target"), "Colonia")
         self.assertEqual(snap.get("next_system"), "Colonia")
+        self.assertEqual(str(snap.get("route_profile") or ""), "")
         self.assertEqual(int(snap.get("route_progress_percent") or 0), 0)
         self.assertFalse(bool(snap.get("is_off_route")))
 

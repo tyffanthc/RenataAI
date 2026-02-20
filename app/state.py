@@ -149,6 +149,12 @@ class AppState:
         self.route_target: str | None = saved_target
         self.route_progress_percent: int = max(0, min(100, saved_progress))
         self.next_system: str | None = str(config.STATE.get("route_next_system", "") or "").strip() or None
+        saved_route_profile = str(config.STATE.get("route_profile", "") or "").strip().upper()
+        if saved_route_profile == "FAST":
+            saved_route_profile = "FAST_NEUTRON"
+        if saved_route_profile not in {"", "SAFE", "FAST_NEUTRON", "SECURE"}:
+            saved_route_profile = ""
+        self.route_profile: str = saved_route_profile
         self.is_off_route: bool = bool(config.STATE.get("route_is_off_route", False))
         self.inventory = config.STATE.get("inventory", {})
 
@@ -825,6 +831,7 @@ class AppState:
                 "route_target": self.route_target,
                 "route_progress_percent": int(self.route_progress_percent),
                 "next_system": self.next_system,
+                "route_profile": self.route_profile,
                 "is_off_route": bool(self.is_off_route),
             }
 
@@ -835,6 +842,7 @@ class AppState:
         route_target: str | None = None,
         route_progress_percent: int | None = None,
         next_system: str | None = None,
+        route_profile: str | None = None,
         is_off_route: bool | None = None,
         source: str = "runtime",
     ) -> dict:
@@ -870,6 +878,16 @@ class AppState:
                     self.next_system = next_value
                     changed = True
 
+            if route_profile is not None:
+                profile = str(route_profile or "").strip().upper()
+                if profile == "FAST":
+                    profile = "FAST_NEUTRON"
+                if profile not in {"", "SAFE", "FAST_NEUTRON", "SECURE"}:
+                    profile = ""
+                if profile != self.route_profile:
+                    self.route_profile = profile
+                    changed = True
+
             if is_off_route is not None:
                 off_route = bool(is_off_route)
                 if off_route != self.is_off_route:
@@ -880,6 +898,7 @@ class AppState:
             config.STATE["route_target"] = self.route_target or ""
             config.STATE["route_progress_percent"] = int(self.route_progress_percent)
             config.STATE["route_next_system"] = self.next_system or ""
+            config.STATE["route_profile"] = self.route_profile or ""
             config.STATE["route_is_off_route"] = bool(self.is_off_route)
 
             snapshot = {
@@ -887,6 +906,7 @@ class AppState:
                 "route_target": self.route_target,
                 "route_progress_percent": int(self.route_progress_percent),
                 "next_system": self.next_system,
+                "route_profile": self.route_profile,
                 "is_off_route": bool(self.is_off_route),
             }
 
@@ -900,13 +920,20 @@ class AppState:
                     f"target={snapshot['route_target'] or '-'} "
                     f"progress={snapshot['route_progress_percent']} "
                     f"next={snapshot['next_system'] or '-'} "
+                    f"profile={snapshot['route_profile'] or '-'} "
                     f"off_route={snapshot['is_off_route']} "
                     f"source={source}"
                 ),
             )
         return snapshot
 
-    def set_route_intent(self, target: str | None, *, source: str = "intent") -> dict:
+    def set_route_intent(
+        self,
+        target: str | None,
+        *,
+        source: str = "intent",
+        route_profile: str | None = None,
+    ) -> dict:
         normalized = str(target or "").strip()
         if not normalized:
             return self.update_route_awareness(
@@ -914,6 +941,7 @@ class AppState:
                 route_target="",
                 route_progress_percent=0,
                 next_system="",
+                route_profile="",
                 is_off_route=False,
                 source=source,
             )
@@ -922,6 +950,7 @@ class AppState:
             route_target=normalized,
             route_progress_percent=0,
             next_system=normalized,
+            route_profile=route_profile,
             is_off_route=False,
             source=source,
         )

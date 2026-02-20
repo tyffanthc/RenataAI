@@ -1750,7 +1750,11 @@ class RenataApp:
         try:
             from logic.events.cash_in_assistant import (
                 handoff_cash_in_to_route_intent,
+                persist_cash_in_route_profile,
                 resolve_cash_in_option_target,
+            )
+            persist_route_profile = bool(
+                config.get("cash_in.persist_route_profile_to_route_state", False)
             )
 
             if action_norm == "set_route":
@@ -1759,6 +1763,7 @@ class RenataApp:
                     set_route_intent=app_state.set_route_intent,
                     source="cash_in.ui.intent",
                     allow_auto_route=False,
+                    persist_route_profile=persist_route_profile,
                 )
                 if bool(result.get("ok")):
                     target_display = str(result.get("target_display") or result.get("target_system") or "-")
@@ -1778,6 +1783,12 @@ class RenataApp:
                 if not next_hop:
                     self.show_status("Cash-in: brak celu next hop do skopiowania.")
                     return
+                persist_cash_in_route_profile(
+                    option_payload,
+                    update_route_awareness=app_state.update_route_awareness,
+                    source="cash_in.ui.copy_next_hop",
+                    enabled=persist_route_profile,
+                )
                 copied = common.copy_text_to_clipboard(next_hop, context="cash_in.next_hop")
                 if copied:
                     self.show_status(f"Cash-in: skopiowano next hop -> {next_hop}.")

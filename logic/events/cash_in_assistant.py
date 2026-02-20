@@ -964,6 +964,7 @@ def handoff_cash_in_to_route_intent(
     set_route_intent: Any,
     source: str = "cash_in.intent",
     allow_auto_route: bool = False,
+    persist_route_profile: bool = False,
 ) -> dict[str, Any]:
     """
     Handoff contract for Cash-In Assistant -> Route Intent.
@@ -989,6 +990,7 @@ def handoff_cash_in_to_route_intent(
 
     target = resolve_cash_in_option_target(option)
     target_system = str(target.get("target_system") or "").strip()
+    route_profile = str(target.get("route_profile") or "").strip().upper()
     if not target_system:
         return {
             "ok": False,
@@ -997,11 +999,25 @@ def handoff_cash_in_to_route_intent(
             "target_station": str(target.get("target_station") or "").strip(),
             "target_display": str(target.get("target_display") or "").strip(),
             "profile": str(target.get("profile") or "").strip(),
-            "route_profile": str(target.get("route_profile") or "").strip(),
+            "route_profile": route_profile,
+            "route_profile_persisted": False,
             "snapshot": {},
         }
 
-    snapshot = set_route_intent(target_system, source=source) or {}
+    profile_persisted = False
+    if persist_route_profile and route_profile:
+        try:
+            snapshot = set_route_intent(
+                target_system,
+                source=source,
+                route_profile=route_profile,
+            ) or {}
+            profile_persisted = True
+        except TypeError:
+            snapshot = set_route_intent(target_system, source=source) or {}
+    else:
+        snapshot = set_route_intent(target_system, source=source) or {}
+
     return {
         "ok": True,
         "reason": "intent_set",
@@ -1009,7 +1025,52 @@ def handoff_cash_in_to_route_intent(
         "target_station": str(target.get("target_station") or "").strip(),
         "target_display": str(target.get("target_display") or "").strip(),
         "profile": str(target.get("profile") or "").strip(),
-        "route_profile": str(target.get("route_profile") or "").strip(),
+        "route_profile": route_profile,
+        "route_profile_persisted": profile_persisted,
+        "snapshot": snapshot,
+    }
+
+
+def persist_cash_in_route_profile(
+    option: dict[str, Any] | None,
+    *,
+    update_route_awareness: Any,
+    source: str = "cash_in.intent.profile",
+    enabled: bool | None = None,
+) -> dict[str, Any]:
+    target = resolve_cash_in_option_target(option)
+    route_profile = str(target.get("route_profile") or "").strip().upper()
+    is_enabled = bool(
+        config.get("cash_in.persist_route_profile_to_route_state", False)
+        if enabled is None
+        else enabled
+    )
+    if not is_enabled:
+        return {
+            "ok": False,
+            "reason": "persistence_disabled",
+            "route_profile": route_profile,
+            "snapshot": {},
+        }
+    if not callable(update_route_awareness):
+        return {
+            "ok": False,
+            "reason": "awareness_setter_missing",
+            "route_profile": route_profile,
+            "snapshot": {},
+        }
+    if not route_profile:
+        return {
+            "ok": False,
+            "reason": "route_profile_missing",
+            "route_profile": "",
+            "snapshot": {},
+        }
+    snapshot = update_route_awareness(route_profile=route_profile, source=source) or {}
+    return {
+        "ok": True,
+        "reason": "route_profile_persisted",
+        "route_profile": route_profile,
         "snapshot": snapshot,
     }
 

@@ -203,6 +203,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "cash_in.startjump_callout_cooldown_sec": 35.0,
     "cash_in.hotkey_enabled": True,
     "cash_in.hotkey_binding": "Ctrl+Shift+C",
+    "cash_in.persist_route_profile_to_route_state": False,
     "survival_rebuy_awareness_enabled": True,  # F4 survival/rebuy awareness
     "combat_awareness_enabled": True,  # F5 combat awareness baseline
     "dispatcher.f4_voice_priority_window_sec": 12.0,
