@@ -48,6 +48,59 @@ def _log_app_fallback(
     )
 
 
+def _to_tk_hotkey_sequence(binding: str | None) -> str | None:
+    raw = str(binding or "").strip()
+    if not raw:
+        return None
+    if raw.startswith("<") and raw.endswith(">"):
+        return raw
+
+    parts = [part.strip() for part in raw.split("+") if part.strip()]
+    if not parts:
+        return None
+
+    key_token = str(parts[-1] or "").strip()
+    if not key_token:
+        return None
+
+    mod_map = {
+        "ctrl": "Control",
+        "control": "Control",
+        "shift": "Shift",
+        "alt": "Alt",
+        "option": "Alt",
+    }
+    if key_token.lower() in mod_map:
+        return None
+
+    mods = []
+    seen_mods = set()
+    for part in parts[:-1]:
+        mapped = mod_map.get(str(part).strip().lower())
+        if not mapped:
+            return None
+        if mapped in seen_mods:
+            continue
+        seen_mods.add(mapped)
+        mods.append(mapped)
+
+    key_map = {
+        "enter": "Return",
+        "return": "Return",
+        "esc": "Escape",
+        "escape": "Escape",
+        "space": "space",
+        "tab": "Tab",
+    }
+    key_norm = key_token.lower()
+    mapped_key = key_map.get(key_norm, key_token)
+    if len(mapped_key) == 1:
+        mapped_key = mapped_key.lower()
+
+    seq = "-".join([*mods, mapped_key]) if mods else mapped_key
+    return f"<{seq}>"
+
+
 class RenataApp:
     def __init__(self, root):  # <--- ZAUWAŻ WCIĘCIE (TAB)
         self.root = root
@@ -346,11 +399,67 @@ class RenataApp:
         self.root.bind("<ButtonRelease-1>", self.check_focus, add="+")
         self.root.bind("<Configure>", self.on_window_move)
         self._init_window_resize_hitbox()
+        self._bind_cash_in_hotkey()
         self.root.after(100, self.check_queue)
 
     # ------------------------------------------------------------------ #
     #   Helpery do obsługi menu / nawigacji
     # ------------------------------------------------------------------ #
+
+    def _is_app_window_active(self) -> bool:
+        try:
+            return self.root.focus_get() is not None
+        except Exception:
+            return True
+
+    def _bind_cash_in_hotkey(self) -> None:
+        enabled = bool(config.get("cash_in.hotkey_enabled", True))
+        if not enabled:
+            return
+
+        raw_binding = str(config.get("cash_in.hotkey_binding", "Ctrl+Shift+C") or "").strip()
+        tk_binding = _to_tk_hotkey_sequence(raw_binding)
+        if not tk_binding:
+            log_event(
+                "APP",
+                "cash-in hotkey binding invalid",
+                binding=raw_binding or "-",
+            )
+            return
+
+        try:
+            self.root.bind_all(tk_binding, self._on_cash_in_hotkey, add="+")
+            log_event(
+                "APP",
+                "cash-in hotkey bound",
+                binding=raw_binding,
+                tk_binding=tk_binding,
+            )
+        except Exception as exc:
+            _log_app_fallback(
+                "cash_in.hotkey.bind",
+                "failed to bind cash-in hotkey",
+                exc,
+                binding=raw_binding,
+                tk_binding=tk_binding,
+            )
+
+    def _on_cash_in_hotkey(self, _event=None):
+        try:
+            if not bool(config.get("cash_in.hotkey_enabled", True)):
+                return None
+            if not self._is_app_window_active():
+                return None
+            self.on_generate_cash_in_assistant(mode="manual_hotkey")
+            return "break"
+        except Exception as exc:
+            _log_app_fallback(
+                "cash_in.hotkey.handle",
+                "cash-in hotkey handler failed",
+                exc,
+                interval_ms=3000,
+            )
+            return None
 
     def _on_tab_changed(self, _event):
         if hasattr(self.tab_spansh, "hide_suggestions"):
@@ -1579,7 +1688,7 @@ class RenataApp:
                 interval_ms=3000,
             )
 
-    def on_generate_cash_in_assistant(self):
+    def on_generate_cash_in_assistant(self, *, mode: str = "manual"):
         """
         Manual trigger for F4 cash-in assistant baseline.
         """
@@ -1595,7 +1704,7 @@ class RenataApp:
 
             emitted = trigger_cash_in_assistant(
                 gui_ref=self,
-                mode="manual",
+                mode=str(mode or "manual"),
                 summary_payload=summary_payload,
             )
             if not emitted:

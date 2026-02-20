@@ -1324,6 +1324,7 @@ def trigger_cash_in_assistant(
         return False
 
     mode_norm = _as_text(mode).lower() or "auto"
+    is_manual_mode = mode_norm in {"manual", "manual_hotkey"}
     raw = dict(summary_payload or {})
 
     system = _as_text(raw.get("system")) or _as_text(getattr(app_state, "current_system", "")) or "unknown"
@@ -1441,10 +1442,10 @@ def trigger_cash_in_assistant(
 
     dedup_key = (
         f"cash_in_manual:{payload.system}:{payload.signature}"
-        if mode_norm == "manual"
+        if is_manual_mode
         else f"cash_in_auto:{payload.system}:{payload.signature}"
     )
-    cooldown_seconds = 0.0 if mode_norm == "manual" else 90.0
+    cooldown_seconds = 0.0 if is_manual_mode else 90.0
 
     emit_insight(
         context["raw_text"],
