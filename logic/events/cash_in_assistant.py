@@ -34,6 +34,7 @@ class CashInAssistantPayload:
     station_candidates: list[dict[str, Any]] = field(default_factory=list)
     station_candidates_meta: dict[str, Any] = field(default_factory=dict)
     ranking_meta: dict[str, Any] = field(default_factory=dict)
+    edge_case_meta: dict[str, Any] = field(default_factory=dict)
 
 
 def _as_text(value: Any) -> str:
@@ -796,7 +797,17 @@ def _build_profiled_options(
     service_norm = _normalize_cash_in_service(service)
     filtered = filter_candidates_by_service(candidates, service=service_norm)
     if not filtered:
-        return [], {"enabled": False, "reason": "no_service_candidates", "service": service_norm}
+        return [], {
+            "enabled": False,
+            "reason": "no_service_candidates",
+            "service": service_norm,
+            "service_candidates_count": 0,
+            "service_non_carrier_count": 0,
+            "service_carrier_count": 0,
+        }
+
+    non_carrier_count = sum(1 for row in filtered if not _candidate_is_carrier(row))
+    carrier_count = max(0, len(filtered) - non_carrier_count)
 
     avoid_carriers_for_uc = bool(config.get("cash_in.avoid_carriers_for_uc", True))
     carrier_ok_for_fast_mode = bool(config.get("cash_in.carrier_ok_for_fast_mode", True))
@@ -898,6 +909,9 @@ def _build_profiled_options(
         "docked": docked,
         "secure_fallback_to_safe": secure_fallback,
         "hard_filter_count": len(filtered),
+        "service_candidates_count": len(filtered),
+        "service_non_carrier_count": non_carrier_count,
+        "service_carrier_count": carrier_count,
         "hutton_guard_threshold_ls": hutton_threshold_ls,
         "avoid_carriers_for_uc": avoid_carriers_for_uc,
         "carrier_ok_for_fast_mode": carrier_ok_for_fast_mode,
@@ -1017,6 +1031,147 @@ def _station_candidates_confidence(
     return "low"
 
 
+def _is_truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = _as_text(value).lower()
+    return text in {"1", "true", "yes", "y", "on", "enabled"}
+
+
+def _append_unique_reason(reasons: list[str], reason: str) -> None:
+    value = _as_text(reason).lower()
+    if value and value not in reasons:
+        reasons.append(value)
+
+
+def _detect_offline_or_interrupted(raw_payload: dict[str, Any]) -> bool:
+    payload = dict(raw_payload or {})
+    explicit_flags = (
+        "offline",
+        "offline_mode",
+        "runtime_offline",
+        "provider_offline",
+        "providers_offline",
+        "journal_interrupted",
+        "logs_interrupted",
+        "journal_stream_interrupted",
+    )
+    for key in explicit_flags:
+        if _is_truthy(payload.get(key)):
+            return True
+
+    if bool(getattr(app_state, "bootstrap_replay", False)):
+        return True
+
+    has_live_system_event = bool(getattr(app_state, "has_live_system_event", False))
+    if has_live_system_event:
+        return False
+    current_system = _as_text(getattr(app_state, "current_system", ""))
+    if current_system.lower() in {"", "-", "unknown", "nieznany"}:
+        return True
+    return False
+
+
+def _build_edge_case_meta(
+    *,
+    raw_payload: dict[str, Any],
+    service: str,
+    station_candidates: list[dict[str, Any]],
+    station_candidates_meta: dict[str, Any],
+    ranking_meta: dict[str, Any],
+) -> dict[str, Any]:
+    payload = dict(raw_payload or {})
+    service_norm = _normalize_cash_in_service(service)
+    station_meta = dict(station_candidates_meta or {})
+    rank_meta = dict(ranking_meta or {})
+    reasons: list[str] = []
+
+    source_status = _as_text(station_meta.get("source_status")).lower()
+    provider_lookup_status = _as_text(station_meta.get("provider_lookup_status")).lower()
+    provider_lookup_attempted = bool(station_meta.get("provider_lookup_attempted"))
+    candidate_count = int(station_meta.get("count") or 0)
+
+    if source_status == "providers_empty" or provider_lookup_status == "providers_empty":
+        _append_unique_reason(reasons, "providers_empty")
+    if candidate_count <= 0:
+        _append_unique_reason(reasons, "no_station_data")
+
+    profiled_reason = _as_text(rank_meta.get("profiled_reason") or rank_meta.get("reason")).lower()
+    if profiled_reason == "no_service_candidates":
+        _append_unique_reason(reasons, "no_service_candidates")
+
+    service_candidates = filter_candidates_by_service(station_candidates, service=service_norm)
+    non_carrier_candidates = [row for row in service_candidates if not _candidate_is_carrier(row)]
+    carrier_candidates = [row for row in service_candidates if _candidate_is_carrier(row)]
+    if service_candidates and not non_carrier_candidates:
+        _append_unique_reason(reasons, "no_non_carrier")
+
+    if _detect_offline_or_interrupted(payload):
+        _append_unique_reason(reasons, "offline")
+
+    confidence = _as_text(station_meta.get("confidence")).lower() or "low"
+    if any(reason in {"providers_empty", "no_station_data", "no_service_candidates", "offline"} for reason in reasons):
+        confidence = "low"
+    elif "no_non_carrier" in reasons and confidence == "high":
+        confidence = "mid"
+
+    advisory_only = bool(reasons)
+    ui_hint = ""
+    if "offline" in reasons:
+        ui_hint = "Tryb offline/przerwane logi: rekomendacja orientacyjna."
+    elif "providers_empty" in reasons or "no_station_data" in reasons or "no_service_candidates" in reasons:
+        ui_hint = "Dane stacyjne ograniczone: traktuj decyzje orientacyjnie."
+    elif "no_non_carrier" in reasons:
+        if service_norm == "uc":
+            ui_hint = "Brak non-carrier dla UC: carrier moze miec fee 25%."
+        else:
+            ui_hint = "Brak non-carrier dla Vista: sprawdz status payout i freshness."
+
+    return {
+        "reasons": reasons,
+        "advisory_only": advisory_only,
+        "confidence": confidence,
+        "ui_hint": ui_hint,
+        "service": service_norm,
+        "service_candidates_count": len(service_candidates),
+        "service_non_carrier_count": len(non_carrier_candidates),
+        "service_carrier_count": len(carrier_candidates),
+        "source_status": source_status or "none",
+        "provider_lookup_status": provider_lookup_status or "not_attempted",
+        "provider_lookup_attempted": provider_lookup_attempted,
+    }
+
+
+def _append_edge_case_note(base_note: str, edge_case_meta: dict[str, Any]) -> str:
+    note = _as_text(base_note)
+    meta = dict(edge_case_meta or {})
+    reasons = [str(item).strip().lower() for item in (meta.get("reasons") or []) if str(item).strip()]
+    if not reasons:
+        return note
+
+    extra_parts: list[str] = []
+    if "offline" in reasons:
+        extra_parts.append("Tryb offline/przerwane logi: rekomendacja orientacyjna.")
+    if "providers_empty" in reasons or "no_station_data" in reasons or "no_service_candidates" in reasons:
+        extra_parts.append("Brak pelnych danych stacyjnych.")
+    if "no_non_carrier" in reasons:
+        if _as_text(meta.get("service")).lower() == "uc":
+            extra_parts.append("Brak non-carrier dla UC (sprawdz fee carriera).")
+        else:
+            extra_parts.append("Brak non-carrier dla Vista.")
+    if not extra_parts:
+        extra_parts.append("Scenariusz fallback: decyzja orientacyjna.")
+
+    suffix = " ".join(extra_parts).strip()
+    if note:
+        return f"{note} {suffix}".strip()
+    return suffix
+
+
 def _build_station_candidates_runtime(
     *,
     raw_payload: dict[str, Any],
@@ -1024,6 +1179,8 @@ def _build_station_candidates_runtime(
     freshness_ts: str,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     source_status = "none"
+    provider_lookup_attempted = False
+    provider_lookup_status = "not_attempted"
     limit = max(4, int(config.get("cash_in.station_candidates_limit", 24) or 24))
     candidates: list[dict[str, Any]] = []
 
@@ -1052,6 +1209,7 @@ def _build_station_candidates_runtime(
 
     lookup_enabled = bool(config.get("cash_in.station_candidates_lookup_enabled", False))
     if not candidates and lookup_enabled:
+        provider_lookup_attempted = True
         include_edsm = bool(config.get("features.providers.edsm_enabled", False))
         include_spansh = bool(config.get("features.trade.station_lookup_online", False))
         candidates = station_candidates_for_system_from_providers(
@@ -1061,7 +1219,10 @@ def _build_station_candidates_runtime(
             freshness_ts=freshness_ts,
             limit=limit,
         )
-        source_status = "providers" if candidates else "providers_empty"
+        provider_lookup_status = "providers" if candidates else "providers_empty"
+        source_status = provider_lookup_status
+    elif not lookup_enabled:
+        provider_lookup_status = "disabled"
 
     if not candidates:
         current_station = _as_text(getattr(app_state, "current_station", ""))
@@ -1086,6 +1247,8 @@ def _build_station_candidates_runtime(
     vista_candidates = filter_candidates_by_service(candidates, service="vista")
     meta = {
         "source_status": source_status,
+        "provider_lookup_attempted": provider_lookup_attempted,
+        "provider_lookup_status": provider_lookup_status,
         "count": len(candidates),
         "uc_count": len(uc_candidates),
         "vista_count": len(vista_candidates),
@@ -1102,17 +1265,51 @@ def _build_station_candidates_runtime(
 def _signature(payload: CashInAssistantPayload) -> str:
     station_meta = dict(payload.station_candidates_meta or {})
     ranking_meta = dict(payload.ranking_meta or {})
+    edge_meta = dict(payload.edge_case_meta or {})
+    edge_sig = ",".join(
+        str(item).strip().lower()
+        for item in (edge_meta.get("reasons") or [])
+        if str(item).strip()
+    ) or "none"
     return (
         f"{payload.system}:{int(round(payload.system_value_estimated))}:"
         f"{int(round(payload.session_value_estimated))}:{payload.signal}:"
         f"{payload.scanned_bodies or 'na'}/{payload.total_bodies or 'na'}:"
         f"{payload.trust_status}:{payload.confidence}:"
         f"{payload.service}:{station_meta.get('count', 0)}:{station_meta.get('source_status', 'na')}:"
-        f"{ranking_meta.get('hard_filter_count', 0)}"
+        f"{ranking_meta.get('hard_filter_count', 0)}:{edge_sig}"
     )
 
 
 def _build_tts_line(payload: CashInAssistantPayload) -> str:
+    edge_meta = dict(payload.edge_case_meta or {})
+    edge_reasons = {
+        str(item).strip().lower()
+        for item in (edge_meta.get("reasons") or [])
+        if str(item).strip()
+    }
+    if edge_reasons:
+        if "offline" in edge_reasons:
+            return "Cash-in: tryb offline lub przerwane logi. Rekomendacja orientacyjna, sprawdz panel."
+        if "no_non_carrier" in edge_reasons and (
+            "providers_empty" in edge_reasons
+            or "no_station_data" in edge_reasons
+            or "no_service_candidates" in edge_reasons
+        ):
+            if _normalize_cash_in_service(payload.service) == "uc":
+                return "Cash-in: dane stacyjne ograniczone i dla UC widze tylko carriery. Sprawdz panel."
+            return "Cash-in: dane stacyjne ograniczone i brak non-carrier dla Vista. Sprawdz panel."
+        if (
+            "providers_empty" in edge_reasons
+            or "no_station_data" in edge_reasons
+            or "no_service_candidates" in edge_reasons
+        ):
+            return "Cash-in: brak pelnych danych stacyjnych. Rekomendacja orientacyjna, sprawdz panel."
+        if "no_non_carrier" in edge_reasons:
+            if _normalize_cash_in_service(payload.service) == "uc":
+                return "Cash-in: dla UC widze tylko carriery. Sprawdz fee i zdecyduj."
+            return "Cash-in: dla Vista widze tylko carriery. Sprawdz status payout i zdecyduj."
+
     count = len(payload.options or [])
     if count >= 3:
         return "Cash-in: mam trzy opcje w panelu. Rozwaz teraz, po domknieciu systemu albo pozniej."
@@ -1379,6 +1576,7 @@ def trigger_cash_in_assistant(
         confidence=confidence,
     )
     if not options:
+        profiled_reason = _as_text(ranking_meta.get("reason"))
         options = _build_options(
             signal=signal,
             system_value=system_value,
@@ -1391,10 +1589,20 @@ def trigger_cash_in_assistant(
         ranking_meta = {
             "enabled": False,
             "reason": "fallback_legacy_options",
+            "profiled_reason": profiled_reason,
             "service": service,
             "hard_filter_count": 0,
         }
     options = _apply_ui_transparency_contract(options)
+
+    edge_case_meta = _build_edge_case_meta(
+        raw_payload=raw,
+        service=service,
+        station_candidates=station_candidates,
+        station_candidates_meta=station_candidates_meta,
+        ranking_meta=ranking_meta,
+    )
+    confidence = _as_text(edge_case_meta.get("confidence")).lower() or confidence
 
     payload = CashInAssistantPayload(
         system=system,
@@ -1415,7 +1623,9 @@ def trigger_cash_in_assistant(
         station_candidates=station_candidates,
         station_candidates_meta=station_candidates_meta,
         ranking_meta=ranking_meta,
+        edge_case_meta=edge_case_meta,
     )
+    payload.note = _append_edge_case_note(payload.note, edge_case_meta)
     payload.signature = _signature(payload)
 
     if mode_norm == "auto":

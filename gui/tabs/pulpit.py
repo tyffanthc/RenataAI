@@ -598,6 +598,16 @@ class PulpitTab(ttk.Frame):
         if option_tokens:
             lines.append("Opcje: " + " | ".join(option_tokens))
 
+        edge_meta = payload.get("edge_case_meta") if isinstance(payload.get("edge_case_meta"), dict) else {}
+        edge_reasons = [str(item).strip().lower() for item in (edge_meta.get("reasons") or []) if str(item).strip()]
+        if edge_reasons:
+            reasons_text = ",".join(edge_reasons)
+            edge_conf = str(edge_meta.get("confidence") or payload.get("confidence") or "-").strip().upper() or "-"
+            lines.append(f"Fallback: {reasons_text} | Confidence: {edge_conf}")
+            edge_hint = str(edge_meta.get("ui_hint") or "").strip()
+            if edge_hint:
+                lines.append(f"Uwaga: {edge_hint}")
+
         if selected_option:
             target = dict(selected_ui.get("target") or {})
             payout = dict(selected_ui.get("payout") or {})
