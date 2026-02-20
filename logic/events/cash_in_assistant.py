@@ -450,6 +450,32 @@ def _option_has_target(option: dict[str, Any] | None) -> bool:
     return bool(_as_text(ui_target.get("system")))
 
 
+def _option_has_real_target(option: dict[str, Any] | None) -> bool:
+    payload = option if isinstance(option, dict) else {}
+    target = payload.get("target") if isinstance(payload.get("target"), dict) else {}
+    ui = payload.get("ui_contract") if isinstance(payload.get("ui_contract"), dict) else {}
+    ui_target = ui.get("target") if isinstance(ui.get("target"), dict) else {}
+
+    target_system = _as_text(
+        target.get("system_name")
+        or target.get("system")
+        or payload.get("target_system")
+        or payload.get("system")
+        or ui_target.get("system")
+    )
+    target_station = _as_text(
+        target.get("name")
+        or payload.get("target_station")
+        or payload.get("station")
+        or ui_target.get("name")
+    )
+    if not target_system or not target_station:
+        return False
+    if bool(payload.get("fallback_target_attached")):
+        return False
+    return True
+
+
 def _pick_fallback_station_candidate(
     *,
     candidates: list[dict[str, Any]],
@@ -1071,12 +1097,17 @@ def resolve_cash_in_option_target(option: dict[str, Any] | None) -> dict[str, st
     elif profile == "SECURE":
         route_profile = "SECURE"
 
+    is_real = _option_has_real_target(payload)
+    target_quality = "real_target" if is_real else "incomplete_or_placeholder"
+
     return {
         "target_system": target_system,
         "target_station": target_station,
         "target_display": target_display,
         "profile": profile,
         "route_profile": route_profile,
+        "target_is_real": is_real,
+        "target_quality": target_quality,
     }
 
 
@@ -1112,13 +1143,39 @@ def handoff_cash_in_to_route_intent(
 
     target = resolve_cash_in_option_target(option)
     target_system = str(target.get("target_system") or "").strip()
+    target_station = str(target.get("target_station") or "").strip()
+    target_is_real = bool(target.get("target_is_real"))
     route_profile = str(target.get("route_profile") or "").strip().upper()
     if not target_system:
         return {
             "ok": False,
-            "reason": "target_missing",
+            "reason": "target_missing_system",
             "target_system": "",
-            "target_station": str(target.get("target_station") or "").strip(),
+            "target_station": target_station,
+            "target_display": str(target.get("target_display") or "").strip(),
+            "profile": str(target.get("profile") or "").strip(),
+            "route_profile": route_profile,
+            "route_profile_persisted": False,
+            "snapshot": {},
+        }
+    if not target_station:
+        return {
+            "ok": False,
+            "reason": "target_missing_station",
+            "target_system": target_system,
+            "target_station": "",
+            "target_display": str(target.get("target_display") or "").strip(),
+            "profile": str(target.get("profile") or "").strip(),
+            "route_profile": route_profile,
+            "route_profile_persisted": False,
+            "snapshot": {},
+        }
+    if not target_is_real:
+        return {
+            "ok": False,
+            "reason": "target_not_real",
+            "target_system": target_system,
+            "target_station": target_station,
             "target_display": str(target.get("target_display") or "").strip(),
             "profile": str(target.get("profile") or "").strip(),
             "route_profile": route_profile,
@@ -1820,8 +1877,8 @@ def trigger_cash_in_assistant(
         trust_status=trust_status,
         confidence=confidence,
     )
+    profiled_reason = _as_text(ranking_meta.get("reason")).lower()
     if not options:
-        profiled_reason = _as_text(ranking_meta.get("reason"))
         options = _build_options(
             signal=signal,
             system_value=system_value,
@@ -1838,11 +1895,13 @@ def trigger_cash_in_assistant(
             "service": service,
             "hard_filter_count": 0,
         }
-    options = _attach_fallback_target_to_options(
-        options,
-        station_candidates=station_candidates,
-        service=service,
-    )
+    # F12.2: nie podpinamy placeholder targetu dla scenariusza no_service_candidates.
+    if profiled_reason != "no_service_candidates":
+        options = _attach_fallback_target_to_options(
+            options,
+            station_candidates=station_candidates,
+            service=service,
+        )
     if any(bool((opt or {}).get("fallback_target_attached")) for opt in options):
         ranking_meta["fallback_target_attached"] = True
     options = _apply_ui_transparency_contract(options)

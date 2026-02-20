@@ -1775,12 +1775,14 @@ class RenataApp:
                     self.show_status(f"Cash-in: ustawiono intent trasy -> {target_display} ({profile_hint}).")
                 else:
                     reason = str(result.get("reason") or "").strip().lower()
-                    if reason == "target_missing":
+                    if reason in {"target_missing_system", "target_missing_station", "target_not_real"}:
                         if bool(config.get("cash_in.station_candidates_lookup_enabled", False)):
-                            self.show_status("Cash-in: brak celu trasy w tej sugestii (dane stacyjne niepelne).")
+                            self.show_status(
+                                "Cash-in: brak realnego celu trasy (system+stacja) w tej sugestii."
+                            )
                         else:
                             self.show_status(
-                                "Cash-in: brak celu trasy. Wlacz lookup stacji online albo odswiez sugestie."
+                                "Cash-in: brak realnego celu trasy. Wlacz lookup stacji online albo odswiez sugestie."
                             )
                     else:
                         self.show_status("Cash-in: brak celu do ustawienia intentu trasy.")
@@ -1789,11 +1791,14 @@ class RenataApp:
             if action_norm == "copy_next_hop":
                 target = resolve_cash_in_option_target(option_payload)
                 next_hop = str(target.get("target_system") or "").strip()
-                if not next_hop:
+                if not bool(target.get("target_is_real")):
                     if bool(config.get("cash_in.station_candidates_lookup_enabled", False)):
-                        self.show_status("Cash-in: brak next hop (dane stacyjne niepelne).")
+                        self.show_status("Cash-in: brak realnego next hop (system+stacja).")
                     else:
-                        self.show_status("Cash-in: brak next hop. Wlacz lookup stacji online albo odswiez sugestie.")
+                        self.show_status("Cash-in: brak realnego next hop. Wlacz lookup stacji online albo odswiez sugestie.")
+                    return
+                if not next_hop:
+                    self.show_status("Cash-in: brak next hop.")
                     return
                 persist_cash_in_route_profile(
                     option_payload,

@@ -78,7 +78,7 @@ class F11CashInRouteHandoffTests(unittest.TestCase):
             allow_auto_route=False,
         )
         self.assertFalse(bool(out.get("ok")))
-        self.assertEqual(out.get("reason"), "target_missing")
+        self.assertEqual(out.get("reason"), "target_missing_system")
 
     def test_handoff_does_not_mutate_route_manager(self) -> None:
         route_manager.set_route(["A", "B", "C"], "trade")
@@ -134,7 +134,7 @@ class F11CashInRouteHandoffTests(unittest.TestCase):
         self.assertEqual(str(snap.get("route_mode") or ""), "idle")
         self.assertEqual(str(snap.get("route_target") or ""), "")
 
-    def test_fallback_legacy_options_attach_target_from_station_candidates(self) -> None:
+    def test_fallback_legacy_options_do_not_attach_placeholder_target(self) -> None:
         payload = {
             "system": "F11_HOFFMAN",
             "cash_in_signal": "sredni",
@@ -160,8 +160,8 @@ class F11CashInRouteHandoffTests(unittest.TestCase):
         self.assertGreaterEqual(len(options), 1)
         first = dict(options[0])
         target = dict(first.get("target") or {})
-        self.assertEqual(str(target.get("system_name") or ""), "Diagaundri")
-        self.assertEqual(str(target.get("name") or ""), "Fallback Hub")
+        self.assertEqual(str(target.get("system_name") or ""), "")
+        self.assertEqual(str(target.get("name") or ""), "")
 
         out = cash_in_assistant.handoff_cash_in_to_route_intent(
             first,
@@ -169,8 +169,8 @@ class F11CashInRouteHandoffTests(unittest.TestCase):
             source="test.cash_in.fallback_target",
             allow_auto_route=False,
         )
-        self.assertTrue(bool(out.get("ok")))
-        self.assertEqual(str(out.get("target_system") or ""), "Diagaundri")
+        self.assertFalse(bool(out.get("ok")))
+        self.assertEqual(str(out.get("reason") or ""), "target_missing_system")
 
 
 if __name__ == "__main__":
