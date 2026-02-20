@@ -61,6 +61,7 @@ from logic import hmc_route as hmc_logic  # type: ignore
 from logic import exomastery as exomastery_logic  # type: ignore
 from logic import trade as trade_logic  # type: ignore
 from logic import cargo_value_estimator  # type: ignore
+from logic.utils import edsm_client as edsm_client_utils  # type: ignore
 from logic.rows_normalizer import normalize_trade_rows
 from logic.exit_summary import ExitSummaryData
 from logic.risk_rebuy_contract import build_risk_rebuy_contract
@@ -4270,6 +4271,7 @@ def test_f12_quality_gates_and_smoke_baseline(ctx: TestContext) -> None:
     ctx.clear_queue()
     ctx.reset_debouncer()
     reset_dispatcher_runtime_state()
+    edsm_client_utils._reset_provider_resilience_state_for_tests()
 
     saved_system = str(getattr(app_state, "current_system", "") or "")
     saved_station = str(getattr(app_state, "current_station", "") or "")
@@ -4281,6 +4283,8 @@ def test_f12_quality_gates_and_smoke_baseline(ctx: TestContext) -> None:
     saved_cross_enabled = settings.get("cash_in.cross_system_discovery_enabled")
     saved_cross_radius = settings.get("cash_in.cross_system_radius_ly")
     saved_cross_max = settings.get("cash_in.cross_system_max_systems")
+    saved_swr_enabled = settings.get("cash_in.swr_cache_enabled")
+    saved_local_fallback_enabled = settings.get("cash_in.local_known_fallback_enabled")
     saved_edsm_enabled = settings.get("features.providers.edsm_enabled")
     saved_system_lookup = settings.get("features.providers.system_lookup_online")
     saved_station_lookup = settings.get("features.trade.station_lookup_online")
@@ -4293,11 +4297,15 @@ def test_f12_quality_gates_and_smoke_baseline(ctx: TestContext) -> None:
         settings["features.providers.edsm_enabled"] = True
         settings["features.providers.system_lookup_online"] = True
         settings["features.trade.station_lookup_online"] = True
+        settings["cash_in.swr_cache_enabled"] = False
+        settings["cash_in.local_known_fallback_enabled"] = False
 
         app_state.current_system = "SMOKE_F12_ORIGIN"
         app_state.current_station = ""
         app_state.last_cash_in_signature = None
         app_state.cash_in_skip_signature = None
+        cash_in_events._reset_cash_in_swr_cache_for_tests()
+        cash_in_events._reset_cash_in_local_known_cache_for_tests()
 
         base_payload = {
             "system": "SMOKE_F12_ORIGIN",
@@ -4454,6 +4462,249 @@ def test_f12_quality_gates_and_smoke_baseline(ctx: TestContext) -> None:
         settings["features.providers.edsm_enabled"] = saved_edsm_enabled
         settings["features.providers.system_lookup_online"] = saved_system_lookup
         settings["features.trade.station_lookup_online"] = saved_station_lookup
+        settings["cash_in.swr_cache_enabled"] = saved_swr_enabled
+        settings["cash_in.local_known_fallback_enabled"] = saved_local_fallback_enabled
+        cash_in_events._reset_cash_in_swr_cache_for_tests()
+        cash_in_events._reset_cash_in_local_known_cache_for_tests()
+        edsm_client_utils._reset_provider_resilience_state_for_tests()
+
+
+def test_f13_quality_gates_and_smoke_baseline(ctx: TestContext) -> None:
+    """
+    Smoke dla paczki F13:
+    - outage provider + stale SWR fallback (jawny status i reasony),
+    - providers-empty + local-known fallback,
+    - recovery providera wraca do normalnego trybu `providers`.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    reset_dispatcher_runtime_state()
+
+    saved_system = str(getattr(app_state, "current_system", "") or "")
+    saved_station = str(getattr(app_state, "current_station", "") or "")
+    saved_last_sig = getattr(app_state, "last_cash_in_signature", None)
+    saved_skip_sig = getattr(app_state, "cash_in_skip_signature", None)
+    settings = config.config._settings  # type: ignore[attr-defined]
+    saved_lookup_enabled = settings.get("cash_in.station_candidates_lookup_enabled")
+    saved_cross_enabled = settings.get("cash_in.cross_system_discovery_enabled")
+    saved_edsm_enabled = settings.get("features.providers.edsm_enabled")
+    saved_station_lookup = settings.get("features.trade.station_lookup_online")
+    saved_swr_enabled = settings.get("cash_in.swr_cache_enabled")
+    saved_swr_fresh_ttl = settings.get("cash_in.swr_cache_fresh_ttl_sec")
+    saved_swr_stale_ttl = settings.get("cash_in.swr_cache_stale_ttl_sec")
+    saved_local_enabled = settings.get("cash_in.local_known_fallback_enabled")
+
+    try:
+        settings["cash_in.station_candidates_lookup_enabled"] = True
+        settings["cash_in.cross_system_discovery_enabled"] = False
+        settings["features.providers.edsm_enabled"] = True
+        settings["features.trade.station_lookup_online"] = False
+        settings["cash_in.swr_cache_enabled"] = True
+        settings["cash_in.swr_cache_fresh_ttl_sec"] = 0.01
+        settings["cash_in.swr_cache_stale_ttl_sec"] = 3600.0
+        settings["cash_in.local_known_fallback_enabled"] = True
+
+        app_state.current_system = "SMOKE_F13_ORIGIN"
+        app_state.current_station = ""
+        app_state.last_cash_in_signature = None
+        app_state.cash_in_skip_signature = None
+        cash_in_events._reset_cash_in_swr_cache_for_tests()
+        cash_in_events._reset_cash_in_local_known_cache_for_tests()
+
+        payload = {
+            "system": "SMOKE_F13_ORIGIN",
+            "cash_in_signal": "wysoki",
+            "cash_in_system_estimated": 7_900_000.0,
+            "cash_in_session_estimated": 25_300_000.0,
+            "confidence": "high",
+            "service": "uc",
+        }
+        seed_candidates = [
+            {
+                "name": "SMOKE_F13_UC_SEED",
+                "system_name": "SMOKE_F13_REMOTE_A",
+                "type": "station",
+                "services": {"has_uc": True, "has_vista": False},
+                "distance_ly": 33.0,
+                "distance_ls": 1400.0,
+                "source": "EDSM",
+            }
+        ]
+        recovered_candidates = [
+            {
+                "name": "SMOKE_F13_UC_RECOVERY",
+                "system_name": "SMOKE_F13_REMOTE_B",
+                "type": "station",
+                "services": {"has_uc": True, "has_vista": False},
+                "distance_ly": 19.0,
+                "distance_ls": 900.0,
+                "source": "EDSM",
+            }
+        ]
+        snapshot_503 = {
+            "provider": "EDSM",
+            "endpoints": {
+                "station_details": {
+                    "circuit_open": False,
+                    "last_error_code": 503,
+                    "provider_down_503_count": 2,
+                },
+                "nearby_systems": {
+                    "circuit_open": False,
+                    "last_error_code": 0,
+                    "provider_down_503_count": 0,
+                },
+            },
+        }
+
+        # A) stale SWR fallback podczas outage 503
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                side_effect=[seed_candidates, []],
+            ),
+            patch(
+                "logic.events.cash_in_assistant.edsm_provider_resilience_snapshot",
+                side_effect=[{}, snapshot_503],
+            ),
+        ):
+            ok_seed = cash_in_events.trigger_cash_in_assistant(mode="manual", summary_payload=payload, gui_ref=None)
+            time.sleep(0.05)
+            ok_stale = cash_in_events.trigger_cash_in_assistant(mode="manual", summary_payload=payload, gui_ref=None)
+        assert ok_seed is True and ok_stale is True, "F13 smoke: expected stale-fallback emit flow"
+
+        queue_batch = ctx.drain_queue()
+        payload_items = [
+            item[1]
+            for item in queue_batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+        ]
+        assert len(payload_items) >= 2, "F13 smoke: expected 2 payloads for stale flow"
+        stale_payload = dict(payload_items[-1] or {})
+        stale_meta = dict(stale_payload.get("station_candidates_meta") or {})
+        stale_edge = dict(stale_payload.get("edge_case_meta") or {})
+        stale_reasons = {
+            str(item).strip().lower()
+            for item in (stale_edge.get("reasons") or [])
+            if str(item).strip()
+        }
+        assert bool(stale_meta.get("swr_cache_used")), f"F13 smoke: expected swr_cache_used, got {stale_meta}"
+        assert str(stale_meta.get("swr_freshness") or "") == "STALE", (
+            f"F13 smoke: expected STALE freshness, got {stale_meta}"
+        )
+        assert str(stale_meta.get("provider_lookup_status") or "") == "provider_down_503", (
+            f"F13 smoke: expected provider_down_503 status, got {stale_meta}"
+        )
+        assert {"stale_cache", "provider_down_503"}.issubset(stale_reasons), (
+            f"F13 smoke: expected stale+503 reasons, got {stale_edge}"
+        )
+
+        # B) local-known fallback dla providers_empty (bez SWR)
+        ctx.clear_queue()
+        app_state.last_cash_in_signature = None
+        app_state.cash_in_skip_signature = None
+        settings["cash_in.swr_cache_enabled"] = False
+        cash_in_events._reset_cash_in_swr_cache_for_tests()
+        cash_in_events._reset_cash_in_local_known_cache_for_tests()
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                side_effect=[seed_candidates, []],
+            ),
+            patch(
+                "logic.events.cash_in_assistant.edsm_provider_resilience_snapshot",
+                side_effect=[{}, {}],
+            ),
+        ):
+            ok_local_seed = cash_in_events.trigger_cash_in_assistant(
+                mode="manual",
+                summary_payload=payload,
+                gui_ref=None,
+            )
+            ok_local = cash_in_events.trigger_cash_in_assistant(mode="manual", summary_payload=payload, gui_ref=None)
+        assert ok_local_seed is True and ok_local is True, "F13 smoke: expected local-known fallback emit flow"
+
+        queue_batch = ctx.drain_queue()
+        payload_items = [
+            item[1]
+            for item in queue_batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+        ]
+        assert len(payload_items) >= 2, "F13 smoke: expected 2 payloads for local-known flow"
+        local_payload = dict(payload_items[-1] or {})
+        local_meta = dict(local_payload.get("station_candidates_meta") or {})
+        local_edge = dict(local_payload.get("edge_case_meta") or {})
+        local_reasons = {
+            str(item).strip().lower()
+            for item in (local_edge.get("reasons") or [])
+            if str(item).strip()
+        }
+        assert bool(local_meta.get("local_known_fallback_used")), (
+            f"F13 smoke: expected local-known fallback flag, got {local_meta}"
+        )
+        assert str(local_meta.get("source_status") or "") == "local_known_fallback", (
+            f"F13 smoke: expected local_known_fallback source, got {local_meta}"
+        )
+        assert str(local_meta.get("provider_lookup_status") or "") == "providers_empty", (
+            f"F13 smoke: expected providers_empty status, got {local_meta}"
+        )
+        assert {"local_known_fallback", "providers_empty"}.issubset(local_reasons), (
+            f"F13 smoke: expected local-known + providers_empty reasons, got {local_edge}"
+        )
+
+        # C) recovery providera -> normalny source_status providers (bez fallbacku)
+        ctx.clear_queue()
+        app_state.last_cash_in_signature = None
+        app_state.cash_in_skip_signature = None
+        settings["cash_in.swr_cache_enabled"] = True
+        cash_in_events._reset_cash_in_swr_cache_for_tests()
+        cash_in_events._reset_cash_in_local_known_cache_for_tests()
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                side_effect=[seed_candidates, [], recovered_candidates],
+            ),
+            patch(
+                "logic.events.cash_in_assistant.edsm_provider_resilience_snapshot",
+                side_effect=[{}, snapshot_503, {}],
+            ),
+        ):
+            self_ok_1 = cash_in_events.trigger_cash_in_assistant(mode="manual", summary_payload=payload, gui_ref=None)
+            time.sleep(0.05)
+            self_ok_2 = cash_in_events.trigger_cash_in_assistant(mode="manual", summary_payload=payload, gui_ref=None)
+            self_ok_3 = cash_in_events.trigger_cash_in_assistant(mode="manual", summary_payload=payload, gui_ref=None)
+        assert self_ok_1 and self_ok_2 and self_ok_3, "F13 smoke: expected recovery flow emits"
+
+        queue_batch = ctx.drain_queue()
+        payload_items = [
+            item[1]
+            for item in queue_batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+        ]
+        assert len(payload_items) >= 3, "F13 smoke: expected 3 payloads for recovery flow"
+        recovered_payload = dict(payload_items[-1] or {})
+        recovered_meta = dict(recovered_payload.get("station_candidates_meta") or {})
+        assert str(recovered_meta.get("source_status") or "") == "providers", (
+            f"F13 smoke: expected providers after recovery, got {recovered_meta}"
+        )
+        assert bool(recovered_meta.get("swr_cache_used")) is False, (
+            f"F13 smoke: expected no swr-cache in recovered lookup, got {recovered_meta}"
+        )
+    finally:
+        app_state.current_system = saved_system
+        app_state.current_station = saved_station
+        app_state.last_cash_in_signature = saved_last_sig
+        app_state.cash_in_skip_signature = saved_skip_sig
+        settings["cash_in.station_candidates_lookup_enabled"] = saved_lookup_enabled
+        settings["cash_in.cross_system_discovery_enabled"] = saved_cross_enabled
+        settings["features.providers.edsm_enabled"] = saved_edsm_enabled
+        settings["features.trade.station_lookup_online"] = saved_station_lookup
+        settings["cash_in.swr_cache_enabled"] = saved_swr_enabled
+        settings["cash_in.swr_cache_fresh_ttl_sec"] = saved_swr_fresh_ttl
+        settings["cash_in.swr_cache_stale_ttl_sec"] = saved_swr_stale_ttl
+        settings["cash_in.local_known_fallback_enabled"] = saved_local_enabled
+        cash_in_events._reset_cash_in_swr_cache_for_tests()
+        cash_in_events._reset_cash_in_local_known_cache_for_tests()
 
 
 # --- RUNNER ------------------------------------------------------------------
@@ -4539,6 +4790,7 @@ def run_all_tests() -> int:
         ("test_f10_quality_gates_and_smoke_baseline", test_f10_quality_gates_and_smoke_baseline),
         ("test_f11_quality_gates_and_smoke_baseline", test_f11_quality_gates_and_smoke_baseline),
         ("test_f12_quality_gates_and_smoke_baseline", test_f12_quality_gates_and_smoke_baseline),
+        ("test_f13_quality_gates_and_smoke_baseline", test_f13_quality_gates_and_smoke_baseline),
         ("test_route_planner_modules_smoke", test_route_planner_modules_smoke),
     ]
 

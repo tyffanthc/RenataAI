@@ -14,6 +14,7 @@ import sys
 import json
 import traceback
 import queue
+import time
 from typing import Callable, List, Tuple
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -883,6 +884,8 @@ def test_journal_f12_cross_system_cash_in_route_gate(ctx: TestContext) -> None:
     saved_station_lookup = settings.get("features.trade.station_lookup_online")
     saved_cross_radius = settings.get("cash_in.cross_system_radius_ly")
     saved_cross_max = settings.get("cash_in.cross_system_max_systems")
+    saved_swr_enabled = settings.get("cash_in.swr_cache_enabled")
+    saved_local_fallback_enabled = settings.get("cash_in.local_known_fallback_enabled")
 
     try:
         settings["cash_in.station_candidates_lookup_enabled"] = True
@@ -892,6 +895,8 @@ def test_journal_f12_cross_system_cash_in_route_gate(ctx: TestContext) -> None:
         settings["features.trade.station_lookup_online"] = True
         settings["cash_in.cross_system_radius_ly"] = 120.0
         settings["cash_in.cross_system_max_systems"] = 8
+        settings["cash_in.swr_cache_enabled"] = False
+        settings["cash_in.local_known_fallback_enabled"] = False
 
         ctx.clear_queue()
         ctx.reset_debouncer()
@@ -900,6 +905,8 @@ def test_journal_f12_cross_system_cash_in_route_gate(ctx: TestContext) -> None:
         app_state.current_station = ""
         app_state.last_cash_in_signature = None
         app_state.cash_in_skip_signature = None
+        cash_in_events._reset_cash_in_swr_cache_for_tests()
+        cash_in_events._reset_cash_in_local_known_cache_for_tests()
 
         payload = {
             "system": "SMOKE_T2_F12_ORIGIN_SYS",
@@ -1029,10 +1036,192 @@ def test_journal_f12_cross_system_cash_in_route_gate(ctx: TestContext) -> None:
         settings["features.trade.station_lookup_online"] = saved_station_lookup
         settings["cash_in.cross_system_radius_ly"] = saved_cross_radius
         settings["cash_in.cross_system_max_systems"] = saved_cross_max
+        settings["cash_in.swr_cache_enabled"] = saved_swr_enabled
+        settings["cash_in.local_known_fallback_enabled"] = saved_local_fallback_enabled
         app_state.current_system = saved_system
         app_state.current_station = saved_station
         app_state.last_cash_in_signature = saved_last_sig
         app_state.cash_in_skip_signature = saved_skip_sig
+        cash_in_events._reset_cash_in_swr_cache_for_tests()
+        cash_in_events._reset_cash_in_local_known_cache_for_tests()
+
+
+def test_journal_f13_provider_resilience_fallback_matrix(ctx: TestContext) -> None:
+    """
+    F13 journal smoke:
+    - outage 503 + stale SWR fallback daje jawne reasony i niska confidence,
+    - providers-empty + local-known fallback daje jawny status local fallback.
+    """
+    settings = config.config._settings  # type: ignore[attr-defined]
+    saved_system = str(getattr(app_state, "current_system", "") or "")
+    saved_station = str(getattr(app_state, "current_station", "") or "")
+    saved_last_sig = getattr(app_state, "last_cash_in_signature", None)
+    saved_skip_sig = getattr(app_state, "cash_in_skip_signature", None)
+    saved_lookup_enabled = settings.get("cash_in.station_candidates_lookup_enabled")
+    saved_cross_enabled = settings.get("cash_in.cross_system_discovery_enabled")
+    saved_edsm_enabled = settings.get("features.providers.edsm_enabled")
+    saved_station_lookup = settings.get("features.trade.station_lookup_online")
+    saved_swr_enabled = settings.get("cash_in.swr_cache_enabled")
+    saved_swr_fresh_ttl = settings.get("cash_in.swr_cache_fresh_ttl_sec")
+    saved_swr_stale_ttl = settings.get("cash_in.swr_cache_stale_ttl_sec")
+    saved_local_enabled = settings.get("cash_in.local_known_fallback_enabled")
+
+    try:
+        settings["cash_in.station_candidates_lookup_enabled"] = True
+        settings["cash_in.cross_system_discovery_enabled"] = False
+        settings["features.providers.edsm_enabled"] = True
+        settings["features.trade.station_lookup_online"] = False
+        settings["cash_in.swr_cache_enabled"] = True
+        settings["cash_in.swr_cache_fresh_ttl_sec"] = 0.01
+        settings["cash_in.swr_cache_stale_ttl_sec"] = 3600.0
+        settings["cash_in.local_known_fallback_enabled"] = True
+
+        ctx.clear_queue()
+        ctx.reset_debouncer()
+        reset_dispatcher_runtime_state()
+        app_state.current_system = "SMOKE_T2_F13_SYS"
+        app_state.current_station = ""
+        app_state.last_cash_in_signature = None
+        app_state.cash_in_skip_signature = None
+        cash_in_events._reset_cash_in_swr_cache_for_tests()
+        cash_in_events._reset_cash_in_local_known_cache_for_tests()
+
+        payload = {
+            "system": "SMOKE_T2_F13_SYS",
+            "cash_in_signal": "wysoki",
+            "cash_in_system_estimated": 6_900_000.0,
+            "cash_in_session_estimated": 23_100_000.0,
+            "confidence": "high",
+            "service": "uc",
+        }
+        seed_rows = [
+            {
+                "name": "SMOKE_T2_F13_SEED",
+                "system_name": "SMOKE_T2_F13_REMOTE",
+                "type": "station",
+                "services": {"has_uc": True, "has_vista": False},
+                "distance_ly": 27.0,
+                "source": "EDSM",
+            }
+        ]
+        snapshot_503 = {
+            "provider": "EDSM",
+            "endpoints": {
+                "station_details": {
+                    "circuit_open": False,
+                    "last_error_code": 503,
+                    "provider_down_503_count": 2,
+                },
+                "nearby_systems": {
+                    "circuit_open": False,
+                    "last_error_code": 0,
+                    "provider_down_503_count": 0,
+                },
+            },
+        }
+
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                side_effect=[seed_rows, []],
+            ),
+            patch(
+                "logic.events.cash_in_assistant.edsm_provider_resilience_snapshot",
+                side_effect=[{}, snapshot_503],
+            ),
+        ):
+            ok_seed = cash_in_events.trigger_cash_in_assistant(mode="manual", summary_payload=payload, gui_ref=None)
+            time.sleep(0.05)
+            ok_stale = cash_in_events.trigger_cash_in_assistant(mode="manual", summary_payload=payload, gui_ref=None)
+        assert ok_seed is True and ok_stale is True, "Expected stale fallback emits in F13 journal smoke"
+
+        queue_batch = ctx.drain_queue()
+        payload_items = [
+            item[1]
+            for item in queue_batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+        ]
+        assert len(payload_items) >= 2, "Expected two payloads for stale fallback scenario"
+        stale_payload = dict(payload_items[-1] or {})
+        stale_meta = dict(stale_payload.get("station_candidates_meta") or {})
+        stale_edge = dict(stale_payload.get("edge_case_meta") or {})
+        stale_reasons = {
+            str(item).strip().lower()
+            for item in (stale_edge.get("reasons") or [])
+            if str(item).strip()
+        }
+        assert bool(stale_meta.get("swr_cache_used")), f"Expected swr cache usage, got: {stale_meta}"
+        assert str(stale_meta.get("provider_lookup_status") or "") == "provider_down_503", (
+            f"Expected provider_down_503 in stale scenario, got: {stale_meta}"
+        )
+        assert {"stale_cache", "provider_down_503"}.issubset(stale_reasons), (
+            f"Expected stale+503 reasons, got: {stale_edge}"
+        )
+
+        ctx.clear_queue()
+        app_state.last_cash_in_signature = None
+        app_state.cash_in_skip_signature = None
+        settings["cash_in.swr_cache_enabled"] = False
+        cash_in_events._reset_cash_in_swr_cache_for_tests()
+        cash_in_events._reset_cash_in_local_known_cache_for_tests()
+
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                side_effect=[seed_rows, []],
+            ),
+            patch(
+                "logic.events.cash_in_assistant.edsm_provider_resilience_snapshot",
+                side_effect=[{}, {}],
+            ),
+        ):
+            ok_local_seed = cash_in_events.trigger_cash_in_assistant(
+                mode="manual",
+                summary_payload=payload,
+                gui_ref=None,
+            )
+            ok_local = cash_in_events.trigger_cash_in_assistant(mode="manual", summary_payload=payload, gui_ref=None)
+        assert ok_local_seed is True and ok_local is True, "Expected local-known fallback emits in F13 journal smoke"
+
+        queue_batch = ctx.drain_queue()
+        payload_items = [
+            item[1]
+            for item in queue_batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+        ]
+        assert len(payload_items) >= 2, "Expected two payloads for local-known scenario"
+        local_payload = dict(payload_items[-1] or {})
+        local_meta = dict(local_payload.get("station_candidates_meta") or {})
+        local_edge = dict(local_payload.get("edge_case_meta") or {})
+        local_reasons = {
+            str(item).strip().lower()
+            for item in (local_edge.get("reasons") or [])
+            if str(item).strip()
+        }
+        assert bool(local_meta.get("local_known_fallback_used")), (
+            f"Expected local known fallback flag, got: {local_meta}"
+        )
+        assert str(local_meta.get("source_status") or "") == "local_known_fallback", (
+            f"Expected local_known_fallback source, got: {local_meta}"
+        )
+        assert {"local_known_fallback", "providers_empty"}.issubset(local_reasons), (
+            f"Expected local+providers_empty reasons, got: {local_edge}"
+        )
+    finally:
+        settings["cash_in.station_candidates_lookup_enabled"] = saved_lookup_enabled
+        settings["cash_in.cross_system_discovery_enabled"] = saved_cross_enabled
+        settings["features.providers.edsm_enabled"] = saved_edsm_enabled
+        settings["features.trade.station_lookup_online"] = saved_station_lookup
+        settings["cash_in.swr_cache_enabled"] = saved_swr_enabled
+        settings["cash_in.swr_cache_fresh_ttl_sec"] = saved_swr_fresh_ttl
+        settings["cash_in.swr_cache_stale_ttl_sec"] = saved_swr_stale_ttl
+        settings["cash_in.local_known_fallback_enabled"] = saved_local_enabled
+        app_state.current_system = saved_system
+        app_state.current_station = saved_station
+        app_state.last_cash_in_signature = saved_last_sig
+        app_state.cash_in_skip_signature = saved_skip_sig
+        cash_in_events._reset_cash_in_swr_cache_for_tests()
+        cash_in_events._reset_cash_in_local_known_cache_for_tests()
 
 
 # --- RUNNER ------------------------------------------------------------------
@@ -1060,6 +1249,7 @@ def run_all_tests() -> int:
         ("test_journal_f5_quality_gates_cross_module_nonflood", test_journal_f5_quality_gates_cross_module_nonflood),
         ("test_journal_f11_startjump_cash_in_nonflood", test_journal_f11_startjump_cash_in_nonflood),
         ("test_journal_f12_cross_system_cash_in_route_gate", test_journal_f12_cross_system_cash_in_route_gate),
+        ("test_journal_f13_provider_resilience_fallback_matrix", test_journal_f13_provider_resilience_fallback_matrix),
     ]
 
     print("=== RenataAI Journal / AppState / Debouncer Tests (T2) ===")
