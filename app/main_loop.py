@@ -83,6 +83,15 @@ class MainLoop:
             )
         except Exception as e:
             self._log_error(f"Bootstrap exobio recovery error: {e}")
+        try:
+            from logic.events import exploration_value_recovery
+
+            exploration_value_recovery.bootstrap_system_value_from_journal_lines(
+                lines,
+                max_lines=max_lines,
+            )
+        except Exception as e:
+            self._log_error(f"Bootstrap value recovery error: {e}")
 
         app_state.bootstrap_replay = True
 
