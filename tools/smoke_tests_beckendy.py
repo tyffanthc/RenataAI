@@ -4261,6 +4261,201 @@ def test_f11_quality_gates_and_smoke_baseline(ctx: TestContext) -> None:
         settings["cash_in.startjump_callout_cooldown_sec"] = saved_startjump_cd
 
 
+def test_f12_quality_gates_and_smoke_baseline(ctx: TestContext) -> None:
+    """
+    Smoke dla paczki F12:
+    - expedition case: brak lokalnego UC, cross-system zwraca realny target i handoff przechodzi,
+    - providers-empty case: fallback orientacyjny i blokada handoff bez realnego celu.
+    """
+    ctx.clear_queue()
+    ctx.reset_debouncer()
+    reset_dispatcher_runtime_state()
+
+    saved_system = str(getattr(app_state, "current_system", "") or "")
+    saved_station = str(getattr(app_state, "current_station", "") or "")
+    saved_last_sig = getattr(app_state, "last_cash_in_signature", None)
+    saved_skip_sig = getattr(app_state, "cash_in_skip_signature", None)
+    saved_route_awareness = app_state.get_route_awareness_snapshot()
+    settings = config.config._settings  # type: ignore[attr-defined]
+    saved_lookup_enabled = settings.get("cash_in.station_candidates_lookup_enabled")
+    saved_cross_enabled = settings.get("cash_in.cross_system_discovery_enabled")
+    saved_cross_radius = settings.get("cash_in.cross_system_radius_ly")
+    saved_cross_max = settings.get("cash_in.cross_system_max_systems")
+    saved_edsm_enabled = settings.get("features.providers.edsm_enabled")
+    saved_system_lookup = settings.get("features.providers.system_lookup_online")
+    saved_station_lookup = settings.get("features.trade.station_lookup_online")
+
+    try:
+        settings["cash_in.station_candidates_lookup_enabled"] = True
+        settings["cash_in.cross_system_discovery_enabled"] = True
+        settings["cash_in.cross_system_radius_ly"] = 120.0
+        settings["cash_in.cross_system_max_systems"] = 8
+        settings["features.providers.edsm_enabled"] = True
+        settings["features.providers.system_lookup_online"] = True
+        settings["features.trade.station_lookup_online"] = True
+
+        app_state.current_system = "SMOKE_F12_ORIGIN"
+        app_state.current_station = ""
+        app_state.last_cash_in_signature = None
+        app_state.cash_in_skip_signature = None
+
+        base_payload = {
+            "system": "SMOKE_F12_ORIGIN",
+            "cash_in_signal": "wysoki",
+            "cash_in_system_estimated": 7_500_000.0,
+            "cash_in_session_estimated": 24_000_000.0,
+            "confidence": "high",
+            "service": "uc",
+        }
+
+        local_no_service = [
+            {
+                "name": "SMOKE_F12_LOCAL_NO_UC",
+                "system_name": "SMOKE_F12_ORIGIN",
+                "type": "station",
+                "services": {"has_uc": False, "has_vista": True},
+                "distance_ly": 1.0,
+                "source": "EDSM",
+            }
+        ]
+        cross_candidates = [
+            {
+                "name": "SMOKE_F12_REMOTE_UC_HUB",
+                "system_name": "SMOKE_F12_REMOTE",
+                "type": "station",
+                "services": {"has_uc": True, "has_vista": False},
+                "distance_ly": 32.0,
+                "distance_ls": 950.0,
+                "source": "EDSM",
+            }
+        ]
+
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                return_value=local_no_service,
+            ),
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_cross_system_from_providers",
+                return_value=(cross_candidates, {"systems_requested": 3, "systems_with_candidates": 1}),
+            ),
+        ):
+            ok = cash_in_events.trigger_cash_in_assistant(
+                mode="manual",
+                summary_payload=base_payload,
+                gui_ref=None,
+            )
+        assert ok is True, "F12 smoke: expected cash-in emit for expedition case"
+
+        queue_batch = ctx.drain_queue()
+        payload_items = [
+            item[1]
+            for item in queue_batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+        ]
+        assert payload_items, "F12 smoke: expected structured cash_in_assistant payload in queue"
+        structured = dict(payload_items[-1] or {})
+        station_meta = dict(structured.get("station_candidates_meta") or {})
+        assert str(station_meta.get("cross_system_lookup_status") or "") == "cross_system", (
+            f"F12 smoke: expected cross_system lookup status, got: {station_meta}"
+        )
+        options = [dict(item) for item in (structured.get("options") or []) if isinstance(item, dict)]
+        assert options, "F12 smoke: expected at least one option in expedition case"
+        selected = dict(options[0])
+        target = cash_in_events.resolve_cash_in_option_target(selected)
+        assert bool(target.get("target_is_real")), f"F12 smoke: expected real target, got: {target}"
+
+        handoff = cash_in_events.handoff_cash_in_to_route_intent(
+            selected,
+            set_route_intent=app_state.set_route_intent,
+            source="smoke.f12.intent",
+            allow_auto_route=False,
+        )
+        assert bool(handoff.get("ok")), f"F12 smoke: expected route handoff ok, got: {handoff}"
+        assert str(handoff.get("target_system") or "") == "SMOKE_F12_REMOTE", (
+            f"F12 smoke: expected cross-system route target, got: {handoff}"
+        )
+        assert str(handoff.get("target_station") or "") == "SMOKE_F12_REMOTE_UC_HUB", (
+            f"F12 smoke: expected remote station target, got: {handoff}"
+        )
+
+        ctx.clear_queue()
+        app_state.last_cash_in_signature = None
+        app_state.cash_in_skip_signature = None
+        providers_empty_payload = dict(base_payload)
+        providers_empty_payload["cash_in_signal"] = "sredni"
+        providers_empty_payload["cash_in_system_estimated"] = 2_100_000.0
+        providers_empty_payload["cash_in_session_estimated"] = 9_700_000.0
+
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                return_value=[],
+            ),
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_cross_system_from_providers",
+                return_value=([], {"systems_requested": 4, "systems_with_candidates": 0}),
+            ),
+        ):
+            ok_empty = cash_in_events.trigger_cash_in_assistant(
+                mode="manual",
+                summary_payload=providers_empty_payload,
+                gui_ref=None,
+            )
+        assert ok_empty is True, "F12 smoke: expected orientational emit for providers-empty case"
+
+        queue_batch = ctx.drain_queue()
+        payload_items = [
+            item[1]
+            for item in queue_batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+        ]
+        assert payload_items, "F12 smoke: expected payload for providers-empty case"
+        structured = dict(payload_items[-1] or {})
+        station_meta = dict(structured.get("station_candidates_meta") or {})
+        assert str(station_meta.get("cross_system_lookup_status") or "") == "cross_system_empty", (
+            f"F12 smoke: expected cross_system_empty status, got: {station_meta}"
+        )
+        edge_meta = dict(structured.get("edge_case_meta") or {})
+        reasons = {str(item).strip().lower() for item in (edge_meta.get("reasons") or []) if str(item).strip()}
+        assert "no_service_candidates" in reasons, (
+            f"F12 smoke: expected no_service_candidates edge reason, got: {edge_meta}"
+        )
+        options = [dict(item) for item in (structured.get("options") or []) if isinstance(item, dict)]
+        assert options, "F12 smoke: expected fallback options in providers-empty case"
+
+        blocked = cash_in_events.handoff_cash_in_to_route_intent(
+            dict(options[0]),
+            set_route_intent=app_state.set_route_intent,
+            source="smoke.f12.intent.blocked",
+            allow_auto_route=False,
+        )
+        assert bool(blocked.get("ok")) is False, f"F12 smoke: expected blocked handoff, got: {blocked}"
+        assert str(blocked.get("reason") or "") == "target_missing_system", (
+            f"F12 smoke: expected target_missing_system, got: {blocked}"
+        )
+    finally:
+        app_state.current_system = saved_system
+        app_state.current_station = saved_station
+        app_state.last_cash_in_signature = saved_last_sig
+        app_state.cash_in_skip_signature = saved_skip_sig
+        app_state.update_route_awareness(
+            route_mode=str(saved_route_awareness.get("route_mode") or "idle"),
+            route_target=str(saved_route_awareness.get("route_target") or ""),
+            route_progress_percent=int(saved_route_awareness.get("route_progress_percent") or 0),
+            next_system=str(saved_route_awareness.get("next_system") or ""),
+            is_off_route=bool(saved_route_awareness.get("is_off_route")),
+            source="smoke.f12.restore",
+        )
+        settings["cash_in.station_candidates_lookup_enabled"] = saved_lookup_enabled
+        settings["cash_in.cross_system_discovery_enabled"] = saved_cross_enabled
+        settings["cash_in.cross_system_radius_ly"] = saved_cross_radius
+        settings["cash_in.cross_system_max_systems"] = saved_cross_max
+        settings["features.providers.edsm_enabled"] = saved_edsm_enabled
+        settings["features.providers.system_lookup_online"] = saved_system_lookup
+        settings["features.trade.station_lookup_online"] = saved_station_lookup
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -4343,6 +4538,7 @@ def run_all_tests() -> int:
         ("test_f9_filter_popover_contract", test_f9_filter_popover_contract),
         ("test_f10_quality_gates_and_smoke_baseline", test_f10_quality_gates_and_smoke_baseline),
         ("test_f11_quality_gates_and_smoke_baseline", test_f11_quality_gates_and_smoke_baseline),
+        ("test_f12_quality_gates_and_smoke_baseline", test_f12_quality_gates_and_smoke_baseline),
         ("test_route_planner_modules_smoke", test_route_planner_modules_smoke),
     ]
 

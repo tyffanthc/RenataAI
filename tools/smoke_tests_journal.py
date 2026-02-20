@@ -34,6 +34,7 @@ from logic.events import exploration_bio_events as bio_events  # type: ignore
 from logic.events import fuel_events  # type: ignore
 from logic.events import survival_rebuy_awareness as survival_events  # type: ignore
 from logic.events import combat_awareness as combat_events  # type: ignore
+from logic.events import cash_in_assistant as cash_in_events  # type: ignore
 from logic.insight_dispatcher import reset_dispatcher_runtime_state  # type: ignore
 from logic.exit_summary import ExitSummaryData  # type: ignore
 
@@ -864,6 +865,176 @@ def test_journal_f11_startjump_cash_in_nonflood(ctx: TestContext) -> None:
         app_state.current_system = saved_system
 
 
+def test_journal_f12_cross_system_cash_in_route_gate(ctx: TestContext) -> None:
+    """
+    F12 journal smoke:
+    - expedition case: brak lokalnego UC, cross-system daje realny target i handoff jest OK,
+    - provider-empty case: fallback orientacyjny i handoff zablokowany.
+    """
+    settings = config.config._settings  # type: ignore[attr-defined]
+    saved_system = str(getattr(app_state, "current_system", "") or "")
+    saved_station = str(getattr(app_state, "current_station", "") or "")
+    saved_last_sig = getattr(app_state, "last_cash_in_signature", None)
+    saved_skip_sig = getattr(app_state, "cash_in_skip_signature", None)
+    saved_lookup_enabled = settings.get("cash_in.station_candidates_lookup_enabled")
+    saved_cross_enabled = settings.get("cash_in.cross_system_discovery_enabled")
+    saved_edsm_enabled = settings.get("features.providers.edsm_enabled")
+    saved_system_lookup = settings.get("features.providers.system_lookup_online")
+    saved_station_lookup = settings.get("features.trade.station_lookup_online")
+    saved_cross_radius = settings.get("cash_in.cross_system_radius_ly")
+    saved_cross_max = settings.get("cash_in.cross_system_max_systems")
+
+    try:
+        settings["cash_in.station_candidates_lookup_enabled"] = True
+        settings["cash_in.cross_system_discovery_enabled"] = True
+        settings["features.providers.edsm_enabled"] = True
+        settings["features.providers.system_lookup_online"] = True
+        settings["features.trade.station_lookup_online"] = True
+        settings["cash_in.cross_system_radius_ly"] = 120.0
+        settings["cash_in.cross_system_max_systems"] = 8
+
+        ctx.clear_queue()
+        ctx.reset_debouncer()
+        reset_dispatcher_runtime_state()
+        app_state.current_system = "SMOKE_T2_F12_ORIGIN_SYS"
+        app_state.current_station = ""
+        app_state.last_cash_in_signature = None
+        app_state.cash_in_skip_signature = None
+
+        payload = {
+            "system": "SMOKE_T2_F12_ORIGIN_SYS",
+            "cash_in_signal": "wysoki",
+            "cash_in_system_estimated": 6_400_000.0,
+            "cash_in_session_estimated": 22_500_000.0,
+            "confidence": "high",
+            "service": "uc",
+        }
+
+        local_no_service = [
+            {
+                "name": "SMOKE_T2_F12_LOCAL_ONLY_VISTA",
+                "system_name": "SMOKE_T2_F12_ORIGIN_SYS",
+                "type": "station",
+                "services": {"has_uc": False, "has_vista": True},
+                "distance_ly": 0.5,
+                "source": "EDSM",
+            }
+        ]
+        cross_candidates = [
+            {
+                "name": "SMOKE_T2_F12_REMOTE_UC",
+                "system_name": "SMOKE_T2_F12_REMOTE_SYS",
+                "type": "station",
+                "services": {"has_uc": True, "has_vista": False},
+                "distance_ly": 41.0,
+                "distance_ls": 1200.0,
+                "source": "EDSM",
+            }
+        ]
+
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                return_value=local_no_service,
+            ),
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_cross_system_from_providers",
+                return_value=(cross_candidates, {"systems_requested": 3, "systems_with_candidates": 1}),
+            ),
+        ):
+            ok = cash_in_events.trigger_cash_in_assistant(mode="manual", summary_payload=payload, gui_ref=None)
+        assert ok is True, "Expected cross-system cash-in emit in journal smoke"
+
+        queue_batch = ctx.drain_queue()
+        payload_items = [
+            item[1]
+            for item in queue_batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+        ]
+        assert payload_items, "Expected structured cash_in_assistant payload in journal smoke"
+        structured = dict(payload_items[-1] or {})
+        station_meta = dict(structured.get("station_candidates_meta") or {})
+        assert str(station_meta.get("cross_system_lookup_status") or "") == "cross_system", (
+            f"Expected cross_system status in journal smoke, got: {station_meta}"
+        )
+
+        options = [dict(item) for item in (structured.get("options") or []) if isinstance(item, dict)]
+        assert options, "Expected cash-in options in journal smoke expedition case"
+        selected = dict(options[0])
+        handoff = cash_in_events.handoff_cash_in_to_route_intent(
+            selected,
+            set_route_intent=app_state.set_route_intent,
+            source="smoke.t2.f12.intent",
+            allow_auto_route=False,
+        )
+        assert bool(handoff.get("ok")), f"Expected route handoff for cross-system target, got: {handoff}"
+        assert str(handoff.get("target_system") or "") == "SMOKE_T2_F12_REMOTE_SYS", (
+            f"Expected remote target system, got: {handoff}"
+        )
+
+        ctx.clear_queue()
+        app_state.last_cash_in_signature = None
+        app_state.cash_in_skip_signature = None
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                return_value=[],
+            ),
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_cross_system_from_providers",
+                return_value=([], {"systems_requested": 4, "systems_with_candidates": 0}),
+            ),
+        ):
+            ok_empty = cash_in_events.trigger_cash_in_assistant(
+                mode="manual",
+                summary_payload={
+                    "system": "SMOKE_T2_F12_ORIGIN_SYS",
+                    "cash_in_signal": "sredni",
+                    "cash_in_system_estimated": 1_900_000.0,
+                    "cash_in_session_estimated": 8_200_000.0,
+                    "confidence": "high",
+                    "service": "uc",
+                },
+                gui_ref=None,
+            )
+        assert ok_empty is True, "Expected orientational cash-in emit for provider-empty journal case"
+
+        queue_batch = ctx.drain_queue()
+        payload_items = [
+            item[1]
+            for item in queue_batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+        ]
+        assert payload_items, "Expected provider-empty payload in journal smoke"
+        structured = dict(payload_items[-1] or {})
+        options = [dict(item) for item in (structured.get("options") or []) if isinstance(item, dict)]
+        assert options, "Expected fallback options for provider-empty journal case"
+        blocked = cash_in_events.handoff_cash_in_to_route_intent(
+            dict(options[0]),
+            set_route_intent=app_state.set_route_intent,
+            source="smoke.t2.f12.intent.blocked",
+            allow_auto_route=False,
+        )
+        assert bool(blocked.get("ok")) is False, (
+            f"Expected blocked handoff without real target in journal smoke, got: {blocked}"
+        )
+        assert str(blocked.get("reason") or "") == "target_missing_system", (
+            f"Expected target_missing_system for blocked handoff, got: {blocked}"
+        )
+    finally:
+        settings["cash_in.station_candidates_lookup_enabled"] = saved_lookup_enabled
+        settings["cash_in.cross_system_discovery_enabled"] = saved_cross_enabled
+        settings["features.providers.edsm_enabled"] = saved_edsm_enabled
+        settings["features.providers.system_lookup_online"] = saved_system_lookup
+        settings["features.trade.station_lookup_online"] = saved_station_lookup
+        settings["cash_in.cross_system_radius_ly"] = saved_cross_radius
+        settings["cash_in.cross_system_max_systems"] = saved_cross_max
+        app_state.current_system = saved_system
+        app_state.current_station = saved_station
+        app_state.last_cash_in_signature = saved_last_sig
+        app_state.cash_in_skip_signature = saved_skip_sig
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -888,6 +1059,7 @@ def run_all_tests() -> int:
         ("test_journal_f5_anti_spam_transitions_and_exceptions", test_journal_f5_anti_spam_transitions_and_exceptions),
         ("test_journal_f5_quality_gates_cross_module_nonflood", test_journal_f5_quality_gates_cross_module_nonflood),
         ("test_journal_f11_startjump_cash_in_nonflood", test_journal_f11_startjump_cash_in_nonflood),
+        ("test_journal_f12_cross_system_cash_in_route_gate", test_journal_f12_cross_system_cash_in_route_gate),
     ]
 
     print("=== RenataAI Journal / AppState / Debouncer Tests (T2) ===")
