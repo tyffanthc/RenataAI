@@ -6,6 +6,7 @@ from unittest.mock import patch
 import config
 from app.state import app_state
 from logic.events import cash_in_assistant
+from logic.utils import edsm_client
 
 
 class F11CashInEdgeCasesTests(unittest.TestCase):
@@ -29,6 +30,9 @@ class F11CashInEdgeCasesTests(unittest.TestCase):
 
         config.config._settings["cash_in.station_candidates_lookup_enabled"] = True
         config.config._settings["cash_in.station_candidates_limit"] = 24
+        config.config._settings["cash_in.cross_system_discovery_enabled"] = False
+        config.config._settings["features.providers.system_lookup_online"] = False
+        edsm_client._reset_provider_resilience_state_for_tests()
 
     def tearDown(self) -> None:
         config.config._settings = self._orig_settings
@@ -39,6 +43,7 @@ class F11CashInEdgeCasesTests(unittest.TestCase):
         app_state.bootstrap_replay = self._saved_bootstrap
         app_state.last_cash_in_signature = self._saved_last_sig
         app_state.cash_in_skip_signature = self._saved_skip_sig
+        edsm_client._reset_provider_resilience_state_for_tests()
 
     @staticmethod
     def _base_payload() -> dict:

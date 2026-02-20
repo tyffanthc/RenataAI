@@ -1,7 +1,9 @@
 import time
+import random
 from typing import Any, Dict, List
 
 import requests
+import config
 
 
 class Edsmtimeout(Exception):
@@ -16,6 +18,10 @@ class Edsmbadresponse(Exception):
     pass
 
 
+class Edsmcircuitopen(Edsmunavailable):
+    pass
+
+
 _LAST_REQUEST_AT = 0.0
 _THROTTLE_MS = 500
 _DEFAULT_TIMEOUT = 3.0
@@ -27,6 +33,189 @@ _STATIONS_TTL_SECONDS = 24 * 60 * 60
 _STATIONS_DETAILS_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _NEARBY_SYSTEMS_TTL_SECONDS = 10 * 60
 _NEARBY_SYSTEMS_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+_PROVIDER_ENDPOINT_STATE: dict[str, dict[str, Any]] = {}
+
+
+def _resilience_get(key: str, default: Any) -> Any:
+    try:
+        return config.get(key, default)
+    except Exception:
+        return default
+
+
+def _get_endpoint_state(endpoint_key: str) -> dict[str, Any]:
+    state = _PROVIDER_ENDPOINT_STATE.get(endpoint_key)
+    if isinstance(state, dict):
+        return state
+    state = {
+        "down_until_monotonic": 0.0,
+        "provider_down_503_count": 0,
+        "last_error_code": 0,
+        "last_error_kind": "",
+        "last_error_ts_monotonic": 0.0,
+        "last_retry_attempts": 0,
+    }
+    _PROVIDER_ENDPOINT_STATE[endpoint_key] = state
+    return state
+
+
+def _mark_endpoint_success(endpoint_key: str) -> None:
+    state = _get_endpoint_state(endpoint_key)
+    state["last_error_code"] = 0
+    state["last_error_kind"] = ""
+    state["last_error_ts_monotonic"] = 0.0
+    state["last_retry_attempts"] = 0
+
+
+def _mark_endpoint_error(
+    endpoint_key: str,
+    *,
+    error_code: int,
+    error_kind: str,
+    retry_attempts: int,
+) -> None:
+    state = _get_endpoint_state(endpoint_key)
+    state["last_error_code"] = int(error_code or 0)
+    state["last_error_kind"] = str(error_kind or "")
+    state["last_error_ts_monotonic"] = time.monotonic()
+    state["last_retry_attempts"] = int(max(0, retry_attempts))
+    if int(error_code or 0) == 503:
+        state["provider_down_503_count"] = int(state.get("provider_down_503_count") or 0) + 1
+
+
+def _open_endpoint_circuit(endpoint_key: str) -> None:
+    ttl_sec = float(
+        _resilience_get("providers.edsm.resilience.circuit_breaker_ttl_sec", 600.0) or 600.0
+    )
+    ttl_sec = max(10.0, ttl_sec)
+    state = _get_endpoint_state(endpoint_key)
+    state["down_until_monotonic"] = time.monotonic() + ttl_sec
+
+
+def _circuit_remaining_sec(endpoint_key: str) -> float:
+    state = _get_endpoint_state(endpoint_key)
+    down_until = float(state.get("down_until_monotonic") or 0.0)
+    return max(0.0, down_until - time.monotonic())
+
+
+def _is_endpoint_circuit_open(endpoint_key: str) -> bool:
+    return _circuit_remaining_sec(endpoint_key) > 0.0
+
+
+def get_provider_resilience_snapshot() -> Dict[str, Any]:
+    now = time.monotonic()
+    endpoints: dict[str, dict[str, Any]] = {}
+    for endpoint_key in ("station_details", "nearby_systems"):
+        state = _get_endpoint_state(endpoint_key)
+        down_until = float(state.get("down_until_monotonic") or 0.0)
+        circuit_open = down_until > now
+        endpoints[endpoint_key] = {
+            "circuit_open": bool(circuit_open),
+            "down_ttl_sec": max(0.0, down_until - now) if circuit_open else 0.0,
+            "provider_down_503_count": int(state.get("provider_down_503_count") or 0),
+            "last_error_code": int(state.get("last_error_code") or 0),
+            "last_error_kind": str(state.get("last_error_kind") or ""),
+            "last_retry_attempts": int(state.get("last_retry_attempts") or 0),
+        }
+    return {"provider": "EDSM", "endpoints": endpoints}
+
+
+def _reset_provider_resilience_state_for_tests() -> None:
+    _PROVIDER_ENDPOINT_STATE.clear()
+
+
+def _request_json_with_resilience(
+    *,
+    endpoint_key: str,
+    url: str,
+    params: Dict[str, Any],
+    timeout_val: float,
+) -> Any:
+    if _is_endpoint_circuit_open(endpoint_key):
+        ttl_sec = _circuit_remaining_sec(endpoint_key)
+        raise Edsmcircuitopen(
+            f"CIRCUIT_OPEN endpoint={endpoint_key} ttl_sec={round(ttl_sec, 1)}"
+        )
+
+    max_attempts = int(_resilience_get("providers.edsm.resilience.retry.max_attempts", 4) or 4)
+    max_attempts = max(1, min(8, max_attempts))
+    base_delay = float(_resilience_get("providers.edsm.resilience.retry.base_delay_sec", 1.0) or 1.0)
+    max_delay = float(_resilience_get("providers.edsm.resilience.retry.max_delay_sec", 8.0) or 8.0)
+    jitter = float(_resilience_get("providers.edsm.resilience.retry.jitter_sec", 0.35) or 0.35)
+    base_delay = max(0.05, base_delay)
+    max_delay = max(base_delay, max_delay)
+    jitter = max(0.0, jitter)
+
+    last_error_code = 0
+    last_error_kind = ""
+    for attempt in range(max_attempts):
+        _throttle()
+        try:
+            res = requests.get(
+                url,
+                params=params,
+                headers={"User-Agent": "RENATA/1.0", "Accept": "application/json"},
+                timeout=timeout_val,
+            )
+        except requests.Timeout as e:
+            last_error_kind = "timeout"
+            if attempt >= (max_attempts - 1):
+                _mark_endpoint_error(
+                    endpoint_key,
+                    error_code=0,
+                    error_kind=last_error_kind,
+                    retry_attempts=attempt + 1,
+                )
+                raise Edsmtimeout(str(e)) from e
+            delay = min(max_delay, base_delay * (2**attempt)) + random.uniform(0.0, jitter)
+            time.sleep(max(0.0, delay))
+            continue
+        except requests.RequestException as e:
+            last_error_kind = "request_exception"
+            if attempt >= (max_attempts - 1):
+                _mark_endpoint_error(
+                    endpoint_key,
+                    error_code=0,
+                    error_kind=last_error_kind,
+                    retry_attempts=attempt + 1,
+                )
+                raise Edsmunavailable(str(e)) from e
+            delay = min(max_delay, base_delay * (2**attempt)) + random.uniform(0.0, jitter)
+            time.sleep(max(0.0, delay))
+            continue
+
+        if res.status_code == 200:
+            try:
+                data = res.json()
+            except Exception as e:
+                _mark_endpoint_error(
+                    endpoint_key,
+                    error_code=200,
+                    error_kind="bad_json",
+                    retry_attempts=attempt + 1,
+                )
+                raise Edsmbadresponse(str(e)) from e
+            _mark_endpoint_success(endpoint_key)
+            return data
+
+        last_error_code = int(res.status_code)
+        last_error_kind = f"http_{last_error_code}"
+        is_retryable = last_error_code in {503, 504}
+        if is_retryable and attempt < (max_attempts - 1):
+            delay = min(max_delay, base_delay * (2**attempt)) + random.uniform(0.0, jitter)
+            time.sleep(max(0.0, delay))
+            continue
+        break
+
+    _mark_endpoint_error(
+        endpoint_key,
+        error_code=last_error_code,
+        error_kind=last_error_kind,
+        retry_attempts=max_attempts,
+    )
+    if last_error_code == 503:
+        _open_endpoint_circuit(endpoint_key)
+    raise Edsmunavailable(f"HTTP {last_error_code or 0}")
 
 
 def _normalize_query(query: str) -> str:
@@ -298,30 +487,14 @@ def fetch_system_stations_details(
     if isinstance(cached, list):
         return [dict(item) for item in cached if isinstance(item, dict)]
 
-    _throttle()
     url = "https://www.edsm.net/api-system-v1/stations"
-    headers = {"User-Agent": "RENATA/1.0", "Accept": "application/json"}
     timeout_val = _DEFAULT_TIMEOUT if timeout is None else float(timeout)
-
-    try:
-        res = requests.get(
-            url,
-            params={"systemName": sys_name},
-            headers=headers,
-            timeout=timeout_val,
-        )
-    except requests.Timeout as e:
-        raise Edsmtimeout(str(e)) from e
-    except requests.RequestException as e:
-        raise Edsmunavailable(str(e)) from e
-
-    if res.status_code != 200:
-        raise Edsmunavailable(f"HTTP {res.status_code}")
-
-    try:
-        data = res.json()
-    except Exception as e:
-        raise Edsmbadresponse(str(e)) from e
+    data = _request_json_with_resilience(
+        endpoint_key="station_details",
+        url=url,
+        params={"systemName": sys_name},
+        timeout_val=timeout_val,
+    )
 
     if not isinstance(data, dict):
         raise Edsmbadresponse("Unexpected response")
@@ -422,30 +595,15 @@ def fetch_nearby_systems(
         return [dict(item) for item in cached if isinstance(item, dict)]
 
     url = "https://www.edsm.net/api-v1/sphere-systems"
-    headers = {"User-Agent": "RENATA/1.0", "Accept": "application/json"}
     timeout_val = _DEFAULT_TIMEOUT if timeout is None else float(timeout)
 
     def _request_rows(params: Dict[str, Any]) -> List[Dict[str, Any]]:
-        _throttle()
-        try:
-            res = requests.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=timeout_val,
-            )
-        except requests.Timeout as e:
-            raise Edsmtimeout(str(e)) from e
-        except requests.RequestException as e:
-            raise Edsmunavailable(str(e)) from e
-
-        if res.status_code != 200:
-            raise Edsmunavailable(f"HTTP {res.status_code}")
-
-        try:
-            data = res.json()
-        except Exception as e:
-            raise Edsmbadresponse(str(e)) from e
+        data = _request_json_with_resilience(
+            endpoint_key="nearby_systems",
+            url=url,
+            params=params,
+            timeout_val=timeout_val,
+        )
 
         if isinstance(data, list):
             items: list[Any] = data

@@ -207,6 +207,11 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "cash_in.hotkey_enabled": True,
     "cash_in.hotkey_binding": "Ctrl+Shift+C",
     "cash_in.persist_route_profile_to_route_state": False,
+    "providers.edsm.resilience.circuit_breaker_ttl_sec": 600.0,
+    "providers.edsm.resilience.retry.max_attempts": 4,
+    "providers.edsm.resilience.retry.base_delay_sec": 1.0,
+    "providers.edsm.resilience.retry.max_delay_sec": 8.0,
+    "providers.edsm.resilience.retry.jitter_sec": 0.35,
     "survival_rebuy_awareness_enabled": True,  # F4 survival/rebuy awareness
     "combat_awareness_enabled": True,  # F5 combat awareness baseline
     "dispatcher.f4_voice_priority_window_sec": 12.0,

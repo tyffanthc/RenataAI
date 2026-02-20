@@ -12,6 +12,7 @@ from logic.cash_in_station_candidates import (
     station_candidates_for_system_from_providers,
 )
 from logic.insight_dispatcher import emit_insight
+from logic.utils.http_edsm import edsm_provider_resilience_snapshot
 from logic.utils import DEBOUNCER
 
 
@@ -1337,6 +1338,10 @@ def _build_edge_case_meta(
 
     if source_status == "providers_empty" or provider_lookup_status == "providers_empty":
         _append_unique_reason(reasons, "providers_empty")
+    if provider_lookup_status == "provider_down_503":
+        _append_unique_reason(reasons, "provider_down_503")
+    if provider_lookup_status == "provider_circuit_open":
+        _append_unique_reason(reasons, "provider_circuit_open")
     if candidate_count <= 0:
         _append_unique_reason(reasons, "no_station_data")
 
@@ -1354,7 +1359,17 @@ def _build_edge_case_meta(
         _append_unique_reason(reasons, "offline")
 
     confidence = _as_text(station_meta.get("confidence")).lower() or "low"
-    if any(reason in {"providers_empty", "no_station_data", "no_service_candidates", "offline"} for reason in reasons):
+    if any(
+        reason in {
+            "providers_empty",
+            "provider_down_503",
+            "provider_circuit_open",
+            "no_station_data",
+            "no_service_candidates",
+            "offline",
+        }
+        for reason in reasons
+    ):
         confidence = "low"
     elif "no_non_carrier" in reasons and confidence == "high":
         confidence = "mid"
@@ -1363,6 +1378,10 @@ def _build_edge_case_meta(
     ui_hint = ""
     if "offline" in reasons:
         ui_hint = "Tryb offline/przerwane logi: rekomendacja orientacyjna."
+    elif "provider_circuit_open" in reasons:
+        ui_hint = "Provider stacyjny chwilowo niedostepny (circuit open). Uzyj decyzji orientacyjnej."
+    elif "provider_down_503" in reasons:
+        ui_hint = "Provider stacyjny chwilowo niedostepny (HTTP 503). Uzyj decyzji orientacyjnej."
     elif "providers_empty" in reasons or "no_station_data" in reasons or "no_service_candidates" in reasons:
         ui_hint = "Dane stacyjne ograniczone: traktuj decyzje orientacyjnie."
     elif "no_non_carrier" in reasons:
@@ -1396,6 +1415,10 @@ def _append_edge_case_note(base_note: str, edge_case_meta: dict[str, Any]) -> st
     extra_parts: list[str] = []
     if "offline" in reasons:
         extra_parts.append("Tryb offline/przerwane logi: rekomendacja orientacyjna.")
+    if "provider_circuit_open" in reasons:
+        extra_parts.append("Provider stacyjny chwilowo niedostepny (circuit open).")
+    if "provider_down_503" in reasons:
+        extra_parts.append("Provider stacyjny chwilowo niedostepny (HTTP 503).")
     if "providers_empty" in reasons or "no_station_data" in reasons or "no_service_candidates" in reasons:
         extra_parts.append("Brak pelnych danych stacyjnych.")
     if "no_non_carrier" in reasons:
@@ -1410,6 +1433,25 @@ def _append_edge_case_note(base_note: str, edge_case_meta: dict[str, Any]) -> st
     if note:
         return f"{note} {suffix}".strip()
     return suffix
+
+
+def _provider_status_from_edsm_snapshot(
+    snapshot: dict[str, Any],
+    *,
+    endpoint_key: str,
+) -> str:
+    snap = dict(snapshot or {})
+    endpoints = snap.get("endpoints")
+    endpoint = dict(endpoints.get(endpoint_key) or {}) if isinstance(endpoints, dict) else {}
+    if bool(endpoint.get("circuit_open")):
+        return "provider_circuit_open"
+    try:
+        code = int(endpoint.get("last_error_code") or 0)
+    except Exception:
+        code = 0
+    if code == 503:
+        return "provider_down_503"
+    return ""
 
 
 def _build_station_candidates_runtime(
@@ -1429,6 +1471,7 @@ def _build_station_candidates_runtime(
     service_norm = _normalize_cash_in_service(service)
     limit = max(4, int(config.get("cash_in.station_candidates_limit", 24) or 24))
     candidates: list[dict[str, Any]] = []
+    edsm_snapshot_data: dict[str, Any] = {}
 
     raw_candidates = raw_payload.get("station_candidates") or raw_payload.get("stationCandidates")
     if isinstance(raw_candidates, list) and raw_candidates:
@@ -1465,8 +1508,20 @@ def _build_station_candidates_runtime(
             freshness_ts=freshness_ts,
             limit=limit,
         )
-        provider_lookup_status = "providers" if candidates else "providers_empty"
-        source_status = provider_lookup_status
+        if include_edsm:
+            edsm_snapshot_data = dict(edsm_provider_resilience_snapshot() or {})
+        if candidates:
+            provider_lookup_status = "providers"
+            source_status = provider_lookup_status
+        else:
+            provider_lookup_status = "providers_empty"
+            status_override = _provider_status_from_edsm_snapshot(
+                edsm_snapshot_data,
+                endpoint_key="station_details",
+            )
+            if status_override:
+                provider_lookup_status = status_override
+            source_status = provider_lookup_status
     elif not lookup_enabled:
         provider_lookup_status = "disabled"
 
@@ -1520,6 +1575,8 @@ def _build_station_candidates_runtime(
             freshness_ts=freshness_ts,
             limit=limit,
         )
+        if cross_include_edsm:
+            edsm_snapshot_data = dict(edsm_provider_resilience_snapshot() or {})
         cross_system_systems_requested = int(cross_meta.get("systems_requested") or 0)
         cross_system_systems_with_candidates = int(cross_meta.get("systems_with_candidates") or 0)
         if cross_candidates:
@@ -1538,6 +1595,15 @@ def _build_station_candidates_runtime(
             cross_system_lookup_status = "cross_system"
         else:
             cross_system_lookup_status = "cross_system_empty"
+            status_override = _provider_status_from_edsm_snapshot(
+                edsm_snapshot_data,
+                endpoint_key="nearby_systems",
+            )
+            if status_override:
+                cross_system_lookup_status = status_override
+                if not candidates:
+                    provider_lookup_status = status_override
+                    source_status = status_override
     elif not cross_enabled:
         cross_system_lookup_status = "disabled"
     elif not system_lookup_online:
@@ -1575,6 +1641,28 @@ def _build_station_candidates_runtime(
         "cross_system_systems_requested": cross_system_systems_requested,
         "cross_system_systems_with_candidates": cross_system_systems_with_candidates,
         "cross_system_origin_coords_used": bool(origin_coords),
+        "provider_down_503_count": int(
+            max(
+                int(
+                    (
+                        (
+                            (edsm_snapshot_data.get("endpoints") or {}).get("station_details")
+                            or {}
+                        ).get("provider_down_503_count")
+                        or 0
+                    )
+                ),
+                int(
+                    (
+                        (
+                            (edsm_snapshot_data.get("endpoints") or {}).get("nearby_systems")
+                            or {}
+                        ).get("provider_down_503_count")
+                        or 0
+                    )
+                ),
+            )
+        ),
         "count": len(candidates),
         "uc_count": len(uc_candidates),
         "vista_count": len(vista_candidates),
@@ -1617,6 +1705,10 @@ def _build_tts_line(payload: CashInAssistantPayload) -> str:
     if edge_reasons:
         if "offline" in edge_reasons:
             return "Cash-in: tryb offline lub przerwane logi. Rekomendacja orientacyjna, sprawdz panel."
+        if "provider_circuit_open" in edge_reasons:
+            return "Cash-in: provider stacyjny chwilowo niedostepny. Uzywam trybu orientacyjnego, sprawdz panel."
+        if "provider_down_503" in edge_reasons:
+            return "Cash-in: provider stacyjny zwraca blad 503. Rekomendacja orientacyjna, sprawdz panel."
         if "no_non_carrier" in edge_reasons and (
             "providers_empty" in edge_reasons
             or "no_station_data" in edge_reasons

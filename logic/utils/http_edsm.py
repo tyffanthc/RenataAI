@@ -2,9 +2,11 @@ import config
 from logic.utils.notify import DEBOUNCER, MSG_QUEUE
 from logic.utils.edsm_client import (
     Edsmbadresponse,
+    Edsmcircuitopen,
     Edsmunavailable,
     Edsmtimeout,
     fetch_nearby_systems,
+    get_provider_resilience_snapshot,
     fetch_system_stations_details,
     fetch_system_stations,
     fetch_systems,
@@ -85,11 +87,30 @@ def edsm_station_details_for_system(system_name: str) -> list[dict]:
         rows = fetch_system_stations_details(sys_name)
         MSG_QUEUE.put(("log", f"[EDSM] station details system={sys_name!r} count={len(rows)}"))
         return rows
+    except Edsmcircuitopen as e:
+        snap = get_provider_resilience_snapshot()
+        endpoint = dict((snap.get("endpoints") or {}).get("station_details") or {})
+        ttl = round(float(endpoint.get("down_ttl_sec") or 0.0), 1)
+        down_count = int(endpoint.get("provider_down_503_count") or 0)
+        MSG_QUEUE.put(
+            (
+                "log",
+                f"[WARN] EDSM circuit open (station details): {e} ttl={ttl}s down503={down_count}",
+            )
+        )
+        return []
     except Edsmtimeout as e:
         MSG_QUEUE.put(("log", f"[WARN] EDSM timeout: {e}"))
         return []
     except Edsmunavailable as e:
-        MSG_QUEUE.put(("log", f"[WARN] EDSM unavailable: {e}"))
+        msg = str(e)
+        if "HTTP 503" in msg:
+            snap = get_provider_resilience_snapshot()
+            endpoint = dict((snap.get("endpoints") or {}).get("station_details") or {})
+            down_count = int(endpoint.get("provider_down_503_count") or 0)
+            MSG_QUEUE.put(("log", f"[WARN] EDSM unavailable (503): {e} down503={down_count}"))
+        else:
+            MSG_QUEUE.put(("log", f"[WARN] EDSM unavailable: {e}"))
         return []
     except Edsmbadresponse as e:
         MSG_QUEUE.put(("log", f"[WARN] EDSM bad response: {e}"))
@@ -147,11 +168,30 @@ def edsm_nearby_systems(
             )
         )
         return rows
+    except Edsmcircuitopen as e:
+        snap = get_provider_resilience_snapshot()
+        endpoint = dict((snap.get("endpoints") or {}).get("nearby_systems") or {})
+        ttl = round(float(endpoint.get("down_ttl_sec") or 0.0), 1)
+        down_count = int(endpoint.get("provider_down_503_count") or 0)
+        MSG_QUEUE.put(
+            (
+                "log",
+                f"[WARN] EDSM circuit open (nearby): {e} ttl={ttl}s down503={down_count}",
+            )
+        )
+        return []
     except Edsmtimeout as e:
         MSG_QUEUE.put(("log", f"[WARN] EDSM timeout: {e}"))
         return []
     except Edsmunavailable as e:
-        MSG_QUEUE.put(("log", f"[WARN] EDSM unavailable: {e}"))
+        msg = str(e)
+        if "HTTP 503" in msg:
+            snap = get_provider_resilience_snapshot()
+            endpoint = dict((snap.get("endpoints") or {}).get("nearby_systems") or {})
+            down_count = int(endpoint.get("provider_down_503_count") or 0)
+            MSG_QUEUE.put(("log", f"[WARN] EDSM unavailable (503): {e} down503={down_count}"))
+        else:
+            MSG_QUEUE.put(("log", f"[WARN] EDSM unavailable: {e}"))
         return []
     except Edsmbadresponse as e:
         MSG_QUEUE.put(("log", f"[WARN] EDSM bad response: {e}"))
@@ -159,3 +199,12 @@ def edsm_nearby_systems(
     except Exception as e:  # noqa: BLE001
         MSG_QUEUE.put(("log", f"[WARN] EDSM lookup failed: {e}"))
         return []
+
+
+def edsm_provider_resilience_snapshot() -> dict:
+    if not is_edsm_enabled():
+        return {}
+    try:
+        return dict(get_provider_resilience_snapshot() or {})
+    except Exception:
+        return {}
