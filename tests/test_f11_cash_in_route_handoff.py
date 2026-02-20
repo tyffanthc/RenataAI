@@ -134,7 +134,44 @@ class F11CashInRouteHandoffTests(unittest.TestCase):
         self.assertEqual(str(snap.get("route_mode") or ""), "idle")
         self.assertEqual(str(snap.get("route_target") or ""), "")
 
+    def test_fallback_legacy_options_attach_target_from_station_candidates(self) -> None:
+        payload = {
+            "system": "F11_HOFFMAN",
+            "cash_in_signal": "sredni",
+            "cash_in_system_estimated": 1_200_000.0,
+            "cash_in_session_estimated": 5_500_000.0,
+            # Brak service match dla UC => fallback legacy options.
+            "station_candidates": [
+                {
+                    "name": "Fallback Hub",
+                    "system_name": "Diagaundri",
+                    "type": "station",
+                    "services": {"has_uc": False, "has_vista": False},
+                    "distance_ly": 7.0,
+                }
+            ],
+        }
+        with patch("logic.events.cash_in_assistant.emit_insight") as emit_mock:
+            ok = cash_in_assistant.trigger_cash_in_assistant(mode="manual", summary_payload=payload)
+        self.assertTrue(ok)
+        ctx = dict(emit_mock.call_args.kwargs.get("context") or {})
+        structured = dict(ctx.get("cash_in_payload") or {})
+        options = [dict(item) for item in (structured.get("options") or []) if isinstance(item, dict)]
+        self.assertGreaterEqual(len(options), 1)
+        first = dict(options[0])
+        target = dict(first.get("target") or {})
+        self.assertEqual(str(target.get("system_name") or ""), "Diagaundri")
+        self.assertEqual(str(target.get("name") or ""), "Fallback Hub")
+
+        out = cash_in_assistant.handoff_cash_in_to_route_intent(
+            first,
+            set_route_intent=app_state.set_route_intent,
+            source="test.cash_in.fallback_target",
+            allow_auto_route=False,
+        )
+        self.assertTrue(bool(out.get("ok")))
+        self.assertEqual(str(out.get("target_system") or ""), "Diagaundri")
+
 
 if __name__ == "__main__":
     unittest.main()
-

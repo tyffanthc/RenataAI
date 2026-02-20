@@ -432,6 +432,122 @@ def _build_options(
     return options
 
 
+def _option_has_target(option: dict[str, Any] | None) -> bool:
+    payload = option if isinstance(option, dict) else {}
+    target = payload.get("target") if isinstance(payload.get("target"), dict) else {}
+    target_system = _as_text(
+        target.get("system_name")
+        or target.get("system")
+        or payload.get("target_system")
+        or payload.get("system")
+    )
+    if target_system:
+        return True
+
+    ui = payload.get("ui_contract") if isinstance(payload.get("ui_contract"), dict) else {}
+    ui_target = ui.get("target") if isinstance(ui.get("target"), dict) else {}
+    return bool(_as_text(ui_target.get("system")))
+
+
+def _pick_fallback_station_candidate(
+    *,
+    candidates: list[dict[str, Any]],
+    service: str,
+) -> dict[str, Any] | None:
+    rows = [dict(item) for item in candidates if isinstance(item, dict)]
+    if not rows:
+        return None
+
+    service_norm = _normalize_cash_in_service(service)
+    if service_norm == "uc":
+        # Dla UC preferujemy non-carrier, gdy brakuje pelnego pokrycia uslug.
+        rows.sort(
+            key=lambda row: (
+                1 if _candidate_is_carrier(row) else 0,
+                _candidate_distance_ly(row),
+                _candidate_distance_ls(row),
+                _candidate_name(row).casefold(),
+            )
+        )
+    else:
+        rows.sort(
+            key=lambda row: (
+                _candidate_distance_ly(row),
+                _candidate_distance_ls(row),
+                _candidate_name(row).casefold(),
+            )
+        )
+
+    for row in rows:
+        if _as_text(row.get("system_name")):
+            return row
+    return None
+
+
+def _attach_fallback_target_to_options(
+    options: list[dict[str, Any]],
+    *,
+    station_candidates: list[dict[str, Any]],
+    service: str,
+) -> list[dict[str, Any]]:
+    rows = [dict(item) for item in options if isinstance(item, dict)]
+    if not rows:
+        return []
+
+    if all(_option_has_target(item) for item in rows):
+        return rows
+
+    fallback_candidate = _pick_fallback_station_candidate(
+        candidates=station_candidates,
+        service=service,
+    )
+    if not isinstance(fallback_candidate, dict):
+        return rows
+
+    target_system = _as_text(fallback_candidate.get("system_name"))
+    if not target_system:
+        return rows
+
+    target_name = _as_text(fallback_candidate.get("name"))
+    target_type = _as_text(fallback_candidate.get("type")) or "station"
+    target_source = _as_text(fallback_candidate.get("source"))
+    target_freshness = _as_text(fallback_candidate.get("freshness_ts"))
+    target_distance_ly = _safe_optional_float(fallback_candidate.get("distance_ly"))
+    target_distance_ls = _safe_optional_float(fallback_candidate.get("distance_ls"))
+
+    enriched: list[dict[str, Any]] = []
+    for raw in rows:
+        item = dict(raw)
+        if _option_has_target(item):
+            enriched.append(item)
+            continue
+
+        existing_target = item.get("target") if isinstance(item.get("target"), dict) else {}
+        target_payload = dict(existing_target)
+        target_payload.setdefault("name", target_name)
+        target_payload.setdefault("system_name", target_system)
+        target_payload.setdefault("type", target_type)
+        if target_distance_ly is not None:
+            target_payload.setdefault("distance_ly", target_distance_ly)
+        if target_distance_ls is not None:
+            target_payload.setdefault("distance_ls", target_distance_ls)
+        if target_source:
+            target_payload.setdefault("source", target_source)
+        if target_freshness:
+            target_payload.setdefault("freshness_ts", target_freshness)
+
+        item["target"] = target_payload
+        item["target_system"] = target_system
+        if target_name:
+            item["target_station"] = target_name
+        if target_type:
+            item["target_type"] = target_type
+        item["fallback_target_attached"] = True
+        item["fallback_target_reason"] = "station_candidates_without_service_match"
+        enriched.append(item)
+    return enriched
+
+
 def _infer_profile_for_option(option: dict[str, Any]) -> str:
     profile = _as_text(option.get("profile")).upper()
     if profile in {"SAFE", "FAST", "SECURE"}:
@@ -922,15 +1038,20 @@ def _build_profiled_options(
 def resolve_cash_in_option_target(option: dict[str, Any] | None) -> dict[str, str]:
     payload = option if isinstance(option, dict) else {}
     target = payload.get("target") if isinstance(payload.get("target"), dict) else {}
+    ui = payload.get("ui_contract") if isinstance(payload.get("ui_contract"), dict) else {}
+    ui_target = ui.get("target") if isinstance(ui.get("target"), dict) else {}
 
     target_system = str(
         target.get("system_name")
+        or target.get("system")
+        or ui_target.get("system")
         or payload.get("target_system")
         or payload.get("system")
         or ""
     ).strip()
     target_station = str(
         target.get("name")
+        or ui_target.get("name")
         or payload.get("target_station")
         or payload.get("station")
         or ""
@@ -1654,6 +1775,13 @@ def trigger_cash_in_assistant(
             "service": service,
             "hard_filter_count": 0,
         }
+    options = _attach_fallback_target_to_options(
+        options,
+        station_candidates=station_candidates,
+        service=service,
+    )
+    if any(bool((opt or {}).get("fallback_target_attached")) for opt in options):
+        ranking_meta["fallback_target_attached"] = True
     options = _apply_ui_transparency_contract(options)
 
     edge_case_meta = _build_edge_case_meta(

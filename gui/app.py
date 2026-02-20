@@ -1774,14 +1774,26 @@ class RenataApp:
                         profile_hint = route_profile
                     self.show_status(f"Cash-in: ustawiono intent trasy -> {target_display} ({profile_hint}).")
                 else:
-                    self.show_status("Cash-in: brak celu do ustawienia intentu trasy.")
+                    reason = str(result.get("reason") or "").strip().lower()
+                    if reason == "target_missing":
+                        if bool(config.get("cash_in.station_candidates_lookup_enabled", False)):
+                            self.show_status("Cash-in: brak celu trasy w tej sugestii (dane stacyjne niepelne).")
+                        else:
+                            self.show_status(
+                                "Cash-in: brak celu trasy. Wlacz lookup stacji online albo odswiez sugestie."
+                            )
+                    else:
+                        self.show_status("Cash-in: brak celu do ustawienia intentu trasy.")
                 return
 
             if action_norm == "copy_next_hop":
                 target = resolve_cash_in_option_target(option_payload)
                 next_hop = str(target.get("target_system") or "").strip()
                 if not next_hop:
-                    self.show_status("Cash-in: brak celu next hop do skopiowania.")
+                    if bool(config.get("cash_in.station_candidates_lookup_enabled", False)):
+                        self.show_status("Cash-in: brak next hop (dane stacyjne niepelne).")
+                    else:
+                        self.show_status("Cash-in: brak next hop. Wlacz lookup stacji online albo odswiez sugestie.")
                     return
                 persist_cash_in_route_profile(
                     option_payload,
