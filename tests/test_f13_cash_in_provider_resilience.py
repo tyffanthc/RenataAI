@@ -50,6 +50,7 @@ class F13CashInProviderResilienceTests(unittest.TestCase):
 
         edsm_client._reset_provider_resilience_state_for_tests()
         cash_in_assistant._reset_cash_in_swr_cache_for_tests()
+        cash_in_assistant._reset_cash_in_local_known_cache_for_tests()
 
     def tearDown(self) -> None:
         config.config._settings = self._orig_settings
@@ -59,6 +60,7 @@ class F13CashInProviderResilienceTests(unittest.TestCase):
         app_state.cash_in_skip_signature = self._saved_skip_sig
         edsm_client._reset_provider_resilience_state_for_tests()
         cash_in_assistant._reset_cash_in_swr_cache_for_tests()
+        cash_in_assistant._reset_cash_in_local_known_cache_for_tests()
 
     def test_edsm_nearby_503_opens_circuit_and_counts_metric(self) -> None:
         with (
@@ -289,6 +291,111 @@ class F13CashInProviderResilienceTests(unittest.TestCase):
         meta = dict(structured.get("station_candidates_meta") or {})
         self.assertFalse(bool(meta.get("swr_cache_used")))
         self.assertEqual(str(meta.get("swr_freshness") or ""), "EXPIRED")
+
+    def test_local_known_fallback_is_used_when_provider_empty_and_swr_disabled(self) -> None:
+        config.config._settings["cash_in.swr_cache_enabled"] = False
+        payload = {
+            "system": "F13_TEST_SYSTEM",
+            "cash_in_signal": "sredni",
+            "cash_in_system_estimated": 2_000_000.0,
+            "cash_in_session_estimated": 7_000_000.0,
+            "service": "uc",
+        }
+        provider_rows = [
+            {
+                "name": "Known UC Base",
+                "system_name": "F13_KNOWN_SYSTEM",
+                "type": "station",
+                "services": {"has_uc": True, "has_vista": False},
+                "distance_ly": 36.0,
+                "source": "EDSM",
+            }
+        ]
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                side_effect=[provider_rows, []],
+            ),
+            patch("logic.events.cash_in_assistant.edsm_provider_resilience_snapshot", return_value={}),
+            patch("logic.events.cash_in_assistant.emit_insight") as emit_mock,
+        ):
+            self.assertTrue(cash_in_assistant.trigger_cash_in_assistant(mode="manual", summary_payload=payload))
+            self.assertTrue(cash_in_assistant.trigger_cash_in_assistant(mode="manual", summary_payload=payload))
+
+        self.assertEqual(emit_mock.call_count, 2)
+        ctx = dict(emit_mock.call_args_list[1].kwargs.get("context") or {})
+        structured = dict(ctx.get("cash_in_payload") or {})
+        meta = dict(structured.get("station_candidates_meta") or {})
+        edge = dict(structured.get("edge_case_meta") or {})
+        reasons = {str(item).strip().lower() for item in (edge.get("reasons") or [])}
+        self.assertTrue(bool(meta.get("local_known_fallback_used")))
+        self.assertEqual(str(meta.get("source_status") or ""), "local_known_fallback")
+        self.assertEqual(str(meta.get("provider_lookup_status") or ""), "providers_empty")
+        self.assertIn("local_known_fallback", reasons)
+        self.assertIn("providers_empty", reasons)
+        self.assertEqual(str(edge.get("confidence") or ""), "low")
+
+    def test_local_known_fallback_with_provider_503_uses_outage_message_matrix(self) -> None:
+        config.config._settings["cash_in.swr_cache_enabled"] = False
+        payload = {
+            "system": "F13_TEST_SYSTEM",
+            "cash_in_signal": "wysoki",
+            "cash_in_system_estimated": 8_000_000.0,
+            "cash_in_session_estimated": 23_000_000.0,
+            "service": "uc",
+        }
+        provider_rows = [
+            {
+                "name": "Known Carrier Safe",
+                "system_name": "F13_KNOWN_SYSTEM",
+                "type": "station",
+                "services": {"has_uc": True, "has_vista": False},
+                "distance_ly": 52.0,
+                "source": "EDSM",
+            }
+        ]
+        snapshot_503 = {
+            "provider": "EDSM",
+            "endpoints": {
+                "station_details": {
+                    "circuit_open": False,
+                    "last_error_code": 503,
+                    "provider_down_503_count": 4,
+                },
+                "nearby_systems": {
+                    "circuit_open": False,
+                    "last_error_code": 0,
+                    "provider_down_503_count": 0,
+                },
+            },
+        }
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                side_effect=[provider_rows, []],
+            ),
+            patch(
+                "logic.events.cash_in_assistant.edsm_provider_resilience_snapshot",
+                side_effect=[{}, snapshot_503],
+            ),
+            patch("logic.events.cash_in_assistant.emit_insight") as emit_mock,
+        ):
+            self.assertTrue(cash_in_assistant.trigger_cash_in_assistant(mode="manual", summary_payload=payload))
+            self.assertTrue(cash_in_assistant.trigger_cash_in_assistant(mode="manual", summary_payload=payload))
+
+        self.assertEqual(emit_mock.call_count, 2)
+        kwargs = emit_mock.call_args_list[1].kwargs
+        ctx = dict(kwargs.get("context") or {})
+        structured = dict(ctx.get("cash_in_payload") or {})
+        meta = dict(structured.get("station_candidates_meta") or {})
+        edge = dict(structured.get("edge_case_meta") or {})
+        reasons = {str(item).strip().lower() for item in (edge.get("reasons") or [])}
+        self.assertTrue(bool(meta.get("local_known_fallback_used")))
+        self.assertEqual(str(meta.get("provider_lookup_status") or ""), "provider_down_503")
+        self.assertIn("provider_down_503", reasons)
+        self.assertIn("local_known_fallback", reasons)
+        self.assertIn("lokalny cache", str(ctx.get("raw_text") or "").lower())
+        self.assertEqual(str(edge.get("confidence") or ""), "low")
 
 
 if __name__ == "__main__":

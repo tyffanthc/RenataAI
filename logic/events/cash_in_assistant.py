@@ -41,10 +41,15 @@ class CashInAssistantPayload:
 
 
 _CASH_IN_SWR_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_CASH_IN_LOCAL_KNOWN_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
 
 def _reset_cash_in_swr_cache_for_tests() -> None:
     _CASH_IN_SWR_CACHE.clear()
+
+
+def _reset_cash_in_local_known_cache_for_tests() -> None:
+    _CASH_IN_LOCAL_KNOWN_CACHE.clear()
 
 
 def _as_text(value: Any) -> str:
@@ -1275,6 +1280,8 @@ def _station_candidates_confidence(
     freshness = _as_text(swr_freshness).upper()
     if candidates_count <= 0:
         return "low"
+    if source == "local_known_fallback":
+        return "low"
     base = "low"
     if source.startswith("providers") and (uc_count > 0 or vista_count > 0):
         base = "high"
@@ -1416,6 +1423,117 @@ def _load_swr_snapshot(
     }
 
 
+def _local_known_cache_enabled() -> bool:
+    return bool(config.get("cash_in.local_known_fallback_enabled", True))
+
+
+def _local_known_cache_ttl_sec() -> float:
+    raw = config.get("cash_in.local_known_fallback_ttl_sec", 86400.0)
+    try:
+        ttl = float(86400.0 if raw is None else raw)
+    except Exception:
+        ttl = 86400.0
+    return max(60.0, ttl)
+
+
+def _local_known_cache_max_items() -> int:
+    raw = config.get("cash_in.local_known_fallback_max_items", 256)
+    try:
+        items = int(256 if raw is None else raw)
+    except Exception:
+        items = 256
+    return max(16, items)
+
+
+def _local_known_cache_key(*, service: str) -> str:
+    return _normalize_cash_in_service(service)
+
+
+def _prune_local_known_cache() -> None:
+    ttl_sec = _local_known_cache_ttl_sec()
+    max_items = _local_known_cache_max_items()
+    now = time.monotonic()
+    for key, item in list(_CASH_IN_LOCAL_KNOWN_CACHE.items()):
+        if not isinstance(item, tuple) or len(item) != 2:
+            _CASH_IN_LOCAL_KNOWN_CACHE.pop(key, None)
+            continue
+        ts = float(item[0] or 0.0)
+        if (now - ts) > ttl_sec:
+            _CASH_IN_LOCAL_KNOWN_CACHE.pop(key, None)
+            continue
+        rows = item[1]
+        if not isinstance(rows, list):
+            _CASH_IN_LOCAL_KNOWN_CACHE.pop(key, None)
+            continue
+        if len(rows) > max_items:
+            _CASH_IN_LOCAL_KNOWN_CACHE[key] = (ts, [dict(r) for r in rows[:max_items] if isinstance(r, dict)])
+
+
+def _store_local_known_candidates(
+    *,
+    service: str,
+    candidates: list[dict[str, Any]],
+    max_items_hint: int,
+) -> None:
+    if not _local_known_cache_enabled():
+        return
+    svc = _local_known_cache_key(service=service)
+    filtered = filter_candidates_by_service(candidates, service=svc)
+    if not filtered:
+        return
+
+    rows: list[dict[str, Any]] = []
+    for row in filtered:
+        if not isinstance(row, dict):
+            continue
+        item = dict(row)
+        item.setdefault("source", "LOCAL_KNOWN")
+        rows.append(item)
+    if not rows:
+        return
+
+    merged = build_station_candidates(
+        rows,
+        source_hint="LOCAL_KNOWN",
+        limit=max(max_items_hint, _local_known_cache_max_items()),
+    )
+    if not merged:
+        return
+    _CASH_IN_LOCAL_KNOWN_CACHE[svc] = (time.monotonic(), merged[: _local_known_cache_max_items()])
+    _prune_local_known_cache()
+
+
+def _load_local_known_candidates(
+    *,
+    service: str,
+    limit: int,
+) -> dict[str, Any]:
+    if not _local_known_cache_enabled():
+        return {"used": False, "age_sec": 0.0, "count": 0, "candidates": []}
+
+    _prune_local_known_cache()
+    svc = _local_known_cache_key(service=service)
+    item = _CASH_IN_LOCAL_KNOWN_CACHE.get(svc)
+    if not item:
+        return {"used": False, "age_sec": 0.0, "count": 0, "candidates": []}
+
+    ts, rows = item
+    age_sec = max(0.0, time.monotonic() - float(ts or 0.0))
+    out = [
+        dict(row)
+        for row in (rows or [])
+        if isinstance(row, dict)
+    ]
+    if limit > 0:
+        out = out[:limit]
+    return {
+        "used": bool(out),
+        "age_sec": age_sec,
+        "count": len(out),
+        "candidates": out,
+    }
+
+
 def _is_truthy(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -1480,6 +1598,7 @@ def _build_edge_case_meta(
     provider_lookup_attempted = bool(station_meta.get("provider_lookup_attempted"))
     swr_cache_used = bool(station_meta.get("swr_cache_used"))
     swr_freshness = _as_text(station_meta.get("swr_freshness")).upper()
+    local_known_fallback_used = bool(station_meta.get("local_known_fallback_used"))
     candidate_count = int(station_meta.get("count") or 0)
 
     if source_status == "providers_empty" or provider_lookup_status == "providers_empty":
@@ -1490,6 +1609,8 @@ def _build_edge_case_meta(
         _append_unique_reason(reasons, "provider_circuit_open")
     if swr_cache_used and swr_freshness == "STALE":
         _append_unique_reason(reasons, "stale_cache")
+    if local_known_fallback_used:
+        _append_unique_reason(reasons, "local_known_fallback")
     if candidate_count <= 0:
         _append_unique_reason(reasons, "no_station_data")
 
@@ -1513,6 +1634,7 @@ def _build_edge_case_meta(
             "provider_down_503",
             "provider_circuit_open",
             "stale_cache",
+            "local_known_fallback",
             "no_station_data",
             "no_service_candidates",
             "offline",
@@ -1527,6 +1649,12 @@ def _build_edge_case_meta(
     ui_hint = ""
     if "offline" in reasons:
         ui_hint = "Tryb offline/przerwane logi: rekomendacja orientacyjna."
+    elif "provider_circuit_open" in reasons and "local_known_fallback" in reasons:
+        ui_hint = "Provider stacyjny chwilowo niedostepny: pokazuje lokalny cache znanych stacji/systemow."
+    elif "provider_down_503" in reasons and "local_known_fallback" in reasons:
+        ui_hint = "Provider stacyjny chwilowo niedostepny (HTTP 503): pokazuje lokalny cache znanych stacji/systemow."
+    elif "providers_empty" in reasons and "local_known_fallback" in reasons:
+        ui_hint = "Provider nie zwrocil danych: pokazuje lokalny cache znanych stacji/systemow."
     elif "provider_circuit_open" in reasons and "stale_cache" in reasons:
         ui_hint = "Provider stacyjny chwilowo niedostepny: wynik z cache (stale)."
     elif "provider_down_503" in reasons and "stale_cache" in reasons:
@@ -1559,6 +1687,7 @@ def _build_edge_case_meta(
         "provider_lookup_attempted": provider_lookup_attempted,
         "swr_cache_used": swr_cache_used,
         "swr_freshness": swr_freshness or "NONE",
+        "local_known_fallback_used": local_known_fallback_used,
     }
 
 
@@ -1578,6 +1707,8 @@ def _append_edge_case_note(base_note: str, edge_case_meta: dict[str, Any]) -> st
         extra_parts.append("Provider stacyjny chwilowo niedostepny (HTTP 503).")
     if "stale_cache" in reasons:
         extra_parts.append("Wynik z cache (stale).")
+    if "local_known_fallback" in reasons:
+        extra_parts.append("Wynik z lokalnego cache znanych stacji/systemow.")
     if "providers_empty" in reasons or "no_station_data" in reasons or "no_service_candidates" in reasons:
         extra_parts.append("Brak pelnych danych stacyjnych.")
     if "no_non_carrier" in reasons:
@@ -1651,6 +1782,9 @@ def _build_station_candidates_runtime(
     swr_cache_age_sec = 0.0
     swr_cache_source_status = ""
     swr_saved_at_utc = ""
+    local_known_fallback_used = False
+    local_known_fallback_age_sec = 0.0
+    local_known_fallback_count = 0
 
     raw_candidates = raw_payload.get("station_candidates") or raw_payload.get("stationCandidates")
     if isinstance(raw_candidates, list) and raw_candidates:
@@ -1783,14 +1917,20 @@ def _build_station_candidates_runtime(
     else:
         cross_system_lookup_status = "not_needed"
 
-    if provider_lookup_attempted and candidates and source_status in {"providers", "providers_cross_system"}:
-        _store_swr_snapshot(
-            cache_key=swr_cache_key,
-            candidates=candidates,
-            source_status=source_status,
+    if provider_lookup_attempted and candidates:
+        if source_status in {"providers", "providers_cross_system"}:
+            _store_swr_snapshot(
+                cache_key=swr_cache_key,
+                candidates=candidates,
+                source_status=source_status,
+                service=service_norm,
+                radius_ly=cross_radius_ly,
+                max_systems=cross_max_systems,
+            )
+        _store_local_known_candidates(
             service=service_norm,
-            radius_ly=cross_radius_ly,
-            max_systems=cross_max_systems,
+            candidates=candidates,
+            max_items_hint=limit * 2,
         )
 
     if provider_lookup_attempted and not candidates:
@@ -1824,6 +1964,24 @@ def _build_station_candidates_runtime(
                     restored_status = swr_cache_source_status or "providers"
                     source_status = restored_status
                     provider_lookup_status = restored_status
+
+    if provider_lookup_attempted and not candidates:
+        known = _load_local_known_candidates(service=service_norm, limit=limit)
+        if bool(known.get("used")):
+            known_rows = list(known.get("candidates") or [])
+            known_candidates = build_station_candidates(
+                known_rows,
+                default_system=system,
+                source_hint="LOCAL_KNOWN",
+                freshness_ts=freshness_ts,
+                limit=limit,
+            )
+            if known_candidates:
+                candidates = known_candidates
+                source_status = "local_known_fallback"
+                local_known_fallback_used = True
+                local_known_fallback_age_sec = float(known.get("age_sec") or 0.0)
+                local_known_fallback_count = int(known.get("count") or 0)
 
     if not candidates:
         current_station = _as_text(getattr(app_state, "current_station", ""))
@@ -1864,6 +2022,11 @@ def _build_station_candidates_runtime(
         "swr_profile_service": service_norm,
         "swr_profile_radius_ly": float(cross_radius_ly),
         "swr_profile_max_systems": int(cross_max_systems),
+        "local_known_fallback_used": local_known_fallback_used,
+        "local_known_fallback_age_sec": int(round(local_known_fallback_age_sec))
+        if local_known_fallback_age_sec > 0.0
+        else 0,
+        "local_known_fallback_count": local_known_fallback_count,
         "provider_down_503_count": int(
             max(
                 int(
@@ -1929,10 +2092,18 @@ def _build_tts_line(payload: CashInAssistantPayload) -> str:
     if edge_reasons:
         if "offline" in edge_reasons:
             return "Cash-in: tryb offline lub przerwane logi. Rekomendacja orientacyjna, sprawdz panel."
+        if "provider_circuit_open" in edge_reasons and "local_known_fallback" in edge_reasons:
+            return "Cash-in: provider stacyjny chwilowo niedostepny. Pokazuje lokalny cache znanych stacji, sprawdz panel."
+        if "provider_down_503" in edge_reasons and "local_known_fallback" in edge_reasons:
+            return "Cash-in: provider stacyjny zwraca blad 503. Pokazuje lokalny cache znanych stacji, sprawdz panel."
+        if "providers_empty" in edge_reasons and "local_known_fallback" in edge_reasons:
+            return "Cash-in: provider nie zwrocil danych. Pokazuje lokalny cache znanych stacji, sprawdz panel."
         if "provider_circuit_open" in edge_reasons and "stale_cache" in edge_reasons:
             return "Cash-in: provider stacyjny chwilowo niedostepny. Pokazuje wynik z cache stale, sprawdz panel."
         if "provider_down_503" in edge_reasons and "stale_cache" in edge_reasons:
             return "Cash-in: provider stacyjny zwraca blad 503. Pokazuje wynik z cache stale, sprawdz panel."
+        if "local_known_fallback" in edge_reasons:
+            return "Cash-in: pokazuje lokalny cache znanych stacji. Traktuj decyzje orientacyjnie."
         if "stale_cache" in edge_reasons:
             return "Cash-in: pokazuje wynik z cache stale. Traktuj decyzje orientacyjnie."
         if "provider_circuit_open" in edge_reasons:

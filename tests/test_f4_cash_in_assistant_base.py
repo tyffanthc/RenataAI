@@ -15,11 +15,15 @@ class F4CashInAssistantBaseTests(unittest.TestCase):
         app_state.current_system = "F4_CASH_IN_TEST_SYSTEM"
         app_state.last_cash_in_signature = None
         app_state.cash_in_skip_signature = None
+        cash_in_assistant._reset_cash_in_swr_cache_for_tests()
+        cash_in_assistant._reset_cash_in_local_known_cache_for_tests()
 
     def tearDown(self) -> None:
         app_state.current_system = self._saved_system
         app_state.last_cash_in_signature = self._saved_last_sig
         app_state.cash_in_skip_signature = self._saved_skip_sig
+        cash_in_assistant._reset_cash_in_swr_cache_for_tests()
+        cash_in_assistant._reset_cash_in_local_known_cache_for_tests()
 
     @staticmethod
     def _summary_payload() -> dict:
@@ -74,4 +78,3 @@ class F4CashInAssistantBaseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
