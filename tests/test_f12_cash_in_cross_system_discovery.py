@@ -15,12 +15,14 @@ class F12CashInCrossSystemDiscoveryTests(unittest.TestCase):
         self._saved_system = getattr(app_state, "current_system", None)
         self._saved_station = getattr(app_state, "current_station", None)
         self._saved_docked = getattr(app_state, "is_docked", None)
+        self._saved_star_pos = getattr(app_state, "current_star_pos", None)
         self._saved_last_sig = getattr(app_state, "last_cash_in_signature", None)
         self._saved_skip_sig = getattr(app_state, "cash_in_skip_signature", None)
 
         app_state.current_system = "F12_ORIGIN"
         app_state.current_station = ""
         app_state.is_docked = False
+        app_state.current_star_pos = [10.0, 20.0, 30.0]
         app_state.last_cash_in_signature = None
         app_state.cash_in_skip_signature = None
 
@@ -38,6 +40,7 @@ class F12CashInCrossSystemDiscoveryTests(unittest.TestCase):
         app_state.current_system = self._saved_system
         app_state.current_station = self._saved_station
         app_state.is_docked = self._saved_docked
+        app_state.current_star_pos = self._saved_star_pos
         app_state.last_cash_in_signature = self._saved_last_sig
         app_state.cash_in_skip_signature = self._saved_skip_sig
 
@@ -86,7 +89,7 @@ class F12CashInCrossSystemDiscoveryTests(unittest.TestCase):
             patch(
                 "logic.cash_in_station_candidates.edsm_nearby_systems",
                 return_value=nearby_systems,
-            ),
+            ) as nearby_mock,
             patch(
                 "logic.cash_in_station_candidates.station_candidates_for_system_from_providers",
                 side_effect=_provider_side_effect,
@@ -99,6 +102,7 @@ class F12CashInCrossSystemDiscoveryTests(unittest.TestCase):
                 include_spansh=True,
                 radius_ly=80.0,
                 max_systems=6,
+                origin_coords=[1.0, 2.0, 3.0],
                 limit=12,
             )
 
@@ -109,6 +113,9 @@ class F12CashInCrossSystemDiscoveryTests(unittest.TestCase):
         self.assertEqual(float(row.get("distance_ly") or 0.0), 33.0)
         self.assertEqual(int(meta.get("systems_requested") or 0), 2)
         self.assertEqual(int(meta.get("systems_with_candidates") or 0), 1)
+        self.assertTrue(bool(meta.get("origin_coords_used")))
+        kwargs = dict(nearby_mock.call_args.kwargs or {})
+        self.assertEqual(list(kwargs.get("origin_coords") or []), [1.0, 2.0, 3.0])
 
     def test_runtime_uses_cross_system_when_local_candidates_miss_service(self) -> None:
         payload = self._base_payload()
@@ -161,9 +168,12 @@ class F12CashInCrossSystemDiscoveryTests(unittest.TestCase):
         self.assertEqual(str(station_meta.get("cross_system_lookup_status") or ""), "cross_system")
         self.assertEqual(int(station_meta.get("cross_system_systems_requested") or 0), 3)
         self.assertEqual(int(station_meta.get("cross_system_systems_with_candidates") or 0), 1)
+        self.assertTrue(bool(station_meta.get("cross_system_origin_coords_used")))
         self.assertEqual(str(station_meta.get("source_status") or ""), "providers_cross_system")
         self.assertGreaterEqual(len(uc_candidates), 1)
         self.assertTrue(any(str(row.get("system_name") or "") == "F12_NEAR" for row in uc_candidates))
+        kwargs = dict(cross_mock.call_args.kwargs or {})
+        self.assertEqual(list(kwargs.get("origin_coords") or []), [10.0, 20.0, 30.0])
 
     def test_runtime_skips_cross_system_when_local_service_match_exists(self) -> None:
         payload = self._base_payload()
@@ -196,4 +206,3 @@ class F12CashInCrossSystemDiscoveryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

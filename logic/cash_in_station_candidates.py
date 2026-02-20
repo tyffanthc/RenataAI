@@ -331,6 +331,7 @@ def station_candidates_cross_system_from_providers(
     include_spansh: bool = True,
     radius_ly: float = 120.0,
     max_systems: int = 12,
+    origin_coords: list[float] | tuple[float, float, float] | None = None,
     freshness_ts: str = "",
     limit: int = 24,
 ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
@@ -359,6 +360,7 @@ def station_candidates_cross_system_from_providers(
                     origin,
                     radius_ly=float(radius_ly or 120.0),
                     limit=max(1, int(max_systems)),
+                    origin_coords=origin_coords,
                 )
                 if isinstance(item, dict)
             ]
@@ -435,6 +437,7 @@ def station_candidates_cross_system_from_providers(
         "systems_with_candidates": systems_with_candidates,
         "service": svc or "any",
         "radius_ly": float(radius_ly or 120.0),
+        "origin_coords_used": bool(origin_coords),
     }
     return candidates, meta
 

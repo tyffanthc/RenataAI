@@ -104,13 +104,27 @@ def edsm_nearby_systems(
     *,
     radius_ly: float = 120.0,
     limit: int = 16,
+    origin_coords: list[float] | tuple[float, float, float] | None = None,
 ) -> list[dict]:
     if not is_edsm_enabled():
         return []
     sys_name = (system_name or "").strip()
     if not sys_name:
         return []
-    ctx = f"{sys_name.lower()}|{round(float(radius_ly or 120.0), 1)}|{int(limit or 16)}"
+    coords_ctx = ""
+    if isinstance(origin_coords, (list, tuple)) and len(origin_coords) >= 3:
+        try:
+            coords_ctx = (
+                f"|{round(float(origin_coords[0]), 1)}"
+                f",{round(float(origin_coords[1]), 1)}"
+                f",{round(float(origin_coords[2]), 1)}"
+            )
+        except Exception:
+            coords_ctx = ""
+    ctx = (
+        f"{sys_name.lower()}|{round(float(radius_ly or 120.0), 1)}|"
+        f"{int(limit or 16)}{coords_ctx}"
+    )
     if not DEBOUNCER.is_allowed("edsm_nearby_systems", cooldown_sec=0.8, context=ctx):
         MSG_QUEUE.put(("log", f"[EDSM] nearby debounce system={sys_name!r}"))
         return []
@@ -119,11 +133,17 @@ def edsm_nearby_systems(
             sys_name,
             radius_ly=float(radius_ly or 120.0),
             limit=int(limit or 16),
+            origin_coords=origin_coords,
         )
         MSG_QUEUE.put(
             (
                 "log",
-                f"[EDSM] nearby systems system={sys_name!r} radius={round(float(radius_ly or 120.0), 1)} count={len(rows)}",
+                (
+                    f"[EDSM] nearby systems system={sys_name!r} "
+                    f"radius={round(float(radius_ly or 120.0), 1)} "
+                    f"count={len(rows)} "
+                    f"coords={'yes' if origin_coords is not None else 'no'}"
+                ),
             )
         )
         return rows

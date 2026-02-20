@@ -1479,6 +1479,29 @@ def _build_station_candidates_runtime(
         )
         needs_cross_system = (not candidates) or (not has_service_locally)
 
+    origin_coords = None
+    app_star_pos = getattr(app_state, "current_star_pos", None)
+    if isinstance(app_star_pos, (list, tuple)) and len(app_star_pos) >= 3:
+        try:
+            origin_coords = [
+                float(app_star_pos[0]),
+                float(app_star_pos[1]),
+                float(app_star_pos[2]),
+            ]
+        except Exception:
+            origin_coords = None
+    if origin_coords is None:
+        raw_star_pos = raw_payload.get("star_pos") or raw_payload.get("starPos")
+        if isinstance(raw_star_pos, (list, tuple)) and len(raw_star_pos) >= 3:
+            try:
+                origin_coords = [
+                    float(raw_star_pos[0]),
+                    float(raw_star_pos[1]),
+                    float(raw_star_pos[2]),
+                ]
+            except Exception:
+                origin_coords = None
+
     if needs_cross_system:
         provider_lookup_attempted = True
         cross_system_lookup_attempted = True
@@ -1493,6 +1516,7 @@ def _build_station_candidates_runtime(
             include_spansh=cross_include_spansh,
             radius_ly=cross_radius_ly,
             max_systems=cross_max_systems,
+            origin_coords=origin_coords,
             freshness_ts=freshness_ts,
             limit=limit,
         )
@@ -1550,6 +1574,7 @@ def _build_station_candidates_runtime(
         "cross_system_lookup_status": cross_system_lookup_status,
         "cross_system_systems_requested": cross_system_systems_requested,
         "cross_system_systems_with_candidates": cross_system_systems_with_candidates,
+        "cross_system_origin_coords_used": bool(origin_coords),
         "count": len(candidates),
         "uc_count": len(uc_candidates),
         "vista_count": len(vista_candidates),

@@ -95,6 +95,9 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
         or ev.get("StarSystemName")
     )
     if sysname:
+        star_pos = ev.get("StarPos")
+        if isinstance(star_pos, (list, tuple)) and len(star_pos) >= 3:
+            app_state.set_star_pos(star_pos)
         # reset FSS + discovery/footfall przy wej+Ťciu do nowego systemu
         reset_fss_progress()
         app_state.set_system(sysname)

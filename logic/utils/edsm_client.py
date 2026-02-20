@@ -382,6 +382,7 @@ def fetch_nearby_systems(
     *,
     radius_ly: float = 120.0,
     limit: int = 16,
+    origin_coords: list[float] | tuple[float, float, float] | None = None,
     timeout: float | None = None,
 ) -> List[Dict[str, Any]]:
     """
@@ -394,126 +395,159 @@ def fetch_nearby_systems(
 
     safe_radius = max(1.0, float(radius_ly or 120.0))
     safe_limit = max(1, int(limit or 16))
+    coords_norm: tuple[float, float, float] | None = None
+    if isinstance(origin_coords, (list, tuple)) and len(origin_coords) >= 3:
+        try:
+            coords_norm = (
+                float(origin_coords[0]),
+                float(origin_coords[1]),
+                float(origin_coords[2]),
+            )
+        except Exception:
+            coords_norm = None
+
+    coords_suffix = ""
+    if coords_norm is not None:
+        coords_suffix = (
+            f":coords="
+            f"{round(coords_norm[0], 3)},{round(coords_norm[1], 3)},{round(coords_norm[2], 3)}"
+        )
+
     cache_key = (
         f"nearby_systems:{_normalize_query(sys_name)}:"
-        f"radius={round(safe_radius, 2)}:limit={safe_limit}"
+        f"radius={round(safe_radius, 2)}:limit={safe_limit}{coords_suffix}"
     )
     cached = _nearby_systems_cache_get(cache_key)
     if isinstance(cached, list):
         return [dict(item) for item in cached if isinstance(item, dict)]
 
-    _throttle()
     url = "https://www.edsm.net/api-v1/sphere-systems"
     headers = {"User-Agent": "RENATA/1.0", "Accept": "application/json"}
     timeout_val = _DEFAULT_TIMEOUT if timeout is None else float(timeout)
 
-    params = {
-        "systemName": sys_name,
-        "radius": safe_radius,
-        "showCoordinates": 1,
-    }
+    def _request_rows(params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        _throttle()
+        try:
+            res = requests.get(
+                url,
+                params=params,
+                headers=headers,
+                timeout=timeout_val,
+            )
+        except requests.Timeout as e:
+            raise Edsmtimeout(str(e)) from e
+        except requests.RequestException as e:
+            raise Edsmunavailable(str(e)) from e
 
-    try:
-        res = requests.get(
-            url,
-            params=params,
-            headers=headers,
-            timeout=timeout_val,
-        )
-    except requests.Timeout as e:
-        raise Edsmtimeout(str(e)) from e
-    except requests.RequestException as e:
-        raise Edsmunavailable(str(e)) from e
+        if res.status_code != 200:
+            raise Edsmunavailable(f"HTTP {res.status_code}")
 
-    if res.status_code != 200:
-        raise Edsmunavailable(f"HTTP {res.status_code}")
+        try:
+            data = res.json()
+        except Exception as e:
+            raise Edsmbadresponse(str(e)) from e
 
-    try:
-        data = res.json()
-    except Exception as e:
-        raise Edsmbadresponse(str(e)) from e
+        if isinstance(data, list):
+            items: list[Any] = data
+        elif isinstance(data, dict):
+            candidate = data.get("systems")
+            items = candidate if isinstance(candidate, list) else []
+        else:
+            raise Edsmbadresponse("Unexpected response")
 
-    if isinstance(data, list):
-        items = data
-    elif isinstance(data, dict):
-        candidate = data.get("systems")
-        items = candidate if isinstance(candidate, list) else []
-    else:
-        raise Edsmbadresponse("Unexpected response")
+        rows: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        origin_key = sys_name.casefold()
+        for item in items:
+            if isinstance(item, str):
+                name = item.strip()
+                if not name:
+                    continue
+                name_key = name.casefold()
+                if name_key == origin_key or name_key in seen:
+                    continue
+                seen.add(name_key)
+                rows.append(
+                    {
+                        "name": name,
+                        "distance_ly": None,
+                        "x": None,
+                        "y": None,
+                        "z": None,
+                        "source": "EDSM",
+                    }
+                )
+                continue
 
-    rows: List[Dict[str, Any]] = []
-    seen: set[str] = set()
-    origin_key = sys_name.casefold()
-    for item in items:
-        if isinstance(item, str):
-            name = item.strip()
+            if not isinstance(item, dict):
+                continue
+
+            name = str(
+                item.get("name")
+                or item.get("system")
+                or item.get("systemName")
+                or ""
+            ).strip()
             if not name:
                 continue
             name_key = name.casefold()
             if name_key == origin_key or name_key in seen:
                 continue
             seen.add(name_key)
+
+            coords = item.get("coords") if isinstance(item.get("coords"), dict) else {}
+            distance_raw = (
+                item.get("distance")
+                or item.get("distance_ly")
+                or item.get("distanceLy")
+                or item.get("dist")
+            )
+            try:
+                distance_ly = float(distance_raw) if distance_raw is not None else None
+            except Exception:
+                distance_ly = None
+
             rows.append(
                 {
                     "name": name,
-                    "distance_ly": None,
-                    "x": None,
-                    "y": None,
-                    "z": None,
+                    "distance_ly": distance_ly,
+                    "x": coords.get("x"),
+                    "y": coords.get("y"),
+                    "z": coords.get("z"),
                     "source": "EDSM",
                 }
             )
-            continue
 
-        if not isinstance(item, dict):
-            continue
-
-        name = str(
-            item.get("name")
-            or item.get("system")
-            or item.get("systemName")
-            or ""
-        ).strip()
-        if not name:
-            continue
-        name_key = name.casefold()
-        if name_key == origin_key or name_key in seen:
-            continue
-        seen.add(name_key)
-
-        coords = item.get("coords") if isinstance(item.get("coords"), dict) else {}
-        distance_raw = (
-            item.get("distance")
-            or item.get("distance_ly")
-            or item.get("distanceLy")
-            or item.get("dist")
+        rows.sort(
+            key=lambda row: (
+                float(row.get("distance_ly"))
+                if row.get("distance_ly") is not None
+                else 1e18,
+                str(row.get("name") or "").casefold(),
+            )
         )
-        try:
-            distance_ly = float(distance_raw) if distance_raw is not None else None
-        except Exception:
-            distance_ly = None
+        if len(rows) > safe_limit:
+            rows = rows[:safe_limit]
+        return rows
 
-        rows.append(
+    rows: List[Dict[str, Any]] = _request_rows(
+        {
+            "systemName": sys_name,
+            "radius": safe_radius,
+            "showCoordinates": 1,
+        }
+    )
+    # Deep-space fallback: when name-based lookup is empty, retry by coordinates.
+    if not rows and coords_norm is not None:
+        rows = _request_rows(
             {
-                "name": name,
-                "distance_ly": distance_ly,
-                "x": coords.get("x"),
-                "y": coords.get("y"),
-                "z": coords.get("z"),
-                "source": "EDSM",
+                "x": coords_norm[0],
+                "y": coords_norm[1],
+                "z": coords_norm[2],
+                "radius": safe_radius,
+                "showCoordinates": 1,
             }
         )
-
-    rows.sort(
-        key=lambda row: (
-            float(row.get("distance_ly"))
-            if row.get("distance_ly") is not None
-            else 1e18,
-            str(row.get("name") or "").casefold(),
-        )
-    )
-    if len(rows) > safe_limit:
-        rows = rows[:safe_limit]
 
     if rows:
         _nearby_systems_cache_set(cache_key, rows)

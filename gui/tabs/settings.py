@@ -110,6 +110,10 @@ class SettingsTab(ttk.Frame):
         self.var_auto_clipboard_next_hop_resync_policy = tk.StringVar(value="nearest_forward")
         self.var_auto_clipboard_next_hop_allow_manual_advance = tk.BooleanVar(value=True)
         self.var_features_clipboard_next_hop_stepper = tk.BooleanVar(value=True)
+        self.var_cash_in_station_lookup_enabled = tk.BooleanVar(value=False)
+        self.var_cash_in_cross_system_enabled = tk.BooleanVar(value=True)
+        self.var_cash_in_cross_system_radius_ly = tk.StringVar(value="120")
+        self.var_cash_in_cross_system_max_systems = tk.StringVar(value="12")
 
         self.var_fss_assistant = tk.BooleanVar(value=True)             # fss_assistant
         self.var_high_value_planet_alerts = tk.BooleanVar(value=True)  # high_value_planets
@@ -401,11 +405,26 @@ class SettingsTab(ttk.Frame):
             variable=self.var_online_data_enabled,
         ).grid(row=5, column=0, columnspan=2, padx=8, pady=4, sticky="w")
 
+        ttk.Checkbutton(
+            lf_free,
+            text="Cash-In: lookup stacji online",
+            variable=self.var_cash_in_station_lookup_enabled,
+        ).grid(row=6, column=0, columnspan=2, padx=8, pady=4, sticky="w")
+
+        ttk.Label(lf_free, text="Cash-In radius (LY):").grid(
+            row=7, column=0, padx=8, pady=4, sticky="w"
+        )
+        ttk.Entry(
+            lf_free,
+            textvariable=self.var_cash_in_cross_system_radius_ly,
+            width=10,
+        ).grid(row=7, column=1, padx=8, pady=4, sticky="w")
+
         ttk.Label(
             lf_free,
             text="Tryb FREE pokazuje tylko podstawowe opcje.",
             foreground="#888888",
-        ).grid(row=6, column=0, columnspan=2, padx=8, pady=(0, 8), sticky="w")
+        ).grid(row=8, column=0, columnspan=2, padx=8, pady=(0, 8), sticky="w")
 
         lf_safe = ttk.LabelFrame(parent, text=" Dodatkowe opcje (bezpieczne) ")
         lf_safe.grid(row=1, column=0, padx=12, pady=(0, 6), sticky="nsew")
@@ -905,6 +924,55 @@ class SettingsTab(ttk.Frame):
             lf_fuel_safety,
             text="Bezpieczeństwo lotu i ostrzeżenia krytyczne.",
             foreground="#888888",
+        ).grid(row=2, column=0, columnspan=4, padx=8, pady=(0, 6), sticky="w")
+
+        # Cash-In (stacje online)
+        lf_cash_in = ttk.LabelFrame(parent, text=" Cash-In Assistant (stacje online) ")
+        lf_cash_in.grid(row=3, column=0, padx=12, pady=(0, 6), sticky="nsew")
+        lf_cash_in.columnconfigure(0, weight=1)
+        lf_cash_in.columnconfigure(1, weight=1)
+        lf_cash_in.columnconfigure(2, weight=1)
+        lf_cash_in.columnconfigure(3, weight=1)
+
+        ttk.Checkbutton(
+            lf_cash_in,
+            text="Włącz lookup stacji dla Cash-In",
+            variable=self.var_cash_in_station_lookup_enabled,
+        ).grid(row=0, column=0, columnspan=2, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_cash_in,
+            text="Szukaj też w sąsiednich systemach",
+            variable=self.var_cash_in_cross_system_enabled,
+        ).grid(row=0, column=2, columnspan=2, padx=8, pady=4, sticky="w")
+
+        ttk.Label(lf_cash_in, text="Promień szukania (LY):").grid(
+            row=1, column=0, padx=8, pady=4, sticky="w"
+        )
+        ttk.Entry(
+            lf_cash_in,
+            textvariable=self.var_cash_in_cross_system_radius_ly,
+            width=10,
+        ).grid(row=1, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Label(lf_cash_in, text="Maks. liczba systemów:").grid(
+            row=1, column=2, padx=8, pady=4, sticky="w"
+        )
+        ttk.Entry(
+            lf_cash_in,
+            textvariable=self.var_cash_in_cross_system_max_systems,
+            width=10,
+        ).grid(row=1, column=3, padx=8, pady=4, sticky="w")
+
+        ttk.Label(
+            lf_cash_in,
+            text=(
+                "Wymaga danych online. Jeśli lookup jest włączony, Renata zapisze też "
+                "provider online (EDSM/system lookup)."
+            ),
+            foreground="#888888",
+            wraplength=920,
+            justify="left",
         ).grid(row=2, column=0, columnspan=4, padx=8, pady=(0, 6), sticky="w")
 
         self._add_save_bar(parent, row=4)
@@ -1549,6 +1617,7 @@ class SettingsTab(ttk.Frame):
             bool(cfg.get("features.providers.edsm_enabled", False))
             or bool(cfg.get("features.providers.system_lookup_online", False))
             or bool(cfg.get("features.trade.station_lookup_online", False))
+            or bool(cfg.get("cash_in.station_candidates_lookup_enabled", False))
         )
         self.var_online_data_enabled.set(online_enabled)
 
@@ -1608,6 +1677,38 @@ class SettingsTab(ttk.Frame):
             cfg.get(
                 "features.clipboard.next_hop_stepper",
                 self.var_features_clipboard_next_hop_stepper.get(),
+            )
+        )
+        self.var_cash_in_station_lookup_enabled.set(
+            bool(
+                cfg.get(
+                    "cash_in.station_candidates_lookup_enabled",
+                    self.var_cash_in_station_lookup_enabled.get(),
+                )
+            )
+        )
+        self.var_cash_in_cross_system_enabled.set(
+            bool(
+                cfg.get(
+                    "cash_in.cross_system_discovery_enabled",
+                    self.var_cash_in_cross_system_enabled.get(),
+                )
+            )
+        )
+        self.var_cash_in_cross_system_radius_ly.set(
+            str(
+                cfg.get(
+                    "cash_in.cross_system_radius_ly",
+                    self.var_cash_in_cross_system_radius_ly.get(),
+                )
+            )
+        )
+        self.var_cash_in_cross_system_max_systems.set(
+            str(
+                cfg.get(
+                    "cash_in.cross_system_max_systems",
+                    self.var_cash_in_cross_system_max_systems.get(),
+                )
             )
         )
         self.var_route_progress_messages.set(
@@ -1881,8 +1982,29 @@ class SettingsTab(ttk.Frame):
             resync_policy = "nearest_forward"
             self.var_auto_clipboard_next_hop_resync_policy.set(resync_policy)
 
-        online_master = self.var_online_data_enabled.get()
-        provider_edsm_enabled = self.var_provider_edsm_enabled.get()
+        cash_in_lookup_enabled = bool(self.var_cash_in_station_lookup_enabled.get())
+        cash_in_cross_enabled = bool(self.var_cash_in_cross_system_enabled.get())
+        cash_in_cross_radius = self._parse_float_range(
+            self.var_cash_in_cross_system_radius_ly.get(),
+            default=float(config.get("cash_in.cross_system_radius_ly", 120.0)),
+            min_val=20.0,
+            max_val=65000.0,
+        )
+        cash_in_cross_max_systems = self._parse_int_range(
+            self.var_cash_in_cross_system_max_systems.get(),
+            default=int(config.get("cash_in.cross_system_max_systems", 12)),
+            min_val=1,
+            max_val=200,
+        )
+        self.var_cash_in_cross_system_radius_ly.set(
+            str(int(round(cash_in_cross_radius)))
+        )
+        self.var_cash_in_cross_system_max_systems.set(str(cash_in_cross_max_systems))
+
+        online_master = bool(self.var_online_data_enabled.get() or cash_in_lookup_enabled)
+        if online_master != bool(self.var_online_data_enabled.get()):
+            self.var_online_data_enabled.set(online_master)
+        provider_edsm_enabled = bool(self.var_provider_edsm_enabled.get() or cash_in_lookup_enabled)
         if self._free_profile:
             provider_edsm_enabled = online_master
 
@@ -1920,6 +2042,10 @@ class SettingsTab(ttk.Frame):
             "trade_jackpot_speech": self.var_trade_jackpot_alerts.get(),
             "smuggler_alert": self.var_smuggler_alert.get(),
             "features.trade.market_age_slider": self.var_trade_market_age_slider.get(),
+            "cash_in.station_candidates_lookup_enabled": cash_in_lookup_enabled,
+            "cash_in.cross_system_discovery_enabled": cash_in_cross_enabled,
+            "cash_in.cross_system_radius_ly": cash_in_cross_radius,
+            "cash_in.cross_system_max_systems": cash_in_cross_max_systems,
 
             # dodatkowe / frontend only (ale możemy też trzymać w JSON)
             "use_system_theme": self.var_use_system_theme.get(),
@@ -1944,8 +2070,8 @@ class SettingsTab(ttk.Frame):
             "features.debug.panel": self.var_debug_panel.get(),
             "features.spansh.debug_payload": self.var_debug_spansh_payload.get(),
             "features.providers.edsm_enabled": provider_edsm_enabled,
-            "features.providers.system_lookup_online": self.var_online_data_enabled.get(),
-            "features.trade.station_lookup_online": self.var_online_data_enabled.get(),
+            "features.providers.system_lookup_online": online_master,
+            "features.trade.station_lookup_online": online_master,
 
             "features.tables.spansh_schema_enabled": self.var_tables_spansh_schema_enabled.get(),
             "features.tables.normalized_rows_enabled": self.var_tables_normalized_rows_enabled.get(),
@@ -2140,6 +2266,18 @@ class SettingsTab(ttk.Frame):
         )
         self.var_features_clipboard_next_hop_stepper.set(
             bool(defaults.get("features.clipboard.next_hop_stepper", True))
+        )
+        self.var_cash_in_station_lookup_enabled.set(
+            bool(defaults.get("cash_in.station_candidates_lookup_enabled", False))
+        )
+        self.var_cash_in_cross_system_enabled.set(
+            bool(defaults.get("cash_in.cross_system_discovery_enabled", True))
+        )
+        self.var_cash_in_cross_system_radius_ly.set(
+            str(defaults.get("cash_in.cross_system_radius_ly", 120.0))
+        )
+        self.var_cash_in_cross_system_max_systems.set(
+            str(defaults.get("cash_in.cross_system_max_systems", 12))
         )
 
         self.var_route_progress_messages.set(bool(defaults.get("route_progress_speech", True)))

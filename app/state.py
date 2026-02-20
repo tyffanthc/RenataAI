@@ -79,6 +79,7 @@ class AppState:
         # --- Podstawowe dane o stanie gry ---
         self.current_system = config.STATE.get("sys", "Unknown")
         self.current_station = config.STATE.get("station", None)
+        self.current_star_pos = config.STATE.get("star_pos", None)
         # Czy jesteśmy aktualnie zadokowani (runtime'owo)
         self.is_docked = bool(config.STATE.get("is_docked", False))
 
@@ -229,6 +230,20 @@ class AppState:
                 pass
         utils.MSG_QUEUE.put(("start_label", system_name))
         log_event_throttled("state.system", 500, "STATE", f"System = {system_name}")
+
+    def set_star_pos(self, star_pos):
+        if not isinstance(star_pos, (list, tuple)) or len(star_pos) < 3:
+            return
+        try:
+            x = float(star_pos[0])
+            y = float(star_pos[1])
+            z = float(star_pos[2])
+        except Exception:
+            return
+        payload = [x, y, z]
+        with self.lock:
+            self.current_star_pos = payload
+            config.STATE["star_pos"] = list(payload)
 
     def mark_live_system_event(self) -> None:
         with self.lock:
