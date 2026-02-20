@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import time
 from typing import Any
 
 import config
@@ -37,6 +38,13 @@ class CashInAssistantPayload:
     station_candidates_meta: dict[str, Any] = field(default_factory=dict)
     ranking_meta: dict[str, Any] = field(default_factory=dict)
     edge_case_meta: dict[str, Any] = field(default_factory=dict)
+
+
+_CASH_IN_SWR_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def _reset_cash_in_swr_cache_for_tests() -> None:
+    _CASH_IN_SWR_CACHE.clear()
 
 
 def _as_text(value: Any) -> str:
@@ -1261,15 +1269,151 @@ def _station_candidates_confidence(
     uc_count: int,
     vista_count: int,
     source_status: str,
+    swr_freshness: str = "",
 ) -> str:
     source = _as_text(source_status).lower()
+    freshness = _as_text(swr_freshness).upper()
     if candidates_count <= 0:
         return "low"
+    base = "low"
     if source.startswith("providers") and (uc_count > 0 or vista_count > 0):
-        return "high"
-    if uc_count > 0 or vista_count > 0:
-        return "mid"
-    return "low"
+        base = "high"
+    elif uc_count > 0 or vista_count > 0:
+        base = "mid"
+    if freshness == "STALE":
+        return "mid" if base == "high" else "low"
+    if freshness == "EXPIRED":
+        return "low"
+    return base
+
+
+def _swr_cache_ttls() -> tuple[float, float]:
+    fresh_raw = config.get("cash_in.swr_cache_fresh_ttl_sec", 900.0)
+    stale_raw = config.get("cash_in.swr_cache_stale_ttl_sec", 21600.0)
+    try:
+        fresh_ttl = float(900.0 if fresh_raw is None else fresh_raw)
+    except Exception:
+        fresh_ttl = 900.0
+    try:
+        stale_ttl = float(21600.0 if stale_raw is None else stale_raw)
+    except Exception:
+        stale_ttl = 21600.0
+    fresh_ttl = max(0.0, fresh_ttl)
+    stale_ttl = max(fresh_ttl, stale_ttl)
+    return fresh_ttl, stale_ttl
+
+
+def _swr_cache_max_items() -> int:
+    return max(4, int(config.get("cash_in.swr_cache_max_items", 64) or 64))
+
+
+def _swr_cache_enabled() -> bool:
+    return bool(config.get("cash_in.swr_cache_enabled", True))
+
+
+def _build_swr_cache_key(
+    *,
+    system: str,
+    service: str,
+    radius_ly: float,
+    max_systems: int,
+    include_edsm: bool,
+    include_spansh: bool,
+    cross_enabled: bool,
+) -> str:
+    return (
+        f"system={_as_text(system).casefold()}|service={_as_text(service).casefold()}|"
+        f"cross={int(bool(cross_enabled))}|radius={round(float(radius_ly), 2)}|"
+        f"max_systems={int(max_systems)}|edsm={int(bool(include_edsm))}|"
+        f"spansh={int(bool(include_spansh))}"
+    )
+
+
+def _prune_swr_cache(*, stale_ttl_sec: float, max_items: int) -> None:
+    now = time.monotonic()
+    stale_ttl = max(0.0, float(stale_ttl_sec))
+    for key, item in list(_CASH_IN_SWR_CACHE.items()):
+        if not isinstance(item, tuple) or len(item) != 2:
+            _CASH_IN_SWR_CACHE.pop(key, None)
+            continue
+        ts = float(item[0] or 0.0)
+        if stale_ttl > 0.0 and (now - ts) > stale_ttl:
+            _CASH_IN_SWR_CACHE.pop(key, None)
+
+    if len(_CASH_IN_SWR_CACHE) <= max_items:
+        return
+    for key, _ in sorted(_CASH_IN_SWR_CACHE.items(), key=lambda kv: kv[1][0])[: len(_CASH_IN_SWR_CACHE) - max_items]:
+        _CASH_IN_SWR_CACHE.pop(key, None)
+
+
+def _store_swr_snapshot(
+    *,
+    cache_key: str,
+    candidates: list[dict[str, Any]],
+    source_status: str,
+    service: str,
+    radius_ly: float,
+    max_systems: int,
+) -> None:
+    if not _swr_cache_enabled():
+        return
+    if not candidates:
+        return
+    fresh_ttl, stale_ttl = _swr_cache_ttls()
+    if stale_ttl <= 0.0:
+        return
+
+    saved_at_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    snapshot_candidates: list[dict[str, Any]] = []
+    for row in candidates:
+        if not isinstance(row, dict):
+            continue
+        snapshot_candidates.append(dict(row))
+
+    if not snapshot_candidates:
+        return
+
+    uc_count = len(filter_candidates_by_service(snapshot_candidates, service="uc"))
+    vista_count = len(filter_candidates_by_service(snapshot_candidates, service="vista"))
+    payload = {
+        "saved_at_utc": saved_at_utc,
+        "source_status": _as_text(source_status) or "providers",
+        "service": _normalize_cash_in_service(service),
+        "radius_ly": float(radius_ly),
+        "max_systems": int(max_systems),
+        "uc_count": int(uc_count),
+        "vista_count": int(vista_count),
+        "candidates": snapshot_candidates,
+    }
+    _CASH_IN_SWR_CACHE[cache_key] = (time.monotonic(), payload)
+    _prune_swr_cache(stale_ttl_sec=max(stale_ttl, fresh_ttl), max_items=_swr_cache_max_items())
+
+
+def _load_swr_snapshot(
+    *,
+    cache_key: str,
+) -> dict[str, Any]:
+    if not _swr_cache_enabled():
+        return {"status": "DISABLED", "age_sec": 0.0, "entry": {}}
+
+    fresh_ttl, stale_ttl = _swr_cache_ttls()
+    item = _CASH_IN_SWR_CACHE.get(cache_key)
+    _prune_swr_cache(stale_ttl_sec=stale_ttl, max_items=_swr_cache_max_items())
+    if not item:
+        return {"status": "MISSING", "age_sec": 0.0, "entry": {}}
+
+    ts_mono, entry = item
+    age_sec = max(0.0, time.monotonic() - float(ts_mono or 0.0))
+    if age_sec > stale_ttl:
+        _CASH_IN_SWR_CACHE.pop(cache_key, None)
+        return {"status": "EXPIRED", "age_sec": age_sec, "entry": {}}
+
+    status = "FRESH" if age_sec <= fresh_ttl else "STALE"
+    return {
+        "status": status,
+        "age_sec": age_sec,
+        "entry": dict(entry or {}),
+    }
 
 
 def _is_truthy(value: Any) -> bool:
@@ -1334,6 +1478,8 @@ def _build_edge_case_meta(
     source_status = _as_text(station_meta.get("source_status")).lower()
     provider_lookup_status = _as_text(station_meta.get("provider_lookup_status")).lower()
     provider_lookup_attempted = bool(station_meta.get("provider_lookup_attempted"))
+    swr_cache_used = bool(station_meta.get("swr_cache_used"))
+    swr_freshness = _as_text(station_meta.get("swr_freshness")).upper()
     candidate_count = int(station_meta.get("count") or 0)
 
     if source_status == "providers_empty" or provider_lookup_status == "providers_empty":
@@ -1342,6 +1488,8 @@ def _build_edge_case_meta(
         _append_unique_reason(reasons, "provider_down_503")
     if provider_lookup_status == "provider_circuit_open":
         _append_unique_reason(reasons, "provider_circuit_open")
+    if swr_cache_used and swr_freshness == "STALE":
+        _append_unique_reason(reasons, "stale_cache")
     if candidate_count <= 0:
         _append_unique_reason(reasons, "no_station_data")
 
@@ -1364,6 +1512,7 @@ def _build_edge_case_meta(
             "providers_empty",
             "provider_down_503",
             "provider_circuit_open",
+            "stale_cache",
             "no_station_data",
             "no_service_candidates",
             "offline",
@@ -1378,6 +1527,12 @@ def _build_edge_case_meta(
     ui_hint = ""
     if "offline" in reasons:
         ui_hint = "Tryb offline/przerwane logi: rekomendacja orientacyjna."
+    elif "provider_circuit_open" in reasons and "stale_cache" in reasons:
+        ui_hint = "Provider stacyjny chwilowo niedostepny: wynik z cache (stale)."
+    elif "provider_down_503" in reasons and "stale_cache" in reasons:
+        ui_hint = "Provider stacyjny chwilowo niedostepny: wynik z cache (stale)."
+    elif "stale_cache" in reasons:
+        ui_hint = "Wynik z cache (stale): traktuj decyzje orientacyjnie."
     elif "provider_circuit_open" in reasons:
         ui_hint = "Provider stacyjny chwilowo niedostepny (circuit open). Uzyj decyzji orientacyjnej."
     elif "provider_down_503" in reasons:
@@ -1402,6 +1557,8 @@ def _build_edge_case_meta(
         "source_status": source_status or "none",
         "provider_lookup_status": provider_lookup_status or "not_attempted",
         "provider_lookup_attempted": provider_lookup_attempted,
+        "swr_cache_used": swr_cache_used,
+        "swr_freshness": swr_freshness or "NONE",
     }
 
 
@@ -1419,6 +1576,8 @@ def _append_edge_case_note(base_note: str, edge_case_meta: dict[str, Any]) -> st
         extra_parts.append("Provider stacyjny chwilowo niedostepny (circuit open).")
     if "provider_down_503" in reasons:
         extra_parts.append("Provider stacyjny chwilowo niedostepny (HTTP 503).")
+    if "stale_cache" in reasons:
+        extra_parts.append("Wynik z cache (stale).")
     if "providers_empty" in reasons or "no_station_data" in reasons or "no_service_candidates" in reasons:
         extra_parts.append("Brak pelnych danych stacyjnych.")
     if "no_non_carrier" in reasons:
@@ -1470,8 +1629,28 @@ def _build_station_candidates_runtime(
     cross_system_systems_with_candidates = 0
     service_norm = _normalize_cash_in_service(service)
     limit = max(4, int(config.get("cash_in.station_candidates_limit", 24) or 24))
+    include_edsm = bool(config.get("features.providers.edsm_enabled", False))
+    include_spansh = bool(config.get("features.trade.station_lookup_online", False))
+    cross_enabled = bool(config.get("cash_in.cross_system_discovery_enabled", True))
+    cross_radius_ly = float(config.get("cash_in.cross_system_radius_ly", 120.0) or 120.0)
+    cross_max_systems = int(config.get("cash_in.cross_system_max_systems", 12) or 12)
     candidates: list[dict[str, Any]] = []
     edsm_snapshot_data: dict[str, Any] = {}
+    swr_cache_key = _build_swr_cache_key(
+        system=system,
+        service=service_norm,
+        radius_ly=cross_radius_ly,
+        max_systems=cross_max_systems,
+        include_edsm=include_edsm,
+        include_spansh=include_spansh,
+        cross_enabled=cross_enabled,
+    )
+    swr_lookup_status = "NOT_USED"
+    swr_freshness = "NONE"
+    swr_cache_used = False
+    swr_cache_age_sec = 0.0
+    swr_cache_source_status = ""
+    swr_saved_at_utc = ""
 
     raw_candidates = raw_payload.get("station_candidates") or raw_payload.get("stationCandidates")
     if isinstance(raw_candidates, list) and raw_candidates:
@@ -1499,8 +1678,6 @@ def _build_station_candidates_runtime(
     lookup_enabled = bool(config.get("cash_in.station_candidates_lookup_enabled", False))
     if not candidates and lookup_enabled:
         provider_lookup_attempted = True
-        include_edsm = bool(config.get("features.providers.edsm_enabled", False))
-        include_spansh = bool(config.get("features.trade.station_lookup_online", False))
         candidates = station_candidates_for_system_from_providers(
             system,
             include_edsm=include_edsm,
@@ -1525,7 +1702,6 @@ def _build_station_candidates_runtime(
     elif not lookup_enabled:
         provider_lookup_status = "disabled"
 
-    cross_enabled = bool(config.get("cash_in.cross_system_discovery_enabled", True))
     system_lookup_online = bool(config.get("features.providers.system_lookup_online", False))
     needs_cross_system = bool(lookup_enabled and cross_enabled and system_lookup_online)
     if needs_cross_system:
@@ -1560,22 +1736,18 @@ def _build_station_candidates_runtime(
     if needs_cross_system:
         provider_lookup_attempted = True
         cross_system_lookup_attempted = True
-        cross_include_edsm = bool(config.get("features.providers.edsm_enabled", False))
-        cross_include_spansh = bool(config.get("features.trade.station_lookup_online", False))
-        cross_radius_ly = float(config.get("cash_in.cross_system_radius_ly", 120.0) or 120.0)
-        cross_max_systems = int(config.get("cash_in.cross_system_max_systems", 12) or 12)
         cross_candidates, cross_meta = station_candidates_cross_system_from_providers(
             system,
             service=service_norm,
-            include_edsm=cross_include_edsm,
-            include_spansh=cross_include_spansh,
+            include_edsm=include_edsm,
+            include_spansh=include_spansh,
             radius_ly=cross_radius_ly,
             max_systems=cross_max_systems,
             origin_coords=origin_coords,
             freshness_ts=freshness_ts,
             limit=limit,
         )
-        if cross_include_edsm:
+        if include_edsm:
             edsm_snapshot_data = dict(edsm_provider_resilience_snapshot() or {})
         cross_system_systems_requested = int(cross_meta.get("systems_requested") or 0)
         cross_system_systems_with_candidates = int(cross_meta.get("systems_with_candidates") or 0)
@@ -1611,6 +1783,48 @@ def _build_station_candidates_runtime(
     else:
         cross_system_lookup_status = "not_needed"
 
+    if provider_lookup_attempted and candidates and source_status in {"providers", "providers_cross_system"}:
+        _store_swr_snapshot(
+            cache_key=swr_cache_key,
+            candidates=candidates,
+            source_status=source_status,
+            service=service_norm,
+            radius_ly=cross_radius_ly,
+            max_systems=cross_max_systems,
+        )
+
+    if provider_lookup_attempted and not candidates:
+        swr_snapshot = _load_swr_snapshot(cache_key=swr_cache_key)
+        swr_lookup_status = _as_text(swr_snapshot.get("status")).upper() or "NONE"
+        swr_freshness = (
+            swr_lookup_status
+            if swr_lookup_status in {"FRESH", "STALE", "EXPIRED"}
+            else "NONE"
+        )
+        if swr_lookup_status in {"FRESH", "STALE"}:
+            swr_entry = dict(swr_snapshot.get("entry") or {})
+            cached_rows = list(swr_entry.get("candidates") or [])
+            cached_freshness_ts = _as_text(swr_entry.get("saved_at_utc"))
+            cached_candidates = build_station_candidates(
+                cached_rows,
+                default_system=system,
+                source_hint="SWR_CACHE",
+                freshness_ts=freshness_ts or cached_freshness_ts,
+                limit=limit,
+            )
+            if cached_candidates:
+                candidates = cached_candidates
+                swr_cache_used = True
+                swr_cache_age_sec = float(swr_snapshot.get("age_sec") or 0.0)
+                swr_cache_source_status = _as_text(swr_entry.get("source_status"))
+                swr_saved_at_utc = cached_freshness_ts
+                if swr_lookup_status == "STALE":
+                    source_status = "providers_cache_stale"
+                else:
+                    restored_status = swr_cache_source_status or "providers"
+                    source_status = restored_status
+                    provider_lookup_status = restored_status
+
     if not candidates:
         current_station = _as_text(getattr(app_state, "current_station", ""))
         if current_station:
@@ -1641,6 +1855,15 @@ def _build_station_candidates_runtime(
         "cross_system_systems_requested": cross_system_systems_requested,
         "cross_system_systems_with_candidates": cross_system_systems_with_candidates,
         "cross_system_origin_coords_used": bool(origin_coords),
+        "swr_cache_used": swr_cache_used,
+        "swr_lookup_status": swr_lookup_status,
+        "swr_freshness": swr_freshness,
+        "swr_cache_age_sec": int(round(swr_cache_age_sec)) if swr_cache_age_sec > 0.0 else 0,
+        "swr_cache_source_status": swr_cache_source_status,
+        "swr_saved_at_utc": swr_saved_at_utc,
+        "swr_profile_service": service_norm,
+        "swr_profile_radius_ly": float(cross_radius_ly),
+        "swr_profile_max_systems": int(cross_max_systems),
         "provider_down_503_count": int(
             max(
                 int(
@@ -1671,6 +1894,7 @@ def _build_station_candidates_runtime(
             uc_count=len(uc_candidates),
             vista_count=len(vista_candidates),
             source_status=source_status,
+            swr_freshness=swr_freshness,
         ),
     }
     return candidates, meta
@@ -1705,6 +1929,12 @@ def _build_tts_line(payload: CashInAssistantPayload) -> str:
     if edge_reasons:
         if "offline" in edge_reasons:
             return "Cash-in: tryb offline lub przerwane logi. Rekomendacja orientacyjna, sprawdz panel."
+        if "provider_circuit_open" in edge_reasons and "stale_cache" in edge_reasons:
+            return "Cash-in: provider stacyjny chwilowo niedostepny. Pokazuje wynik z cache stale, sprawdz panel."
+        if "provider_down_503" in edge_reasons and "stale_cache" in edge_reasons:
+            return "Cash-in: provider stacyjny zwraca blad 503. Pokazuje wynik z cache stale, sprawdz panel."
+        if "stale_cache" in edge_reasons:
+            return "Cash-in: pokazuje wynik z cache stale. Traktuj decyzje orientacyjnie."
         if "provider_circuit_open" in edge_reasons:
             return "Cash-in: provider stacyjny chwilowo niedostepny. Uzywam trybu orientacyjnego, sprawdz panel."
         if "provider_down_503" in edge_reasons:

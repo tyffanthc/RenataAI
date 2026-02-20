@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import unittest
 from unittest.mock import patch
 
@@ -42,8 +43,13 @@ class F13CashInProviderResilienceTests(unittest.TestCase):
         config.config._settings["cash_in.cross_system_discovery_enabled"] = False
         config.config._settings["features.providers.edsm_enabled"] = True
         config.config._settings["features.trade.station_lookup_online"] = False
+        config.config._settings["cash_in.swr_cache_enabled"] = True
+        config.config._settings["cash_in.swr_cache_fresh_ttl_sec"] = 900.0
+        config.config._settings["cash_in.swr_cache_stale_ttl_sec"] = 21600.0
+        config.config._settings["cash_in.swr_cache_max_items"] = 64
 
         edsm_client._reset_provider_resilience_state_for_tests()
+        cash_in_assistant._reset_cash_in_swr_cache_for_tests()
 
     def tearDown(self) -> None:
         config.config._settings = self._orig_settings
@@ -52,6 +58,7 @@ class F13CashInProviderResilienceTests(unittest.TestCase):
         app_state.last_cash_in_signature = self._saved_last_sig
         app_state.cash_in_skip_signature = self._saved_skip_sig
         edsm_client._reset_provider_resilience_state_for_tests()
+        cash_in_assistant._reset_cash_in_swr_cache_for_tests()
 
     def test_edsm_nearby_503_opens_circuit_and_counts_metric(self) -> None:
         with (
@@ -175,6 +182,113 @@ class F13CashInProviderResilienceTests(unittest.TestCase):
         self.assertEqual(str(meta.get("provider_lookup_status") or ""), "provider_circuit_open")
         self.assertEqual(int(meta.get("provider_down_503_count") or 0), 5)
         self.assertIn("provider_circuit_open", reasons)
+
+    def test_swr_stale_cache_fallback_marks_stale_and_lowers_confidence(self) -> None:
+        config.config._settings["cash_in.swr_cache_fresh_ttl_sec"] = 0.01
+        config.config._settings["cash_in.swr_cache_stale_ttl_sec"] = 3600.0
+        payload = {
+            "system": "F13_TEST_SYSTEM",
+            "cash_in_signal": "wysoki",
+            "cash_in_system_estimated": 8_000_000.0,
+            "cash_in_session_estimated": 25_000_000.0,
+            "service": "uc",
+        }
+        provider_rows = [
+            {
+                "name": "Cached UC Hub",
+                "system_name": "F13_TEST_SYSTEM_B",
+                "type": "station",
+                "services": {"has_uc": True, "has_vista": False},
+                "distance_ly": 22.0,
+                "source": "EDSM",
+            }
+        ]
+        snapshot_503 = {
+            "provider": "EDSM",
+            "endpoints": {
+                "station_details": {
+                    "circuit_open": False,
+                    "last_error_code": 503,
+                    "provider_down_503_count": 3,
+                },
+                "nearby_systems": {
+                    "circuit_open": False,
+                    "last_error_code": 0,
+                    "provider_down_503_count": 0,
+                },
+            },
+        }
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                side_effect=[provider_rows, []],
+            ),
+            patch(
+                "logic.events.cash_in_assistant.edsm_provider_resilience_snapshot",
+                side_effect=[{}, snapshot_503],
+            ),
+            patch("logic.events.cash_in_assistant.emit_insight") as emit_mock,
+        ):
+            first_ok = cash_in_assistant.trigger_cash_in_assistant(mode="manual", summary_payload=payload)
+            time.sleep(0.05)
+            second_ok = cash_in_assistant.trigger_cash_in_assistant(mode="manual", summary_payload=payload)
+
+        self.assertTrue(first_ok)
+        self.assertTrue(second_ok)
+        self.assertEqual(emit_mock.call_count, 2)
+        ctx = dict(emit_mock.call_args_list[1].kwargs.get("context") or {})
+        structured = dict(ctx.get("cash_in_payload") or {})
+        meta = dict(structured.get("station_candidates_meta") or {})
+        edge = dict(structured.get("edge_case_meta") or {})
+        reasons = {str(item).strip().lower() for item in (edge.get("reasons") or [])}
+
+        self.assertTrue(bool(meta.get("swr_cache_used")))
+        self.assertEqual(str(meta.get("swr_freshness") or ""), "STALE")
+        self.assertEqual(str(meta.get("source_status") or ""), "providers_cache_stale")
+        self.assertEqual(str(meta.get("provider_lookup_status") or ""), "provider_down_503")
+        self.assertIn("stale_cache", reasons)
+        self.assertEqual(str(edge.get("confidence") or ""), "low")
+
+    def test_swr_expired_snapshot_is_not_used(self) -> None:
+        config.config._settings["cash_in.swr_cache_fresh_ttl_sec"] = 0.0
+        config.config._settings["cash_in.swr_cache_stale_ttl_sec"] = 0.01
+        payload = {
+            "system": "F13_TEST_SYSTEM",
+            "cash_in_signal": "sredni",
+            "cash_in_system_estimated": 2_000_000.0,
+            "cash_in_session_estimated": 8_000_000.0,
+            "service": "uc",
+        }
+        provider_rows = [
+            {
+                "name": "Expired Cache Seed",
+                "system_name": "F13_TEST_SYSTEM_B",
+                "type": "station",
+                "services": {"has_uc": True, "has_vista": False},
+                "distance_ly": 18.0,
+                "source": "EDSM",
+            }
+        ]
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                side_effect=[provider_rows, []],
+            ),
+            patch("logic.events.cash_in_assistant.edsm_provider_resilience_snapshot", return_value={}),
+            patch("logic.events.cash_in_assistant.emit_insight") as emit_mock2,
+        ):
+            first_ok = cash_in_assistant.trigger_cash_in_assistant(mode="manual", summary_payload=payload)
+            self.assertTrue(first_ok)
+            time.sleep(0.05)
+            second_ok = cash_in_assistant.trigger_cash_in_assistant(mode="manual", summary_payload=payload)
+
+        self.assertTrue(second_ok)
+        self.assertEqual(emit_mock2.call_count, 2)
+        ctx = dict(emit_mock2.call_args_list[1].kwargs.get("context") or {})
+        structured = dict(ctx.get("cash_in_payload") or {})
+        meta = dict(structured.get("station_candidates_meta") or {})
+        self.assertFalse(bool(meta.get("swr_cache_used")))
+        self.assertEqual(str(meta.get("swr_freshness") or ""), "EXPIRED")
 
 
 if __name__ == "__main__":
