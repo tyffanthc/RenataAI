@@ -194,6 +194,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "voice_exit_summary": True,       # glosowe podsumowanie
     "cash_in.station_candidates_lookup_enabled": False,
     "cash_in.station_candidates_limit": 24,
+    "cash_in.cross_system_discovery_enabled": True,
+    "cash_in.cross_system_radius_ly": 120.0,
+    "cash_in.cross_system_max_systems": 12,
     "cash_in.avoid_carriers_for_uc": True,
     "cash_in.carrier_ok_for_fast_mode": True,
     "cash_in.show_tariff_meta": True,

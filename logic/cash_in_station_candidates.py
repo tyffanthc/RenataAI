@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List
 
 from logic.spansh_client import client as spansh_client
-from logic.utils.http_edsm import edsm_station_details_for_system
+from logic.utils.http_edsm import edsm_nearby_systems, edsm_station_details_for_system
 
 
 def _as_text(value: Any) -> str:
@@ -323,6 +323,122 @@ def station_candidates_for_system_from_providers(
     )
 
 
+def station_candidates_cross_system_from_providers(
+    origin_system: str,
+    *,
+    service: str = "",
+    include_edsm: bool = True,
+    include_spansh: bool = True,
+    radius_ly: float = 120.0,
+    max_systems: int = 12,
+    freshness_ts: str = "",
+    limit: int = 24,
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Cross-system discovery:
+    - znajduje sasiednie systemy (origin-centered),
+    - pobiera szczegoly stacji per system,
+    - zwraca zunifikowane `StationCandidate` gotowe do rankingu.
+    """
+    origin = _as_text(origin_system)
+    svc = _as_text(service).lower()
+    if not origin or max_systems <= 0:
+        return [], {
+            "systems_requested": 0,
+            "systems_with_candidates": 0,
+            "service": svc or "any",
+            "radius_ly": float(radius_ly or 120.0),
+        }
+
+    nearby_rows: list[dict[str, Any]] = []
+    if include_edsm:
+        try:
+            nearby_rows = [
+                dict(item)
+                for item in edsm_nearby_systems(
+                    origin,
+                    radius_ly=float(radius_ly or 120.0),
+                    limit=max(1, int(max_systems)),
+                )
+                if isinstance(item, dict)
+            ]
+        except Exception:
+            nearby_rows = []
+
+    systems: list[dict[str, Any]] = []
+    seen_systems: set[str] = set()
+    origin_key = origin.casefold()
+    for item in nearby_rows:
+        system_name = _as_text(
+            item.get("name")
+            or item.get("system_name")
+            or item.get("system")
+            or item.get("systemName")
+        )
+        if not system_name:
+            continue
+        key = system_name.casefold()
+        if key == origin_key or key in seen_systems:
+            continue
+        seen_systems.add(key)
+        systems.append(
+            {
+                "system_name": system_name,
+                "distance_ly": _safe_optional_float(
+                    item.get("distance_ly")
+                    or item.get("distanceLy")
+                    or item.get("distance")
+                ),
+            }
+        )
+        if len(systems) >= max(1, int(max_systems)):
+            break
+
+    aggregate: list[dict[str, Any]] = []
+    systems_with_candidates = 0
+    for row in systems:
+        system_name = _as_text(row.get("system_name"))
+        if not system_name:
+            continue
+        per_system = station_candidates_for_system_from_providers(
+            system_name,
+            include_edsm=include_edsm,
+            include_spansh=include_spansh,
+            freshness_ts=freshness_ts,
+            limit=max(8, int(limit or 24)),
+        )
+        if svc in {"uc", "vista"}:
+            per_system = filter_candidates_by_service(per_system, service=svc)
+        if not per_system:
+            continue
+        systems_with_candidates += 1
+        origin_distance = _safe_optional_float(row.get("distance_ly"))
+        for candidate in per_system:
+            if not isinstance(candidate, dict):
+                continue
+            out = dict(candidate)
+            out.setdefault("origin_system_name", origin)
+            if origin_distance is not None:
+                out["origin_distance_ly"] = origin_distance
+                current_distance = _safe_optional_float(out.get("distance_ly"))
+                if current_distance is None:
+                    out["distance_ly"] = float(origin_distance)
+                else:
+                    out["distance_ly"] = min(float(current_distance), float(origin_distance))
+            aggregate.append(out)
+        if limit > 0 and len(aggregate) >= (int(limit) * 3):
+            break
+
+    candidates = merge_station_candidates(aggregate, limit=limit)
+    meta = {
+        "systems_requested": len(systems),
+        "systems_with_candidates": systems_with_candidates,
+        "service": svc or "any",
+        "radius_ly": float(radius_ly or 120.0),
+    }
+    return candidates, meta
+
+
 def filter_candidates_by_service(
     candidates: Iterable[Dict[str, Any]],
     *,
@@ -337,4 +453,3 @@ def filter_candidates_by_service(
         for item in candidates
         if isinstance(item, dict) and bool((item.get("services") or {}).get(key))
     ]
-

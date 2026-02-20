@@ -8,6 +8,7 @@ from app.state import app_state
 from logic.cash_in_station_candidates import (
     build_station_candidates,
     filter_candidates_by_service,
+    station_candidates_cross_system_from_providers,
     station_candidates_for_system_from_providers,
 )
 from logic.insight_dispatcher import emit_insight
@@ -1358,11 +1359,17 @@ def _build_station_candidates_runtime(
     *,
     raw_payload: dict[str, Any],
     system: str,
+    service: str,
     freshness_ts: str,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     source_status = "none"
     provider_lookup_attempted = False
     provider_lookup_status = "not_attempted"
+    cross_system_lookup_attempted = False
+    cross_system_lookup_status = "not_attempted"
+    cross_system_systems_requested = 0
+    cross_system_systems_with_candidates = 0
+    service_norm = _normalize_cash_in_service(service)
     limit = max(4, int(config.get("cash_in.station_candidates_limit", 24) or 24))
     candidates: list[dict[str, Any]] = []
 
@@ -1406,6 +1413,57 @@ def _build_station_candidates_runtime(
     elif not lookup_enabled:
         provider_lookup_status = "disabled"
 
+    cross_enabled = bool(config.get("cash_in.cross_system_discovery_enabled", True))
+    system_lookup_online = bool(config.get("features.providers.system_lookup_online", False))
+    needs_cross_system = bool(lookup_enabled and cross_enabled and system_lookup_online)
+    if needs_cross_system:
+        has_service_locally = bool(
+            filter_candidates_by_service(candidates, service=service_norm)
+        )
+        needs_cross_system = (not candidates) or (not has_service_locally)
+
+    if needs_cross_system:
+        provider_lookup_attempted = True
+        cross_system_lookup_attempted = True
+        cross_include_edsm = bool(config.get("features.providers.edsm_enabled", False))
+        cross_include_spansh = bool(config.get("features.trade.station_lookup_online", False))
+        cross_radius_ly = float(config.get("cash_in.cross_system_radius_ly", 120.0) or 120.0)
+        cross_max_systems = int(config.get("cash_in.cross_system_max_systems", 12) or 12)
+        cross_candidates, cross_meta = station_candidates_cross_system_from_providers(
+            system,
+            service=service_norm,
+            include_edsm=cross_include_edsm,
+            include_spansh=cross_include_spansh,
+            radius_ly=cross_radius_ly,
+            max_systems=cross_max_systems,
+            freshness_ts=freshness_ts,
+            limit=limit,
+        )
+        cross_system_systems_requested = int(cross_meta.get("systems_requested") or 0)
+        cross_system_systems_with_candidates = int(cross_meta.get("systems_with_candidates") or 0)
+        if cross_candidates:
+            combined: list[dict[str, Any] | str] = []
+            combined.extend(candidates)
+            combined.extend(cross_candidates)
+            candidates = build_station_candidates(
+                combined,
+                default_system=system,
+                source_hint="CROSS_SYSTEM",
+                freshness_ts=freshness_ts,
+                limit=limit,
+            )
+            source_status = "providers_cross_system"
+            provider_lookup_status = "providers_cross_system"
+            cross_system_lookup_status = "cross_system"
+        else:
+            cross_system_lookup_status = "cross_system_empty"
+    elif not cross_enabled:
+        cross_system_lookup_status = "disabled"
+    elif not system_lookup_online:
+        cross_system_lookup_status = "system_lookup_disabled"
+    else:
+        cross_system_lookup_status = "not_needed"
+
     if not candidates:
         current_station = _as_text(getattr(app_state, "current_station", ""))
         if current_station:
@@ -1431,6 +1489,10 @@ def _build_station_candidates_runtime(
         "source_status": source_status,
         "provider_lookup_attempted": provider_lookup_attempted,
         "provider_lookup_status": provider_lookup_status,
+        "cross_system_lookup_attempted": cross_system_lookup_attempted,
+        "cross_system_lookup_status": cross_system_lookup_status,
+        "cross_system_systems_requested": cross_system_systems_requested,
+        "cross_system_systems_with_candidates": cross_system_systems_with_candidates,
         "count": len(candidates),
         "uc_count": len(uc_candidates),
         "vista_count": len(vista_candidates),
@@ -1748,6 +1810,7 @@ def trigger_cash_in_assistant(
     station_candidates, station_candidates_meta = _build_station_candidates_runtime(
         raw_payload=raw,
         system=system,
+        service=service,
         freshness_ts=freshness_ts,
     )
     options, ranking_meta = _build_profiled_options(
