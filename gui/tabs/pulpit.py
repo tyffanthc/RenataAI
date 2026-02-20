@@ -668,7 +668,13 @@ class PulpitTab(ttk.Frame):
             if not isinstance(option, dict):
                 continue
             option_id = str(option.get("option_id") or "").strip()
-            actions.append((f"{idx}. Intent", lambda oid=option_id: self._on_cash_intent(oid)))
+            ui = self._cash_ui_contract(option)
+            profile_label = str(
+                ui.get("label")
+                or option.get("profile")
+                or f"OPT{idx}"
+            ).strip().upper() or f"OPT{idx}"
+            actions.append((f"{idx}. {profile_label}", lambda oid=option_id: self._on_cash_intent(oid)))
         actions.append(("Ustaw trase", self._on_cash_set_route))
         actions.append(("Copy next hop", self._on_cash_copy_next_hop))
         actions.append(("Pomijam", self._on_click_cash_in_skip))
