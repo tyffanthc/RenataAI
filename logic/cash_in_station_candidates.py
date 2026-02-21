@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import json
+import math
+import os
+import time
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List
 
 from logic.spansh_client import client as spansh_client
@@ -8,6 +13,12 @@ from logic.utils.http_edsm import (
     edsm_provider_resilience_snapshot,
     edsm_station_details_for_system,
 )
+
+_OFFLINE_INDEX_CACHE: dict[str, tuple[float, float, Any]] = {}
+
+
+def _reset_offline_index_cache_for_tests() -> None:
+    _OFFLINE_INDEX_CACHE.clear()
 
 
 def _as_text(value: Any) -> str:
@@ -466,6 +477,315 @@ def station_candidates_cross_system_from_providers(
         "nearby_provider_response_count": int(nearby_provider_response_count),
         "nearby_reason": nearby_reason,
     }
+    return candidates, meta
+
+
+def _safe_coords_triplet(value: Any) -> tuple[float, float, float] | None:
+    if isinstance(value, (list, tuple)) and len(value) >= 3:
+        try:
+            return (float(value[0]), float(value[1]), float(value[2]))
+        except Exception:
+            return None
+    if isinstance(value, dict):
+        x = _safe_optional_float(value.get("x"))
+        y = _safe_optional_float(value.get("y"))
+        z = _safe_optional_float(value.get("z"))
+        if x is None or y is None or z is None:
+            return None
+        return (float(x), float(y), float(z))
+    return None
+
+
+def _distance_ly_between_coords(
+    origin_coords: tuple[float, float, float] | None,
+    target_coords: tuple[float, float, float] | None,
+) -> float | None:
+    if origin_coords is None or target_coords is None:
+        return None
+    try:
+        dx = float(origin_coords[0]) - float(target_coords[0])
+        dy = float(origin_coords[1]) - float(target_coords[1])
+        dz = float(origin_coords[2]) - float(target_coords[2])
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+    except Exception:
+        return None
+
+
+def _to_iso_date(value: Any) -> str:
+    text = _as_text(value)
+    if not text:
+        return ""
+    try:
+        if len(text) == 10 and text.count("-") == 2:
+            datetime.strptime(text, "%Y-%m-%d")
+            return text
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return dt.date().isoformat()
+    except Exception:
+        return ""
+
+
+def _index_age_days(index_date: str) -> int:
+    text = _as_text(index_date)
+    if not text:
+        return -1
+    try:
+        dt = datetime.strptime(text, "%Y-%m-%d")
+        now = datetime.now(timezone.utc).date()
+        delta = now - dt.date()
+        return max(0, int(delta.days))
+    except Exception:
+        return -1
+
+
+def _load_offline_index_payload(index_path: str) -> tuple[Any | None, str]:
+    path = _as_text(index_path)
+    if not path:
+        return None, "path_missing"
+    if not os.path.isfile(path):
+        return None, "missing_file"
+    try:
+        mtime = float(os.path.getmtime(path))
+    except Exception:
+        mtime = 0.0
+
+    cached = _OFFLINE_INDEX_CACHE.get(path)
+    if isinstance(cached, tuple) and len(cached) == 3:
+        cached_mtime, _cached_loaded_at, cached_payload = cached
+        if abs(float(cached_mtime) - mtime) < 1e-9:
+            return cached_payload, "ok_cache"
+
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception:
+        return None, "load_error"
+
+    _OFFLINE_INDEX_CACHE[path] = (mtime, time.monotonic(), payload)
+    return payload, "ok"
+
+
+def _extract_offline_index_station_rows(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [dict(row) for row in payload if isinstance(row, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in ("stations", "station_index", "items", "records", "data"):
+        rows = payload.get(key)
+        if isinstance(rows, list):
+            return [dict(row) for row in rows if isinstance(row, dict)]
+    return []
+
+
+def _extract_offline_index_system_coords(payload: Any) -> dict[str, tuple[float, float, float]]:
+    out: dict[str, tuple[float, float, float]] = {}
+    if not isinstance(payload, dict):
+        return out
+
+    systems_map = payload.get("systems")
+    if isinstance(systems_map, dict):
+        for system_name, coords in systems_map.items():
+            key = _as_text(system_name).casefold()
+            if not key:
+                continue
+            triplet = _safe_coords_triplet(coords)
+            if triplet is not None:
+                out[key] = triplet
+
+    systems_rows = payload.get("systems_rows")
+    if isinstance(systems_rows, list):
+        for row in systems_rows:
+            if not isinstance(row, dict):
+                continue
+            name = _as_text(
+                row.get("name")
+                or row.get("system_name")
+                or row.get("system")
+            )
+            if not name:
+                continue
+            triplet = _safe_coords_triplet(
+                row.get("coords")
+                or {
+                    "x": row.get("x"),
+                    "y": row.get("y"),
+                    "z": row.get("z"),
+                }
+            )
+            if triplet is not None:
+                out[name.casefold()] = triplet
+    return out
+
+
+def _candidate_coords_from_offline_index(
+    row: dict[str, Any],
+    *,
+    system_coords_map: dict[str, tuple[float, float, float]],
+    system_name: str,
+) -> tuple[float, float, float] | None:
+    for key in ("coords", "system_coords", "star_pos", "starPos"):
+        triplet = _safe_coords_triplet(row.get(key))
+        if triplet is not None:
+            return triplet
+
+    direct_triplet = _safe_coords_triplet(
+        {
+            "x": row.get("x"),
+            "y": row.get("y"),
+            "z": row.get("z"),
+        }
+    )
+    if direct_triplet is not None:
+        return direct_triplet
+
+    if system_name:
+        return system_coords_map.get(system_name.casefold())
+    return None
+
+
+def _resolve_offline_index_date(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    meta = payload.get("meta")
+    if isinstance(meta, dict):
+        for key in ("index_date", "date", "snapshot_date", "built_at"):
+            date_text = _to_iso_date(meta.get(key))
+            if date_text:
+                return date_text
+    for key in ("index_date", "date", "snapshot_date", "built_at"):
+        date_text = _to_iso_date(payload.get(key))
+        if date_text:
+            return date_text
+    return ""
+
+
+def station_candidates_from_offline_index(
+    origin_system: str,
+    *,
+    service: str,
+    origin_coords: list[float] | tuple[float, float, float] | None,
+    index_path: str,
+    freshness_ts: str = "",
+    limit: int = 24,
+    non_carrier_only: bool = True,
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    origin = _as_text(origin_system)
+    svc = _as_text(service).lower()
+    path = _as_text(index_path)
+    index_payload, load_status = _load_offline_index_payload(path)
+    index_date = _resolve_offline_index_date(index_payload)
+    index_age_days = _index_age_days(index_date)
+    origin_triplet = _safe_coords_triplet(origin_coords)
+
+    meta: Dict[str, Any] = {
+        "lookup_status": "not_attempted",
+        "source": "offline_index",
+        "index_path": path,
+        "index_date": index_date,
+        "index_age_days": index_age_days,
+        "rows_total": 0,
+        "rows_service_match": 0,
+        "rows_coords_match": 0,
+        "ignored_carriers": 0,
+        "load_status": load_status,
+        "origin_coords_used": origin_triplet is not None,
+        "service": svc or "any",
+    }
+    if load_status not in {"ok", "ok_cache"}:
+        meta["lookup_status"] = load_status
+        return [], meta
+    if origin_triplet is None:
+        meta["lookup_status"] = "no_origin_coords"
+        return [], meta
+
+    rows = _extract_offline_index_station_rows(index_payload)
+    system_coords_map = _extract_offline_index_system_coords(index_payload)
+    meta["rows_total"] = len(rows)
+
+    candidates_raw: list[dict[str, Any]] = []
+    for item in rows:
+        row = dict(item)
+        name = _as_text(
+            row.get("name")
+            or row.get("station")
+            or row.get("station_name")
+            or row.get("stationName")
+        )
+        system_name = _as_text(
+            row.get("system_name")
+            or row.get("systemName")
+            or row.get("system")
+            or row.get("starSystem")
+            or origin
+        )
+        if not name or not system_name:
+            continue
+
+        station_type = _normalize_type(
+            row.get("type")
+            or row.get("station_type")
+            or row.get("stationType")
+        )
+        if non_carrier_only and station_type == "fleet_carrier":
+            meta["ignored_carriers"] = int(meta.get("ignored_carriers") or 0) + 1
+            continue
+
+        services = _extract_services(row)
+        has_uc = bool(services.get("has_uc"))
+        has_vista = bool(services.get("has_vista"))
+        if svc == "uc" and not has_uc:
+            continue
+        if svc == "vista" and not has_vista:
+            continue
+        if svc not in {"uc", "vista"} and not (has_uc or has_vista):
+            continue
+        meta["rows_service_match"] = int(meta.get("rows_service_match") or 0) + 1
+
+        coords = _candidate_coords_from_offline_index(
+            row,
+            system_coords_map=system_coords_map,
+            system_name=system_name,
+        )
+        if coords is None:
+            continue
+        dist_ly = _distance_ly_between_coords(origin_triplet, coords)
+        if dist_ly is None:
+            continue
+        meta["rows_coords_match"] = int(meta.get("rows_coords_match") or 0) + 1
+
+        candidates_raw.append(
+            {
+                "name": name,
+                "system_name": system_name,
+                "type": station_type,
+                "services": {
+                    "has_uc": has_uc,
+                    "has_vista": has_vista,
+                },
+                "distance_ly": float(dist_ly),
+                "distance_ls": _safe_optional_float(
+                    row.get("distance_ls")
+                    or row.get("distanceToArrival")
+                ),
+                "source": "OFFLINE_INDEX",
+                "freshness_ts": _as_text(
+                    row.get("freshness_ts")
+                    or row.get("updated_at")
+                    or row.get("updatedAt")
+                    or index_date
+                    or freshness_ts
+                ),
+            }
+        )
+
+    candidates = build_station_candidates(
+        candidates_raw,
+        default_system=origin,
+        source_hint="OFFLINE_INDEX",
+        freshness_ts=index_date or freshness_ts,
+        limit=limit,
+    )
+    meta["lookup_status"] = "offline_index" if candidates else "no_offline_index_hit"
     return candidates, meta
 
 

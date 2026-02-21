@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import os
 import time
 from typing import Any
 
@@ -9,6 +10,7 @@ from app.state import app_state
 from logic.cash_in_station_candidates import (
     build_station_candidates,
     filter_candidates_by_service,
+    station_candidates_from_offline_index,
     station_candidates_cross_system_from_providers,
     station_candidates_for_system_from_providers,
 )
@@ -1275,6 +1277,7 @@ def _station_candidates_confidence(
     vista_count: int,
     source_status: str,
     swr_freshness: str = "",
+    offline_index_age_days: int = -1,
 ) -> str:
     source = _as_text(source_status).lower()
     freshness = _as_text(swr_freshness).upper()
@@ -1282,6 +1285,11 @@ def _station_candidates_confidence(
         return "low"
     if source == "local_known_fallback":
         return "low"
+    if source == "offline_index":
+        if offline_index_age_days < 0:
+            return "low"
+        med_limit = int(config.get("cash_in.offline_index_confidence_med_age_days", 30) or 30)
+        return "mid" if int(offline_index_age_days) <= max(0, med_limit) else "low"
     base = "low"
     if source.startswith("providers") and (uc_count > 0 or vista_count > 0):
         base = "high"
@@ -1292,6 +1300,15 @@ def _station_candidates_confidence(
     if freshness == "EXPIRED":
         return "low"
     return base
+
+
+def _resolve_offline_index_path() -> str:
+    raw = _as_text(config.get("cash_in.offline_index_path", ""))
+    if not raw:
+        return ""
+    if os.path.isabs(raw):
+        return raw
+    return os.path.abspath(os.path.join(config.BASE_DIR, raw))
 
 
 def _swr_cache_ttls() -> tuple[float, float]:
@@ -1599,6 +1616,11 @@ def _build_edge_case_meta(
     swr_cache_used = bool(station_meta.get("swr_cache_used"))
     swr_freshness = _as_text(station_meta.get("swr_freshness")).upper()
     local_known_fallback_used = bool(station_meta.get("local_known_fallback_used"))
+    offline_index_lookup_attempted = bool(station_meta.get("offline_index_lookup_attempted"))
+    offline_index_lookup_status = _as_text(station_meta.get("offline_index_lookup_status")).lower()
+    offline_index_used = bool(station_meta.get("offline_index_used")) or source_status == "offline_index"
+    offline_index_date = _as_text(station_meta.get("offline_index_date"))
+    offline_index_age_days = _safe_int(station_meta.get("offline_index_age_days"))
     cross_system_lookup_attempted = bool(station_meta.get("cross_system_lookup_attempted"))
     candidate_count = int(station_meta.get("count") or 0)
     nearby_requested_radius_ly = _safe_float(station_meta.get("nearby_requested_radius_ly"))
@@ -1606,7 +1628,10 @@ def _build_edge_case_meta(
     nearby_provider_response_count = int(station_meta.get("nearby_provider_response_count") or 0)
     nearby_reason = _as_text(station_meta.get("nearby_reason")).lower()
 
-    if source_status == "providers_empty" or provider_lookup_status == "providers_empty":
+    if (
+        (source_status == "providers_empty" or provider_lookup_status == "providers_empty")
+        and not offline_index_used
+    ):
         _append_unique_reason(reasons, "providers_empty")
     if provider_lookup_status == "provider_down_503":
         _append_unique_reason(reasons, "provider_down_503")
@@ -1616,8 +1641,12 @@ def _build_edge_case_meta(
         _append_unique_reason(reasons, "stale_cache")
     if local_known_fallback_used:
         _append_unique_reason(reasons, "local_known_fallback")
-    if candidate_count <= 0:
+    if candidate_count <= 0 and not offline_index_used:
         _append_unique_reason(reasons, "no_station_data")
+    if offline_index_used:
+        _append_unique_reason(reasons, "offline_index")
+    elif offline_index_lookup_attempted and offline_index_lookup_status == "no_offline_index_hit":
+        _append_unique_reason(reasons, "no_offline_index_hit")
     if nearby_reason == "provider_radius_cap":
         _append_unique_reason(reasons, "provider_radius_cap")
     if nearby_reason == "provider_empty":
@@ -1665,6 +1694,12 @@ def _build_edge_case_meta(
         for reason in reasons
     ):
         confidence = "low"
+    if offline_index_used:
+        med_limit = int(config.get("cash_in.offline_index_confidence_med_age_days", 30) or 30)
+        if offline_index_age_days is not None and int(offline_index_age_days) >= 0:
+            confidence = "mid" if int(offline_index_age_days) <= max(0, med_limit) else "low"
+        else:
+            confidence = "low"
     elif "no_non_carrier" in reasons and confidence == "high":
         confidence = "mid"
 
@@ -1672,6 +1707,18 @@ def _build_edge_case_meta(
     ui_hint = ""
     if "offline" in reasons:
         ui_hint = "Tryb offline/przerwane logi: rekomendacja orientacyjna."
+    elif "offline_index" in reasons:
+        date_txt = offline_index_date or "-"
+        age_txt = (
+            str(int(offline_index_age_days))
+            if offline_index_age_days is not None and int(offline_index_age_days) >= 0
+            else "?"
+        )
+        ui_hint = (
+            f"Uzywam offline indexu stacji (Spansh dump): index_date={date_txt}, age={age_txt} dni."
+        )
+    elif "no_offline_index_hit" in reasons:
+        ui_hint = "Offline index stacji nie zwrocil hitu dla tego regionu. Pozostaje tryb orientacyjny."
     elif "provider_radius_cap" in reasons:
         req_txt = (
             str(int(round(nearby_requested_radius_ly)))
@@ -1741,6 +1788,13 @@ def _build_edge_case_meta(
         "swr_cache_used": swr_cache_used,
         "swr_freshness": swr_freshness or "NONE",
         "local_known_fallback_used": local_known_fallback_used,
+        "offline_index_used": offline_index_used,
+        "offline_index_lookup_attempted": offline_index_lookup_attempted,
+        "offline_index_lookup_status": offline_index_lookup_status or "not_attempted",
+        "offline_index_date": offline_index_date,
+        "offline_index_age_days": int(offline_index_age_days)
+        if offline_index_age_days is not None
+        else -1,
         "nearby_requested_radius_ly": float(nearby_requested_radius_ly),
         "nearby_effective_radius_ly": float(nearby_effective_radius_ly),
         "nearby_provider_response_count": int(nearby_provider_response_count),
@@ -1769,6 +1823,15 @@ def _append_edge_case_note(base_note: str, edge_case_meta: dict[str, Any]) -> st
         extra_parts.append("Wynik z cache (stale).")
     if "local_known_fallback" in reasons:
         extra_parts.append("Wynik z lokalnego cache znanych stacji/systemow.")
+    if "offline_index" in reasons:
+        date_txt = _as_text(meta.get("offline_index_date")) or "-"
+        age_days = _safe_int(meta.get("offline_index_age_days"))
+        age_txt = str(age_days) if age_days is not None and age_days >= 0 else "?"
+        extra_parts.append(
+            f"Wynik z offline indexu stacji (Spansh dump), index_date={date_txt}, age={age_txt} dni."
+        )
+    if "no_offline_index_hit" in reasons:
+        extra_parts.append("Offline index stacji nie zwrocil hitu dla regionu.")
     if "providers_empty" in reasons or "no_station_data" in reasons or "no_service_candidates" in reasons:
         extra_parts.append("Brak pelnych danych stacyjnych.")
     if "no_non_carrier" in reasons:
@@ -1849,6 +1912,16 @@ def _build_station_candidates_runtime(
     local_known_fallback_used = False
     local_known_fallback_age_sec = 0.0
     local_known_fallback_count = 0
+    offline_index_lookup_attempted = False
+    offline_index_used = False
+    offline_index_lookup_status = "not_attempted"
+    offline_index_path = ""
+    offline_index_date = ""
+    offline_index_age_days = -1
+    offline_index_rows_total = 0
+    offline_index_rows_service_match = 0
+    offline_index_rows_coords_match = 0
+    offline_index_ignored_carriers = 0
 
     raw_candidates = raw_payload.get("station_candidates") or raw_payload.get("stationCandidates")
     if isinstance(raw_candidates, list) and raw_candidates:
@@ -1874,6 +1947,9 @@ def _build_station_candidates_runtime(
             source_status = "payload_names"
 
     lookup_enabled = bool(config.get("cash_in.station_candidates_lookup_enabled", False))
+    offline_index_enabled = bool(config.get("cash_in.offline_index_fallback_enabled", True))
+    offline_index_non_carrier_only = bool(config.get("cash_in.offline_index_non_carrier_only", True))
+    offline_index_path = _resolve_offline_index_path()
     if not candidates and lookup_enabled:
         provider_lookup_attempted = True
         candidates = station_candidates_for_system_from_providers(
@@ -2057,6 +2133,31 @@ def _build_station_candidates_runtime(
                 local_known_fallback_age_sec = float(known.get("age_sec") or 0.0)
                 local_known_fallback_count = int(known.get("count") or 0)
 
+    if provider_lookup_attempted and not candidates and offline_index_enabled:
+        offline_index_lookup_attempted = True
+        offline_candidates, offline_meta = station_candidates_from_offline_index(
+            system,
+            service=service_norm,
+            origin_coords=origin_coords,
+            index_path=offline_index_path,
+            freshness_ts=freshness_ts,
+            limit=limit,
+            non_carrier_only=offline_index_non_carrier_only,
+        )
+        offline_index_lookup_status = _as_text(offline_meta.get("lookup_status")).lower() or "not_attempted"
+        offline_index_date = _as_text(offline_meta.get("index_date"))
+        offline_index_age_days = int(offline_meta.get("index_age_days") or -1)
+        offline_index_rows_total = int(offline_meta.get("rows_total") or 0)
+        offline_index_rows_service_match = int(offline_meta.get("rows_service_match") or 0)
+        offline_index_rows_coords_match = int(offline_meta.get("rows_coords_match") or 0)
+        offline_index_ignored_carriers = int(offline_meta.get("ignored_carriers") or 0)
+        if offline_candidates:
+            candidates = offline_candidates
+            source_status = "offline_index"
+            offline_index_used = True
+        elif offline_index_lookup_status == "not_attempted":
+            offline_index_lookup_status = "no_offline_index_hit"
+
     if not candidates:
         current_station = _as_text(getattr(app_state, "current_station", ""))
         if current_station:
@@ -2075,6 +2176,13 @@ def _build_station_candidates_runtime(
                 limit=limit,
             )
             source_status = "local_fallback"
+
+    if not offline_index_enabled:
+        offline_index_lookup_status = "disabled"
+    elif not provider_lookup_attempted:
+        offline_index_lookup_status = "not_applicable"
+    elif offline_index_lookup_status == "not_attempted":
+        offline_index_lookup_status = "no_offline_index_hit"
 
     uc_candidates = filter_candidates_by_service(candidates, service="uc")
     vista_candidates = filter_candidates_by_service(candidates, service="vista")
@@ -2105,6 +2213,16 @@ def _build_station_candidates_runtime(
         if local_known_fallback_age_sec > 0.0
         else 0,
         "local_known_fallback_count": local_known_fallback_count,
+        "offline_index_lookup_attempted": offline_index_lookup_attempted,
+        "offline_index_lookup_status": offline_index_lookup_status,
+        "offline_index_used": offline_index_used,
+        "offline_index_path": offline_index_path,
+        "offline_index_date": offline_index_date,
+        "offline_index_age_days": offline_index_age_days,
+        "offline_index_rows_total": offline_index_rows_total,
+        "offline_index_rows_service_match": offline_index_rows_service_match,
+        "offline_index_rows_coords_match": offline_index_rows_coords_match,
+        "offline_index_ignored_carriers": offline_index_ignored_carriers,
         "provider_down_503_count": int(
             max(
                 int(
@@ -2136,6 +2254,7 @@ def _build_station_candidates_runtime(
             vista_count=len(vista_candidates),
             source_status=source_status,
             swr_freshness=swr_freshness,
+            offline_index_age_days=offline_index_age_days,
         ),
     }
     return candidates, meta
@@ -2170,6 +2289,14 @@ def _build_tts_line(payload: CashInAssistantPayload) -> str:
     if edge_reasons:
         if "offline" in edge_reasons:
             return "Cash-in: tryb offline lub przerwane logi. Rekomendacja orientacyjna, sprawdz panel."
+        if "provider_circuit_open" in edge_reasons and "offline_index" in edge_reasons:
+            return "Cash-in: provider stacyjny chwilowo niedostepny. Uzywam offline indexu stacji, sprawdz panel."
+        if "provider_down_503" in edge_reasons and "offline_index" in edge_reasons:
+            return "Cash-in: provider stacyjny zwraca blad 503. Uzywam offline indexu stacji, sprawdz panel."
+        if "providers_empty" in edge_reasons and "offline_index" in edge_reasons:
+            return "Cash-in: provider nie zwrocil danych. Uzywam offline indexu stacji, sprawdz panel."
+        if "offline_index" in edge_reasons:
+            return "Cash-in: korzystam z offline indexu stacji. Sprawdz panel i ustaw trase."
         if "provider_circuit_open" in edge_reasons and "local_known_fallback" in edge_reasons:
             return "Cash-in: provider stacyjny chwilowo niedostepny. Pokazuje lokalny cache znanych stacji, sprawdz panel."
         if "provider_down_503" in edge_reasons and "local_known_fallback" in edge_reasons:
@@ -2188,6 +2315,8 @@ def _build_tts_line(payload: CashInAssistantPayload) -> str:
             return "Cash-in: provider nearby zwrocil pusty wynik. Sprawdz panel i fallback."
         if "local_known_fallback" in edge_reasons:
             return "Cash-in: pokazuje lokalny cache znanych stacji. Traktuj decyzje orientacyjnie."
+        if "no_offline_index_hit" in edge_reasons:
+            return "Cash-in: offline index stacji nie zwrocil hitu. Rekomendacja orientacyjna, sprawdz panel."
         if "stale_cache" in edge_reasons:
             return "Cash-in: pokazuje wynik z cache stale. Traktuj decyzje orientacyjnie."
         if "provider_circuit_open" in edge_reasons:
