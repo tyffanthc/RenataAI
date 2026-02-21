@@ -9,6 +9,7 @@ import urllib.request
 import config
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
 from gui.window_chrome import apply_renata_orange_window_chrome
+from logic.cash_in_offline_index_builder import build_offline_index_from_spansh_dump
 from logic.capabilities import (
     CAP_SETTINGS_FULL,
     CAP_TTS_ADVANCED_POLICY,
@@ -51,6 +52,8 @@ class SettingsTab(ttk.Frame):
         self._tables_columns_dialog = None
         self._cash_in_dump_download_active = False
         self._cash_in_dump_download_thread: Optional[threading.Thread] = None
+        self._cash_in_index_build_active = False
+        self._cash_in_index_build_thread: Optional[threading.Thread] = None
         initial_cfg: Dict[str, Any] = {}
         if callable(self._get_config):
             try:
@@ -143,6 +146,10 @@ class SettingsTab(ttk.Frame):
         self.var_cash_in_dump_progress = tk.DoubleVar(value=0.0)
         self.var_cash_in_dump_status = tk.StringVar(
             value="Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data."
+        )
+        self.var_cash_in_index_build_progress = tk.DoubleVar(value=0.0)
+        self.var_cash_in_index_build_status = tk.StringVar(
+            value="Brak konwersji. Uzyj 'Zbuduj offline index' po pobraniu dumpa."
         )
 
         self.var_fss_assistant = tk.BooleanVar(value=True)             # fss_assistant
@@ -1076,18 +1083,44 @@ class SettingsTab(ttk.Frame):
             justify="left",
         ).grid(row=8, column=0, columnspan=5, padx=8, pady=(0, 4), sticky="w")
 
+        self.btn_cash_in_build_index = ttk.Button(
+            lf_cash_in,
+            text="Zbuduj offline index",
+            command=self._on_build_cash_in_offline_index,
+        )
+        self.btn_cash_in_build_index.grid(row=9, column=0, padx=8, pady=4, sticky="w")
+
+        self.pb_cash_in_index_build = ttk.Progressbar(
+            lf_cash_in,
+            variable=self.var_cash_in_index_build_progress,
+            mode="determinate",
+            maximum=100.0,
+        )
+        self.pb_cash_in_index_build.grid(
+            row=9, column=1, columnspan=4, padx=8, pady=4, sticky="ew"
+        )
+
+        ttk.Label(
+            lf_cash_in,
+            textvariable=self.var_cash_in_index_build_status,
+            foreground="#888888",
+            wraplength=920,
+            justify="left",
+        ).grid(row=10, column=0, columnspan=5, padx=8, pady=(0, 4), sticky="w")
+
         ttk.Label(
             lf_cash_in,
             text=(
                 "Lookup online pobiera kandydatow z providerow (EDSM/online). "
                 "Przycisk pobiera surowy dump stacji Spansh (plik .json.gz, zwykle kilka GB) "
-                "do katalogu danych. Fallback offline do wyznaczania realnego celu trasy "
-                "wymaga gotowego indexu JSON wskazanego w polu 'Offline index'."
+                "do katalogu danych. Runtime cash-in nie czyta dumpa .json.gz bezposrednio: "
+                "po pobraniu uruchom 'Zbuduj offline index', aby wygenerowac JSON kompatybilny "
+                "z fallbackiem i automatycznie ustawic 'Offline index (JSON)'."
             ),
             foreground="#888888",
             wraplength=920,
             justify="left",
-        ).grid(row=9, column=0, columnspan=5, padx=8, pady=(0, 6), sticky="w")
+        ).grid(row=11, column=0, columnspan=5, padx=8, pady=(0, 6), sticky="w")
 
         self._add_save_bar(parent, row=4)
 
@@ -1876,6 +1909,18 @@ class SettingsTab(ttk.Frame):
                 or self._default_cash_in_dump_path()
             )
         )
+        self.var_cash_in_dump_progress.set(0.0)
+        self.var_cash_in_dump_status.set(
+            "Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data."
+        )
+        self.var_cash_in_index_build_progress.set(0.0)
+        self.var_cash_in_index_build_status.set(
+            "Brak konwersji. Uzyj 'Zbuduj offline index' po pobraniu dumpa."
+        )
+        self.var_cash_in_index_build_progress.set(0.0)
+        self.var_cash_in_index_build_status.set(
+            "Brak konwersji. Uzyj 'Zbuduj offline index' po pobraniu dumpa."
+        )
         self.var_route_progress_messages.set(
             cfg.get("route_progress_speech", self.var_route_progress_messages.get())
         )
@@ -2413,8 +2458,15 @@ class SettingsTab(ttk.Frame):
                 state=("disabled" if busy else "normal")
             )
 
+    def _set_cash_in_index_build_ui_busy(self, busy: bool) -> None:
+        self._cash_in_index_build_active = bool(busy)
+        if hasattr(self, "btn_cash_in_build_index"):
+            self.btn_cash_in_build_index.configure(
+                state=("disabled" if busy else "normal")
+            )
+
     def _on_download_cash_in_dump(self) -> None:
-        if self._cash_in_dump_download_active:
+        if self._cash_in_dump_download_active or self._cash_in_index_build_active:
             return
 
         url = str(self.var_cash_in_dump_url.get() or "").strip()
@@ -2518,6 +2570,94 @@ class SettingsTab(ttk.Frame):
             daemon=True,
         )
         self._cash_in_dump_download_thread.start()
+
+    def _on_build_cash_in_offline_index(self) -> None:
+        if self._cash_in_dump_download_active or self._cash_in_index_build_active:
+            return
+
+        dump_path_raw = str(self.var_cash_in_dump_path.get() or "").strip()
+        index_path_raw = str(self.var_cash_in_offline_index_path.get() or "").strip()
+        dump_path = os.path.expandvars(os.path.expanduser(dump_path_raw))
+        index_path = os.path.expandvars(os.path.expanduser(index_path_raw))
+
+        if not dump_path:
+            messagebox.showwarning("Cash-In index", "Podaj sciezke dumpa .json.gz.")
+            return
+        if not os.path.isfile(dump_path):
+            messagebox.showwarning(
+                "Cash-In index",
+                f"Nie znaleziono dumpa:\n{dump_path}\n\nNajpierw pobierz plik dumpa.",
+            )
+            return
+        if not index_path:
+            messagebox.showwarning("Cash-In index", "Podaj sciezke wyjsciowa offline indexu.")
+            return
+
+        out_dir = os.path.dirname(index_path)
+        if out_dir:
+            try:
+                os.makedirs(out_dir, exist_ok=True)
+            except Exception as exc:
+                messagebox.showerror(
+                    "Cash-In index",
+                    f"Nie moge utworzyc folderu docelowego:\n{out_dir}\n\n{exc}",
+                )
+                return
+
+        self.var_cash_in_dump_path.set(dump_path)
+        self.var_cash_in_offline_index_path.set(index_path)
+        self.var_cash_in_index_build_progress.set(0.0)
+        self.var_cash_in_index_build_status.set("Start konwersji dumpa do offline index...")
+        self._set_cash_in_index_build_ui_busy(True)
+
+        def _worker(source_dump: str, target_index: str) -> None:
+            try:
+                def _progress(percent: float, message: str) -> None:
+                    self.after(
+                        0,
+                        lambda p=percent, m=message: (
+                            self.var_cash_in_index_build_progress.set(float(p)),
+                            self.var_cash_in_index_build_status.set(str(m)),
+                        ),
+                    )
+
+                result = build_offline_index_from_spansh_dump(
+                    source_dump,
+                    target_index,
+                    progress_callback=_progress,
+                )
+                stations = int(result.get("stations_written") or 0)
+                systems = int(result.get("systems_with_relevant_stations") or 0)
+                elapsed = float(result.get("duration_sec") or 0.0)
+                done_msg = (
+                    "Offline index gotowy: "
+                    f"{stations} stacji, {systems} systemow, czas {elapsed:.1f}s."
+                )
+                self.after(
+                    0,
+                    lambda: (
+                        self.var_cash_in_offline_index_path.set(target_index),
+                        self.var_cash_in_index_build_progress.set(100.0),
+                        self.var_cash_in_index_build_status.set(done_msg),
+                        self._set_cash_in_index_build_ui_busy(False),
+                    ),
+                )
+            except Exception as exc:
+                err_msg = f"Konwersja nieudana: {exc}"
+                self.after(
+                    0,
+                    lambda: (
+                        self.var_cash_in_index_build_status.set(err_msg),
+                        self._set_cash_in_index_build_ui_busy(False),
+                    ),
+                )
+
+        self._cash_in_index_build_thread = threading.Thread(
+            target=_worker,
+            args=(dump_path, index_path),
+            daemon=True,
+        )
+        self._cash_in_index_build_thread.start()
 
     def _on_generate_science_excel(self) -> None:
         """
