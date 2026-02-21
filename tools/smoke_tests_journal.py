@@ -15,6 +15,7 @@ import json
 import traceback
 import queue
 import time
+import tempfile
 from typing import Callable, List, Tuple
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -36,6 +37,7 @@ from logic.events import fuel_events  # type: ignore
 from logic.events import survival_rebuy_awareness as survival_events  # type: ignore
 from logic.events import combat_awareness as combat_events  # type: ignore
 from logic.events import cash_in_assistant as cash_in_events  # type: ignore
+from logic.cash_in_station_candidates import _reset_offline_index_cache_for_tests  # type: ignore
 from logic.insight_dispatcher import reset_dispatcher_runtime_state  # type: ignore
 from logic.exit_summary import ExitSummaryData  # type: ignore
 
@@ -1224,6 +1226,215 @@ def test_journal_f13_provider_resilience_fallback_matrix(ctx: TestContext) -> No
         cash_in_events._reset_cash_in_local_known_cache_for_tests()
 
 
+def test_journal_f14_offline_index_nearest_real_target(ctx: TestContext) -> None:
+    """
+    F14 journal smoke:
+    - online empty -> offline index daje realny target i handoff przechodzi,
+    - runtime offline/no-internet -> offline index nadal daje target.
+    """
+    settings = config.config._settings  # type: ignore[attr-defined]
+    saved_system = str(getattr(app_state, "current_system", "") or "")
+    saved_station = str(getattr(app_state, "current_station", "") or "")
+    saved_star_pos = getattr(app_state, "current_star_pos", None)
+    saved_last_sig = getattr(app_state, "last_cash_in_signature", None)
+    saved_skip_sig = getattr(app_state, "cash_in_skip_signature", None)
+    saved_lookup_enabled = settings.get("cash_in.station_candidates_lookup_enabled")
+    saved_cross_enabled = settings.get("cash_in.cross_system_discovery_enabled")
+    saved_edsm_enabled = settings.get("features.providers.edsm_enabled")
+    saved_system_lookup = settings.get("features.providers.system_lookup_online")
+    saved_station_lookup = settings.get("features.trade.station_lookup_online")
+    saved_swr_enabled = settings.get("cash_in.swr_cache_enabled")
+    saved_local_enabled = settings.get("cash_in.local_known_fallback_enabled")
+    saved_offline_enabled = settings.get("cash_in.offline_index_fallback_enabled")
+    saved_offline_path = settings.get("cash_in.offline_index_path")
+    saved_offline_non_carrier = settings.get("cash_in.offline_index_non_carrier_only")
+    saved_offline_med_age = settings.get("cash_in.offline_index_confidence_med_age_days")
+
+    temp_path = ""
+    try:
+        fd, temp_path = tempfile.mkstemp(prefix="renata_f14_offline_", suffix=".json")
+        os.close(fd)
+        with open(temp_path, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "meta": {"index_date": "2026-02-20"},
+                    "stations": [
+                        {
+                            "name": "SMOKE_T2_F14_OFFLINE_TARGET",
+                            "system_name": "SMOKE_T2_F14_REMOTE_SYS",
+                            "type": "station",
+                            "services": {"has_uc": True, "has_vista": False},
+                            "coords": [10.0, 0.0, 0.0],
+                        }
+                    ],
+                },
+                handle,
+                ensure_ascii=False,
+            )
+
+        settings["cash_in.station_candidates_lookup_enabled"] = True
+        settings["cash_in.cross_system_discovery_enabled"] = False
+        settings["features.providers.edsm_enabled"] = True
+        settings["features.providers.system_lookup_online"] = True
+        settings["features.trade.station_lookup_online"] = False
+        settings["cash_in.swr_cache_enabled"] = False
+        settings["cash_in.local_known_fallback_enabled"] = False
+        settings["cash_in.offline_index_fallback_enabled"] = True
+        settings["cash_in.offline_index_path"] = temp_path
+        settings["cash_in.offline_index_non_carrier_only"] = True
+        settings["cash_in.offline_index_confidence_med_age_days"] = 30
+
+        ctx.clear_queue()
+        ctx.reset_debouncer()
+        reset_dispatcher_runtime_state()
+        app_state.current_system = "SMOKE_T2_F14_ORIGIN_SYS"
+        app_state.current_station = ""
+        app_state.current_star_pos = [0.0, 0.0, 0.0]
+        app_state.last_cash_in_signature = None
+        app_state.cash_in_skip_signature = None
+        cash_in_events._reset_cash_in_swr_cache_for_tests()
+        cash_in_events._reset_cash_in_local_known_cache_for_tests()
+        _reset_offline_index_cache_for_tests()
+
+        payload = {
+            "system": "SMOKE_T2_F14_ORIGIN_SYS",
+            "cash_in_signal": "wysoki",
+            "cash_in_system_estimated": 7_500_000.0,
+            "cash_in_session_estimated": 25_000_000.0,
+            "service": "uc",
+            "confidence": "high",
+        }
+
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                return_value=[],
+            ),
+            patch("logic.events.cash_in_assistant.edsm_provider_resilience_snapshot", return_value={}),
+        ):
+            ok = cash_in_events.trigger_cash_in_assistant(mode="manual", summary_payload=payload, gui_ref=None)
+        assert ok is True, "Expected offline-index cash-in emit in F14 journal smoke"
+
+        queue_batch = ctx.drain_queue()
+        payload_items = [
+            item[1]
+            for item in queue_batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+        ]
+        assert payload_items, "Expected structured cash_in_assistant payload in F14 journal smoke"
+        structured = dict(payload_items[-1] or {})
+        station_meta = dict(structured.get("station_candidates_meta") or {})
+        edge_meta = dict(structured.get("edge_case_meta") or {})
+        reasons = {
+            str(item).strip().lower()
+            for item in (edge_meta.get("reasons") or [])
+            if str(item).strip()
+        }
+        assert str(station_meta.get("source_status") or "") == "offline_index", (
+            f"Expected offline_index source in F14 journal smoke, got: {station_meta}"
+        )
+        assert bool(station_meta.get("offline_index_used")), (
+            f"Expected offline index used flag in F14 journal smoke, got: {station_meta}"
+        )
+        assert "offline_index" in reasons, (
+            f"Expected offline_index reason in F14 journal smoke, got: {edge_meta}"
+        )
+
+        options = [dict(item) for item in (structured.get("options") or []) if isinstance(item, dict)]
+        assert options, "Expected options for offline index target in F14 journal smoke"
+        handoff = cash_in_events.handoff_cash_in_to_route_intent(
+            options[0],
+            set_route_intent=app_state.set_route_intent,
+            source="smoke.t2.f14.intent",
+            allow_auto_route=False,
+        )
+        assert bool(handoff.get("ok")), f"Expected route handoff with offline index target, got: {handoff}"
+        assert str(handoff.get("target_system") or "") == "SMOKE_T2_F14_REMOTE_SYS", (
+            f"Expected offline target system in F14 journal smoke, got: {handoff}"
+        )
+
+        ctx.clear_queue()
+        app_state.last_cash_in_signature = None
+        app_state.cash_in_skip_signature = None
+        payload_offline = dict(payload)
+        payload_offline["offline"] = True
+        snapshot_503 = {
+            "provider": "EDSM",
+            "endpoints": {
+                "station_details": {
+                    "circuit_open": False,
+                    "last_error_code": 503,
+                    "provider_down_503_count": 1,
+                },
+                "nearby_systems": {
+                    "circuit_open": False,
+                    "last_error_code": 0,
+                    "provider_down_503_count": 0,
+                },
+            },
+        }
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                return_value=[],
+            ),
+            patch("logic.events.cash_in_assistant.edsm_provider_resilience_snapshot", return_value=snapshot_503),
+        ):
+            ok_offline = cash_in_events.trigger_cash_in_assistant(
+                mode="manual",
+                summary_payload=payload_offline,
+                gui_ref=None,
+            )
+        assert ok_offline is True, "Expected offline runtime emit with offline index target in F14 smoke"
+
+        queue_batch = ctx.drain_queue()
+        payload_items = [
+            item[1]
+            for item in queue_batch
+            if isinstance(item, tuple) and len(item) == 2 and item[0] == "cash_in_assistant"
+        ]
+        assert payload_items, "Expected payload for offline runtime scenario in F14 smoke"
+        structured_offline = dict(payload_items[-1] or {})
+        station_meta_offline = dict(structured_offline.get("station_candidates_meta") or {})
+        edge_meta_offline = dict(structured_offline.get("edge_case_meta") or {})
+        reasons_offline = {
+            str(item).strip().lower()
+            for item in (edge_meta_offline.get("reasons") or [])
+            if str(item).strip()
+        }
+        assert str(station_meta_offline.get("source_status") or "") == "offline_index", (
+            f"Expected offline_index source in runtime-offline F14 smoke, got: {station_meta_offline}"
+        )
+        assert {"offline", "offline_index"}.issubset(reasons_offline), (
+            f"Expected offline+offline_index reasons in F14 smoke, got: {edge_meta_offline}"
+        )
+    finally:
+        settings["cash_in.station_candidates_lookup_enabled"] = saved_lookup_enabled
+        settings["cash_in.cross_system_discovery_enabled"] = saved_cross_enabled
+        settings["features.providers.edsm_enabled"] = saved_edsm_enabled
+        settings["features.providers.system_lookup_online"] = saved_system_lookup
+        settings["features.trade.station_lookup_online"] = saved_station_lookup
+        settings["cash_in.swr_cache_enabled"] = saved_swr_enabled
+        settings["cash_in.local_known_fallback_enabled"] = saved_local_enabled
+        settings["cash_in.offline_index_fallback_enabled"] = saved_offline_enabled
+        settings["cash_in.offline_index_path"] = saved_offline_path
+        settings["cash_in.offline_index_non_carrier_only"] = saved_offline_non_carrier
+        settings["cash_in.offline_index_confidence_med_age_days"] = saved_offline_med_age
+        app_state.current_system = saved_system
+        app_state.current_station = saved_station
+        app_state.current_star_pos = saved_star_pos
+        app_state.last_cash_in_signature = saved_last_sig
+        app_state.cash_in_skip_signature = saved_skip_sig
+        cash_in_events._reset_cash_in_swr_cache_for_tests()
+        cash_in_events._reset_cash_in_local_known_cache_for_tests()
+        _reset_offline_index_cache_for_tests()
+        if temp_path and os.path.isfile(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+
+
 # --- RUNNER ------------------------------------------------------------------
 
 
@@ -1250,6 +1461,7 @@ def run_all_tests() -> int:
         ("test_journal_f11_startjump_cash_in_nonflood", test_journal_f11_startjump_cash_in_nonflood),
         ("test_journal_f12_cross_system_cash_in_route_gate", test_journal_f12_cross_system_cash_in_route_gate),
         ("test_journal_f13_provider_resilience_fallback_matrix", test_journal_f13_provider_resilience_fallback_matrix),
+        ("test_journal_f14_offline_index_nearest_real_target", test_journal_f14_offline_index_nearest_real_target),
     ]
 
     print("=== RenataAI Journal / AppState / Debouncer Tests (T2) ===")

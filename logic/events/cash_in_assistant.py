@@ -2181,6 +2181,8 @@ def _build_station_candidates_runtime(
         offline_index_lookup_status = "disabled"
     elif not provider_lookup_attempted:
         offline_index_lookup_status = "not_applicable"
+    elif bool(candidates) and not offline_index_lookup_attempted:
+        offline_index_lookup_status = "not_needed"
     elif offline_index_lookup_status == "not_attempted":
         offline_index_lookup_status = "no_offline_index_hit"
 
