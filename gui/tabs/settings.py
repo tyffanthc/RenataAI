@@ -4,6 +4,8 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from typing import Optional, Callable, Dict, Any
 import os
+import threading
+import urllib.request
 import config
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
 from gui.window_chrome import apply_renata_orange_window_chrome
@@ -47,6 +49,8 @@ class SettingsTab(ttk.Frame):
         self._save_config = save_config
         self._jackpot_dialog = None
         self._tables_columns_dialog = None
+        self._cash_in_dump_download_active = False
+        self._cash_in_dump_download_thread: Optional[threading.Thread] = None
         initial_cfg: Dict[str, Any] = {}
         if callable(self._get_config):
             try:
@@ -59,6 +63,18 @@ class SettingsTab(ttk.Frame):
         self._create_vars()
         self._build_ui()
         self._load_initial_values()
+
+    def _default_cash_in_data_dir(self) -> str:
+        base = os.getenv("APPDATA") or os.getenv("LOCALAPPDATA")
+        if base:
+            return os.path.join(base, "RenataAI", "data")
+        return os.path.join(config.BASE_DIR, "data")
+
+    def _default_cash_in_dump_path(self) -> str:
+        return os.path.join(self._default_cash_in_data_dir(), "galaxy_stations.json.gz")
+
+    def _default_cash_in_offline_index_path(self) -> str:
+        return os.path.join(self._default_cash_in_data_dir(), "offline_station_index.json")
 
     def update_modules_status(self, loaded: bool) -> None:
         if loaded:
@@ -114,6 +130,20 @@ class SettingsTab(ttk.Frame):
         self.var_cash_in_cross_system_enabled = tk.BooleanVar(value=True)
         self.var_cash_in_cross_system_radius_ly = tk.StringVar(value="120")
         self.var_cash_in_cross_system_max_systems = tk.StringVar(value="12")
+        self.var_cash_in_offline_index_enabled = tk.BooleanVar(value=True)
+        self.var_cash_in_offline_index_path = tk.StringVar(
+            value=self._default_cash_in_offline_index_path()
+        )
+        self.var_cash_in_offline_non_carrier_only = tk.BooleanVar(value=True)
+        self.var_cash_in_offline_confidence_med_age_days = tk.StringVar(value="30")
+        self.var_cash_in_dump_url = tk.StringVar(
+            value="https://downloads.spansh.co.uk/galaxy_stations.json.gz"
+        )
+        self.var_cash_in_dump_path = tk.StringVar(value=self._default_cash_in_dump_path())
+        self.var_cash_in_dump_progress = tk.DoubleVar(value=0.0)
+        self.var_cash_in_dump_status = tk.StringVar(
+            value="Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data."
+        )
 
         self.var_fss_assistant = tk.BooleanVar(value=True)             # fss_assistant
         self.var_high_value_planet_alerts = tk.BooleanVar(value=True)  # high_value_planets
@@ -933,6 +963,7 @@ class SettingsTab(ttk.Frame):
         lf_cash_in.columnconfigure(1, weight=1)
         lf_cash_in.columnconfigure(2, weight=1)
         lf_cash_in.columnconfigure(3, weight=1)
+        lf_cash_in.columnconfigure(4, weight=0)
 
         ttk.Checkbutton(
             lf_cash_in,
@@ -964,16 +995,99 @@ class SettingsTab(ttk.Frame):
             width=10,
         ).grid(row=1, column=3, padx=8, pady=4, sticky="w")
 
+        ttk.Checkbutton(
+            lf_cash_in,
+            text="Włącz fallback offline indexu stacji",
+            variable=self.var_cash_in_offline_index_enabled,
+        ).grid(row=2, column=0, columnspan=2, padx=8, pady=4, sticky="w")
+
+        ttk.Checkbutton(
+            lf_cash_in,
+            text="Preferuj tylko non-carrier (UC bez prowizji)",
+            variable=self.var_cash_in_offline_non_carrier_only,
+        ).grid(row=2, column=2, columnspan=3, padx=8, pady=4, sticky="w")
+
+        ttk.Label(lf_cash_in, text="Offline index (JSON):").grid(
+            row=3, column=0, padx=8, pady=4, sticky="w"
+        )
+        ttk.Entry(
+            lf_cash_in,
+            textvariable=self.var_cash_in_offline_index_path,
+            width=56,
+        ).grid(row=3, column=1, columnspan=3, padx=8, pady=4, sticky="ew")
+        ttk.Button(
+            lf_cash_in,
+            text="Wybierz...",
+            command=self._on_browse_cash_in_offline_index,
+        ).grid(row=3, column=4, padx=8, pady=4, sticky="w")
+
+        ttk.Label(lf_cash_in, text="Próg MED confidence (dni):").grid(
+            row=4, column=0, padx=8, pady=4, sticky="w"
+        )
+        ttk.Entry(
+            lf_cash_in,
+            textvariable=self.var_cash_in_offline_confidence_med_age_days,
+            width=10,
+        ).grid(row=4, column=1, padx=8, pady=4, sticky="w")
+
+        ttk.Label(lf_cash_in, text="URL dumpa Spansh (.json.gz):").grid(
+            row=5, column=0, padx=8, pady=4, sticky="w"
+        )
+        ttk.Entry(
+            lf_cash_in,
+            textvariable=self.var_cash_in_dump_url,
+            width=56,
+        ).grid(row=5, column=1, columnspan=4, padx=8, pady=4, sticky="ew")
+
+        ttk.Label(lf_cash_in, text="Zapisz dump do:").grid(
+            row=6, column=0, padx=8, pady=4, sticky="w"
+        )
+        ttk.Entry(
+            lf_cash_in,
+            textvariable=self.var_cash_in_dump_path,
+            width=56,
+        ).grid(row=6, column=1, columnspan=3, padx=8, pady=4, sticky="ew")
+        ttk.Button(
+            lf_cash_in,
+            text="Wybierz...",
+            command=self._on_browse_cash_in_dump_path,
+        ).grid(row=6, column=4, padx=8, pady=4, sticky="w")
+
+        self.btn_cash_in_download_dump = ttk.Button(
+            lf_cash_in,
+            text="Pobierz galaxy_stations.json.gz",
+            command=self._on_download_cash_in_dump,
+        )
+        self.btn_cash_in_download_dump.grid(row=7, column=0, padx=8, pady=4, sticky="w")
+
+        self.pb_cash_in_dump = ttk.Progressbar(
+            lf_cash_in,
+            variable=self.var_cash_in_dump_progress,
+            mode="determinate",
+            maximum=100.0,
+        )
+        self.pb_cash_in_dump.grid(row=7, column=1, columnspan=4, padx=8, pady=4, sticky="ew")
+
+        ttk.Label(
+            lf_cash_in,
+            textvariable=self.var_cash_in_dump_status,
+            foreground="#888888",
+            wraplength=920,
+            justify="left",
+        ).grid(row=8, column=0, columnspan=5, padx=8, pady=(0, 4), sticky="w")
+
         ttk.Label(
             lf_cash_in,
             text=(
-                "Wymaga danych online. Jeśli lookup jest włączony, Renata zapisze też "
-                "provider online (EDSM/system lookup)."
+                "Lookup online pobiera kandydatow z providerow (EDSM/online). "
+                "Przycisk pobiera surowy dump stacji Spansh (plik .json.gz, zwykle kilka GB) "
+                "do katalogu danych. Fallback offline do wyznaczania realnego celu trasy "
+                "wymaga gotowego indexu JSON wskazanego w polu 'Offline index'."
             ),
             foreground="#888888",
             wraplength=920,
             justify="left",
-        ).grid(row=2, column=0, columnspan=4, padx=8, pady=(0, 6), sticky="w")
+        ).grid(row=9, column=0, columnspan=5, padx=8, pady=(0, 6), sticky="w")
 
         self._add_save_bar(parent, row=4)
 
@@ -1711,6 +1825,57 @@ class SettingsTab(ttk.Frame):
                 )
             )
         )
+        self.var_cash_in_offline_index_enabled.set(
+            bool(
+                cfg.get(
+                    "cash_in.offline_index_fallback_enabled",
+                    self.var_cash_in_offline_index_enabled.get(),
+                )
+            )
+        )
+        self.var_cash_in_offline_index_path.set(
+            str(
+                cfg.get(
+                    "cash_in.offline_index_path",
+                    self.var_cash_in_offline_index_path.get(),
+                )
+                or self._default_cash_in_offline_index_path()
+            )
+        )
+        self.var_cash_in_offline_non_carrier_only.set(
+            bool(
+                cfg.get(
+                    "cash_in.offline_index_non_carrier_only",
+                    self.var_cash_in_offline_non_carrier_only.get(),
+                )
+            )
+        )
+        self.var_cash_in_offline_confidence_med_age_days.set(
+            str(
+                cfg.get(
+                    "cash_in.offline_index_confidence_med_age_days",
+                    self.var_cash_in_offline_confidence_med_age_days.get(),
+                )
+            )
+        )
+        self.var_cash_in_dump_url.set(
+            str(
+                cfg.get(
+                    "cash_in.dump_download_url",
+                    self.var_cash_in_dump_url.get(),
+                )
+                or self.var_cash_in_dump_url.get()
+            )
+        )
+        self.var_cash_in_dump_path.set(
+            str(
+                cfg.get(
+                    "cash_in.dump_download_path",
+                    self.var_cash_in_dump_path.get(),
+                )
+                or self._default_cash_in_dump_path()
+            )
+        )
         self.var_route_progress_messages.set(
             cfg.get("route_progress_speech", self.var_route_progress_messages.get())
         )
@@ -1996,10 +2161,32 @@ class SettingsTab(ttk.Frame):
             min_val=1,
             max_val=200,
         )
+        cash_in_offline_conf_days = self._parse_int_range(
+            self.var_cash_in_offline_confidence_med_age_days.get(),
+            default=int(config.get("cash_in.offline_index_confidence_med_age_days", 30)),
+            min_val=1,
+            max_val=3650,
+        )
+        cash_in_offline_index_path = (
+            str(self.var_cash_in_offline_index_path.get()).strip()
+            or str(config.get("cash_in.offline_index_path", self._default_cash_in_offline_index_path()))
+        )
+        cash_in_dump_url = (
+            str(self.var_cash_in_dump_url.get()).strip()
+            or str(config.get("cash_in.dump_download_url", "https://downloads.spansh.co.uk/galaxy_stations.json.gz"))
+        )
+        cash_in_dump_path = (
+            str(self.var_cash_in_dump_path.get()).strip()
+            or str(config.get("cash_in.dump_download_path", self._default_cash_in_dump_path()))
+        )
         self.var_cash_in_cross_system_radius_ly.set(
             str(int(round(cash_in_cross_radius)))
         )
         self.var_cash_in_cross_system_max_systems.set(str(cash_in_cross_max_systems))
+        self.var_cash_in_offline_confidence_med_age_days.set(str(cash_in_offline_conf_days))
+        self.var_cash_in_offline_index_path.set(cash_in_offline_index_path)
+        self.var_cash_in_dump_url.set(cash_in_dump_url)
+        self.var_cash_in_dump_path.set(cash_in_dump_path)
 
         online_master = bool(self.var_online_data_enabled.get() or cash_in_lookup_enabled)
         if online_master != bool(self.var_online_data_enabled.get()):
@@ -2046,6 +2233,12 @@ class SettingsTab(ttk.Frame):
             "cash_in.cross_system_discovery_enabled": cash_in_cross_enabled,
             "cash_in.cross_system_radius_ly": cash_in_cross_radius,
             "cash_in.cross_system_max_systems": cash_in_cross_max_systems,
+            "cash_in.offline_index_fallback_enabled": bool(self.var_cash_in_offline_index_enabled.get()),
+            "cash_in.offline_index_path": cash_in_offline_index_path,
+            "cash_in.offline_index_non_carrier_only": bool(self.var_cash_in_offline_non_carrier_only.get()),
+            "cash_in.offline_index_confidence_med_age_days": cash_in_offline_conf_days,
+            "cash_in.dump_download_url": cash_in_dump_url,
+            "cash_in.dump_download_path": cash_in_dump_path,
 
             # dodatkowe / frontend only (ale możemy też trzymać w JSON)
             "use_system_theme": self.var_use_system_theme.get(),
@@ -2178,6 +2371,154 @@ class SettingsTab(ttk.Frame):
         if path:
             self.var_modules_data_path.set(path)
 
+    def _on_browse_cash_in_offline_index(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Wybierz offline index stacji (JSON)",
+            filetypes=[("JSON", "*.json"), ("Wszystkie pliki", "*.*")],
+        )
+        if path:
+            self.var_cash_in_offline_index_path.set(path)
+
+    def _on_browse_cash_in_dump_path(self) -> None:
+        path = filedialog.asksaveasfilename(
+            title="Zapisz dump Spansh jako...",
+            defaultextension=".json.gz",
+            initialfile="galaxy_stations.json.gz",
+            filetypes=[
+                ("Gzip JSON", "*.json.gz"),
+                ("Gzip", "*.gz"),
+                ("Wszystkie pliki", "*.*"),
+            ],
+        )
+        if path:
+            self.var_cash_in_dump_path.set(path)
+
+    @staticmethod
+    def _format_bytes_human(value: int) -> str:
+        size = float(max(0, int(value)))
+        units = ("B", "KB", "MB", "GB", "TB")
+        unit = units[0]
+        for unit in units:
+            if size < 1024.0 or unit == units[-1]:
+                break
+            size /= 1024.0
+        if unit == "B":
+            return f"{int(size)} {unit}"
+        return f"{size:.1f} {unit}"
+
+    def _set_cash_in_dump_ui_busy(self, busy: bool) -> None:
+        self._cash_in_dump_download_active = bool(busy)
+        if hasattr(self, "btn_cash_in_download_dump"):
+            self.btn_cash_in_download_dump.configure(
+                state=("disabled" if busy else "normal")
+            )
+
+    def _on_download_cash_in_dump(self) -> None:
+        if self._cash_in_dump_download_active:
+            return
+
+        url = str(self.var_cash_in_dump_url.get() or "").strip()
+        path_raw = str(self.var_cash_in_dump_path.get() or "").strip()
+        path = os.path.expandvars(os.path.expanduser(path_raw))
+
+        if not url or not (url.startswith("https://") or url.startswith("http://")):
+            messagebox.showwarning("Cash-In dump", "Podaj poprawny URL (http/https).")
+            return
+        if not path:
+            messagebox.showwarning("Cash-In dump", "Podaj docelowa sciezke zapisu dumpa.")
+            return
+
+        target_dir = os.path.dirname(path)
+        if target_dir:
+            try:
+                os.makedirs(target_dir, exist_ok=True)
+            except Exception as exc:
+                messagebox.showerror(
+                    "Cash-In dump",
+                    f"Nie moge utworzyc folderu docelowego:\n{target_dir}\n\n{exc}",
+                )
+                return
+
+        self.var_cash_in_dump_path.set(path)
+        self.var_cash_in_dump_progress.set(0.0)
+        self.var_cash_in_dump_status.set("Start pobierania dumpa Spansh...")
+        self._set_cash_in_dump_ui_busy(True)
+
+        def _worker(download_url: str, target_path: str) -> None:
+            temp_path = f"{target_path}.part"
+            downloaded = 0
+            total = 0
+            try:
+                req = urllib.request.Request(
+                    download_url,
+                    headers={"User-Agent": "RENATA/1.0"},
+                )
+                with urllib.request.urlopen(req, timeout=60) as response:
+                    content_length = response.headers.get("Content-Length")
+                    if content_length:
+                        try:
+                            total = int(content_length)
+                        except Exception:
+                            total = 0
+                    with open(temp_path, "wb") as out:
+                        while True:
+                            chunk = response.read(262144)
+                            if not chunk:
+                                break
+                            out.write(chunk)
+                            downloaded += len(chunk)
+                            if total > 0:
+                                progress = min(99.0, (downloaded * 100.0) / float(total))
+                                status = (
+                                    f"Pobieranie: {self._format_bytes_human(downloaded)} / "
+                                    f"{self._format_bytes_human(total)}"
+                                )
+                            else:
+                                progress = 0.0
+                                status = f"Pobieranie: {self._format_bytes_human(downloaded)}"
+                            self.after(
+                                0,
+                                lambda p=progress, s=status: (
+                                    self.var_cash_in_dump_progress.set(p),
+                                    self.var_cash_in_dump_status.set(s),
+                                ),
+                            )
+
+                os.replace(temp_path, target_path)
+                done_msg = (
+                    f"Gotowe: {self._format_bytes_human(downloaded)} zapisane w {target_path}. "
+                    "To surowy dump stacji (gzip)."
+                )
+                self.after(
+                    0,
+                    lambda: (
+                        self.var_cash_in_dump_progress.set(100.0),
+                        self.var_cash_in_dump_status.set(done_msg),
+                        self._set_cash_in_dump_ui_busy(False),
+                    ),
+                )
+            except Exception as exc:
+                try:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                except Exception:
+                    pass
+                err_msg = f"Pobieranie nieudane: {exc}"
+                self.after(
+                    0,
+                    lambda: (
+                        self.var_cash_in_dump_status.set(err_msg),
+                        self._set_cash_in_dump_ui_busy(False),
+                    ),
+                )
+
+        self._cash_in_dump_download_thread = threading.Thread(
+            target=_worker,
+            args=(url, path),
+            daemon=True,
+        )
+        self._cash_in_dump_download_thread.start()
+
     def _on_generate_science_excel(self) -> None:
         """
         Handler przycisku 'Generuj arkusze naukowe'.
@@ -2278,6 +2619,45 @@ class SettingsTab(ttk.Frame):
         )
         self.var_cash_in_cross_system_max_systems.set(
             str(defaults.get("cash_in.cross_system_max_systems", 12))
+        )
+        self.var_cash_in_offline_index_enabled.set(
+            bool(defaults.get("cash_in.offline_index_fallback_enabled", True))
+        )
+        self.var_cash_in_offline_index_path.set(
+            str(
+                defaults.get(
+                    "cash_in.offline_index_path",
+                    self._default_cash_in_offline_index_path(),
+                )
+                or self._default_cash_in_offline_index_path()
+            )
+        )
+        self.var_cash_in_offline_non_carrier_only.set(
+            bool(defaults.get("cash_in.offline_index_non_carrier_only", True))
+        )
+        self.var_cash_in_offline_confidence_med_age_days.set(
+            str(defaults.get("cash_in.offline_index_confidence_med_age_days", 30))
+        )
+        self.var_cash_in_dump_url.set(
+            str(
+                defaults.get(
+                    "cash_in.dump_download_url",
+                    "https://downloads.spansh.co.uk/galaxy_stations.json.gz",
+                )
+            )
+        )
+        self.var_cash_in_dump_path.set(
+            str(
+                defaults.get(
+                    "cash_in.dump_download_path",
+                    self._default_cash_in_dump_path(),
+                )
+                or self._default_cash_in_dump_path()
+            )
+        )
+        self.var_cash_in_dump_progress.set(0.0)
+        self.var_cash_in_dump_status.set(
+            "Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data."
         )
 
         self.var_route_progress_messages.set(bool(defaults.get("route_progress_speech", True)))

@@ -208,6 +208,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "cash_in.offline_index_path": "offline_station_index.json",
     "cash_in.offline_index_non_carrier_only": True,
     "cash_in.offline_index_confidence_med_age_days": 30,
+    "cash_in.dump_download_url": "https://downloads.spansh.co.uk/galaxy_stations.json.gz",
+    "cash_in.dump_download_path": "",
     "cash_in.avoid_carriers_for_uc": True,
     "cash_in.carrier_ok_for_fast_mode": True,
     "cash_in.show_tariff_meta": True,
