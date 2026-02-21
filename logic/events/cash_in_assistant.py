@@ -1599,7 +1599,12 @@ def _build_edge_case_meta(
     swr_cache_used = bool(station_meta.get("swr_cache_used"))
     swr_freshness = _as_text(station_meta.get("swr_freshness")).upper()
     local_known_fallback_used = bool(station_meta.get("local_known_fallback_used"))
+    cross_system_lookup_attempted = bool(station_meta.get("cross_system_lookup_attempted"))
     candidate_count = int(station_meta.get("count") or 0)
+    nearby_requested_radius_ly = _safe_float(station_meta.get("nearby_requested_radius_ly"))
+    nearby_effective_radius_ly = _safe_float(station_meta.get("nearby_effective_radius_ly"))
+    nearby_provider_response_count = int(station_meta.get("nearby_provider_response_count") or 0)
+    nearby_reason = _as_text(station_meta.get("nearby_reason")).lower()
 
     if source_status == "providers_empty" or provider_lookup_status == "providers_empty":
         _append_unique_reason(reasons, "providers_empty")
@@ -1613,6 +1618,22 @@ def _build_edge_case_meta(
         _append_unique_reason(reasons, "local_known_fallback")
     if candidate_count <= 0:
         _append_unique_reason(reasons, "no_station_data")
+    if nearby_reason == "provider_radius_cap":
+        _append_unique_reason(reasons, "provider_radius_cap")
+    if nearby_reason == "provider_empty":
+        _append_unique_reason(reasons, "provider_empty")
+    if (
+        nearby_requested_radius_ly > 0.0
+        and nearby_effective_radius_ly > 0.0
+        and nearby_requested_radius_ly > nearby_effective_radius_ly
+    ):
+        _append_unique_reason(reasons, "provider_radius_cap")
+    if (
+        cross_system_lookup_attempted
+        and nearby_effective_radius_ly >= 100.0
+        and nearby_provider_response_count == 0
+    ):
+        _append_unique_reason(reasons, "provider_empty")
 
     profiled_reason = _as_text(rank_meta.get("profiled_reason") or rank_meta.get("reason")).lower()
     if profiled_reason == "no_service_candidates":
@@ -1635,6 +1656,8 @@ def _build_edge_case_meta(
             "provider_circuit_open",
             "stale_cache",
             "local_known_fallback",
+            "provider_radius_cap",
+            "provider_empty",
             "no_station_data",
             "no_service_candidates",
             "offline",
@@ -1649,6 +1672,36 @@ def _build_edge_case_meta(
     ui_hint = ""
     if "offline" in reasons:
         ui_hint = "Tryb offline/przerwane logi: rekomendacja orientacyjna."
+    elif "provider_radius_cap" in reasons:
+        req_txt = (
+            str(int(round(nearby_requested_radius_ly)))
+            if nearby_requested_radius_ly >= 1.0
+            else "-"
+        )
+        eff_txt = (
+            str(int(round(nearby_effective_radius_ly)))
+            if nearby_effective_radius_ly >= 1.0
+            else "-"
+        )
+        ui_hint = (
+            f"EDSM limit 100 LY: requested={req_txt} LY, effective={eff_txt} LY. "
+            "Wynik nearby ma obnizona pewnosc."
+        )
+    elif "provider_empty" in reasons:
+        req_txt = (
+            str(int(round(nearby_requested_radius_ly)))
+            if nearby_requested_radius_ly >= 1.0
+            else "-"
+        )
+        eff_txt = (
+            str(int(round(nearby_effective_radius_ly)))
+            if nearby_effective_radius_ly >= 1.0
+            else "-"
+        )
+        ui_hint = (
+            f"Provider nearby nie zwrocil wynikow (requested={req_txt} LY, effective={eff_txt} LY). "
+            "Szukanie kontynuowane fallbackiem."
+        )
     elif "provider_circuit_open" in reasons and "local_known_fallback" in reasons:
         ui_hint = "Provider stacyjny chwilowo niedostepny: pokazuje lokalny cache znanych stacji/systemow."
     elif "provider_down_503" in reasons and "local_known_fallback" in reasons:
@@ -1688,6 +1741,9 @@ def _build_edge_case_meta(
         "swr_cache_used": swr_cache_used,
         "swr_freshness": swr_freshness or "NONE",
         "local_known_fallback_used": local_known_fallback_used,
+        "nearby_requested_radius_ly": float(nearby_requested_radius_ly),
+        "nearby_effective_radius_ly": float(nearby_effective_radius_ly),
+        "nearby_provider_response_count": int(nearby_provider_response_count),
     }
 
 
@@ -1705,6 +1761,10 @@ def _append_edge_case_note(base_note: str, edge_case_meta: dict[str, Any]) -> st
         extra_parts.append("Provider stacyjny chwilowo niedostepny (circuit open).")
     if "provider_down_503" in reasons:
         extra_parts.append("Provider stacyjny chwilowo niedostepny (HTTP 503).")
+    if "provider_radius_cap" in reasons:
+        extra_parts.append("EDSM nearby ograniczony limitem 100 LY (provider cap).")
+    if "provider_empty" in reasons:
+        extra_parts.append("EDSM nearby zwrocil pusty wynik dla efektywnego promienia.")
     if "stale_cache" in reasons:
         extra_parts.append("Wynik z cache (stale).")
     if "local_known_fallback" in reasons:
@@ -1758,6 +1818,10 @@ def _build_station_candidates_runtime(
     cross_system_lookup_status = "not_attempted"
     cross_system_systems_requested = 0
     cross_system_systems_with_candidates = 0
+    nearby_requested_radius_ly = 0.0
+    nearby_effective_radius_ly = 0.0
+    nearby_provider_response_count = 0
+    nearby_reason = ""
     service_norm = _normalize_cash_in_service(service)
     limit = max(4, int(config.get("cash_in.station_candidates_limit", 24) or 24))
     include_edsm = bool(config.get("features.providers.edsm_enabled", False))
@@ -1885,6 +1949,16 @@ def _build_station_candidates_runtime(
             edsm_snapshot_data = dict(edsm_provider_resilience_snapshot() or {})
         cross_system_systems_requested = int(cross_meta.get("systems_requested") or 0)
         cross_system_systems_with_candidates = int(cross_meta.get("systems_with_candidates") or 0)
+        nearby_requested_radius_ly = float(
+            cross_meta.get("nearby_requested_radius_ly") or 0.0
+        )
+        nearby_effective_radius_ly = float(
+            cross_meta.get("nearby_effective_radius_ly") or 0.0
+        )
+        nearby_provider_response_count = int(
+            cross_meta.get("nearby_provider_response_count") or 0
+        )
+        nearby_reason = _as_text(cross_meta.get("nearby_reason")).lower()
         if cross_candidates:
             combined: list[dict[str, Any] | str] = []
             combined.extend(candidates)
@@ -2013,6 +2087,10 @@ def _build_station_candidates_runtime(
         "cross_system_systems_requested": cross_system_systems_requested,
         "cross_system_systems_with_candidates": cross_system_systems_with_candidates,
         "cross_system_origin_coords_used": bool(origin_coords),
+        "nearby_requested_radius_ly": float(nearby_requested_radius_ly),
+        "nearby_effective_radius_ly": float(nearby_effective_radius_ly),
+        "nearby_provider_response_count": int(nearby_provider_response_count),
+        "nearby_reason": nearby_reason,
         "swr_cache_used": swr_cache_used,
         "swr_lookup_status": swr_lookup_status,
         "swr_freshness": swr_freshness,
@@ -2102,6 +2180,12 @@ def _build_tts_line(payload: CashInAssistantPayload) -> str:
             return "Cash-in: provider stacyjny chwilowo niedostepny. Pokazuje wynik z cache stale, sprawdz panel."
         if "provider_down_503" in edge_reasons and "stale_cache" in edge_reasons:
             return "Cash-in: provider stacyjny zwraca blad 503. Pokazuje wynik z cache stale, sprawdz panel."
+        if "provider_radius_cap" in edge_reasons and "provider_empty" in edge_reasons:
+            return "Cash-in: EDSM nearby ograniczony limitem 100 LY i bez wynikow. Uzywam fallbacku, sprawdz panel."
+        if "provider_radius_cap" in edge_reasons:
+            return "Cash-in: EDSM nearby ograniczony limitem 100 LY. Traktuj decyzje orientacyjnie i sprawdz panel."
+        if "provider_empty" in edge_reasons:
+            return "Cash-in: provider nearby zwrocil pusty wynik. Sprawdz panel i fallback."
         if "local_known_fallback" in edge_reasons:
             return "Cash-in: pokazuje lokalny cache znanych stacji. Traktuj decyzje orientacyjnie."
         if "stale_cache" in edge_reasons:

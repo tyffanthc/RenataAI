@@ -156,14 +156,28 @@ def edsm_nearby_systems(
             limit=int(limit or 16),
             origin_coords=origin_coords,
         )
+        snap = get_provider_resilience_snapshot()
+        endpoint = dict((snap.get("endpoints") or {}).get("nearby_systems") or {})
+        requested_radius = float(endpoint.get("last_requested_radius_ly") or float(radius_ly or 120.0))
+        effective_radius = float(endpoint.get("last_effective_radius_ly") or requested_radius)
+        response_count = int(endpoint.get("last_provider_response_count") or len(rows))
+        reason = ""
+        if requested_radius > effective_radius:
+            reason = "provider_radius_cap"
+        elif effective_radius >= 100.0 and response_count == 0:
+            reason = "provider_empty"
+        reason_suffix = f" reason={reason}" if reason else ""
         MSG_QUEUE.put(
             (
                 "log",
                 (
                     f"[EDSM] nearby systems system={sys_name!r} "
                     f"radius={round(float(radius_ly or 120.0), 1)} "
+                    f"effective_radius={round(effective_radius, 1)} "
                     f"count={len(rows)} "
+                    f"provider_response_count={response_count} "
                     f"coords={'yes' if origin_coords is not None else 'no'}"
+                    f"{reason_suffix}"
                 ),
             )
         )

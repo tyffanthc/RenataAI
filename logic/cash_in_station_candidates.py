@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List
 
 from logic.spansh_client import client as spansh_client
-from logic.utils.http_edsm import edsm_nearby_systems, edsm_station_details_for_system
+from logic.utils.http_edsm import (
+    edsm_nearby_systems,
+    edsm_provider_resilience_snapshot,
+    edsm_station_details_for_system,
+)
 
 
 def _as_text(value: Any) -> str:
@@ -352,6 +356,10 @@ def station_candidates_cross_system_from_providers(
         }
 
     nearby_rows: list[dict[str, Any]] = []
+    nearby_requested_radius_ly = float(radius_ly or 120.0)
+    nearby_effective_radius_ly = nearby_requested_radius_ly
+    nearby_provider_response_count = 0
+    nearby_reason = ""
     if include_edsm:
         try:
             nearby_rows = [
@@ -364,6 +372,21 @@ def station_candidates_cross_system_from_providers(
                 )
                 if isinstance(item, dict)
             ]
+            snap = dict(edsm_provider_resilience_snapshot() or {})
+            endpoint = dict((snap.get("endpoints") or {}).get("nearby_systems") or {})
+            nearby_requested_radius_ly = float(
+                endpoint.get("last_requested_radius_ly") or float(radius_ly or 120.0)
+            )
+            nearby_effective_radius_ly = float(
+                endpoint.get("last_effective_radius_ly") or nearby_requested_radius_ly
+            )
+            nearby_provider_response_count = int(
+                endpoint.get("last_provider_response_count") or len(nearby_rows)
+            )
+            if nearby_requested_radius_ly > nearby_effective_radius_ly:
+                nearby_reason = "provider_radius_cap"
+            elif nearby_effective_radius_ly >= 100.0 and nearby_provider_response_count == 0:
+                nearby_reason = "provider_empty"
         except Exception:
             nearby_rows = []
 
@@ -438,6 +461,10 @@ def station_candidates_cross_system_from_providers(
         "service": svc or "any",
         "radius_ly": float(radius_ly or 120.0),
         "origin_coords_used": bool(origin_coords),
+        "nearby_requested_radius_ly": float(nearby_requested_radius_ly),
+        "nearby_effective_radius_ly": float(nearby_effective_radius_ly),
+        "nearby_provider_response_count": int(nearby_provider_response_count),
+        "nearby_reason": nearby_reason,
     }
     return candidates, meta
 

@@ -18,6 +18,12 @@ class _DummyResponse:
 
 
 class F12StationProviderNearbyTests(unittest.TestCase):
+    def setUp(self) -> None:
+        edsm_client._reset_provider_resilience_state_for_tests()
+
+    def tearDown(self) -> None:
+        edsm_client._reset_provider_resilience_state_for_tests()
+
     def test_edsm_fetch_nearby_systems_parses_distance(self) -> None:
         payload = [
             {"name": "Origin", "distance": 0.0},
@@ -63,10 +69,21 @@ class F12StationProviderNearbyTests(unittest.TestCase):
         second_params = dict(get_mock.call_args_list[1].kwargs.get("params") or {})
         self.assertIn("systemName", first_params)
         self.assertEqual(first_params.get("systemName"), "Origin")
+        self.assertEqual(float(first_params.get("radius") or 0.0), 100.0)
         self.assertNotIn("systemName", second_params)
         self.assertEqual(float(second_params.get("x")), 1.25)
         self.assertEqual(float(second_params.get("y")), 2.5)
         self.assertEqual(float(second_params.get("z")), 3.75)
+
+    def test_edsm_fetch_nearby_systems_caps_radius_and_reports_diagnostic_snapshot(self) -> None:
+        with patch("logic.utils.edsm_client.requests.get", return_value=_DummyResponse(200, [])):
+            rows = edsm_client.fetch_nearby_systems("Origin", radius_ly=20_000.0, limit=8)
+        self.assertEqual(rows, [])
+        snap = edsm_client.get_provider_resilience_snapshot()
+        endpoint = dict((snap.get("endpoints") or {}).get("nearby_systems") or {})
+        self.assertEqual(float(endpoint.get("last_requested_radius_ly") or 0.0), 20_000.0)
+        self.assertEqual(float(endpoint.get("last_effective_radius_ly") or 0.0), 100.0)
+        self.assertEqual(int(endpoint.get("last_provider_response_count") or 0), 0)
 
 
 if __name__ == "__main__":

@@ -34,6 +34,7 @@ _STATIONS_DETAILS_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _NEARBY_SYSTEMS_TTL_SECONDS = 10 * 60
 _NEARBY_SYSTEMS_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _PROVIDER_ENDPOINT_STATE: dict[str, dict[str, Any]] = {}
+_NEARBY_RADIUS_PROVIDER_CAP_LY = 100.0
 
 
 def _resilience_get(key: str, default: Any) -> Any:
@@ -54,6 +55,9 @@ def _get_endpoint_state(endpoint_key: str) -> dict[str, Any]:
         "last_error_kind": "",
         "last_error_ts_monotonic": 0.0,
         "last_retry_attempts": 0,
+        "last_requested_radius_ly": 0.0,
+        "last_effective_radius_ly": 0.0,
+        "last_provider_response_count": 0,
     }
     _PROVIDER_ENDPOINT_STATE[endpoint_key] = state
     return state
@@ -116,8 +120,23 @@ def get_provider_resilience_snapshot() -> Dict[str, Any]:
             "last_error_code": int(state.get("last_error_code") or 0),
             "last_error_kind": str(state.get("last_error_kind") or ""),
             "last_retry_attempts": int(state.get("last_retry_attempts") or 0),
+            "last_requested_radius_ly": float(state.get("last_requested_radius_ly") or 0.0),
+            "last_effective_radius_ly": float(state.get("last_effective_radius_ly") or 0.0),
+            "last_provider_response_count": int(state.get("last_provider_response_count") or 0),
         }
     return {"provider": "EDSM", "endpoints": endpoints}
+
+
+def _mark_nearby_radius_diagnostic(
+    *,
+    requested_radius_ly: float,
+    effective_radius_ly: float,
+    provider_response_count: int,
+) -> None:
+    state = _get_endpoint_state("nearby_systems")
+    state["last_requested_radius_ly"] = float(max(0.0, requested_radius_ly))
+    state["last_effective_radius_ly"] = float(max(0.0, effective_radius_ly))
+    state["last_provider_response_count"] = int(max(0, provider_response_count))
 
 
 def _reset_provider_resilience_state_for_tests() -> None:
@@ -566,7 +585,8 @@ def fetch_nearby_systems(
     if not sys_name:
         return []
 
-    safe_radius = max(1.0, float(radius_ly or 120.0))
+    requested_radius = max(1.0, float(radius_ly or 120.0))
+    safe_radius = min(requested_radius, float(_NEARBY_RADIUS_PROVIDER_CAP_LY))
     safe_limit = max(1, int(limit or 16))
     coords_norm: tuple[float, float, float] | None = None
     if isinstance(origin_coords, (list, tuple)) and len(origin_coords) >= 3:
@@ -592,6 +612,11 @@ def fetch_nearby_systems(
     )
     cached = _nearby_systems_cache_get(cache_key)
     if isinstance(cached, list):
+        _mark_nearby_radius_diagnostic(
+            requested_radius_ly=requested_radius,
+            effective_radius_ly=safe_radius,
+            provider_response_count=len(cached),
+        )
         return [dict(item) for item in cached if isinstance(item, dict)]
 
     url = "https://www.edsm.net/api-v1/sphere-systems"
@@ -706,6 +731,12 @@ def fetch_nearby_systems(
                 "showCoordinates": 1,
             }
         )
+
+    _mark_nearby_radius_diagnostic(
+        requested_radius_ly=requested_radius,
+        effective_radius_ly=safe_radius,
+        provider_response_count=len(rows),
+    )
 
     if rows:
         _nearby_systems_cache_set(cache_key, rows)
