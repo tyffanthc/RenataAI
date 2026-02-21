@@ -28,6 +28,11 @@ def _as_text(value: Any) -> str:
 def _safe_optional_float(value: Any) -> float | None:
     if value is None:
         return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            return float(value)
+        except Exception:
+            return None
     text = _as_text(value).replace(",", ".")
     if not text:
         return None
