@@ -33,6 +33,12 @@ class EventInsightMappingTests(unittest.TestCase):
             "MSG.SURVIVAL_REBUY_CRITICAL",
             "MSG.COMBAT_AWARENESS_HIGH",
             "MSG.COMBAT_AWARENESS_CRITICAL",
+            "MSG.HIGH_G_WARNING",
+            "MSG.TRADE_DATA_STALE",
+            "MSG.PPM_SET_TARGET",
+            "MSG.PPM_PIN_ACTION",
+            "MSG.PPM_COPY_SYSTEM",
+            "MSG.RUNTIME_CRITICAL",
         ]
         for message_id in required:
             spec = get_insight_class(message_id)

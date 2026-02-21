@@ -2002,6 +2002,39 @@ class LogbookTab(tk.Frame):
         candidate = getattr(self.app, "state", None)
         return candidate if candidate is not None else app_state
 
+    def _emit_ppm_callout(
+        self,
+        raw_text: str,
+        *,
+        message_id: str,
+        dedup_key: str,
+        context: dict | None = None,
+    ) -> None:
+        text = str(raw_text or "").strip()
+        if not text:
+            return
+        try:
+            from logic.insight_dispatcher import emit_insight
+        except Exception:
+            return
+        payload = dict(context or {})
+        payload["raw_text"] = text
+        try:
+            emit_insight(
+                text,
+                gui_ref=self.app,
+                message_id=message_id,
+                source="logbook_ppm",
+                event_type="UI_CONTEXT_ACTION",
+                context=payload,
+                priority="P2_NORMAL",
+                dedup_key=str(dedup_key or "").strip() or None,
+                cooldown_scope="entity",
+                cooldown_seconds=8.0,
+            )
+        except Exception:
+            return
+
     def _get_smart_context(self) -> tuple[str, str, str]:
         state = self._resolve_runtime_state()
         system = str(getattr(state, "current_system", "") or "")
@@ -2416,6 +2449,12 @@ class LogbookTab(tk.Frame):
             except Exception:
                 pass
         self.status_var.set(f"Ustawiono cel [{target_kind}]: {target}")
+        self._emit_ppm_callout(
+            f"Ustawiono cel nawigacji: {target}.",
+            message_id="MSG.PPM_SET_TARGET",
+            dedup_key=f"ppm_set_target:{target}",
+            context={"target": target},
+        )
 
     def _set_target_from_selected_logbook_event(self) -> None:
         feed_item = self._selected_logbook_item()
@@ -2473,6 +2512,16 @@ class LogbookTab(tk.Frame):
         pinned = bool(entry.get("is_pinned"))
         self.repository.pin_entry(str(entry.get("id")), not pinned)
         self.status_var.set("Zmieniono status przypiecia.")
+        if pinned:
+            text = "Odpięłam wpis."
+        else:
+            text = "Przypięłam wpis."
+        self._emit_ppm_callout(
+            text,
+            message_id="MSG.PPM_PIN_ACTION",
+            dedup_key=f"ppm_pin:{entry.get('id')}",
+            context={"entry_id": str(entry.get("id") or "")},
+        )
         self._refresh_entries()
 
     def _copy_selected_system(self) -> None:
@@ -2490,3 +2539,9 @@ class LogbookTab(tk.Frame):
             except Exception:
                 pass
         self.status_var.set(f"Skopiowano system: {system_name}")
+        self._emit_ppm_callout(
+            f"Skopiowano system: {system_name}.",
+            message_id="MSG.PPM_COPY_SYSTEM",
+            dedup_key=f"ppm_copy_system:{system_name}",
+            context={"system": system_name},
+        )

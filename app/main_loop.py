@@ -4,6 +4,7 @@ import glob
 
 from logic.event_handler import handler
 from logic.utils import powiedz
+from logic.insight_dispatcher import emit_insight
 from app.state import app_state
 import config
 
@@ -42,6 +43,30 @@ class MainLoop:
         except Exception:
             pass
 
+    def _emit_runtime_critical(self, raw_text: str, *, component: str) -> None:
+        text = str(raw_text or "").strip()
+        if not text:
+            return
+        try:
+            emit_insight(
+                text,
+                gui_ref=self.gui_ref,
+                message_id="MSG.RUNTIME_CRITICAL",
+                source="main_loop",
+                event_type="RUNTIME_FAILURE",
+                context={
+                    "raw_text": text,
+                    "system": str(getattr(app_state, "current_system", "") or "").strip() or "unknown",
+                    "component": str(component or "").strip() or "runtime",
+                },
+                priority="P0_CRITICAL",
+                dedup_key=f"runtime_critical:{component}",
+                cooldown_scope="entity",
+                cooldown_seconds=120.0,
+            )
+        except Exception:
+            return
+
     # ------------------------------------------------------------------ #
     def run(self) -> None:
         powiedz(f"Podpinam się pod logi ED: {self.log_dir}", self.gui_ref)
@@ -53,6 +78,10 @@ class MainLoop:
                 powiedz(
                     "Nie widzę Journal.*.log w LOG_DIR. Czekam na nowy log...",
                     self.gui_ref,
+                )
+                self._emit_runtime_critical(
+                    "Brak aktywnego pliku journala. Czekam na dane z gry.",
+                    component="journal_stream",
                 )
                 time.sleep(2)
                 continue
@@ -161,8 +190,16 @@ class MainLoop:
 
         except FileNotFoundError:
             self._log_error("Tail: Journal został usunięty - szukam nowego pliku.")
+            self._emit_runtime_critical(
+                "Utracono strumien journala. Szukam nowego pliku.",
+                component="journal_stream",
+            )
         except Exception as e:
             self._log_error(f"[BŁĄD MainLoop/tail] {e}")
+            self._emit_runtime_critical(
+                "Błąd krytyczny czytania journala. Sprawdź panel statusu.",
+                component="journal_stream",
+            )
             time.sleep(1)
 
     # ------------------------------------------------------------------ #

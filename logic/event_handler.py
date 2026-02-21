@@ -13,6 +13,7 @@ from logic.events import smuggler_events
 from logic.events import cash_in_assistant
 from logic.events import survival_rebuy_awareness
 from logic.events import combat_awareness
+from logic.events import high_g_warning
 from logic import cargo_value_estimator
 from logic.logbook_feed import build_logbook_feed_item
 from logic.utils import MSG_QUEUE
@@ -70,6 +71,10 @@ class EventHandler:
             exploration_bio_events.handle_exobio_status_position(status_data, gui_ref)
         except Exception as exc:
             _log_router_fallback("status.exobio", "status update: exobio handler failed", exc)
+        try:
+            high_g_warning.handle_status_update(status_data, gui_ref)
+        except Exception as exc:
+            _log_router_fallback("status.high_g_warning", "status update: high-g handler failed", exc)
         if config.get("ship_state_enabled") and config.get("ship_state_use_status_json"):
             try:
                 from app.state import app_state
@@ -157,6 +162,10 @@ class EventHandler:
             app_state.update_mode_signal_from_journal(ev, source="journal")
         except Exception as exc:
             _log_router_fallback("journal.mode_detector", "journal event: mode detector failed", exc)
+        try:
+            high_g_warning.handle_journal_event(ev, gui_ref)
+        except Exception as exc:
+            _log_router_fallback("journal.high_g_warning", "journal event: high-g handler failed", exc)
 
         try:
             survival_rebuy_awareness.handle_journal_event(ev, gui_ref)

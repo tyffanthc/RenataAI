@@ -297,6 +297,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # OSTRZEŻENIA I ASYSTENCI
     "fuel_warning": True,             # niski poziom paliwa
     "high_g_warning": True,           # wysokie g planety (future)
+    "high_g_warning_threshold_g": 2.0,  # prog ostrzezenia high-g (Earth G)
     "fuel_warning_threshold_pct": 15, # próg ostrzeżenia rezerwy paliwa (proc.)
     "fss_assistant": True,            # progi FSS
     "high_value_planets": True,       # ELW / WW / terraformowalne HMC

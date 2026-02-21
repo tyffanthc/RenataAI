@@ -907,6 +907,38 @@ class TradeTab(ttk.Frame):
         self._sell_assist_decision_space = decision_space
         self._sell_assist_dismissed = False
         self._render_sell_assist_cards(decision_space)
+        if bool((decision_space or {}).get("advisory_only")):
+            self._emit_trade_data_stale_callout(rows)
+
+    def _emit_trade_data_stale_callout(self, rows: list[dict]) -> None:
+        try:
+            from logic.insight_dispatcher import emit_insight
+        except Exception:
+            return
+        first = rows[0] if rows else {}
+        system = str(first.get("from_system") or getattr(app_state, "current_system", "") or "unknown").strip() or "unknown"
+        raw_text = "Dane rynkowe sa nieswieze. Traktuj wynik orientacyjnie."
+        try:
+            emit_insight(
+                raw_text,
+                gui_ref=self.root,
+                message_id="MSG.TRADE_DATA_STALE",
+                source="spansh_trade",
+                event_type="TRADE_DATA_QUALITY",
+                context={
+                    "system": system,
+                    "raw_text": raw_text,
+                    "source_status": str(first.get("source_status") or "").strip(),
+                    "confidence": str(first.get("confidence") or "").strip(),
+                    "data_age": str(first.get("data_age") or "").strip(),
+                },
+                priority="P2_NORMAL",
+                dedup_key=f"trade_stale:{system}",
+                cooldown_scope="entity",
+                cooldown_seconds=120.0,
+            )
+        except Exception:
+            return
 
     def _toggle_trade_details(self) -> None:
         self._set_trade_details_collapsed(not self._trade_details_collapsed)
