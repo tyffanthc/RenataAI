@@ -3,50 +3,13 @@
 import re
 from typing import Any, Dict, Optional
 
+from logic.tts.message_templates import (
+    allowed_message_ids,
+    raw_text_first,
+    template_for_message,
+)
 
-ALLOWED_MESSAGES = {
-    "MSG.NEXT_HOP",
-    "MSG.JUMPED_SYSTEM",
-    "MSG.NEXT_HOP_COPIED",
-    "MSG.ROUTE_COMPLETE",
-    "MSG.ROUTE_DESYNC",
-    "MSG.FUEL_CRITICAL",
-    "MSG.DOCKED",
-    "MSG.UNDOCKED",
-    "MSG.FIRST_DISCOVERY",
-    "MSG.FIRST_DISCOVERY_OPPORTUNITY",
-    "MSG.BODY_NO_PREV_DISCOVERY",
-    "MSG.SYSTEM_FULLY_SCANNED",
-    "MSG.ELW_DETECTED",
-    "MSG.FOOTFALL",
-    "MSG.ROUTE_FOUND",
-    "MSG.SMUGGLER_ILLEGAL_CARGO",
-    "MSG.WW_DETECTED",
-    "MSG.TERRAFORMABLE_DETECTED",
-    "MSG.BIO_SIGNALS_HIGH",
-    "MSG.DSS_TARGET_HINT",
-    "MSG.DSS_COMPLETED",
-    "MSG.DSS_PROGRESS",
-    "MSG.FIRST_MAPPED",
-    "MSG.TRADE_JACKPOT",
-    "MSG.EXOBIO_SAMPLE_LOGGED",
-    "MSG.EXOBIO_NEW_ENTRY",
-    "MSG.EXOBIO_RANGE_READY",
-    "MSG.FSS_PROGRESS_25",
-    "MSG.FSS_PROGRESS_50",
-    "MSG.FSS_PROGRESS_75",
-    "MSG.FSS_LAST_BODY",
-    "MSG.EXPLORATION_SYSTEM_SUMMARY",
-    "MSG.CASH_IN_ASSISTANT",
-    "MSG.CASH_IN_STARTJUMP",
-    "MSG.SURVIVAL_REBUY_HIGH",
-    "MSG.SURVIVAL_REBUY_CRITICAL",
-    "MSG.COMBAT_AWARENESS_HIGH",
-    "MSG.COMBAT_AWARENESS_CRITICAL",
-    "MSG.MILESTONE_PROGRESS",
-    "MSG.MILESTONE_REACHED",
-    "MSG.STARTUP_SYSTEMS",
-}
+ALLOWED_MESSAGES = allowed_message_ids()
 
 
 _MOJIBAKE_REPLACEMENTS = {
@@ -96,6 +59,40 @@ _MOJIBAKE_REPLACEMENTS = {
 }
 
 
+_PLAIN_POLISH_REPLACEMENTS = {
+    "Skopiowalam": "Skopiowałam",
+    "skopiowalam": "skopiowałam",
+    "Nastepny": "Następny",
+    "nastepny": "następny",
+    "trase": "trasę",
+    "Trase": "Trasę",
+    "wejsciu": "wejściu",
+    "Wejsciu": "Wejściu",
+    "nieswieze": "nieświeże",
+    "Nieswieze": "Nieświeże",
+    "przeciazenie": "przeciążenie",
+    "Przeciazenie": "Przeciążenie",
+    "Blad": "Błąd",
+    "blad": "błąd",
+    "pokladzie": "pokładzie",
+    "Pokladzie": "Pokładzie",
+    "ladunek": "ładunek",
+    "Ladunek": "Ładunek",
+    "sredni": "średni",
+    "Sredni": "Średni",
+    "srednie": "średnie",
+    "Srednie": "Średnie",
+    "srednia": "średnia",
+    "Srednia": "Średnia",
+    "zakonczona": "zakończona",
+    "Zakonczona": "Zakończona",
+    "wzroslo": "wzrosło",
+    "Wzroslo": "Wzrosło",
+    "postepu": "postępu",
+    "Postepu": "Postępu",
+}
+
+
 def _repair_polish_text(value: Any) -> str:
     text = "" if value is None else str(value)
     if not text:
@@ -103,7 +100,26 @@ def _repair_polish_text(value: Any) -> str:
     for broken, fixed in _MOJIBAKE_REPLACEMENTS.items():
         if broken in text:
             text = text.replace(broken, fixed)
+    for plain, fixed in _PLAIN_POLISH_REPLACEMENTS.items():
+        if plain in text:
+            text = text.replace(plain, fixed)
     return text
+
+
+def _render_template(message_id: str, **fields: Any) -> str:
+    template = template_for_message(message_id)
+    if not template:
+        return ""
+    normalized_fields: Dict[str, str] = {}
+    for key, value in fields.items():
+        normalized_fields[str(key)] = _repair_polish_text(value).strip()
+    try:
+        rendered = template.format(**normalized_fields)
+    except KeyError:
+        return template
+    except Exception:
+        return ""
+    return _repair_polish_text(rendered).strip()
 
 
 def _normalize_system_name(value: Any) -> str:
@@ -145,138 +161,117 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
     if not message_id or message_id not in ALLOWED_MESSAGES:
         return None
     ctx = context or {}
-    if message_id in {
-        "MSG.ELW_DETECTED",
-        "MSG.SMUGGLER_ILLEGAL_CARGO",
-        "MSG.WW_DETECTED",
-        "MSG.TERRAFORMABLE_DETECTED",
-        "MSG.BIO_SIGNALS_HIGH",
-        "MSG.DSS_TARGET_HINT",
-        "MSG.DSS_COMPLETED",
-        "MSG.DSS_PROGRESS",
-        "MSG.FIRST_MAPPED",
-        "MSG.TRADE_JACKPOT",
-        "MSG.EXOBIO_SAMPLE_LOGGED",
-        "MSG.EXOBIO_NEW_ENTRY",
-        "MSG.EXOBIO_RANGE_READY",
-    }:
-        raw_text = ctx.get("raw_text")
-        if not raw_text:
-            return None
-        fixed = _repair_polish_text(raw_text).strip()
-        if not fixed:
-            return None
-        return fixed
-
-    if message_id == "MSG.EXPLORATION_SYSTEM_SUMMARY":
+    if raw_text_first(message_id):
         raw_text = ctx.get("raw_text")
         if raw_text:
             fixed = _repair_polish_text(raw_text).strip()
             if fixed:
                 return fixed
+
+    if message_id == "MSG.EXPLORATION_SYSTEM_SUMMARY":
         system = _normalize_system_name(ctx.get("system"))
         if system:
             return _finalize_tts(f"Podsumowanie systemu {system} gotowe.")
-        return _finalize_tts("Podsumowanie eksploracji gotowe.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.CASH_IN_ASSISTANT":
-        raw_text = ctx.get("raw_text")
-        if raw_text:
-            fixed = _repair_polish_text(raw_text).strip()
-            if fixed:
-                return fixed
-        return _finalize_tts("Cash-in. Sprawdz decyzje w panelu.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.CASH_IN_STARTJUMP":
-        raw_text = ctx.get("raw_text")
-        if raw_text:
-            fixed = _repair_polish_text(raw_text).strip()
-            if fixed:
-                return fixed
-        return _finalize_tts("Cash-in. Punkt kontrolny danych gotowy.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id in {"MSG.SURVIVAL_REBUY_HIGH", "MSG.SURVIVAL_REBUY_CRITICAL"}:
-        raw_text = ctx.get("raw_text")
-        if raw_text:
-            fixed = _repair_polish_text(raw_text).strip()
-            if fixed:
-                return fixed
-        if message_id == "MSG.SURVIVAL_REBUY_CRITICAL":
-            return _finalize_tts("Brak rebuy albo krytyczne ryzyko utraty postepu.")
-        return _finalize_tts("Ryzyko przetrwania wzroslo. Sprawdz opcje w panelu.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id in {"MSG.COMBAT_AWARENESS_HIGH", "MSG.COMBAT_AWARENESS_CRITICAL"}:
-        raw_text = ctx.get("raw_text")
-        if raw_text:
-            fixed = _repair_polish_text(raw_text).strip()
-            if fixed:
-                return fixed
-        if message_id == "MSG.COMBAT_AWARENESS_CRITICAL":
-            return _finalize_tts("Wzorzec ryzyka bojowego jest krytyczny.")
-        return _finalize_tts("Wzorzec ryzyka bojowego jest aktywny.")
+        return _finalize_tts(_render_template(message_id))
+
+    if message_id == "MSG.HIGH_G_WARNING":
+        return _finalize_tts(_render_template(message_id))
+
+    if message_id == "MSG.TRADE_DATA_STALE":
+        return _finalize_tts(_render_template(message_id))
+
+    if message_id == "MSG.PPM_SET_TARGET":
+        target = _normalize_system_name(ctx.get("target"))
+        if target:
+            return _finalize_tts(_render_template(message_id, target=target))
+        return _finalize_tts(_render_template(message_id))
+
+    if message_id == "MSG.PPM_PIN_ACTION":
+        return _finalize_tts(_render_template(message_id))
+
+    if message_id == "MSG.PPM_COPY_SYSTEM":
+        system = _normalize_system_name(ctx.get("system"))
+        if system:
+            return _finalize_tts(_render_template(message_id, system=system))
+        return _finalize_tts(_render_template(message_id))
+
+    if message_id == "MSG.RUNTIME_CRITICAL":
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.NEXT_HOP":
         system = _normalize_system_name(ctx.get("system"))
         if not system:
             return None
-        return _finalize_tts(f"Następny skok. {system}.")
+        return _finalize_tts(_render_template(message_id, system=system))
 
     if message_id == "MSG.JUMPED_SYSTEM":
         system = _normalize_system_name(ctx.get("system"))
         if not system:
             return None
-        return _finalize_tts(f"Aktualnie w {system}.")
+        return _finalize_tts(_render_template(message_id, system=system))
 
     if message_id == "MSG.NEXT_HOP_COPIED":
         system = _normalize_system_name(ctx.get("system"))
         if system:
-            return _finalize_tts(f"Cel skopiowany. {system}.")
-        return _finalize_tts("Cel skopiowany.")
+            return _finalize_tts(_render_template(message_id, system=system))
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.ROUTE_COMPLETE":
-        return _finalize_tts("Trasa zakończona.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.ROUTE_DESYNC":
-        return _finalize_tts("Poza trasą. Nawigacja wstrzymana.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.FUEL_CRITICAL":
-        return _finalize_tts("Uwaga. Paliwo krytyczne.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.DOCKED":
         station = _normalize_station_name(ctx.get("station"))
         if station:
-            return _finalize_tts(f"Zadokowano. {station}.")
-        return _finalize_tts("Zadokowano.")
+            return _finalize_tts(_render_template(message_id, station=station))
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.UNDOCKED":
-        return _finalize_tts("Odlot potwierdzony.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.FIRST_DISCOVERY":
-        return _finalize_tts("Pierwsze odkrycie. Układ potwierdzony.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.FIRST_DISCOVERY_OPPORTUNITY":
-        return _finalize_tts("Wygląda na okazję pierwszego odkrycia. Czekam na potwierdzenie.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.BODY_NO_PREV_DISCOVERY":
         body = _repair_polish_text(ctx.get("body")).strip() if ctx.get("body") else ""
         if body:
             return _finalize_tts(f"Potwierdzono. {body}. Bez wcześniejszego odkrywcy.")
-        return _finalize_tts("Potwierdzono. To ciało nie ma wcześniejszego odkrywcy.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.SYSTEM_FULLY_SCANNED":
-        return _finalize_tts("Skan systemu zakończony.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.FSS_PROGRESS_25":
-        return _finalize_tts("Dwadzieścia pięć procent systemu przeskanowane.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.FSS_PROGRESS_50":
-        return _finalize_tts("Połowa systemu przeskanowana.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.FSS_PROGRESS_75":
-        return _finalize_tts("Siedemdziesiąt pięć procent systemu przeskanowane.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.FSS_LAST_BODY":
-        return _finalize_tts("Ostatnia planeta do skanowania.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.MILESTONE_PROGRESS":
         percent = ctx.get("percent")
@@ -286,7 +281,7 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         except Exception:
             percent_i = None
         if percent_i is None:
-            return _finalize_tts("Trwa lot do kolejnego celu.")
+            return _finalize_tts(_render_template(message_id))
         if target:
             return _finalize_tts(f"Do boosta. {percent_i}% drogi. Cel. {target}.")
         return _finalize_tts(f"Do boosta. {percent_i}% drogi.")
@@ -300,21 +295,21 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
                     f"Cel odcinka osiągnięty. {target}. Przechodzę do kolejnego celu. {next_target}."
                 )
             return _finalize_tts(f"Cel odcinka osiągnięty. {target}.")
-        return _finalize_tts("Cel odcinka osiągnięty.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.ELW_DETECTED":
-        return _finalize_tts("Wykryto planetę ziemiopodobną. Wysoka wartość.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.FOOTFALL":
-        return _finalize_tts("Pierwszy krok zarejestrowany.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.ROUTE_FOUND":
-        return _finalize_tts("Trasa wyznaczona.")
+        return _finalize_tts(_render_template(message_id))
 
     if message_id == "MSG.STARTUP_SYSTEMS":
         version = str(ctx.get("version", "")).strip()
         if version:
             return _finalize_tts(f"Renata. {version}. Startuję wszystkie systemy.")
-        return _finalize_tts("Renata. Startuję wszystkie systemy.")
+        return _finalize_tts(_render_template(message_id))
 
     return None
