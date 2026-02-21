@@ -110,6 +110,8 @@ class RenataApp:
         bind_window_geometry(self.root, "main_window", include_size=True)
         self.root.protocol("WM_DELETE_WINDOW", self._on_main_close)
         self._ui_thread_id = threading.get_ident()
+        self._exploration_summary_trigger_active = False
+        self._cash_in_manual_trigger_active = False
 
         # ==========================================================
         # 🎨 RENATA "BLACKOUT" PROTOCOL - STYLIZACJA TOTALNA
@@ -1674,48 +1676,85 @@ class RenataApp:
         """
         Manual trigger for F4 exploration summary baseline.
         """
-        try:
-            from logic.events.exploration_summary import trigger_exploration_summary
+        if self._exploration_summary_trigger_active:
+            self.show_status("Podsumowanie: trwa odswiezanie...")
+            return
 
-            emitted = trigger_exploration_summary(gui_ref=self, mode="manual")
-            if not emitted:
-                self.show_status("Brak danych do podsumowania eksploracji w tym momencie.")
-        except Exception as exc:
-            _log_app_fallback(
-                "exploration.summary.manual",
-                "manual exploration summary trigger failed",
-                exc,
-                interval_ms=3000,
-            )
+        self._exploration_summary_trigger_active = True
+
+        def _worker() -> None:
+            try:
+                from logic.events.exploration_summary import trigger_exploration_summary
+
+                emitted = trigger_exploration_summary(gui_ref=self, mode="manual")
+                if not emitted:
+                    self.root.after(
+                        0,
+                        lambda: self.show_status(
+                            "Brak danych do podsumowania eksploracji w tym momencie."
+                        ),
+                    )
+            except Exception as exc:
+                _log_app_fallback(
+                    "exploration.summary.manual",
+                    "manual exploration summary trigger failed",
+                    exc,
+                    interval_ms=3000,
+                )
+            finally:
+                self.root.after(
+                    0,
+                    lambda: setattr(self, "_exploration_summary_trigger_active", False),
+                )
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def on_generate_cash_in_assistant(self, *, mode: str = "manual"):
         """
         Manual trigger for F4 cash-in assistant baseline.
         """
+        if self._cash_in_manual_trigger_active:
+            self.show_status("Cash-in: trwa odswiezanie sugestii...")
+            return
+
+        summary_payload = {}
         try:
-            from logic.events.cash_in_assistant import trigger_cash_in_assistant
-
+            if hasattr(self.tab_pulpit, "get_current_exploration_summary_payload"):
+                summary_payload = self.tab_pulpit.get_current_exploration_summary_payload() or {}
+        except Exception:
             summary_payload = {}
-            try:
-                if hasattr(self.tab_pulpit, "get_current_exploration_summary_payload"):
-                    summary_payload = self.tab_pulpit.get_current_exploration_summary_payload() or {}
-            except Exception:
-                summary_payload = {}
 
-            emitted = trigger_cash_in_assistant(
-                gui_ref=self,
-                mode=str(mode or "manual"),
-                summary_payload=summary_payload,
-            )
-            if not emitted:
-                self.show_status("Brak danych do oceny cash-in w tym momencie.")
-        except Exception as exc:
-            _log_app_fallback(
-                "cash_in.assistant.manual",
-                "manual cash-in assistant trigger failed",
-                exc,
-                interval_ms=3000,
-            )
+        mode_norm = str(mode or "manual")
+        self._cash_in_manual_trigger_active = True
+
+        def _worker() -> None:
+            try:
+                from logic.events.cash_in_assistant import trigger_cash_in_assistant
+
+                emitted = trigger_cash_in_assistant(
+                    gui_ref=self,
+                    mode=mode_norm,
+                    summary_payload=summary_payload,
+                )
+                if not emitted:
+                    self.root.after(
+                        0,
+                        lambda: self.show_status("Brak danych do oceny cash-in w tym momencie."),
+                    )
+            except Exception as exc:
+                _log_app_fallback(
+                    "cash_in.assistant.manual",
+                    "manual cash-in assistant trigger failed",
+                    exc,
+                    interval_ms=3000,
+                )
+            finally:
+                self.root.after(
+                    0,
+                    lambda: setattr(self, "_cash_in_manual_trigger_active", False),
+                )
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def on_skip_cash_in_assistant(self):
         """
@@ -1739,6 +1778,77 @@ class RenataApp:
                 interval_ms=3000,
             )
 
+    def _emit_cash_in_ui_callout(
+        self,
+        raw_text: str,
+        *,
+        action_tag: str,
+        priority: str = "P2_NORMAL",
+    ) -> None:
+        text = str(raw_text or "").strip()
+        if not text:
+            return
+        try:
+            from logic.insight_dispatcher import emit_insight
+
+            system = str(getattr(app_state, "current_system", "") or "").strip() or "unknown"
+            emit_insight(
+                text,
+                gui_ref=self,
+                message_id="MSG.CASH_IN_ASSISTANT",
+                source="cash_in_assistant",
+                event_type="CASH_IN_REVIEW",
+                context={
+                    "system": system,
+                    "raw_text": text,
+                    "cash_in_ui_action": str(action_tag or "").strip() or "ui_action",
+                },
+                priority=priority,
+                dedup_key=f"cash_in_ui:{action_tag}:{system}",
+                cooldown_scope="entity",
+                cooldown_seconds=1.5,
+            )
+        except Exception as exc:
+            _log_app_fallback(
+                "cash_in.assistant.ui_callout",
+                "cash-in ui callout emit failed",
+                exc,
+                interval_ms=3000,
+                action=action_tag,
+            )
+
+    @staticmethod
+    def _resolve_cash_in_profile_label(option_payload: dict) -> str:
+        profile = str((option_payload or {}).get("profile") or "").strip().upper()
+        if profile in {"SAFE", "FAST", "SECURE"}:
+            return profile
+        label = str((option_payload or {}).get("label") or "").strip().upper()
+        if label.startswith("SAFE"):
+            return "SAFE"
+        if label.startswith("FAST"):
+            return "FAST"
+        if label.startswith("SECURE"):
+            return "SECURE"
+        return "SAFE"
+
+    @staticmethod
+    def _has_ready_neutron_route_for_target(target_system: str) -> bool:
+        target = str(target_system or "").strip()
+        route_type = str(getattr(route_manager, "route_type", "") or "").strip().lower()
+        route = [
+            str(item or "").strip()
+            for item in list(getattr(route_manager, "route", []) or [])
+            if str(item or "").strip()
+        ]
+        if route_type != "neutron":
+            return False
+        # Dwa elementy to praktycznie brak realnej trasy neutronowej.
+        if len(route) <= 2:
+            return False
+        if not target:
+            return True
+        return any(item.casefold() == target.casefold() for item in route)
+
     def on_cash_in_assistant_action(self, action: str, option=None):
         """
         User-consent-only handoff for Cash-In options.
@@ -1748,6 +1858,15 @@ class RenataApp:
         option_payload = dict(option or {}) if isinstance(option, dict) else {}
 
         try:
+            if action_norm == "set_intent":
+                profile = self._resolve_cash_in_profile_label(option_payload)
+                self.show_status(f"Cash-in: wybrano profil {profile}.")
+                self._emit_cash_in_ui_callout(
+                    f"Wybrano profil {profile}.",
+                    action_tag=f"set_intent:{profile.lower()}",
+                )
+                return
+
             from logic.events.cash_in_assistant import (
                 handoff_cash_in_to_route_intent,
                 persist_cash_in_route_profile,
@@ -1767,12 +1886,84 @@ class RenataApp:
                 )
                 if bool(result.get("ok")):
                     target_display = str(result.get("target_display") or result.get("target_system") or "-")
+                    target_system = str(result.get("target_system") or "").strip()
+                    target_station = str(result.get("target_station") or "").strip()
                     route_profile = str(result.get("route_profile") or "SAFE").strip().upper() or "SAFE"
                     if route_profile == "FAST_NEUTRON":
                         profile_hint = "FAST/NEUTRON"
                     else:
                         profile_hint = route_profile
-                    self.show_status(f"Cash-in: ustawiono intent trasy -> {target_display} ({profile_hint}).")
+                    copied_system = False
+                    copied_station_now = False
+                    pending_station_armed = False
+
+                    if target_system:
+                        copied_system = bool(
+                            common.copy_text_to_clipboard(
+                                target_system,
+                                context="cash_in.intent.system",
+                            )
+                        )
+
+                    if target_system and target_station:
+                        current_system = str(getattr(app_state, "current_system", "") or "").strip()
+                        same_system = bool(
+                            current_system
+                            and current_system.casefold() == target_system.casefold()
+                        )
+                        if same_system:
+                            copied_station_now = bool(
+                                common.copy_text_to_clipboard(
+                                    target_station,
+                                    context="cash_in.intent.station",
+                                )
+                            )
+                            app_state.clear_pending_station_clipboard(source="cash_in.ui.intent.same_system")
+                        else:
+                            app_state.set_pending_station_clipboard(
+                                target_system=target_system,
+                                station_name=target_station,
+                                source="cash_in.ui.intent",
+                            )
+                            pending_station_armed = True
+                    else:
+                        app_state.clear_pending_station_clipboard(source="cash_in.ui.intent.missing_station")
+
+                    status_parts = [f"Cash-in: ustawiono intent trasy -> {target_display} ({profile_hint})."]
+                    if copied_system and target_system:
+                        status_parts.append(f"Skopiowano system: {target_system}.")
+                    elif target_system:
+                        status_parts.append(f"Nie udalo sie skopiowac systemu: {target_system}.")
+
+                    if copied_station_now and target_station:
+                        status_parts.append(f"Skopiowano stacje: {target_station}.")
+                    elif pending_station_armed:
+                        status_parts.append("Stacja zostanie skopiowana po wejsciu do systemu docelowego.")
+
+                    self.show_status(" ".join(status_parts))
+
+                    tts_parts = []
+                    if target_system:
+                        tts_parts.append(f"Ustawiono cel trasy: {target_system}.")
+                    if copied_system and target_system:
+                        tts_parts.append(f"Skopiowalam nastepny hop: {target_system}.")
+                    if copied_station_now and target_station:
+                        tts_parts.append(f"Skopiowalam stacje: {target_station}.")
+                    elif pending_station_armed:
+                        tts_parts.append("Stacja zostanie skopiowana po wejsciu do systemu docelowego.")
+
+                    neutron_fallback = False
+                    if profile_hint == "FAST/NEUTRON" and copied_system and target_system:
+                        neutron_fallback = not self._has_ready_neutron_route_for_target(target_system)
+                        if neutron_fallback:
+                            tts_parts.append(
+                                "Nie znalazlam trasy neutronowej. Skopiowalam cel do schowka."
+                            )
+                    if tts_parts:
+                        self._emit_cash_in_ui_callout(
+                            " ".join(tts_parts),
+                            action_tag=f"set_route:{route_profile.lower()}:{'fallback' if neutron_fallback else 'ok'}",
+                        )
                 else:
                     reason = str(result.get("reason") or "").strip().lower()
                     if reason in {"target_missing_system", "target_missing_station", "target_not_real"}:
@@ -1791,6 +1982,7 @@ class RenataApp:
             if action_norm == "copy_next_hop":
                 target = resolve_cash_in_option_target(option_payload)
                 next_hop = str(target.get("target_system") or "").strip()
+                route_profile = str(target.get("route_profile") or "").strip().upper()
                 if not bool(target.get("target_is_real")):
                     if bool(config.get("cash_in.station_candidates_lookup_enabled", False)):
                         self.show_status("Cash-in: brak realnego next hop (system+stacja).")
@@ -1809,6 +2001,19 @@ class RenataApp:
                 copied = common.copy_text_to_clipboard(next_hop, context="cash_in.next_hop")
                 if copied:
                     self.show_status(f"Cash-in: skopiowano next hop -> {next_hop}.")
+                    tts = f"Skopiowalam nastepny hop: {next_hop}."
+                    neutron_fallback = False
+                    if route_profile == "FAST_NEUTRON":
+                        neutron_fallback = not self._has_ready_neutron_route_for_target(next_hop)
+                        if neutron_fallback:
+                            tts = (
+                                f"{tts} Nie znalazlam trasy neutronowej. "
+                                "Skopiowalam cel do schowka."
+                            )
+                    self._emit_cash_in_ui_callout(
+                        tts,
+                        action_tag=f"copy_next_hop:{route_profile.lower() or 'na'}:{'fallback' if neutron_fallback else 'ok'}",
+                    )
                 else:
                     self.show_status("Cash-in: nie udalo sie skopiowac next hop.")
                 return

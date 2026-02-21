@@ -28,6 +28,65 @@ def _log_nav_fallback(key: str, message: str, exc: Exception, *, interval_ms: in
     )
 
 
+def _copy_pending_station_clipboard_on_arrival(current_system: str, gui_ref=None) -> None:
+    system_norm = str(current_system or "").strip()
+    if not system_norm:
+        return
+
+    pending = app_state.get_pending_station_clipboard_snapshot()
+    if not bool(pending.get("active")):
+        return
+
+    target_system = str(pending.get("target_system") or "").strip()
+    station_name = str(pending.get("station_name") or "").strip()
+    if not target_system or not station_name:
+        app_state.clear_pending_station_clipboard(source="navigation.pending_station.invalid")
+        return
+
+    if system_norm.casefold() != target_system.casefold():
+        return
+
+    try:
+        pyperclip.copy(station_name)
+    except Exception as exc:
+        _log_nav_fallback(
+            "pending_station.copy",
+            "failed to copy pending station clipboard on arrival",
+            exc,
+            interval_ms=7000,
+            system=system_norm,
+            station=station_name,
+        )
+        return
+
+    app_state.clear_pending_station_clipboard(source="navigation.pending_station.arrival")
+    log_event(
+        "CLIPBOARD",
+        "pending_station_copied",
+        system=system_norm,
+        station=station_name,
+        source=str(pending.get("source") or ""),
+    )
+    emit_insight(
+        "Skopiowano cel stacyjny po dolocie.",
+        gui_ref=gui_ref,
+        message_id="MSG.NEXT_HOP_COPIED",
+        source="navigation_events",
+        event_type="ROUTE_PROGRESS",
+        context={
+            "system": station_name,
+            "risk_status": "RISK_LOW",
+            "var_status": "VAR_LOW",
+            "trust_status": "TRUST_HIGH",
+            "confidence": "high",
+        },
+        priority="P2_NORMAL",
+        dedup_key=f"target_copy_station:{system_norm}:{station_name}",
+        cooldown_scope="entity",
+        cooldown_seconds=8.0,
+    )
+
+
 def handle_fsd_jump_autoschowek(ev: Dict[str, object], gui_ref=None):
     """
     S1-LOGIC-04 ÔÇö GLOBALNY AUTO-SCHOWEK PO FSDJump.
@@ -110,6 +169,7 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
                 app_state.mark_live_system_event()
             except Exception as exc:
                 _log_nav_fallback("live_event.mark", "failed to mark live system event", exc)
+        _copy_pending_station_clipboard_on_arrival(str(sysname), gui_ref=gui_ref)
         if typ == "Location":
             try:
                 from gui import common as gui_common  # type: ignore

@@ -132,10 +132,13 @@ def _build_payload(
 
 
 def _build_tts_line(payload: ExplorationSummaryPayload) -> str:
-    lead = payload.highlights[0] if payload.highlights else "bez mocnych highlightów"
+    value = _safe_float(payload.cash_in_session_estimated)
+    if value <= 0.0:
+        value = _safe_float(payload.cash_in_system_estimated)
     return (
-        f"Podsumowanie {payload.system}: {lead}; dalej: {payload.next_step}; "
-        f"cash-in {payload.cash_in_signal}."
+        "Podsumowanie gotowe. "
+        f"Dane warte {format_credits(value)}. "
+        f"{payload.next_step}."
     )
 
 

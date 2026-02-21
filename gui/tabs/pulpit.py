@@ -873,6 +873,11 @@ class PulpitTab(ttk.Frame):
             return
 
         self._cash_selected_option_id = str(picked.get("option_id") or "").strip()
+        if callable(self._on_cash_in_action):
+            try:
+                self._on_cash_in_action("set_intent", dict(picked))
+            except Exception as exc:
+                self.log(f"[CASH_IN] Blad ustawienia profilu intent: {exc}")
         label = str(picked.get("label") or "Opcja").strip() or "Opcja"
         self._show_confirm_panel("cash", f"Intent aktywny: {label}")
         self._render_cash_panel(force_open=True)

@@ -158,6 +158,10 @@ class AppState:
         self.route_profile: str = saved_route_profile
         self.is_off_route: bool = bool(config.STATE.get("route_is_off_route", False))
         self.inventory = config.STATE.get("inventory", {})
+        self.pending_station_clipboard_target_system: str | None = None
+        self.pending_station_clipboard_station: str | None = None
+        self.pending_station_clipboard_source: str | None = None
+        self.pending_station_clipboard_armed_at: float = 0.0
 
         # True only while MainLoop replays historical Journal lines at startup.
         # Used to suppress misleading live-style TTS during bootstrap.
@@ -969,6 +973,69 @@ class AppState:
             is_off_route=False,
             source=source,
         )
+
+    def get_pending_station_clipboard_snapshot(self) -> dict:
+        with self.lock:
+            target_system = str(self.pending_station_clipboard_target_system or "").strip()
+            station_name = str(self.pending_station_clipboard_station or "").strip()
+            source = str(self.pending_station_clipboard_source or "").strip()
+            armed_at = float(self.pending_station_clipboard_armed_at or 0.0)
+        return {
+            "active": bool(target_system and station_name),
+            "target_system": target_system,
+            "station_name": station_name,
+            "source": source,
+            "armed_at": armed_at,
+        }
+
+    def set_pending_station_clipboard(
+        self,
+        *,
+        target_system: str | None,
+        station_name: str | None,
+        source: str = "runtime",
+    ) -> dict:
+        target = str(target_system or "").strip()
+        station = str(station_name or "").strip()
+        src = str(source or "runtime").strip() or "runtime"
+
+        if not target or not station:
+            return self.clear_pending_station_clipboard(source=f"{src}.invalid")
+
+        with self.lock:
+            self.pending_station_clipboard_target_system = target
+            self.pending_station_clipboard_station = station
+            self.pending_station_clipboard_source = src
+            self.pending_station_clipboard_armed_at = time.time()
+
+        log_event_throttled(
+            "state.pending_station_clipboard",
+            500,
+            "STATE",
+            f"Pending station clipboard armed target={target} station={station} source={src}",
+        )
+        return self.get_pending_station_clipboard_snapshot()
+
+    def clear_pending_station_clipboard(self, *, source: str = "runtime") -> dict:
+        src = str(source or "runtime").strip() or "runtime"
+        with self.lock:
+            had_pending = bool(
+                str(self.pending_station_clipboard_target_system or "").strip()
+                and str(self.pending_station_clipboard_station or "").strip()
+            )
+            self.pending_station_clipboard_target_system = None
+            self.pending_station_clipboard_station = None
+            self.pending_station_clipboard_source = None
+            self.pending_station_clipboard_armed_at = 0.0
+
+        if had_pending:
+            log_event_throttled(
+                "state.pending_station_clipboard",
+                500,
+                "STATE",
+                f"Pending station clipboard cleared source={src}",
+            )
+        return self.get_pending_station_clipboard_snapshot()
 
 
 # Globalny stan aplikacji – importowany w innych modułach
