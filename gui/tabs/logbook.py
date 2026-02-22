@@ -9,6 +9,7 @@ from tkinter import messagebox, simpledialog, ttk
 import config
 from app.state import app_state
 from gui.dialogs.add_entry import AddEntryDialog
+from gui.tabs.journal_map import JournalMapTab
 from logic.entry_repository import EntryRepository, EntryValidationError
 from logic.entry_templates import EntryTemplateError, build_template_entry
 from logic.journal_entry_mapping import build_mvp_entry_draft
@@ -276,8 +277,10 @@ class LogbookTab(tk.Frame):
 
         self.tab_entries = tk.Frame(self.sub_notebook, bg=COLOR_BG)
         self.tab_feed = tk.Frame(self.sub_notebook, bg=COLOR_BG)
+        self.tab_map = JournalMapTab(self.sub_notebook, app=self.app)
         self.sub_notebook.add(self.tab_entries, text="Wpisy")
         self.sub_notebook.add(self.tab_feed, text="Logbook")
+        self.sub_notebook.add(self.tab_map, text="Mapa")
 
         self._build_entries_tab()
         self._build_logbook_tab()
@@ -1500,7 +1503,7 @@ class LogbookTab(tk.Frame):
                 self._selected_category = selected_category
 
             subtab_key = str(journal_state.get("active_subtab_key") or "").strip().lower()
-            if subtab_key in {"entries", "feed"}:
+            if subtab_key in {"entries", "feed", "map"}:
                 self._pending_subtab_key = subtab_key
         except Exception:
             pass
@@ -1510,11 +1513,19 @@ class LogbookTab(tk.Frame):
             selected = str(self.sub_notebook.select() or "")
         except Exception:
             return str(self._pending_subtab_key or "entries")
+        if selected == str(self.tab_map):
+            return "map"
         if selected == str(self.tab_feed):
             return "feed"
         return "entries"
 
     def _restore_subtab_from_ui_state(self) -> None:
+        if self._pending_subtab_key == "map":
+            try:
+                self.sub_notebook.select(self.tab_map)
+            except Exception:
+                pass
+            return
         if self._pending_subtab_key == "feed":
             try:
                 self.sub_notebook.select(self.tab_feed)
