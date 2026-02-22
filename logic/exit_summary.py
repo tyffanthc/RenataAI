@@ -21,6 +21,7 @@ Skanowano 18/32 obiektów
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Optional, Any, Dict, List
 
 
@@ -100,15 +101,24 @@ class ExitSummaryGenerator:
         if stats is None:
             return None
 
+        def _finite_float(value: Any) -> float:
+            try:
+                out = float(value or 0.0)
+            except Exception:
+                return 0.0
+            if not math.isfinite(out):
+                return 0.0
+            return out
+
         data = ExitSummaryData(
             system_name=system_name,
             scanned_bodies=scanned_bodies,
             total_bodies=total_bodies,
         )
 
-        data.c_cartography = float(getattr(stats, "c_cartography", 0.0) or 0.0)
-        data.c_exobiology = float(getattr(stats, "c_exobiology", 0.0) or 0.0)
-        data.bonus_discovery = float(getattr(stats, "bonus_discovery", 0.0) or 0.0)
+        data.c_cartography = _finite_float(getattr(stats, "c_cartography", 0.0))
+        data.c_exobiology = _finite_float(getattr(stats, "c_exobiology", 0.0))
+        data.bonus_discovery = _finite_float(getattr(stats, "bonus_discovery", 0.0))
         data.total_value = data.c_cartography + data.c_exobiology + data.bonus_discovery
         # Discovery status (EPIC 3)
         if hasattr(self.engine, "get_discovery_status"):
@@ -134,7 +144,7 @@ class ExitSummaryGenerator:
         for t in hv_targets:
             body_type = str(t.get("body_type", "")).strip()
             terraformable = str(t.get("terraformable", "")).strip()
-            value = float(t.get("estimated_value", 0.0) or 0.0)
+            value = _finite_float(t.get("estimated_value", 0.0))
 
             # Earth-like World
             if body_type == "Earth-like World":
@@ -279,8 +289,14 @@ def format_credits(value: float) -> str:
 
     (Bez skracania do M/B – niech VoiceEngine zajmie się mową).
     """
-    # Zaokrąglamy do pełnych kredytów
-    rounded = int(round(value))
+    # Zaokraglamy do pelnych kredytow, z ochrona na NaN/inf.
+    try:
+        numeric = float(value or 0.0)
+    except Exception:
+        numeric = 0.0
+    if not math.isfinite(numeric):
+        numeric = 0.0
+    rounded = int(round(numeric))
     # Format z separatorem spacji tysiąca
     parts = []
     s = str(abs(rounded))

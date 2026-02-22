@@ -71,6 +71,7 @@ class F4ExplorationSummaryBaseTests(unittest.TestCase):
         ctx = dict(kwargs.get("context") or {})
         self.assertIn("raw_text", ctx)
         self.assertIn("summary_payload", ctx)
+        self.assertTrue(bool(ctx.get("force_tts")))
         raw_text = str(ctx.get("raw_text") or "")
         self.assertIn("Podsumowanie gotowe.", raw_text)
         self.assertIn("Dane warte", raw_text)
@@ -97,6 +98,29 @@ class F4ExplorationSummaryBaseTests(unittest.TestCase):
         self.assertTrue(first)
         self.assertFalse(second)
         self.assertEqual(emit_mock.call_count, 1)
+
+    def test_manual_trigger_handles_nan_values_without_crash(self) -> None:
+        data = self._sample_data()
+        data.total_value = float("nan")
+        data.bonus_discovery = float("nan")
+        with (
+            patch.object(app_state.exit_summary, "build_summary_data", return_value=data),
+            patch.object(
+                app_state,
+                "system_value_engine",
+                new=SimpleNamespace(calculate_totals=lambda: {"total": float("nan")}),
+            ),
+            patch("logic.events.exploration_summary.emit_insight") as emit_mock,
+        ):
+            ok = exploration_summary.trigger_exploration_summary(mode="manual")
+
+        self.assertTrue(ok)
+        self.assertEqual(emit_mock.call_count, 1)
+        kwargs = emit_mock.call_args.kwargs
+        ctx = dict(kwargs.get("context") or {})
+        payload = dict(ctx.get("summary_payload") or {})
+        self.assertEqual(float(payload.get("cash_in_system_estimated") or 0.0), 0.0)
+        self.assertEqual(float(payload.get("cash_in_session_estimated") or 0.0), 0.0)
 
 
 if __name__ == "__main__":

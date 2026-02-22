@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import math
 from typing import Any
 
 import config
@@ -30,9 +31,12 @@ def _as_text(value: Any) -> str:
 
 def _safe_float(value: Any) -> float:
     try:
-        return float(value or 0.0)
+        out = float(value or 0.0)
     except Exception:
         return 0.0
+    if not math.isfinite(out):
+        return 0.0
+    return out
 
 
 def _build_highlights(data: ExitSummaryData) -> list[str]:
@@ -95,7 +99,7 @@ def _signature_from_payload(payload: ExplorationSummaryPayload) -> str:
     highlights = "|".join(payload.highlights)
     scanned = payload.scanned_bodies if payload.scanned_bodies is not None else "na"
     total = payload.total_bodies if payload.total_bodies is not None else "na"
-    system_value = int(round(payload.cash_in_system_estimated))
+    system_value = int(round(_safe_float(payload.cash_in_system_estimated)))
     return f"{payload.system}:{scanned}/{total}:{system_value}:{payload.next_step}:{highlights}"
 
 
@@ -195,6 +199,9 @@ def trigger_exploration_summary(
         "summary_payload": asdict(payload),
         "summary_mode": payload.mode,
     }
+    if mode_norm == "manual":
+        # Manualny trigger ma zawsze czytelnie potwierdzic akcje gracza.
+        context["force_tts"] = True
 
     cooldown_seconds = 0.0 if mode_norm == "manual" else 45.0
     dedup_key = (
