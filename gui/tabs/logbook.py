@@ -18,6 +18,11 @@ from logic.journal_navigation import (
     resolve_entry_nav_target_typed,
     resolve_logbook_nav_target,
 )
+from logic.logbook_feed_cache import (
+    append_logbook_feed_cache_item,
+    clear_logbook_feed_cache,
+    load_logbook_feed_cache,
+)
 
 try:
     import pyperclip
@@ -175,10 +180,12 @@ class LogbookTab(tk.Frame):
         self._active_popover_opened_at: float = 0.0
         self._ui_state_suppress_persist = True
         self._pending_subtab_key = "entries"
+        self._logbook_feed_restore_in_progress = False
         self._load_ui_state()
 
         self._configure_style()
         self._build_ui()
+        self._restore_logbook_feed_from_cache()
         self.sub_notebook.bind("<<NotebookTabChanged>>", self._on_subtab_changed, add="+")
         self._restore_subtab_from_ui_state()
         self._set_filter_tag_display()
@@ -740,7 +747,7 @@ class LogbookTab(tk.Frame):
             command=self._copy_selected_logbook_chip,
         )
 
-    def append_logbook_feed_item(self, item: dict) -> None:
+    def append_logbook_feed_item(self, item: dict, *, persist_cache: bool = True) -> None:
         if not isinstance(item, dict):
             return
         event_name = str(item.get("event_name") or "").strip()
@@ -771,6 +778,8 @@ class LogbookTab(tk.Frame):
         self.logbook_status_var.set(
             f"Eventow w feedzie: {count} (limit {self._logbook_feed_limit})"
         )
+        if persist_cache and not self._logbook_feed_restore_in_progress:
+            append_logbook_feed_cache_item(item, limit=self._logbook_feed_limit)
 
     def _clear_logbook_feed(self) -> None:
         self.logbook_feed_tree.delete(*self.logbook_feed_tree.get_children())
@@ -778,6 +787,24 @@ class LogbookTab(tk.Frame):
         self._selected_logbook_item_id = None
         self._refresh_logbook_nav_chips(None)
         self.logbook_status_var.set("Feed wyczyszczony.")
+        clear_logbook_feed_cache()
+
+    def _restore_logbook_feed_from_cache(self) -> None:
+        rows = load_logbook_feed_cache(limit=self._logbook_feed_limit)
+        if not rows:
+            return
+        self._logbook_feed_restore_in_progress = True
+        try:
+            # File order is chronological (oldest -> newest). Inserting each item at index 0
+            # restores the visible feed with newest items on top.
+            for row in rows:
+                self.append_logbook_feed_item(row, persist_cache=False)
+        finally:
+            self._logbook_feed_restore_in_progress = False
+        count = len(self.logbook_feed_tree.get_children())
+        self.logbook_status_var.set(
+            f"Przywrocono feed z cache: {count} (limit {self._logbook_feed_limit})"
+        )
 
     def _on_logbook_feed_selected(self, _event=None) -> None:
         selected = self.logbook_feed_tree.selection()
