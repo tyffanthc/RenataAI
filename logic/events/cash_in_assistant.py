@@ -1582,6 +1582,13 @@ def _append_unique_reason(reasons: list[str], reason: str) -> None:
         reasons.append(value)
 
 
+def _playerdb_bridge_alias_source_status(value: Any) -> str:
+    source = _as_text(value).lower()
+    if source == "local_known_fallback":
+        return "playerdb_bridge"
+    return source or "none"
+
+
 def _detect_offline_or_interrupted(raw_payload: dict[str, Any]) -> bool:
     payload = dict(raw_payload or {})
     explicit_flags = (
@@ -1655,6 +1662,7 @@ def _build_edge_case_meta(
         _append_unique_reason(reasons, "stale_cache")
     if local_known_fallback_used:
         _append_unique_reason(reasons, "local_known_fallback")
+        _append_unique_reason(reasons, "playerdb_bridge")
     if candidate_count <= 0 and not offline_index_used:
         _append_unique_reason(reasons, "no_station_data")
     if offline_index_used:
@@ -1797,11 +1805,13 @@ def _build_edge_case_meta(
         "service_non_carrier_count": len(non_carrier_candidates),
         "service_carrier_count": len(carrier_candidates),
         "source_status": source_status or "none",
+        "source_status_bridge": _playerdb_bridge_alias_source_status(source_status),
         "provider_lookup_status": provider_lookup_status or "not_attempted",
         "provider_lookup_attempted": provider_lookup_attempted,
         "swr_cache_used": swr_cache_used,
         "swr_freshness": swr_freshness or "NONE",
         "local_known_fallback_used": local_known_fallback_used,
+        "playerdb_bridge_used": local_known_fallback_used,
         "offline_index_used": offline_index_used,
         "offline_index_lookup_attempted": offline_index_lookup_attempted,
         "offline_index_lookup_status": offline_index_lookup_status or "not_attempted",
@@ -2247,6 +2257,15 @@ def _build_station_candidates_runtime(
     vista_candidates = filter_candidates_by_service(candidates, service="vista")
     meta = {
         "source_status": source_status,
+        "source_status_bridge": _playerdb_bridge_alias_source_status(source_status),
+        "source_order_contract": [
+            "providers",
+            "providers_cross_system",
+            "providers_cache",
+            "playerdb_bridge",
+            "offline_index",
+            "local_fallback",
+        ],
         "provider_lookup_attempted": provider_lookup_attempted,
         "provider_lookup_status": provider_lookup_status,
         "cross_system_lookup_attempted": cross_system_lookup_attempted,
@@ -2268,6 +2287,11 @@ def _build_station_candidates_runtime(
         "swr_profile_radius_ly": float(cross_radius_ly),
         "swr_profile_max_systems": int(cross_max_systems),
         "local_known_fallback_used": local_known_fallback_used,
+        "playerdb_bridge_used": local_known_fallback_used,
+        "playerdb_bridge_source_status": (
+            "playerdb_bridge" if local_known_fallback_used else "not_used"
+        ),
+        "playerdb_bridge_backend": "runtime_memory_cache",
         "local_known_fallback_age_sec": int(round(local_known_fallback_age_sec))
         if local_known_fallback_age_sec > 0.0
         else 0,
