@@ -1,0 +1,135 @@
+from __future__ import annotations
+
+import os
+import sqlite3
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from logic import player_local_db
+
+
+class F16PlayerDbSchemaAndMigrationsTests(unittest.TestCase):
+    def test_default_playerdb_path_points_to_appdata_renataai_db(self) -> None:
+        with patch.dict(os.environ, {"APPDATA": r"C:\Users\Test\AppData\Roaming"}, clear=False):
+            path = player_local_db.default_playerdb_path()
+        self.assertEqual(
+            os.path.normcase(path),
+            os.path.normcase(r"C:\Users\Test\AppData\Roaming\RenataAI\db\player_local.db"),
+        )
+
+    def test_ensure_schema_creates_v1_tables_and_sets_user_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "db", "player_local.db")
+            result = player_local_db.ensure_playerdb_schema(path=db_path)
+
+            self.assertTrue(os.path.isfile(db_path))
+            self.assertEqual(int(result.get("schema_version") or 0), 1)
+            self.assertEqual(int(result.get("migrations_count") or 0), 1)
+
+            conn = sqlite3.connect(db_path)
+            try:
+                user_version = int(conn.execute("PRAGMA user_version;").fetchone()[0])
+                self.assertEqual(user_version, 1)
+
+                tables = {
+                    str(row[0])
+                    for row in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table';"
+                    ).fetchall()
+                }
+                expected = {
+                    "schema_migrations",
+                    "systems",
+                    "stations",
+                    "market_snapshots",
+                    "market_snapshot_items",
+                    "trade_history",
+                    "cashin_history",
+                }
+                self.assertTrue(expected.issubset(tables))
+
+                systems_cols = {
+                    str(row[1]) for row in conn.execute("PRAGMA table_info(systems);").fetchall()
+                }
+                self.assertTrue(
+                    {
+                        "system_name",
+                        "system_address",
+                        "system_id64",
+                        "x",
+                        "y",
+                        "z",
+                        "first_seen_ts",
+                        "last_seen_ts",
+                    }.issubset(systems_cols)
+                )
+
+                stations_cols = {
+                    str(row[1]) for row in conn.execute("PRAGMA table_info(stations);").fetchall()
+                }
+                self.assertTrue(
+                    {
+                        "system_name",
+                        "system_address",
+                        "station_name",
+                        "market_id",
+                        "station_type",
+                        "distance_ls",
+                        "distance_ls_confidence",
+                        "has_uc",
+                        "has_vista",
+                        "has_market",
+                        "services_freshness_ts",
+                    }.issubset(stations_cols)
+                )
+
+                snapshots_cols = {
+                    str(row[1]) for row in conn.execute("PRAGMA table_info(market_snapshots);").fetchall()
+                }
+                self.assertTrue(
+                    {
+                        "system_name",
+                        "station_name",
+                        "station_market_id",
+                        "snapshot_ts",
+                        "freshness_ts",
+                        "hash_sig",
+                        "commodities_count",
+                    }.issubset(snapshots_cols)
+                )
+
+                indexes = {
+                    str(row[1])
+                    for row in conn.execute("PRAGMA index_list(systems);").fetchall()
+                }
+                self.assertIn("idx_systems_system_address_unique", indexes)
+
+                station_indexes = {
+                    str(row[1])
+                    for row in conn.execute("PRAGMA index_list(stations);").fetchall()
+                }
+                self.assertIn("idx_stations_market_id_unique", station_indexes)
+            finally:
+                conn.close()
+
+    def test_ensure_schema_is_idempotent_and_does_not_duplicate_migrations(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "db", "player_local.db")
+            first = player_local_db.ensure_playerdb_schema(path=db_path)
+            second = player_local_db.ensure_playerdb_schema(path=db_path)
+
+            self.assertEqual(int(first.get("schema_version") or 0), 1)
+            self.assertEqual(int(second.get("schema_version") or 0), 1)
+            self.assertEqual(int(second.get("migrations_count") or 0), 1)
+
+            conn = sqlite3.connect(db_path)
+            try:
+                row = conn.execute("SELECT COUNT(*) FROM schema_migrations;").fetchone()
+                self.assertEqual(int(row[0]), 1)
+            finally:
+                conn.close()
+
+
+if __name__ == "__main__":
+    unittest.main()
