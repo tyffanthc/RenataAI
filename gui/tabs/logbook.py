@@ -18,6 +18,7 @@ from logic.journal_navigation import (
     resolve_entry_nav_target_typed,
     resolve_logbook_nav_target,
 )
+from logic.logbook_feed import build_logbook_info_rows, build_logbook_summary_snapshot
 from logic.logbook_feed_cache import (
     append_logbook_feed_cache_item,
     clear_logbook_feed_cache,
@@ -184,6 +185,7 @@ class LogbookTab(tk.Frame):
         self.preview_title_var = tk.StringVar(value="Brak wybranego wpisu")
         self.preview_meta_var = tk.StringVar(value="-")
         self.logbook_status_var = tk.StringVar(value="Feed pusty.")
+        self.logbook_summary_var = tk.StringVar(value="Podsumowanie: brak danych.")
         self._logbook_feed_limit = 250
         self.logbook_class_filter_var = tk.StringVar(value=_LOGBOOK_CLASS_ALL)
         self.logbook_show_tech_var = tk.BooleanVar(value=False)
@@ -720,14 +722,56 @@ class LogbookTab(tk.Frame):
             command=self._copy_selected_logbook_chip,
         ).pack(side="left", padx=(0, 6))
 
-        chips_frame = tk.Frame(self.tab_feed, bg=COLOR_BG)
-        chips_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=10, pady=(0, 6))
-        chips_frame.columnconfigure(0, weight=1)
-        chips_frame.columnconfigure(1, weight=0)
-        chips_frame.rowconfigure(1, weight=1)
+        details_panel = tk.Frame(self.tab_feed, bg=COLOR_BG)
+        details_panel.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=10, pady=(0, 6))
+        details_panel.columnconfigure(0, weight=3)
+        details_panel.columnconfigure(1, weight=2)
+        details_panel.rowconfigure(1, weight=1)
+
+        info_frame = tk.Frame(details_panel, bg=COLOR_BG)
+        info_frame.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 8))
+        info_frame.columnconfigure(0, weight=1)
+        info_frame.columnconfigure(1, weight=0)
+        info_frame.rowconfigure(1, weight=1)
 
         tk.Label(
-            chips_frame,
+            info_frame,
+            text="Informacje (zdarzenie)",
+            bg=COLOR_BG,
+            fg=COLOR_FG,
+            anchor="w",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 2))
+
+        self.logbook_info_tree = ttk.Treeview(
+            info_frame,
+            columns=("label", "value"),
+            show="headings",
+            style="Journal.Treeview",
+            selectmode="browse",
+            height=6,
+        )
+        self.logbook_info_tree.heading("label", text="Pole")
+        self.logbook_info_tree.heading("value", text="Wartosc")
+        self.logbook_info_tree.column("label", width=180, anchor="w")
+        self.logbook_info_tree.column("value", width=520, anchor="w")
+        self.logbook_info_tree.grid(row=1, column=0, sticky="nsew")
+
+        info_scroll = ttk.Scrollbar(
+            info_frame,
+            orient="vertical",
+            command=self.logbook_info_tree.yview,
+        )
+        self.logbook_info_tree.configure(yscrollcommand=info_scroll.set)
+        info_scroll.grid(row=1, column=1, sticky="ns", padx=(6, 0))
+
+        right_panel = tk.Frame(details_panel, bg=COLOR_BG)
+        right_panel.grid(row=0, column=1, sticky="nsew")
+        right_panel.columnconfigure(0, weight=1)
+        right_panel.columnconfigure(1, weight=0)
+        right_panel.rowconfigure(1, weight=1)
+
+        tk.Label(
+            right_panel,
             text="Chips nawigacyjne (SYSTEM/STATION)",
             bg=COLOR_BG,
             fg=COLOR_FG,
@@ -735,26 +779,47 @@ class LogbookTab(tk.Frame):
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 2))
 
         self.logbook_chip_tree = ttk.Treeview(
-            chips_frame,
+            right_panel,
             columns=("kind", "value"),
             show="headings",
             style="Journal.Treeview",
             selectmode="browse",
-            height=4,
+            height=6,
         )
         self.logbook_chip_tree.heading("kind", text="Typ")
         self.logbook_chip_tree.heading("value", text="Wartosc")
         self.logbook_chip_tree.column("kind", width=120, anchor="w")
-        self.logbook_chip_tree.column("value", width=420, anchor="w")
+        self.logbook_chip_tree.column("value", width=320, anchor="w")
         self.logbook_chip_tree.grid(row=1, column=0, sticky="nsew")
 
         chip_scroll = ttk.Scrollbar(
-            chips_frame,
+            right_panel,
             orient="vertical",
             command=self.logbook_chip_tree.yview,
         )
         self.logbook_chip_tree.configure(yscrollcommand=chip_scroll.set)
         chip_scroll.grid(row=1, column=1, sticky="ns", padx=(6, 0))
+
+        summary_frame = tk.Frame(details_panel, bg=COLOR_BG)
+        summary_frame.grid(row=1, column=1, sticky="nsew", pady=(6, 0))
+        summary_frame.columnconfigure(0, weight=1)
+
+        tk.Label(
+            summary_frame,
+            text="Podsumowanie (aktualny filtr)",
+            bg=COLOR_BG,
+            fg=COLOR_FG,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w", pady=(0, 2))
+        tk.Label(
+            summary_frame,
+            textvariable=self.logbook_summary_var,
+            bg=COLOR_BG,
+            fg=COLOR_SEC,
+            anchor="w",
+            justify="left",
+            wraplength=420,
+        ).grid(row=1, column=0, sticky="ew")
 
         self.logbook_chip_tree.bind("<<TreeviewSelect>>", self._on_logbook_chip_selected)
         self.logbook_chip_tree.bind("<Button-3>", self._on_logbook_chip_context_menu)
@@ -818,6 +883,8 @@ class LogbookTab(tk.Frame):
         self._logbook_feed_items.clear()
         self._selected_logbook_item_id = None
         self._refresh_logbook_nav_chips(None)
+        self._refresh_logbook_info_panel(None)
+        self._refresh_logbook_summary_panel([])
         self.logbook_status_var.set("Feed wyczyszczony.")
         clear_logbook_feed_cache()
 
@@ -917,6 +984,7 @@ class LogbookTab(tk.Frame):
         self._selected_logbook_item_id = None
 
         rows = self._filtered_sorted_logbook_items()
+        self._refresh_logbook_summary_panel(rows)
         restore_iid: str | None = None
         for row in rows:
             event_name = str(row.get("event_name") or "").strip() or "-"
@@ -944,10 +1012,16 @@ class LogbookTab(tk.Frame):
                 self.logbook_feed_tree.selection_set(restore_iid)
                 self.logbook_feed_tree.focus(restore_iid)
                 self._selected_logbook_item_id = restore_iid
+                selected_item = self._selected_logbook_item()
+                self._refresh_logbook_nav_chips(selected_item)
+                self._refresh_logbook_info_panel(selected_item)
             except Exception:
                 self._selected_logbook_item_id = None
+                self._refresh_logbook_nav_chips(None)
+                self._refresh_logbook_info_panel(None)
         else:
             self._refresh_logbook_nav_chips(None)
+            self._refresh_logbook_info_panel(None)
 
         visible_count = len(rows)
         total_count = len(self._logbook_feed_items)
@@ -963,8 +1037,10 @@ class LogbookTab(tk.Frame):
         item = self._selected_logbook_item()
         if not item:
             self._refresh_logbook_nav_chips(None)
+            self._refresh_logbook_info_panel(None)
             return
         self._refresh_logbook_nav_chips(item)
+        self._refresh_logbook_info_panel(item)
         default_category = str(item.get("default_category") or "-")
         chips = item.get("chips") or []
         event_class = str(item.get("event_class") or "TECH")
@@ -996,6 +1072,56 @@ class LogbookTab(tk.Frame):
             self.logbook_chip_tree.selection_set(first)
             self.logbook_chip_tree.focus(first)
             self._selected_logbook_chip_item_id = first
+
+    def _refresh_logbook_info_panel(self, feed_item: dict | None) -> None:
+        if not hasattr(self, "logbook_info_tree"):
+            return
+        self.logbook_info_tree.delete(*self.logbook_info_tree.get_children())
+        rows = build_logbook_info_rows(feed_item)
+        if not rows:
+            self.logbook_info_tree.insert("", "end", values=("Info", "Brak wybranego zdarzenia"))
+            return
+        for row in rows[:20]:
+            label = str((row or {}).get("label") or "").strip() or "-"
+            value = str((row or {}).get("value") or "").strip() or "-"
+            self.logbook_info_tree.insert("", "end", values=(label, value))
+
+    def _refresh_logbook_summary_panel(self, feed_items: list[dict]) -> None:
+        snapshot = build_logbook_summary_snapshot(feed_items or [])
+        total_events = int(snapshot.get("total_events") or 0)
+        if total_events <= 0:
+            self.logbook_summary_var.set("Brak danych dla aktualnego filtra.")
+            return
+        class_counts = snapshot.get("class_counts") or {}
+        class_parts = []
+        for name in _LOGBOOK_FEED_CLASS_ORDER:
+            count = int(class_counts.get(name) or 0)
+            if count > 0:
+                class_parts.append(f"{name}: {count}")
+        classes_text = " | ".join(class_parts[:5])
+        if len(class_parts) > 5:
+            classes_text += " | ..."
+        self.logbook_summary_var.set(
+            "\n".join(
+                [
+                    (
+                        f"Eventy: {total_events} | Skoki: {int(snapshot.get('jump_count') or 0)} | "
+                        f"Ladowania: {int(snapshot.get('landing_count') or 0)} | Dockowania: {int(snapshot.get('dock_count') or 0)}"
+                    ),
+                    (
+                        f"Incydenty hull: {int(snapshot.get('hull_incidents') or 0)} | "
+                        f"Interdiction: {int(snapshot.get('interdictions') or 0)} | "
+                        f"Ucieczki: {int(snapshot.get('interdiction_escapes') or 0)}"
+                    ),
+                    (
+                        f"UC: {int(snapshot.get('uc_sold_cr') or 0)} cr | "
+                        f"Vista: {int(snapshot.get('vista_sold_cr') or 0)} cr | "
+                        f"Razem: {int(snapshot.get('total_sold_cr') or 0)} cr"
+                    ),
+                    (f"Klasy: {classes_text}" if classes_text else "Klasy: -"),
+                ]
+            )
+        )
 
     def _selected_logbook_chip(self) -> dict | None:
         if not self._selected_logbook_chip_item_id:

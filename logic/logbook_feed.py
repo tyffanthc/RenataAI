@@ -383,3 +383,151 @@ def build_logbook_feed_item(event: dict[str, Any]) -> dict[str, Any] | None:
         "default_category": default_category_for_event(event_name),
         "raw_event": dict(event),
     }
+
+
+def _credit_value_from_feed_item(item: dict[str, Any]) -> int:
+    raw = item.get("raw_event")
+    if not isinstance(raw, dict):
+        return 0
+    value = _as_int(
+        raw.get("TotalEarnings")
+        or raw.get("BioDataValue")
+        or raw.get("BaseValue")
+        or raw.get("Value")
+        or raw.get("Reward")
+    )
+    return int(value or 0)
+
+
+def build_logbook_info_rows(feed_item: dict[str, Any] | None) -> list[dict[str, str]]:
+    if not isinstance(feed_item, dict):
+        return []
+
+    rows: list[dict[str, str]] = []
+
+    def add(label: str, value: Any) -> None:
+        text = _as_text(value)
+        if text:
+            rows.append({"label": str(label), "value": text})
+
+    add("Klasa", feed_item.get("event_class"))
+    add("Event", feed_item.get("event_name"))
+    add("Czas", feed_item.get("timestamp"))
+    add("System", feed_item.get("system_name"))
+    add("Stacja", feed_item.get("station_name"))
+    add("Obiekt", feed_item.get("body_name"))
+    add("Podsumowanie", feed_item.get("summary"))
+
+    raw = feed_item.get("raw_event")
+    if isinstance(raw, dict):
+        event_name = _as_text(feed_item.get("event_name"))
+
+        if event_name in {"MarketBuy", "MarketSell"}:
+            add("Towar", raw.get("Type") or raw.get("Commodity"))
+            amount = _as_int(raw.get("Count") or raw.get("Amount"))
+            if amount is not None:
+                add("Ilosc", amount)
+            price = _as_int(raw.get("BuyPrice") or raw.get("SellPrice") or raw.get("Price"))
+            if price is not None:
+                add("Cena jedn.", f"{price} cr")
+            if amount is not None and price is not None:
+                add("Wartosc laczna", f"{amount * price} cr")
+
+        if event_name in {"SellExplorationData", "SellOrganicData"}:
+            total = _credit_value_from_feed_item(feed_item)
+            if total > 0:
+                add("Sprzedaz", f"{total} cr")
+
+        if event_name == "ScanOrganic":
+            add("Gatunek", raw.get("Species_Localised") or raw.get("Species") or raw.get("Name"))
+            add("Rodzaj skanu", raw.get("ScanType"))
+
+        if event_name in {"Interdicted", "EscapeInterdiction"}:
+            add("Interdictor", raw.get("Interdictor"))
+            if "Submitted" in raw:
+                submitted = raw.get("Submitted")
+                if isinstance(submitted, bool):
+                    add("Wynik pilota", "Poddanie" if submitted else "Obrona")
+
+        if event_name == "Interdiction":
+            add("Cel", raw.get("Interdicted"))
+            if "Success" in raw:
+                success = raw.get("Success")
+                if isinstance(success, bool):
+                    add("Wynik", "Sukces" if success else "Nieudana")
+
+        if event_name in {"UnderAttack", "Died"}:
+            add(
+                "Kontakt",
+                raw.get("Target")
+                or raw.get("Target_Localised")
+                or raw.get("KillerName")
+                or raw.get("KillerName_Localised"),
+            )
+
+        if event_name == "HullDamage":
+            hull = _format_hull_percent(raw)
+            if hull:
+                add("Kadlub", hull)
+
+        if event_name == "ShieldState":
+            if isinstance(raw.get("ShieldsUp"), bool):
+                add("Tarcze", "Aktywne" if raw.get("ShieldsUp") else "Offline")
+
+    chips = feed_item.get("chips")
+    if isinstance(chips, list):
+        for chip in chips[:8]:
+            if not isinstance(chip, dict):
+                continue
+            kind = _as_text(chip.get("kind"))
+            value = _as_text(chip.get("value"))
+            if not kind or not value:
+                continue
+            rows.append({"label": f"Chip/{kind}", "value": value})
+
+    return rows
+
+
+def build_logbook_summary_snapshot(feed_items: list[dict[str, Any]]) -> dict[str, Any]:
+    summary = {
+        "total_events": 0,
+        "class_counts": {},
+        "jump_count": 0,
+        "landing_count": 0,
+        "dock_count": 0,
+        "hull_incidents": 0,
+        "interdictions": 0,
+        "interdiction_escapes": 0,
+        "uc_sold_cr": 0,
+        "vista_sold_cr": 0,
+    }
+    class_counts: dict[str, int] = {}
+
+    for item in feed_items:
+        if not isinstance(item, dict):
+            continue
+        summary["total_events"] += 1
+        event_name = _as_text(item.get("event_name"))
+        event_class = _as_text(item.get("event_class")) or "TECH"
+        class_counts[event_class] = int(class_counts.get(event_class, 0)) + 1
+
+        if event_name in {"FSDJump", "CarrierJump"}:
+            summary["jump_count"] += 1
+        elif event_name == "Touchdown":
+            summary["landing_count"] += 1
+        elif event_name == "Docked":
+            summary["dock_count"] += 1
+        elif event_name == "HullDamage":
+            summary["hull_incidents"] += 1
+        elif event_name == "Interdicted":
+            summary["interdictions"] += 1
+        elif event_name == "EscapeInterdiction":
+            summary["interdiction_escapes"] += 1
+        elif event_name == "SellExplorationData":
+            summary["uc_sold_cr"] += _credit_value_from_feed_item(item)
+        elif event_name == "SellOrganicData":
+            summary["vista_sold_cr"] += _credit_value_from_feed_item(item)
+
+    summary["class_counts"] = class_counts
+    summary["total_sold_cr"] = int(summary["uc_sold_cr"]) + int(summary["vista_sold_cr"])
+    return summary
