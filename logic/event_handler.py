@@ -155,13 +155,14 @@ class EventHandler:
         if not typ:
             return
 
-        if typ in {"Location", "FSDJump", "CarrierJump", "Docked"}:
+        if typ in {"Location", "FSDJump", "CarrierJump", "Docked", "SellExplorationData", "SellOrganicData"}:
             try:
                 from app.state import app_state
 
                 player_local_db.ingest_journal_event(
                     ev,
                     fallback_system_name=str(getattr(app_state, "current_system", "") or "").strip() or None,
+                    fallback_station_name=str(getattr(app_state, "current_station", "") or "").strip() or None,
                 )
             except Exception as exc:
                 _log_router_fallback(

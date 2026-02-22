@@ -4,6 +4,7 @@ import os
 import sqlite3
 import json
 import hashlib
+import math
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterator
@@ -66,6 +67,21 @@ def _safe_ts(value: Any) -> str:
     return text or _utc_now_iso()
 
 
+def _parse_iso_ts(value: Any) -> datetime | None:
+    text = _as_text(value)
+    if not text:
+        return None
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
 def _norm_service_token(value: Any) -> str:
     raw = _as_text(value).casefold()
     return "".join(ch for ch in raw if ch.isalnum())
@@ -111,6 +127,10 @@ def _journal_system_id64(ev: dict[str, Any], *, fallback_address: int | None = N
     )
 
 
+def _journal_station_name(ev: dict[str, Any]) -> str:
+    return _as_text(ev.get("StationName") or ev.get("Station") or ev.get("StationName_Localised"))
+
+
 def _event_starpos_xyz(ev: dict[str, Any]) -> tuple[float | None, float | None, float | None]:
     star_pos = ev.get("StarPos")
     if not isinstance(star_pos, (list, tuple)) or len(star_pos) < 3:
@@ -137,6 +157,45 @@ def _market_items_list(data: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(items, list):
         return []
     return [row for row in items if isinstance(row, dict)]
+
+
+def _distance_between_coords(
+    origin: tuple[float, float, float] | None,
+    target: tuple[float, float, float] | None,
+) -> float | None:
+    if origin is None or target is None:
+        return None
+    try:
+        dx = float(origin[0]) - float(target[0])
+        dy = float(origin[1]) - float(target[1])
+        dz = float(origin[2]) - float(target[2])
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+    except Exception:
+        return None
+
+
+def _cashin_service_for_event(event_name: str) -> str | None:
+    if event_name == "SellExplorationData":
+        return "UC"
+    if event_name == "SellOrganicData":
+        return "VISTA"
+    return None
+
+
+def _freshness_confidence_from_station(
+    *,
+    services_freshness_ts: Any,
+    last_seen_ts: Any,
+) -> str:
+    dt = _parse_iso_ts(services_freshness_ts) or _parse_iso_ts(last_seen_ts)
+    if dt is None:
+        return "low"
+    age_hours = max(0.0, (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0)
+    if age_hours <= 24.0:
+        return "high"
+    if age_hours <= 24.0 * 14.0:
+        return "mid"
+    return "low"
 
 
 def _commodity_name(item: dict[str, Any]) -> str:
@@ -632,17 +691,19 @@ def ingest_journal_event(
     *,
     path: str | None = None,
     fallback_system_name: str | None = None,
+    fallback_station_name: str | None = None,
 ) -> dict[str, Any]:
     if not isinstance(ev, dict):
         return {"ok": False, "reason": "invalid_event"}
     event_name = _as_text(ev.get("event"))
-    if event_name not in {"Location", "FSDJump", "CarrierJump", "Docked"}:
+    if event_name not in {"Location", "FSDJump", "CarrierJump", "Docked", "SellExplorationData", "SellOrganicData"}:
         return {"ok": False, "reason": "unsupported_event", "event": event_name}
 
     ts = _safe_ts(ev.get("timestamp"))
     system_name = _journal_system_name(ev) or _as_text(fallback_system_name)
     system_address = _journal_system_address(ev)
     system_id64 = _journal_system_id64(ev, fallback_address=system_address)
+    station_name_fallback = _journal_station_name(ev) or _as_text(fallback_station_name)
 
     db_path = str(path or default_playerdb_path())
     with playerdb_connection(path=db_path, ensure_schema=True) as conn:
@@ -650,6 +711,7 @@ def ingest_journal_event(
         try:
             touched_system = False
             touched_station = False
+            touched_cashin = False
             if event_name in {"Location", "FSDJump", "CarrierJump"} and system_name:
                 x, y, z = _event_starpos_xyz(ev)
                 _upsert_system_observed(
@@ -695,6 +757,54 @@ def ingest_journal_event(
                         confidence="observed",
                     )
                     touched_station = True
+
+            service_name = _cashin_service_for_event(event_name)
+            if service_name:
+                station_name = station_name_fallback
+                total_earnings = _as_optional_int(
+                    ev.get("TotalEarnings")
+                    or ev.get("Earnings")
+                    or ev.get("Value")
+                    or ev.get("Total")
+                )
+                if total_earnings is None:
+                    total_earnings = 0
+                conn.execute(
+                    """
+                    INSERT INTO cashin_history(
+                        event_ts, system_name, station_name, service, total_earnings, source, confidence
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (
+                        ts,
+                        system_name or None,
+                        station_name or None,
+                        service_name,
+                        int(total_earnings),
+                        "journal",
+                        "observed",
+                    ),
+                )
+                touched_cashin = True
+                if system_name and station_name:
+                    _upsert_station_observed(
+                        conn,
+                        system_name=system_name,
+                        system_address=system_address,
+                        station_name=station_name,
+                        market_id=_as_optional_int(ev.get("MarketID") or ev.get("StationMarketID")),
+                        station_type=_event_station_type(ev),
+                        distance_ls=None,
+                        distance_ls_confidence="unknown",
+                        has_uc=1 if service_name == "UC" else None,
+                        has_vista=1 if service_name == "VISTA" else None,
+                        has_market=None,
+                        seen_ts=ts,
+                        services_freshness_ts=None,
+                        source="journal",
+                        confidence="observed",
+                    )
+                    touched_station = True
             conn.commit()
         except Exception:
             conn.rollback()
@@ -707,6 +817,7 @@ def ingest_journal_event(
         "system_address": system_address,
         "ingested_system": bool(touched_system),
         "ingested_station": bool(touched_station),
+        "ingested_cashin": bool(touched_cashin),
         "path": db_path,
     }
 
@@ -864,6 +975,181 @@ def ingest_market_json(
         "hash_sig": hash_sig,
         "path": db_path,
     }
+
+
+def query_cashin_history(
+    *,
+    path: str | None = None,
+    service: str | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    db_path = str(path or default_playerdb_path())
+    svc = _as_text(service).upper()
+    max_rows = max(1, int(limit or 20))
+    sql = """
+        SELECT event_ts, system_name, station_name, service, total_earnings, source, confidence
+        FROM cashin_history
+    """
+    params: list[Any] = []
+    if svc in {"UC", "VISTA"}:
+        sql += " WHERE service = ?"
+        params.append(svc)
+    sql += " ORDER BY event_ts DESC, id DESC LIMIT ?"
+    params.append(max_rows)
+
+    with playerdb_connection(path=db_path, ensure_schema=True) as conn:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        out.append(
+            {
+                "event_ts": _as_text(row["event_ts"]),
+                "system_name": _as_text(row["system_name"]),
+                "station_name": _as_text(row["station_name"]),
+                "service": _as_text(row["service"]).upper(),
+                "total_earnings": int(row["total_earnings"] or 0),
+                "source": _as_text(row["source"]) or "playerdb",
+                "confidence": _as_text(row["confidence"]) or "observed",
+            }
+        )
+    return out
+
+
+def query_nearest_station_candidates(
+    *,
+    path: str | None = None,
+    origin_system_name: str | None = None,
+    origin_coords: tuple[float, float, float] | list[float] | None = None,
+    service: str = "uc",
+    limit: int = 24,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    db_path = str(path or default_playerdb_path())
+    svc = _as_text(service).lower()
+    if svc not in {"uc", "vista", "market", "any"}:
+        svc = "uc"
+    max_rows = max(1, int(limit or 24))
+
+    origin_coords_tuple: tuple[float, float, float] | None = None
+    if isinstance(origin_coords, (list, tuple)) and len(origin_coords) >= 3:
+        try:
+            origin_coords_tuple = (
+                float(origin_coords[0]),
+                float(origin_coords[1]),
+                float(origin_coords[2]),
+            )
+        except Exception:
+            origin_coords_tuple = None
+
+    origin_name = _as_text(origin_system_name)
+    used_origin_coords_from_db = False
+    with playerdb_connection(path=db_path, ensure_schema=True) as conn:
+        if origin_coords_tuple is None and origin_name:
+            row = conn.execute(
+                """
+                SELECT x, y, z FROM systems
+                WHERE system_name = ? COLLATE NOCASE
+                LIMIT 1;
+                """,
+                (origin_name,),
+            ).fetchone()
+            if row is not None and row["x"] is not None and row["y"] is not None and row["z"] is not None:
+                origin_coords_tuple = (float(row["x"]), float(row["y"]), float(row["z"]))
+                used_origin_coords_from_db = True
+
+        sql = """
+            SELECT
+                s.station_name,
+                s.station_type,
+                s.is_fleet_carrier,
+                s.distance_ls,
+                s.distance_ls_confidence,
+                s.has_uc,
+                s.has_vista,
+                s.has_market,
+                s.last_seen_ts AS station_last_seen_ts,
+                s.services_freshness_ts,
+                s.confidence AS station_confidence,
+                s.system_name,
+                sys.x, sys.y, sys.z,
+                sys.last_seen_ts AS system_last_seen_ts
+            FROM stations s
+            LEFT JOIN systems sys
+              ON s.system_address IS NOT NULL AND sys.system_address = s.system_address
+            WHERE 1=1
+        """
+        params: list[Any] = []
+        if svc == "uc":
+            sql += " AND s.has_uc = 1"
+        elif svc == "vista":
+            sql += " AND s.has_vista = 1"
+        elif svc == "market":
+            sql += " AND s.has_market = 1"
+        sql += " ORDER BY COALESCE(s.services_freshness_ts, s.last_seen_ts) DESC, s.system_name, s.station_name LIMIT ?"
+        params.append(max_rows * 8)
+        rows = conn.execute(sql, tuple(params)).fetchall()
+
+    candidates: list[dict[str, Any]] = []
+    coords_missing = 0
+    for row in rows:
+        target_coords = None
+        try:
+            if row["x"] is not None and row["y"] is not None and row["z"] is not None:
+                target_coords = (float(row["x"]), float(row["y"]), float(row["z"]))
+        except Exception:
+            target_coords = None
+        if target_coords is None:
+            coords_missing += 1
+        distance_ly = _distance_between_coords(origin_coords_tuple, target_coords)
+        candidate_conf = _freshness_confidence_from_station(
+            services_freshness_ts=row["services_freshness_ts"],
+            last_seen_ts=row["station_last_seen_ts"],
+        )
+        candidates.append(
+            {
+                "name": _as_text(row["station_name"]),
+                "system_name": _as_text(row["system_name"]),
+                "type": "fleet_carrier" if int(row["is_fleet_carrier"] or 0) else _as_text(row["station_type"]) or "station",
+                "services": {
+                    "has_uc": bool(int(row["has_uc"] or 0)),
+                    "has_vista": bool(int(row["has_vista"] or 0)),
+                    "has_market": bool(int(row["has_market"] or 0)),
+                },
+                "distance_ly": distance_ly,
+                "distance_ls": _as_optional_float(row["distance_ls"]),
+                "distance_ls_confidence": _as_text(row["distance_ls_confidence"]) or "unknown",
+                "source": "PLAYERDB",
+                "freshness_ts": _as_text(row["services_freshness_ts"] or row["station_last_seen_ts"] or row["system_last_seen_ts"]),
+                "confidence": candidate_conf,
+                "station_last_seen_ts": _as_text(row["station_last_seen_ts"]),
+                "services_freshness_ts": _as_text(row["services_freshness_ts"]),
+            }
+        )
+
+    # nearest first when coords available; otherwise fallback to freshness/name ordering
+    def _sort_key(item: dict[str, Any]) -> tuple[float, float, str, str]:
+        dist_ly = item.get("distance_ly")
+        dly = float(dist_ly) if isinstance(dist_ly, (int, float)) else 1e18
+        dist_ls = item.get("distance_ls")
+        dls = float(dist_ls) if isinstance(dist_ls, (int, float)) else 1e18
+        return (
+            dly,
+            dls,
+            _as_text(item.get("freshness_ts")),
+            f"{_as_text(item.get('system_name')).casefold()}::{_as_text(item.get('name')).casefold()}",
+        )
+
+    candidates.sort(key=_sort_key)
+    candidates = candidates[:max_rows]
+    meta = {
+        "service": svc,
+        "count": len(candidates),
+        "origin_system_name": origin_name,
+        "origin_coords_used": bool(origin_coords_tuple),
+        "origin_coords_from_playerdb": bool(used_origin_coords_from_db),
+        "coords_missing_count": int(coords_missing),
+        "query_mode": "nearest" if origin_coords_tuple is not None else "last_seen",
+    }
+    return candidates, meta
 
 
 @contextmanager
