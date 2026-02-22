@@ -229,6 +229,24 @@ class LogbookTab(tk.Frame):
         )
         style.map("Journal.Treeview.Heading", background=[("active", COLOR_ACCENT)])
 
+    def _create_spansh_like_treeview(
+        self,
+        parent,
+        *,
+        columns: tuple[str, ...],
+        selectmode: str = "browse",
+        height: int | None = None,
+    ) -> ttk.Treeview:
+        kwargs = {
+            "columns": columns,
+            "show": "headings",
+            "style": "Treeview",
+            "selectmode": selectmode,
+        }
+        if height is not None:
+            kwargs["height"] = int(height)
+        return ttk.Treeview(parent, **kwargs)
+
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
@@ -630,19 +648,20 @@ class LogbookTab(tk.Frame):
         )
         self.chk_logbook_show_tech.grid(row=1, column=2, sticky="e", padx=(10, 0), pady=(6, 0))
 
-        self.logbook_feed_tree = ttk.Treeview(
+        self.logbook_feed_tree = self._create_spansh_like_treeview(
             self.tab_feed,
             columns=("time", "class", "event", "system", "location", "summary"),
-            show="headings",
-            style="Journal.Treeview",
             selectmode="browse",
         )
-        self.logbook_feed_tree.heading("time", text="Czas", command=lambda: self._set_logbook_feed_sort("time"))
-        self.logbook_feed_tree.heading("class", text="Klasa", command=lambda: self._set_logbook_feed_sort("class"))
-        self.logbook_feed_tree.heading("event", text="Event", command=lambda: self._set_logbook_feed_sort("event"))
-        self.logbook_feed_tree.heading("system", text="System", command=lambda: self._set_logbook_feed_sort("system"))
-        self.logbook_feed_tree.heading("location", text="Miejsce", command=lambda: self._set_logbook_feed_sort("location"))
-        self.logbook_feed_tree.heading("summary", text="Podsumowanie", command=lambda: self._set_logbook_feed_sort("summary"))
+        self._logbook_feed_header_labels = {
+            "time": "Czas",
+            "class": "Klasa",
+            "event": "Event",
+            "system": "System",
+            "location": "Miejsce",
+            "summary": "Podsumowanie",
+        }
+        self._update_logbook_feed_sort_indicators()
 
         self.logbook_feed_tree.column("time", width=130, anchor="w")
         self.logbook_feed_tree.column("class", width=120, anchor="w")
@@ -742,11 +761,9 @@ class LogbookTab(tk.Frame):
             anchor="w",
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 2))
 
-        self.logbook_info_tree = ttk.Treeview(
+        self.logbook_info_tree = self._create_spansh_like_treeview(
             info_frame,
             columns=("label", "value"),
-            show="headings",
-            style="Journal.Treeview",
             selectmode="browse",
             height=6,
         )
@@ -778,11 +795,9 @@ class LogbookTab(tk.Frame):
             anchor="w",
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 2))
 
-        self.logbook_chip_tree = ttk.Treeview(
+        self.logbook_chip_tree = self._create_spansh_like_treeview(
             right_panel,
             columns=("kind", "value"),
-            show="headings",
-            style="Journal.Treeview",
             selectmode="browse",
             height=6,
         )
@@ -918,7 +933,23 @@ class LogbookTab(tk.Frame):
         else:
             self._logbook_feed_sort_column = key
             self._logbook_feed_sort_desc = key == "time"
+        self._update_logbook_feed_sort_indicators()
         self._render_logbook_feed_tree()
+
+    def _update_logbook_feed_sort_indicators(self) -> None:
+        if not hasattr(self, "logbook_feed_tree"):
+            return
+        labels = getattr(self, "_logbook_feed_header_labels", {}) or {}
+        active = str(self._logbook_feed_sort_column or "")
+        marker = " v" if bool(self._logbook_feed_sort_desc) else " ^"
+        for col in ("time", "class", "event", "system", "location", "summary"):
+            base = str(labels.get(col) or col)
+            text = f"{base}{marker}" if col == active else base
+            self.logbook_feed_tree.heading(
+                col,
+                text=text,
+                command=(lambda key=col: self._set_logbook_feed_sort(key)),
+            )
 
     def _logbook_item_class(self, item: dict) -> str:
         return str(item.get("event_class") or "TECH").strip() or "TECH"

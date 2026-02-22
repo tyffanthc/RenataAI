@@ -35,11 +35,13 @@ class F19LogbookClassesAndSortContractTests(unittest.TestCase):
         self.assertIn("logbook_class_filter_var", content)
         self.assertIn("Pokaz TECH", content)
         self.assertIn('columns=("time", "class", "event", "system", "location", "summary")', content)
-        self.assertIn('_set_logbook_feed_sort("time")', content)
+        self.assertIn("def _create_spansh_like_treeview", content)
+        self.assertIn('"style": "Treeview"', content)
+        self.assertIn("def _update_logbook_feed_sort_indicators", content)
+        self.assertIn("_logbook_feed_header_labels", content)
         self.assertIn("def _filtered_sorted_logbook_items", content)
         self.assertIn("def _render_logbook_feed_tree", content)
 
 
 if __name__ == "__main__":
     unittest.main()
-
