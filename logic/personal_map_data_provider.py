@@ -422,3 +422,50 @@ class MapDataProvider:
             "db_path": self.db_path,
         }
 
+    def get_known_commodities(
+        self,
+        time_range: str = "all",
+        freshness_filter: str = "any",
+        *,
+        limit: int = 300,
+    ) -> tuple[list[str], dict[str, Any]]:
+        max_rows = max(1, int(limit or 300))
+        cutoff = _cutoff_for_time_range(time_range)
+        max_age = _max_age_for_freshness_filter(freshness_filter)
+
+        sql = """
+            SELECT msi.commodity, MAX(COALESCE(ms.freshness_ts, ms.snapshot_ts)) AS freshness_ts
+            FROM market_snapshot_items msi
+            JOIN market_snapshots ms ON ms.id = msi.snapshot_id
+            WHERE msi.commodity IS NOT NULL AND trim(msi.commodity) != ''
+        """
+        params: list[Any] = []
+        if cutoff is not None:
+            sql += " AND ms.snapshot_ts >= ?"
+            params.append(cutoff.isoformat().replace("+00:00", "Z"))
+        sql += " GROUP BY lower(msi.commodity), msi.commodity ORDER BY lower(msi.commodity) LIMIT ?"
+        params.append(max_rows * 3)  # reserve room before freshness post-filter
+
+        with player_local_db.playerdb_connection(path=self.db_path, ensure_schema=True) as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+
+        out: list[str] = []
+        now = datetime.now(timezone.utc)
+        for row in rows:
+            commodity = _as_text(row["commodity"])
+            if not commodity:
+                continue
+            if max_age is not None:
+                dt = _parse_iso_ts(row["freshness_ts"])
+                if dt is None or (now - dt) > max_age:
+                    continue
+            out.append(commodity)
+            if len(out) >= max_rows:
+                break
+
+        return out, {
+            "count": len(out),
+            "time_range": _as_text(time_range) or "all",
+            "freshness_filter": _as_text(freshness_filter) or "any",
+            "db_path": self.db_path,
+        }

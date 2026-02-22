@@ -126,6 +126,8 @@ class JournalMapTab(tk.Frame):
         self._selected_node_key: str | None = None
         self._station_rows_by_iid: dict[str, dict[str, Any]] = {}
         self._node_layer_flags: dict[str, dict[str, Any]] = {}
+        self._trade_highlight_node_keys: set[str] = set()
+        self._trade_compare_rows: list[dict[str, Any]] = []
         self._travel_nodes_meta: dict[str, Any] = {}
         self._travel_edges_meta: dict[str, Any] = {}
         self._pending_after_ids: list[str] = []
@@ -414,6 +416,8 @@ class JournalMapTab(tk.Frame):
             width=18,
         )
         self.trade_commodity_combo.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        self.trade_commodity_combo.bind("<<ComboboxSelected>>", self._on_trade_commodity_changed)
+        self.trade_commodity_combo.bind("<Return>", self._on_trade_commodity_changed)
         self.trade_highlight_btn = tk.Button(
             trade_ctl,
             text="Highlight",
@@ -421,6 +425,7 @@ class JournalMapTab(tk.Frame):
             fg=COLOR_FG,
             relief="flat",
             state="disabled",
+            command=self._on_trade_highlight_clicked,
         )
         self.trade_highlight_btn.grid(row=0, column=1, sticky="e")
 
@@ -654,6 +659,8 @@ class JournalMapTab(tk.Frame):
         self.station_market_tree.delete(*self.station_market_tree.get_children())
         self.trade_compare_tree.delete(*self.trade_compare_tree.get_children())
         self._station_rows_by_iid.clear()
+        self._trade_highlight_node_keys.clear()
+        self._trade_compare_rows = []
         nodes_count = len(self._nodes)
         edges_count = len(self._edges)
         self.system_details_var.set(
@@ -675,6 +682,7 @@ class JournalMapTab(tk.Frame):
                 f"warstwy: T={int(bool(self.layer_travel_var.get()))}/S={int(bool(self.layer_stations_var.get()))}/Tr={int(bool(self.layer_trade_var.get()))}/C={int(bool(self.layer_cashin_var.get()))}",
             ),
         )
+        self._sync_trade_highlight_button_state()
 
     def reload_from_playerdb(self) -> dict[str, Any]:
         if not bool(self.layer_travel_var.get()):
@@ -708,6 +716,8 @@ class JournalMapTab(tk.Frame):
 
         self.set_graph_data(nodes=laid_out_nodes, edges=edges_final)
         self._refresh_system_panel_stub()
+        self._refresh_trade_commodity_values()
+        self._refresh_trade_compare_if_needed()
 
         count_nodes = len(self._nodes)
         count_edges = len(self._edges)
@@ -734,6 +744,145 @@ class JournalMapTab(tk.Frame):
             "edges_mode": edges_mode,
             "nodes_meta": dict(nodes_meta or {}),
             "edges_meta": dict(edges_meta or {}),
+        }
+
+    def _refresh_trade_commodity_values(self) -> None:
+        try:
+            values, _meta = self.data_provider.get_known_commodities(
+                time_range=str(self.time_range_var.get() or "all"),
+                freshness_filter=str(self.freshness_var.get() or "any"),
+                limit=300,
+            )
+        except Exception:
+            values = []
+        current = _as_text(self.trade_compare_commodity_var.get())
+        merged: list[str] = []
+        seen_cf: set[str] = set()
+        for item in [current, *list(values or [])]:
+            text = _as_text(item)
+            if not text:
+                continue
+            key = text.casefold()
+            if key in seen_cf:
+                continue
+            seen_cf.add(key)
+            merged.append(text)
+        try:
+            self.trade_commodity_combo["values"] = tuple(merged)
+        except Exception:
+            pass
+        self._sync_trade_highlight_button_state()
+
+    def _sync_trade_highlight_button_state(self) -> None:
+        commodity = _as_text(self.trade_compare_commodity_var.get())
+        state = "normal" if commodity else "disabled"
+        try:
+            self.trade_highlight_btn.configure(state=state)
+        except Exception:
+            pass
+
+    def _on_trade_commodity_changed(self, _event=None):
+        self._sync_trade_highlight_button_state()
+        return None
+
+    def _refresh_trade_compare_if_needed(self) -> None:
+        commodity = _as_text(self.trade_compare_commodity_var.get())
+        if not commodity:
+            self._trade_highlight_node_keys.clear()
+            self._trade_compare_rows = []
+            self._redraw_scene()
+            return
+        self._run_trade_compare(commodity)
+
+    def _on_trade_highlight_clicked(self) -> None:
+        commodity = _as_text(self.trade_compare_commodity_var.get())
+        if not commodity:
+            self._sync_trade_highlight_button_state()
+            return
+        self._run_trade_compare(commodity)
+
+    def _node_keys_for_system_name(self, system_name: Any) -> list[str]:
+        target = _as_text(system_name).casefold()
+        if not target:
+            return []
+        return [key for key, node in (self._nodes or {}).items() if _as_text(node.system_name).casefold() == target]
+
+    def _run_trade_compare(self, commodity: str) -> dict[str, Any]:
+        commodity_name = _as_text(commodity)
+        self.trade_compare_tree.delete(*self.trade_compare_tree.get_children())
+        self._trade_highlight_node_keys.clear()
+        self._trade_compare_rows = []
+        self._sync_trade_highlight_button_state()
+        if not commodity_name:
+            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "wybierz towar"))
+            self._redraw_scene()
+            return {"ok": False, "reason": "missing_commodity"}
+
+        time_range = str(self.time_range_var.get() or "all")
+        freshness_filter = str(self.freshness_var.get() or "any")
+        try:
+            sell_rows, sell_meta = self.data_provider.get_top_prices(
+                commodity_name,
+                "sell",
+                time_range=time_range,
+                freshness_filter=freshness_filter,
+                limit=5,
+            )
+            buy_rows, buy_meta = self.data_provider.get_top_prices(
+                commodity_name,
+                "buy",
+                time_range=time_range,
+                freshness_filter=freshness_filter,
+                limit=5,
+            )
+        except Exception as exc:
+            self.trade_compare_tree.insert("", "end", values=("ERR", "-", "-", "-", type(exc).__name__))
+            self._redraw_scene()
+            return {"ok": False, "reason": "provider_error"}
+
+        rows_inserted = 0
+        for mode_label, rows in (("SELL", sell_rows), ("BUY", buy_rows)):
+            for row in rows or []:
+                if not isinstance(row, dict):
+                    continue
+                self._trade_compare_rows.append(dict(row))
+                system_name = _as_text(row.get("system_name")) or "-"
+                station_name = _as_text(row.get("station_name")) or "-"
+                price = int(row.get("price") or 0)
+                age = _format_age_short(row.get("freshness_ts"))
+                conf = _as_text(row.get("confidence")) or "observed"
+                self.trade_compare_tree.insert(
+                    "",
+                    "end",
+                    values=(mode_label, system_name, station_name, f"{price}", f"{age} | {conf}"),
+                )
+                for key in self._node_keys_for_system_name(system_name):
+                    self._trade_highlight_node_keys.add(key)
+                rows_inserted += 1
+
+        if rows_inserted <= 0:
+            self.trade_compare_tree.insert(
+                "",
+                "end",
+                values=("INFO", "-", "-", "-", "brak danych po filtrach"),
+            )
+        self._redraw_scene()
+
+        trade_layer_on = bool(self.layer_trade_var.get())
+        suffix = "" if trade_layer_on else " (warstwa Trade wylaczona - highlight ukryty)"
+        self.map_status_var.set(
+            f"Mapa: Trade compare '{commodity_name}' | sell={len(sell_rows)} buy={len(buy_rows)} | "
+            f"nodes_hilite={len(self._trade_highlight_node_keys)}{suffix}"
+        )
+        return {
+            "ok": True,
+            "commodity": commodity_name,
+            "sell_count": len(sell_rows),
+            "buy_count": len(buy_rows),
+            "rows_inserted": rows_inserted,
+            "highlight_nodes": len(self._trade_highlight_node_keys),
+            "sell_meta": dict(sell_meta or {}),
+            "buy_meta": dict(buy_meta or {}),
         }
 
     def _canvas_current_node_key(self) -> str | None:
@@ -1148,6 +1297,7 @@ class JournalMapTab(tk.Frame):
                 tags=node_tags,
             )
             self._draw_node_layer_badges(node, sx, sy, r)
+            self._draw_trade_compare_highlight(node, sx, sy, r)
             if show_labels:
                 self.map_canvas.create_text(
                     sx + 8,
@@ -1207,6 +1357,22 @@ class JournalMapTab(tk.Frame):
                 fill=COLOR_CASHIN_LAYER,
                 tags=("layer_cashin", f"node:{node.key}"),
             )
+
+    def _draw_trade_compare_highlight(self, node: _MapNode, sx: float, sy: float, r: int) -> None:
+        if not bool(self.layer_trade_var.get()):
+            return
+        if node.key not in (self._trade_highlight_node_keys or set()):
+            return
+        rr = r + 7
+        self.map_canvas.create_oval(
+            sx - rr,
+            sy - rr,
+            sx + rr,
+            sy + rr,
+            outline=COLOR_TRADE_LAYER,
+            width=2.0,
+            tags=("layer_trade_highlight", f"node:{node.key}"),
+        )
 
 
 class _WheelShim:
