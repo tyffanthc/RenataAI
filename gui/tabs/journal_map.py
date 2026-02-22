@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import math
 import tkinter as tk
 from dataclasses import dataclass
@@ -25,9 +26,13 @@ class _MapNode:
     system_name: str
     x: float
     y: float
+    z: float | None = None
+    system_address: int | None = None
+    system_id64: int | None = None
     source: str = "playerdb"
     confidence: str = "observed"
     freshness_ts: str = ""
+    first_seen_ts: str = ""
     last_seen_ts: str = ""
 
 
@@ -36,6 +41,41 @@ class _MapEdge:
     key: str
     from_key: str
     to_key: str
+
+
+def _as_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _parse_iso_ts(value: Any) -> datetime | None:
+    text = _as_text(value)
+    if not text:
+        return None
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _format_age_short(value: Any) -> str:
+    dt = _parse_iso_ts(value)
+    if dt is None:
+        return "-"
+    hours = max(0.0, (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0)
+    if hours < 1.0:
+        minutes = int(round(hours * 60.0))
+        return f"{minutes}m"
+    if hours < 24.0:
+        return f"{hours:.1f}h"
+    days = hours / 24.0
+    if days < 7.0:
+        return f"{days:.1f}d"
+    return f"{int(round(days))}d"
 
 
 class JournalMapTab(tk.Frame):
@@ -68,6 +108,7 @@ class JournalMapTab(tk.Frame):
         self._nodes: dict[str, _MapNode] = {}
         self._edges: list[_MapEdge] = []
         self._selected_node_key: str | None = None
+        self._station_rows_by_iid: dict[str, dict[str, Any]] = {}
         self._travel_nodes_meta: dict[str, Any] = {}
         self._travel_edges_meta: dict[str, Any] = {}
         self._pending_after_ids: list[str] = []
@@ -304,6 +345,7 @@ class JournalMapTab(tk.Frame):
         self.system_stations_tree.column("type", width=90, anchor="w")
         self.system_stations_tree.column("services", width=90, anchor="w")
         self.system_stations_tree.grid(row=2, column=0, sticky="nsew")
+        self.system_stations_tree.bind("<<TreeviewSelect>>", self._on_station_tree_selected)
 
         tk.Label(
             self.right_frame,
@@ -402,6 +444,8 @@ class JournalMapTab(tk.Frame):
         # Linux compatibility (no-op on Windows if never fired)
         self.map_canvas.bind("<Button-4>", lambda e: self._on_canvas_mousewheel(_WheelShim(e, delta=120)))
         self.map_canvas.bind("<Button-5>", lambda e: self._on_canvas_mousewheel(_WheelShim(e, delta=-120)))
+        self.map_canvas.tag_bind("map_node", "<ButtonPress-1>", self._on_canvas_node_click)
+        self.map_canvas.tag_bind("map_node", "<Double-Button-1>", self._on_canvas_node_double_click)
 
     def _on_filter_changed(self) -> None:
         self.reload_from_playerdb()
@@ -409,6 +453,7 @@ class JournalMapTab(tk.Frame):
     def set_graph_data(self, *, nodes: list[dict[str, Any]] | None = None, edges: list[dict[str, Any]] | None = None) -> None:
         self._nodes.clear()
         self._edges.clear()
+        self._selected_node_key = None
         for row in nodes or []:
             key = str(row.get("key") or row.get("system_address") or row.get("system_name") or "").strip()
             if not key:
@@ -423,9 +468,13 @@ class JournalMapTab(tk.Frame):
                     system_name=str(row.get("system_name") or key),
                     x=float(x),
                     y=float(y),
+                    z=self._safe_float(row.get("z")),
+                    system_address=int(row["system_address"]) if row.get("system_address") is not None else None,
+                    system_id64=int(row["system_id64"]) if row.get("system_id64") is not None else None,
                     source=str(row.get("source") or "playerdb"),
                     confidence=str(row.get("confidence") or "observed"),
                     freshness_ts=str(row.get("freshness_ts") or ""),
+                    first_seen_ts=str(row.get("first_seen_ts") or ""),
                     last_seen_ts=str(row.get("last_seen_ts") or ""),
                 )
             except Exception:
@@ -504,6 +553,7 @@ class JournalMapTab(tk.Frame):
         self.system_stations_tree.delete(*self.system_stations_tree.get_children())
         self.station_market_tree.delete(*self.station_market_tree.get_children())
         self.trade_compare_tree.delete(*self.trade_compare_tree.get_children())
+        self._station_rows_by_iid.clear()
         nodes_count = len(self._nodes)
         edges_count = len(self._edges)
         self.system_details_var.set(
@@ -511,7 +561,7 @@ class JournalMapTab(tk.Frame):
             f"time={self.time_range_var.get()} | freshness={self.freshness_var.get()}"
         )
         self.station_details_var.set(
-            "Drilldown stacji i snapshoty rynku zostana dopiete w F20-4."
+            "Wybierz system na mapie, aby zobaczyc stacje i snapshoty rynku."
         )
 
     def reload_from_playerdb(self) -> dict[str, Any]:
@@ -562,6 +612,202 @@ class JournalMapTab(tk.Frame):
             "nodes_meta": dict(nodes_meta or {}),
             "edges_meta": dict(edges_meta or {}),
         }
+
+    def _canvas_current_node_key(self) -> str | None:
+        try:
+            current = self.map_canvas.find_withtag("current")
+            if not current:
+                return None
+            tags = self.map_canvas.gettags(current[0]) or ()
+        except Exception:
+            return None
+        for tag in tags:
+            text = str(tag)
+            if text.startswith("node:"):
+                key = text.split(":", 1)[1].strip()
+                if key:
+                    return key
+        return None
+
+    def _on_canvas_node_click(self, event=None):
+        key = self._canvas_current_node_key()
+        if not key:
+            return None
+        self._pan_active = False
+        self.select_system_node(key)
+        return "break"
+
+    def _on_canvas_node_double_click(self, event=None):
+        key = self._canvas_current_node_key()
+        if not key:
+            return None
+        self._pan_active = False
+        self.select_system_node(key)
+        node = self._nodes.get(key)
+        if node is not None:
+            self._center_world_point(node.x, node.y)
+            self._redraw_scene()
+            self.map_status_var.set(f"Mapa: wycentrowano na systemie {node.system_name}.")
+        return "break"
+
+    def _services_label(self, row: dict[str, Any]) -> str:
+        services = dict(row.get("services") or {})
+        tokens: list[str] = []
+        if bool(services.get("has_uc")):
+            tokens.append("UC")
+        if bool(services.get("has_vista")):
+            tokens.append("Vista")
+        if bool(services.get("has_market")):
+            tokens.append("Mkt")
+        return ",".join(tokens) if tokens else "-"
+
+    def select_system_node(self, node_key: str) -> dict[str, Any]:
+        key = _as_text(node_key)
+        node = self._nodes.get(key)
+        if node is None:
+            return {"ok": False, "reason": "node_not_found", "node_key": key}
+
+        self._selected_node_key = key
+        self._redraw_scene()
+
+        stations_rows, stations_meta = self.data_provider.get_stations_for_system(
+            system_address=node.system_address,
+            system_name=node.system_name,
+        )
+        self._populate_system_details(node=node, stations_rows=stations_rows, stations_meta=stations_meta)
+        self._populate_station_list(stations_rows)
+
+        # Auto-select first station for quick drilldown UX.
+        children = self.system_stations_tree.get_children()
+        if children:
+            first_iid = str(children[0])
+            try:
+                self.system_stations_tree.selection_set(first_iid)
+                self.system_stations_tree.focus(first_iid)
+            except Exception:
+                pass
+            self._select_station_by_iid(first_iid)
+        else:
+            self.station_market_tree.delete(*self.station_market_tree.get_children())
+            self.station_details_var.set("Brak znanych stacji w playerdb dla wybranego systemu.")
+
+        self.map_status_var.set(
+            f"Mapa: wybrano system {node.system_name} | stacje={len(stations_rows)} | source=playerdb"
+        )
+        return {
+            "ok": True,
+            "node_key": key,
+            "system_name": node.system_name,
+            "stations_count": len(stations_rows),
+            "stations_meta": dict(stations_meta or {}),
+        }
+
+    def _populate_system_details(
+        self,
+        *,
+        node: _MapNode,
+        stations_rows: list[dict[str, Any]],
+        stations_meta: dict[str, Any] | None = None,
+    ) -> None:
+        lines = [
+            f"System: {node.system_name}",
+            f"Adres systemu: {node.system_address if node.system_address is not None else '-'}",
+            f"SystemId64: {node.system_id64 if node.system_id64 is not None else '-'}",
+            f"Coords: x={node.x:.1f}, y={node.y:.1f}, z={node.z:.1f}" if node.z is not None else f"Coords: x={node.x:.1f}, y={node.y:.1f}",
+            f"Source: {node.source or 'playerdb'} | Confidence: {node.confidence or 'observed'}",
+            f"Seen: first={node.first_seen_ts or '-'} | last={node.last_seen_ts or '-'}",
+            f"Stacje (playerdb): {len(stations_rows)}",
+        ]
+        meta = dict(stations_meta or {})
+        if meta:
+            lines.append(
+                f"Query: system_address={meta.get('system_address') if meta.get('system_address') is not None else '-'}"
+            )
+        self.system_details_var.set("\n".join(lines))
+
+    def _populate_system_stations_list_item(self, idx: int, row: dict[str, Any]) -> str:
+        iid = f"st:{idx}"
+        self._station_rows_by_iid[iid] = dict(row)
+        self.system_stations_tree.insert(
+            "",
+            "end",
+            iid=iid,
+            values=(
+                _as_text(row.get("station_name")) or "-",
+                _as_text(row.get("station_type")) or "-",
+                self._services_label(row),
+            ),
+        )
+        return iid
+
+    def _populate_station_list(self, stations_rows: list[dict[str, Any]]) -> None:
+        self.system_stations_tree.delete(*self.system_stations_tree.get_children())
+        self.station_market_tree.delete(*self.station_market_tree.get_children())
+        self._station_rows_by_iid.clear()
+        for idx, row in enumerate(stations_rows or []):
+            if not isinstance(row, dict):
+                continue
+            self._populate_system_stations_list_item(idx, row)
+
+    def _station_details_text(self, row: dict[str, Any]) -> str:
+        services = self._services_label(row)
+        dist_ls = row.get("distance_ls")
+        dist_text = f"{float(dist_ls):.0f} ls" if dist_ls is not None else "-"
+        return "\n".join(
+            [
+                f"Stacja: {_as_text(row.get('station_name')) or '-'}",
+                f"Typ: {_as_text(row.get('station_type')) or '-'}",
+                f"MarketID: {row.get('market_id') if row.get('market_id') is not None else '-'}",
+                f"Distance LS: {dist_text} ({_as_text(row.get('distance_ls_confidence')) or 'unknown'})",
+                f"Uslugi: {services}",
+                f"Freshness: {_as_text(row.get('freshness_ts')) or '-'} | {_as_text(row.get('confidence')) or 'observed'}",
+            ]
+        )
+
+    def _populate_station_market_snapshots(self, station_row: dict[str, Any]) -> dict[str, Any]:
+        self.station_market_tree.delete(*self.station_market_tree.get_children())
+        market_id = station_row.get("market_id")
+        if market_id is None:
+            self.station_details_var.set(self._station_details_text(station_row))
+            return {"ok": True, "market_id": None, "snapshots": 0, "reason": "no_market_id"}
+
+        try:
+            snapshots, meta = self.data_provider.get_market_last_seen(int(market_id), limit=5)
+        except Exception as exc:
+            self.station_details_var.set(self._station_details_text(station_row))
+            self.station_market_tree.insert("", "end", values=("-", "-", f"ERR: {type(exc).__name__}"))
+            return {"ok": False, "market_id": market_id, "reason": "provider_error"}
+
+        for idx, snap in enumerate(snapshots or []):
+            ts = _as_text(snap.get("snapshot_ts")) or "-"
+            items_count = int(snap.get("commodities_count") or len(list(snap.get("items") or [])) or 0)
+            freshness_label = _format_age_short(snap.get("freshness_ts"))
+            conf = _as_text(snap.get("confidence")) or "observed"
+            self.station_market_tree.insert(
+                "",
+                "end",
+                iid=f"mk:{idx}",
+                values=(ts, str(items_count), f"{freshness_label} | {conf}"),
+            )
+
+        self.station_details_var.set(
+            self._station_details_text(station_row)
+            + f"\nSnapshoty rynku: {len(snapshots)}"
+        )
+        return {"ok": True, "market_id": int(market_id), "snapshots": len(snapshots), "meta": dict(meta or {})}
+
+    def _on_station_tree_selected(self, _event=None) -> None:
+        selection = self.system_stations_tree.selection() or ()
+        if not selection:
+            return
+        self._select_station_by_iid(str(selection[0]))
+
+    def _select_station_by_iid(self, iid: str) -> dict[str, Any]:
+        row = self._station_rows_by_iid.get(str(iid))
+        if not isinstance(row, dict):
+            return {"ok": False, "reason": "station_row_not_found", "iid": str(iid)}
+        result = self._populate_station_market_snapshots(row)
+        return {"ok": True, "iid": str(iid), "station_name": _as_text(row.get("station_name")), **result}
 
     def reset_view(self) -> None:
         self.view_scale = 1.0
