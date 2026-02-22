@@ -27,6 +27,22 @@ def _is_valid_feed_item(item: Any) -> bool:
     return bool(event_name)
 
 
+def _feed_item_signature(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    parts = [
+        str(item.get("timestamp") or "").strip(),
+        str(item.get("event_name") or "").strip(),
+        str(item.get("system_name") or "").strip(),
+        str(item.get("station_name") or "").strip(),
+        str(item.get("body_name") or "").strip(),
+        str(item.get("summary") or "").strip(),
+    ]
+    if not any(parts):
+        return ""
+    return "\x1f".join(parts)
+
+
 def _read_all_items(path: str) -> list[dict[str, Any]]:
     if not path or not os.path.isfile(path):
         return []
@@ -85,6 +101,11 @@ def append_logbook_feed_cache_item(
     cache_path = path or _default_logbook_cache_file()
     max_items = max(1, int(limit or _DEFAULT_LIMIT))
     rows = _read_all_items(cache_path)
+    incoming_sig = _feed_item_signature(item)
+    if incoming_sig:
+        for row in rows:
+            if _feed_item_signature(row) == incoming_sig:
+                return True
     rows.append(dict(item))
     if len(rows) > max_items:
         rows = rows[-max_items:]
@@ -102,4 +123,3 @@ def clear_logbook_feed_cache(*, path: str | None = None) -> None:
             os.remove(cache_path)
     except Exception:
         return
-

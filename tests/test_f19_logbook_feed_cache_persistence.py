@@ -54,7 +54,17 @@ class F19LogbookFeedCachePersistenceTests(unittest.TestCase):
         clear_logbook_feed_cache(path=self.cache_path)
         self.assertFalse(os.path.exists(self.cache_path))
 
+    def test_append_skips_duplicate_feed_item_signature(self) -> None:
+        item = self._item(3)
+        ok1 = append_logbook_feed_cache_item(item, path=self.cache_path, limit=10)
+        ok2 = append_logbook_feed_cache_item(dict(item), path=self.cache_path, limit=10)
+        self.assertTrue(ok1)
+        self.assertTrue(ok2)
+
+        rows = load_logbook_feed_cache(path=self.cache_path, limit=10)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].get("system_name"), "SYS-3")
+
 
 if __name__ == "__main__":
     unittest.main()
-
