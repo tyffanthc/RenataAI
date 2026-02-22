@@ -1,0 +1,424 @@
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from logic import player_local_db
+
+
+def _as_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _parse_iso_ts(value: Any) -> datetime | None:
+    text = _as_text(value)
+    if not text:
+        return None
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _cutoff_for_time_range(value: Any) -> datetime | None:
+    text = _as_text(value).lower()
+    if not text or text in {"all", "any", "*"}:
+        return None
+    now = datetime.now(timezone.utc)
+    if text in {"7d", "7", "week", "1w"}:
+        return now - timedelta(days=7)
+    if text in {"30d", "30", "month", "1m"}:
+        return now - timedelta(days=30)
+    return None
+
+
+def _max_age_for_freshness_filter(value: Any) -> timedelta | None:
+    text = _as_text(value).lower()
+    if not text or text in {"all", "any", "*"}:
+        return None
+    if "6h" in text:
+        return timedelta(hours=6)
+    if "24h" in text:
+        return timedelta(hours=24)
+    if "7d" in text or "7 d" in text:
+        return timedelta(days=7)
+    return None
+
+
+def _age_hours(ts: str) -> float | None:
+    dt = _parse_iso_ts(ts)
+    if dt is None:
+        return None
+    return max(0.0, (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0)
+
+
+class MapDataProvider:
+    """
+    Warstwa adaptera danych dla Personal Galaxy Map.
+
+    Cel:
+    - UI mapy nie wykonuje bezposredniego SQL,
+    - adapter zwraca rekordy z `source/freshness/confidence`,
+    - kontrakt jest zgodny ze spieciem PlayerDB/Cash-In.
+    """
+
+    def __init__(self, *, db_path: str | None = None) -> None:
+        self.db_path = str(db_path or player_local_db.default_playerdb_path())
+
+    def get_system_nodes(
+        self,
+        time_range: str = "all",
+        source_filter: str = "observed_only",
+        *,
+        limit: int = 5000,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        cutoff = _cutoff_for_time_range(time_range)
+        max_rows = max(1, int(limit or 5000))
+        sql = """
+            SELECT
+                system_name,
+                system_address,
+                system_id64,
+                x, y, z,
+                source,
+                confidence,
+                first_seen_ts,
+                last_seen_ts
+            FROM systems
+            WHERE 1=1
+        """
+        params: list[Any] = []
+        if cutoff is not None:
+            sql += " AND COALESCE(last_seen_ts, first_seen_ts) >= ?"
+            params.append(cutoff.isoformat().replace("+00:00", "Z"))
+        # PlayerDB baseline jest observed-only; `include enriched` zostawiamy jako future-ready no-op.
+        if _as_text(source_filter).lower() in {"observed_only", "observed-only"}:
+            sql += " AND (source IS NULL OR source = '' OR lower(source) IN ('journal','market_json','playerdb'))"
+        sql += " ORDER BY COALESCE(last_seen_ts, first_seen_ts) DESC, system_name COLLATE NOCASE LIMIT ?"
+        params.append(max_rows)
+
+        rows_out: list[dict[str, Any]] = []
+        with player_local_db.playerdb_connection(path=self.db_path, ensure_schema=True) as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        for row in rows:
+            freshness_ts = _as_text(row["last_seen_ts"] or row["first_seen_ts"])
+            rows_out.append(
+                {
+                    "system_name": _as_text(row["system_name"]),
+                    "system_address": row["system_address"],
+                    "system_id64": row["system_id64"],
+                    "x": float(row["x"]) if row["x"] is not None else None,
+                    "y": float(row["y"]) if row["y"] is not None else None,
+                    "z": float(row["z"]) if row["z"] is not None else None,
+                    "first_seen_ts": _as_text(row["first_seen_ts"]),
+                    "last_seen_ts": _as_text(row["last_seen_ts"]),
+                    "source": _as_text(row["source"]) or "playerdb",
+                    "confidence": _as_text(row["confidence"]) or "observed",
+                    "freshness_ts": freshness_ts,
+                }
+            )
+
+        return rows_out, {
+            "count": len(rows_out),
+            "time_range": _as_text(time_range) or "all",
+            "source_filter": _as_text(source_filter) or "observed_only",
+            "db_path": self.db_path,
+        }
+
+    def get_edges(
+        self,
+        time_range: str = "all",
+        *,
+        limit: int = 10000,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """
+        F20-1 kontrakt adaptera:
+        - zwraca meta nawet jesli brak danych skokow w aktualnym schema baseline.
+        - realny renderer travel edges w F20-3 moze rozszerzyc to o ingest/query jumps.
+        """
+        _ = (time_range, limit)
+        return [], {
+            "count": 0,
+            "time_range": _as_text(time_range) or "all",
+            "available": False,
+            "reason": "playerdb_jumps_not_ingested",
+            "db_path": self.db_path,
+        }
+
+    def get_stations_for_system(
+        self,
+        system_id: Any = None,
+        *,
+        system_address: int | None = None,
+        system_name: str | None = None,
+        limit: int = 200,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        max_rows = max(1, int(limit or 200))
+        sys_addr = system_address
+        if sys_addr is None and isinstance(system_id, int):
+            sys_addr = int(system_id)
+        sys_name_text = _as_text(system_name)
+        if not sys_name_text and system_id is not None and not isinstance(system_id, int):
+            sys_name_text = _as_text(system_id)
+
+        sql = """
+            SELECT
+                station_name,
+                market_id,
+                station_type,
+                is_fleet_carrier,
+                distance_ls,
+                distance_ls_confidence,
+                has_uc,
+                has_vista,
+                has_market,
+                source,
+                confidence,
+                first_seen_ts,
+                last_seen_ts,
+                services_freshness_ts,
+                system_name,
+                system_address
+            FROM stations
+            WHERE 1=1
+        """
+        params: list[Any] = []
+        if sys_addr is not None:
+            sql += " AND system_address = ?"
+            params.append(int(sys_addr))
+        elif sys_name_text:
+            sql += " AND system_name = ? COLLATE NOCASE"
+            params.append(sys_name_text)
+        sql += " ORDER BY COALESCE(distance_ls, 1e18), COALESCE(services_freshness_ts, last_seen_ts) DESC, station_name COLLATE NOCASE LIMIT ?"
+        params.append(max_rows)
+
+        out: list[dict[str, Any]] = []
+        with player_local_db.playerdb_connection(path=self.db_path, ensure_schema=True) as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        for row in rows:
+            freshness_ts = _as_text(row["services_freshness_ts"] or row["last_seen_ts"] or row["first_seen_ts"])
+            out.append(
+                {
+                    "system_name": _as_text(row["system_name"]),
+                    "system_address": row["system_address"],
+                    "station_name": _as_text(row["station_name"]),
+                    "market_id": row["market_id"],
+                    "station_type": _as_text(row["station_type"]) or "station",
+                    "is_fleet_carrier": bool(int(row["is_fleet_carrier"] or 0)),
+                    "distance_ls": float(row["distance_ls"]) if row["distance_ls"] is not None else None,
+                    "distance_ls_confidence": _as_text(row["distance_ls_confidence"]) or "unknown",
+                    "services": {
+                        "has_uc": bool(int(row["has_uc"] or 0)),
+                        "has_vista": bool(int(row["has_vista"] or 0)),
+                        "has_market": bool(int(row["has_market"] or 0)),
+                    },
+                    "first_seen_ts": _as_text(row["first_seen_ts"]),
+                    "last_seen_ts": _as_text(row["last_seen_ts"]),
+                    "services_freshness_ts": _as_text(row["services_freshness_ts"]),
+                    "source": _as_text(row["source"]) or "playerdb",
+                    "confidence": _as_text(row["confidence"]) or "observed",
+                    "freshness_ts": freshness_ts,
+                }
+            )
+
+        return out, {
+            "count": len(out),
+            "system_address": sys_addr,
+            "system_name": sys_name_text,
+            "db_path": self.db_path,
+        }
+
+    def get_market_last_seen(
+        self,
+        market_id: int,
+        limit: int = 5,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        max_rows = max(1, int(limit or 5))
+        market_id_int = int(market_id)
+        with player_local_db.playerdb_connection(path=self.db_path, ensure_schema=True) as conn:
+            snapshots = conn.execute(
+                """
+                SELECT id, system_name, station_name, station_market_id, snapshot_ts, freshness_ts,
+                       source, confidence, hash_sig, commodities_count
+                FROM market_snapshots
+                WHERE station_market_id = ?
+                ORDER BY snapshot_ts DESC, id DESC
+                LIMIT ?;
+                """,
+                (market_id_int, max_rows),
+            ).fetchall()
+            snapshot_ids = [int(r["id"]) for r in snapshots]
+            items_by_snapshot: dict[int, list[dict[str, Any]]] = {sid: [] for sid in snapshot_ids}
+            if snapshot_ids:
+                placeholders = ",".join("?" for _ in snapshot_ids)
+                item_rows = conn.execute(
+                    f"""
+                    SELECT snapshot_id, commodity, buy_price, sell_price, stock, supply, demand,
+                           mean_price, stock_bracket, supply_bracket, demand_bracket
+                    FROM market_snapshot_items
+                    WHERE snapshot_id IN ({placeholders})
+                    ORDER BY snapshot_id DESC, commodity COLLATE NOCASE;
+                    """,
+                    tuple(snapshot_ids),
+                ).fetchall()
+                for row in item_rows:
+                    sid = int(row["snapshot_id"])
+                    items_by_snapshot.setdefault(sid, []).append(
+                        {
+                            "commodity": _as_text(row["commodity"]),
+                            "buy_price": row["buy_price"],
+                            "sell_price": row["sell_price"],
+                            "stock": row["stock"],
+                            "supply": row["supply"],
+                            "demand": row["demand"],
+                            "mean_price": row["mean_price"],
+                            "stock_bracket": row["stock_bracket"],
+                            "supply_bracket": row["supply_bracket"],
+                            "demand_bracket": row["demand_bracket"],
+                        }
+                    )
+
+        out: list[dict[str, Any]] = []
+        for row in snapshots:
+            sid = int(row["id"])
+            out.append(
+                {
+                    "snapshot_id": sid,
+                    "system_name": _as_text(row["system_name"]),
+                    "station_name": _as_text(row["station_name"]),
+                    "market_id": row["station_market_id"],
+                    "snapshot_ts": _as_text(row["snapshot_ts"]),
+                    "freshness_ts": _as_text(row["freshness_ts"]),
+                    "source": _as_text(row["source"]) or "market_json",
+                    "confidence": _as_text(row["confidence"]) or "observed",
+                    "commodities_count": int(row["commodities_count"] or 0),
+                    "hash_sig": _as_text(row["hash_sig"]),
+                    "items": items_by_snapshot.get(sid, []),
+                }
+            )
+
+        return out, {
+            "count": len(out),
+            "market_id": market_id_int,
+            "db_path": self.db_path,
+        }
+
+    def get_top_prices(
+        self,
+        commodity: str,
+        mode: str,
+        time_range: str = "all",
+        freshness_filter: str = "any",
+        *,
+        limit: int = 5,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        commodity_name = _as_text(commodity)
+        mode_norm = _as_text(mode).lower()
+        if mode_norm not in {"buy", "sell"}:
+            mode_norm = "sell"
+        max_rows = max(1, int(limit or 5))
+        cutoff = _cutoff_for_time_range(time_range)
+        max_age = _max_age_for_freshness_filter(freshness_filter)
+
+        sql = """
+            SELECT
+                ms.id AS snapshot_id,
+                ms.system_name,
+                ms.station_name,
+                ms.station_market_id,
+                ms.snapshot_ts,
+                ms.freshness_ts,
+                ms.source,
+                ms.confidence,
+                msi.commodity,
+                msi.buy_price,
+                msi.sell_price,
+                s.distance_ls,
+                s.distance_ls_confidence,
+                s.has_uc,
+                s.has_vista,
+                s.has_market
+            FROM market_snapshot_items msi
+            JOIN market_snapshots ms ON ms.id = msi.snapshot_id
+            LEFT JOIN stations s
+              ON ms.station_market_id IS NOT NULL AND s.market_id = ms.station_market_id
+            WHERE msi.commodity = ? COLLATE NOCASE
+        """
+        params: list[Any] = [commodity_name]
+        if cutoff is not None:
+            sql += " AND ms.snapshot_ts >= ?"
+            params.append(cutoff.isoformat().replace("+00:00", "Z"))
+        if mode_norm == "sell":
+            sql += " AND msi.sell_price IS NOT NULL"
+        else:
+            sql += " AND msi.buy_price IS NOT NULL"
+        sql += " ORDER BY ms.snapshot_ts DESC, ms.id DESC"
+
+        with player_local_db.playerdb_connection(path=self.db_path, ensure_schema=True) as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+
+        # Last-seen per station (market_id; fallback system+station)
+        seen_keys: set[str] = set()
+        filtered: list[dict[str, Any]] = []
+        now = datetime.now(timezone.utc)
+        for row in rows:
+            freshness_ts = _as_text(row["freshness_ts"] or row["snapshot_ts"])
+            if max_age is not None:
+                dt = _parse_iso_ts(freshness_ts)
+                if dt is None or (now - dt) > max_age:
+                    continue
+            key = (
+                f"mid:{int(row['station_market_id'])}"
+                if row["station_market_id"] is not None
+                else f"{_as_text(row['system_name']).casefold()}::{_as_text(row['station_name']).casefold()}"
+            )
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            price_value = row["buy_price"] if mode_norm == "buy" else row["sell_price"]
+            filtered.append(
+                {
+                    "commodity": _as_text(row["commodity"]),
+                    "mode": mode_norm,
+                    "price": int(price_value or 0),
+                    "buy_price": row["buy_price"],
+                    "sell_price": row["sell_price"],
+                    "system_name": _as_text(row["system_name"]),
+                    "station_name": _as_text(row["station_name"]),
+                    "market_id": row["station_market_id"],
+                    "snapshot_id": int(row["snapshot_id"]),
+                    "snapshot_ts": _as_text(row["snapshot_ts"]),
+                    "freshness_ts": freshness_ts,
+                    "freshness_age_h": _age_hours(freshness_ts),
+                    "source": _as_text(row["source"]) or "market_json",
+                    "confidence": _as_text(row["confidence"]) or "observed",
+                    "distance_ls": float(row["distance_ls"]) if row["distance_ls"] is not None else None,
+                    "distance_ls_confidence": _as_text(row["distance_ls_confidence"]) or "unknown",
+                    "services": {
+                        "has_uc": bool(int(row["has_uc"] or 0)),
+                        "has_vista": bool(int(row["has_vista"] or 0)),
+                        "has_market": bool(int(row["has_market"] or 0)),
+                    },
+                }
+            )
+
+        if mode_norm == "sell":
+            filtered.sort(key=lambda r: (-int(r["price"]), _as_text(r["freshness_ts"]), _as_text(r["station_name"]).casefold()))
+        else:
+            filtered.sort(key=lambda r: (int(r["price"]) if r["price"] is not None else 10**18, _as_text(r["freshness_ts"]), _as_text(r["station_name"]).casefold()))
+        filtered = filtered[:max_rows]
+
+        return filtered, {
+            "count": len(filtered),
+            "commodity": commodity_name,
+            "mode": mode_norm,
+            "time_range": _as_text(time_range) or "all",
+            "freshness_filter": _as_text(freshness_filter) or "any",
+            "db_path": self.db_path,
+        }
+
