@@ -15,6 +15,7 @@ from logic.events import survival_rebuy_awareness
 from logic.events import combat_awareness
 from logic.events import high_g_warning
 from logic import cargo_value_estimator
+from logic import player_local_db
 from logic.logbook_feed import build_logbook_feed_item
 from logic.utils import MSG_QUEUE
 from logic.utils.renata_log import log_event_throttled
@@ -97,6 +98,16 @@ class EventHandler:
 
     def on_market_update(self, market_data: dict, gui_ref=None) -> None:
         try:
+            from app.state import app_state
+
+            player_local_db.ingest_market_json(
+                market_data,
+                fallback_system_name=str(getattr(app_state, "current_system", "") or "").strip() or None,
+                fallback_station_name=str(getattr(app_state, "current_station", "") or "").strip() or None,
+            )
+        except Exception as exc:
+            _log_router_fallback("market.playerdb_ingest", "market update: playerdb ingest failed", exc)
+        try:
             cargo_value_estimator.update_market_snapshot(market_data, source="market_json")
         except Exception as exc:
             _log_router_fallback("market.value_estimator", "market update: value estimator sync failed", exc)
@@ -143,6 +154,22 @@ class EventHandler:
         typ = ev.get("event")
         if not typ:
             return
+
+        if typ in {"Location", "FSDJump", "CarrierJump", "Docked"}:
+            try:
+                from app.state import app_state
+
+                player_local_db.ingest_journal_event(
+                    ev,
+                    fallback_system_name=str(getattr(app_state, "current_system", "") or "").strip() or None,
+                )
+            except Exception as exc:
+                _log_router_fallback(
+                    "journal.playerdb_ingest",
+                    "journal event: playerdb ingest failed",
+                    exc,
+                    event=str(typ),
+                )
 
         try:
             feed_item = build_logbook_feed_item(ev)
