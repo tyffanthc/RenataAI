@@ -46,8 +46,26 @@ class F14QualityGatesAndSmokeTests(unittest.TestCase):
         _reset_offline_index_cache_for_tests()
         cash_in_assistant._reset_cash_in_swr_cache_for_tests()
         cash_in_assistant._reset_cash_in_local_known_cache_for_tests()
+        self._playerdb_patch = patch(
+            "logic.events.cash_in_assistant.station_candidates_from_playerdb",
+            return_value=(
+                [],
+                {
+                    "lookup_status": "disabled_for_f14_test",
+                    "query_mode": "none",
+                    "origin_coords_used": False,
+                    "origin_coords_from_playerdb": False,
+                    "coords_missing_count": 0,
+                },
+            ),
+        )
+        self._playerdb_patch.start()
 
     def tearDown(self) -> None:
+        try:
+            self._playerdb_patch.stop()
+        except Exception:
+            pass
         config.config._settings = self._orig_settings
         app_state.current_system = self._saved_system
         app_state.current_station = self._saved_station
@@ -306,4 +324,3 @@ class F14QualityGatesAndSmokeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
