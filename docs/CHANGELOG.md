@@ -1,11 +1,61 @@
 # CHANGELOG.md
 
-Ostatnia aktualizacja: 2026-02-16
+Ostatnia aktualizacja: 2026-02-21
 Zakres: skondensowane zmiany release na podstawie `docs/internal/LAST_TICKET.MD`.
 
 ---
 
-## v0.9.5 - changelog (w trakcie)
+## v0.9.5 - changelog (domkniety)
+
+### FLOW-F11-CASH-IN-ASSISTANT-HARDENING (P0/P1)
+- Domknieto paczke F11:
+  - payout policy `UC/VISTA` (`brutto/fee/netto`),
+  - kontrakt `StationCandidate` + provider details,
+  - ranking `SAFE/FAST/SECURE`,
+  - route handoff tylko na realnym celu (`system+stacja`),
+  - startjump callouty z confidence policy,
+  - quality gates i smoke.
+
+### FLOW-F12-CASH-IN-CROSS-SYSTEM-NEAREST-STATION (P0)
+- Dodano cross-system discovery kandydatow stacji pod Cash-In.
+- Domknieto strict handoff:
+  - brak placeholder targetu,
+  - jasny komunikat blokady, gdy nie ma realnego celu.
+- Quality pack F12 + smoke PASS.
+
+### FLOW-F13-CASH-IN-PROVIDER-RESILIENCE (P0/P1)
+- Wdrozono odpornosc providerow:
+  - circuit breaker per endpoint,
+  - retry/backoff,
+  - stale cache (SWR),
+  - fallback `local_known` + UX degradacji z reason codes.
+- Quality pack F13 + smoke PASS.
+
+### FLOW-F14-CASH-IN-NEAREST-REAL-TARGET-FIX (P0)
+- Wdrozono limit diagnostyczny EDSM nearby (`requested` vs `effective radius` + reason).
+- Dodano fallback `offline_index` (Spansh-derived) dla scenariuszy `providers_empty/503`.
+- Domknieto quality gates:
+  - online real target nie jest nadpisywany przez offline fallback,
+  - offline/no-internet nadal moze zwrocic realny target (gdy index jest dostepny).
+
+### FLOW-F15-CASH-IN-DUMP-TO-OFFLINE-INDEX (P0/P1)
+- Settings Cash-In:
+  - downloader `galaxy_stations.json.gz`,
+  - builder `offline_station_index.json`,
+  - progress/status i auto-wiring sciezki indexu.
+- Domknieto quality gates F15 (dump -> index -> runtime real target).
+
+### FLOW-F15-CASH-IN-USER-SUPPLIED-DATA-ATTRIBUTION-UI-01 (P1)
+- Dla dump/index dodano jawny model prawny:
+  - Renata nie hostuje ani nie dystrybuuje dumpow Spansh,
+  - dump jest user-supplied (lokalny import),
+  - atrybucja: `Spansh (c) Gareth Harper`.
+- Zapis dopiety w UI i publicznych README.
+
+### FLOW-F16-PLAYER_LOCAL_DB (bridge start)
+- Rozpisano etap F16 (PLAYER_LOCAL_DB) w dokumentacji.
+- Runtime bridge dla cash-in:
+  - fallback order preferuje lokalne dane gracza (`local_known`) przed `offline_index`.
 
 ### FLOW-F6-RELEASE-HARDENING-AND-SMOKE-01 (P0)
 - Domknieto finalny gate FREE/PUB dla F6:

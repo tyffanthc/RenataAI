@@ -3,7 +3,7 @@
 Publiczna dokumentacja Renaty.
 
 ## Status (FREE/PUB)
-- Ostatnia aktualizacja: 2026-02-16
+- Ostatnia aktualizacja: 2026-02-21
 - Fazy 1-5: DONE
 - Faza 6: DONE (FREE release hardening + smoke)
 
@@ -18,6 +18,11 @@ Publiczna dokumentacja Renaty.
 - Ten katalog nie zawiera informacji z dokumentacji wewnetrznej.
 - Brak tu szczegolow implementacyjnych, heurystyk, progow i dokumentow operacyjnych.
 - Brak linkow do dokumentacji wewnetrznej.
+
+## User-supplied data (Cash-In)
+- Renata nie dostarcza ani nie hostuje dumpow danych Spansh.
+- Uzytkownik pobiera dump samodzielnie ze zrodla Spansh i importuje go lokalnie.
+- Zrodlo danych: Spansh (c) Gareth Harper.
 
 ## Dokumenty startowe
 - [FLOW.md](FLOW.md)

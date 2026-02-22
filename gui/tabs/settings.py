@@ -5,6 +5,7 @@ from tkinter import ttk, filedialog, messagebox
 from typing import Optional, Callable, Dict, Any
 import os
 import threading
+import time
 import urllib.request
 import config
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
@@ -70,8 +71,8 @@ class SettingsTab(ttk.Frame):
     def _default_cash_in_data_dir(self) -> str:
         base = os.getenv("APPDATA") or os.getenv("LOCALAPPDATA")
         if base:
-            return os.path.join(base, "RenataAI", "data")
-        return os.path.join(config.BASE_DIR, "data")
+            return os.path.join(base, "RenataAI", "data", "cash_in")
+        return os.path.join(config.BASE_DIR, "data", "cash_in")
 
     def _default_cash_in_dump_path(self) -> str:
         return os.path.join(self._default_cash_in_data_dir(), "galaxy_stations.json.gz")
@@ -145,7 +146,7 @@ class SettingsTab(ttk.Frame):
         self.var_cash_in_dump_path = tk.StringVar(value=self._default_cash_in_dump_path())
         self.var_cash_in_dump_progress = tk.DoubleVar(value=0.0)
         self.var_cash_in_dump_status = tk.StringVar(
-            value="Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data."
+            value="Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data/cash_in."
         )
         self.var_cash_in_index_build_progress = tk.DoubleVar(value=0.0)
         self.var_cash_in_index_build_status = tk.StringVar(
@@ -1115,7 +1116,10 @@ class SettingsTab(ttk.Frame):
                 "Przycisk pobiera surowy dump stacji Spansh (plik .json.gz, zwykle kilka GB) "
                 "do katalogu danych. Runtime cash-in nie czyta dumpa .json.gz bezposrednio: "
                 "po pobraniu uruchom 'Zbuduj offline index', aby wygenerowac JSON kompatybilny "
-                "z fallbackiem i automatycznie ustawic 'Offline index (JSON)'."
+                "z fallbackiem i automatycznie ustawic 'Offline index (JSON)'.\n"
+                "Model prawny (MVP): Renata nie dostarcza ani nie hostuje danych Spansh. "
+                "Uzytkownik pobiera dump samodzielnie ze zrodla Spansh i importuje go lokalnie.\n"
+                "Zrodlo danych: Spansh (c) Gareth Harper."
             ),
             foreground="#888888",
             wraplength=920,
@@ -1911,16 +1915,13 @@ class SettingsTab(ttk.Frame):
         )
         self.var_cash_in_dump_progress.set(0.0)
         self.var_cash_in_dump_status.set(
-            "Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data."
+            "Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data/cash_in."
         )
         self.var_cash_in_index_build_progress.set(0.0)
         self.var_cash_in_index_build_status.set(
             "Brak konwersji. Uzyj 'Zbuduj offline index' po pobraniu dumpa."
         )
-        self.var_cash_in_index_build_progress.set(0.0)
-        self.var_cash_in_index_build_status.set(
-            "Brak konwersji. Uzyj 'Zbuduj offline index' po pobraniu dumpa."
-        )
+        self._refresh_cash_in_status_from_files()
         self.var_route_progress_messages.set(
             cfg.get("route_progress_speech", self.var_route_progress_messages.get())
         )
@@ -2422,13 +2423,16 @@ class SettingsTab(ttk.Frame):
             filetypes=[("JSON", "*.json"), ("Wszystkie pliki", "*.*")],
         )
         if path:
-            self.var_cash_in_offline_index_path.set(path)
+            self.var_cash_in_offline_index_path.set(self._normalize_path(path))
+            self._persist_cash_in_paths_silent()
+            self._refresh_cash_in_status_from_files()
 
     def _on_browse_cash_in_dump_path(self) -> None:
         path = filedialog.asksaveasfilename(
             title="Zapisz dump Spansh jako...",
             defaultextension=".json.gz",
             initialfile="galaxy_stations.json.gz",
+            initialdir=self._default_cash_in_data_dir(),
             filetypes=[
                 ("Gzip JSON", "*.json.gz"),
                 ("Gzip", "*.gz"),
@@ -2436,7 +2440,9 @@ class SettingsTab(ttk.Frame):
             ],
         )
         if path:
-            self.var_cash_in_dump_path.set(path)
+            self.var_cash_in_dump_path.set(self._normalize_path(path))
+            self._persist_cash_in_paths_silent()
+            self._refresh_cash_in_status_from_files()
 
     @staticmethod
     def _format_bytes_human(value: int) -> str:
@@ -2450,6 +2456,97 @@ class SettingsTab(ttk.Frame):
         if unit == "B":
             return f"{int(size)} {unit}"
         return f"{size:.1f} {unit}"
+
+    def _normalize_path(self, value: str) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return ""
+        expanded = os.path.expandvars(os.path.expanduser(raw))
+        return os.path.normpath(expanded)
+
+    def _persist_cash_in_paths_silent(self) -> None:
+        payload = {
+            "cash_in.dump_download_path": str(self.var_cash_in_dump_path.get() or "").strip(),
+            "cash_in.offline_index_path": str(self.var_cash_in_offline_index_path.get() or "").strip(),
+        }
+        try:
+            config.config.save(payload)
+        except Exception:
+            pass
+
+    def _resolve_existing_cash_in_path(self, path: str) -> str:
+        normalized = self._normalize_path(path)
+        if not normalized:
+            return ""
+        if os.path.isfile(normalized):
+            return normalized
+        if not os.path.isabs(normalized):
+            appdata = os.getenv("APPDATA") or os.getenv("LOCALAPPDATA")
+            if appdata:
+                candidates = [
+                    os.path.join(appdata, "RenataAI", "data", "cash_in", normalized),
+                    os.path.join(appdata, "RenataAI", "data", normalized),
+                ]
+                for candidate in candidates:
+                    candidate_norm = self._normalize_path(candidate)
+                    if candidate_norm and os.path.isfile(candidate_norm):
+                        return candidate_norm
+        return ""
+
+    def _build_file_presence_status(self, path: str, *, label: str) -> tuple[str, str]:
+        resolved = self._resolve_existing_cash_in_path(path)
+        if not resolved:
+            return "", ""
+        try:
+            size_text = self._format_bytes_human(int(os.path.getsize(resolved)))
+        except Exception:
+            size_text = "?"
+        try:
+            mtime = float(os.path.getmtime(resolved))
+            ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(mtime))
+        except Exception:
+            ts = "-"
+        return f"{label}: {resolved} | {size_text} | mtime {ts}", resolved
+
+    def _refresh_cash_in_status_from_files(self) -> None:
+        dump_status, dump_resolved = self._build_file_presence_status(
+            self.var_cash_in_dump_path.get(),
+            label="Dump wykryty",
+        )
+        path_changed = False
+        if dump_resolved:
+            current_dump = self._normalize_path(self.var_cash_in_dump_path.get())
+            if current_dump != dump_resolved:
+                self.var_cash_in_dump_path.set(dump_resolved)
+                path_changed = True
+        if dump_status:
+            self.var_cash_in_dump_progress.set(100.0)
+            self.var_cash_in_dump_status.set(dump_status)
+        else:
+            self.var_cash_in_dump_progress.set(0.0)
+            self.var_cash_in_dump_status.set(
+                "Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data/cash_in."
+            )
+
+        index_status, index_resolved = self._build_file_presence_status(
+            self.var_cash_in_offline_index_path.get(),
+            label="Offline index wykryty",
+        )
+        if index_resolved:
+            current_index = self._normalize_path(self.var_cash_in_offline_index_path.get())
+            if current_index != index_resolved:
+                self.var_cash_in_offline_index_path.set(index_resolved)
+                path_changed = True
+        if index_status:
+            self.var_cash_in_index_build_progress.set(100.0)
+            self.var_cash_in_index_build_status.set(index_status)
+        else:
+            self.var_cash_in_index_build_progress.set(0.0)
+            self.var_cash_in_index_build_status.set(
+                "Brak konwersji. Uzyj 'Zbuduj offline index' po pobraniu dumpa."
+            )
+        if path_changed:
+            self._persist_cash_in_paths_silent()
 
     def _set_cash_in_dump_ui_busy(self, busy: bool) -> None:
         self._cash_in_dump_download_active = bool(busy)
@@ -2471,7 +2568,24 @@ class SettingsTab(ttk.Frame):
 
         url = str(self.var_cash_in_dump_url.get() or "").strip()
         path_raw = str(self.var_cash_in_dump_path.get() or "").strip()
-        path = os.path.expandvars(os.path.expanduser(path_raw))
+        current_path = self._normalize_path(path_raw) or self._default_cash_in_dump_path()
+        initial_dir = os.path.dirname(current_path) or self._default_cash_in_data_dir()
+        initial_file = os.path.basename(current_path) or "galaxy_stations.json.gz"
+
+        selected_path = filedialog.asksaveasfilename(
+            title="Pobierz dump Spansh jako...",
+            defaultextension=".json.gz",
+            initialdir=initial_dir,
+            initialfile=initial_file,
+            filetypes=[
+                ("Gzip JSON", "*.json.gz"),
+                ("Gzip", "*.gz"),
+                ("Wszystkie pliki", "*.*"),
+            ],
+        )
+        if not selected_path:
+            return
+        path = self._normalize_path(selected_path)
 
         if not url or not (url.startswith("https://") or url.startswith("http://")):
             messagebox.showwarning("Cash-In dump", "Podaj poprawny URL (http/https).")
@@ -2492,6 +2606,7 @@ class SettingsTab(ttk.Frame):
                 return
 
         self.var_cash_in_dump_path.set(path)
+        self._persist_cash_in_paths_silent()
         self.var_cash_in_dump_progress.set(0.0)
         self.var_cash_in_dump_status.set("Start pobierania dumpa Spansh...")
         self._set_cash_in_dump_ui_busy(True)
@@ -2546,6 +2661,7 @@ class SettingsTab(ttk.Frame):
                     lambda: (
                         self.var_cash_in_dump_progress.set(100.0),
                         self.var_cash_in_dump_status.set(done_msg),
+                        self._persist_cash_in_paths_silent(),
                         self._set_cash_in_dump_ui_busy(False),
                     ),
                 )
@@ -2577,8 +2693,8 @@ class SettingsTab(ttk.Frame):
 
         dump_path_raw = str(self.var_cash_in_dump_path.get() or "").strip()
         index_path_raw = str(self.var_cash_in_offline_index_path.get() or "").strip()
-        dump_path = os.path.expandvars(os.path.expanduser(dump_path_raw))
-        index_path = os.path.expandvars(os.path.expanduser(index_path_raw))
+        dump_path = self._normalize_path(dump_path_raw)
+        index_path = self._normalize_path(index_path_raw)
 
         if not dump_path:
             messagebox.showwarning("Cash-In index", "Podaj sciezke dumpa .json.gz.")
@@ -2606,6 +2722,7 @@ class SettingsTab(ttk.Frame):
 
         self.var_cash_in_dump_path.set(dump_path)
         self.var_cash_in_offline_index_path.set(index_path)
+        self._persist_cash_in_paths_silent()
         self.var_cash_in_index_build_progress.set(0.0)
         self.var_cash_in_index_build_status.set("Start konwersji dumpa do offline index...")
         self._set_cash_in_index_build_ui_busy(True)
@@ -2639,6 +2756,7 @@ class SettingsTab(ttk.Frame):
                         self.var_cash_in_offline_index_path.set(target_index),
                         self.var_cash_in_index_build_progress.set(100.0),
                         self.var_cash_in_index_build_status.set(done_msg),
+                        self._persist_cash_in_paths_silent(),
                         self._set_cash_in_index_build_ui_busy(False),
                     ),
                 )
@@ -2797,8 +2915,13 @@ class SettingsTab(ttk.Frame):
         )
         self.var_cash_in_dump_progress.set(0.0)
         self.var_cash_in_dump_status.set(
-            "Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data."
+            "Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data/cash_in."
         )
+        self.var_cash_in_index_build_progress.set(0.0)
+        self.var_cash_in_index_build_status.set(
+            "Brak konwersji. Uzyj 'Zbuduj offline index' po pobraniu dumpa."
+        )
+        self._refresh_cash_in_status_from_files()
 
         self.var_route_progress_messages.set(bool(defaults.get("route_progress_speech", True)))
         self.var_low_fuel_warning.set(bool(defaults.get("fuel_warning", True)))

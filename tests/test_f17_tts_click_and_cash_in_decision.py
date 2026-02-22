@@ -12,6 +12,9 @@ class _DummyApp:
     _emit_cash_in_ui_callout = RenataApp._emit_cash_in_ui_callout
     _resolve_cash_in_profile_label = staticmethod(RenataApp._resolve_cash_in_profile_label)
     _has_ready_neutron_route_for_target = staticmethod(RenataApp._has_ready_neutron_route_for_target)
+    _open_spansh_neutron_tab = RenataApp._open_spansh_neutron_tab
+    _trigger_cash_in_neutron_route = RenataApp._trigger_cash_in_neutron_route
+    _watch_cash_in_neutron_outcome = RenataApp._watch_cash_in_neutron_outcome
 
     def __init__(self) -> None:
         self.status_lines: list[str] = []
@@ -113,6 +116,32 @@ class F17TtsClickAndCashInDecisionTests(unittest.TestCase):
         raw_text = str(ctx.get("raw_text") or "")
         self.assertIn("Nie znalazlam trasy neutronowej. Skopiowalam cel do schowka.", raw_text)
 
+    def test_set_route_fast_neutron_triggers_neutron_planner_when_target_is_real(self) -> None:
+        with (
+            patch(
+                "logic.events.cash_in_assistant.handoff_cash_in_to_route_intent",
+                return_value={
+                    "ok": True,
+                    "target_display": "F17 Neutron Hub (F17_NEUTRON_SYS)",
+                    "target_system": "F17_NEUTRON_SYS",
+                    "target_station": "F17 Neutron Hub",
+                    "route_profile": "FAST_NEUTRON",
+                },
+            ),
+            patch("gui.app.common.copy_text_to_clipboard", return_value=True),
+            patch.object(_DummyApp, "_trigger_cash_in_neutron_route", return_value={"ok": True}) as trigger_mock,
+            patch.object(_DummyApp, "_watch_cash_in_neutron_outcome") as watch_mock,
+            patch("logic.insight_dispatcher.emit_insight"),
+        ):
+            self.app.on_cash_in_assistant_action(
+                "set_route",
+                {"profile": "FAST", "target": {"system_name": "F17_NEUTRON_SYS", "name": "F17 Neutron Hub"}},
+            )
+
+        self.assertTrue(trigger_mock.called)
+        self.assertEqual(trigger_mock.call_args.args[0], "F17_NEUTRON_SYS")
+        self.assertEqual(watch_mock.call_count, 1)
+
     def test_copy_next_hop_emits_tts(self) -> None:
         with (
             patch(
@@ -136,4 +165,3 @@ class F17TtsClickAndCashInDecisionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

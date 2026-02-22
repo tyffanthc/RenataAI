@@ -139,6 +139,11 @@ def _format_cr(value: float) -> str:
 def _safe_optional_float(value: Any) -> float | None:
     if value is None:
         return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            return float(value)
+        except Exception:
+            return None
     text = _as_text(value).replace(",", ".")
     if not text:
         return None
@@ -1308,6 +1313,15 @@ def _resolve_offline_index_path() -> str:
         return ""
     if os.path.isabs(raw):
         return raw
+    appdata = os.getenv("APPDATA") or os.getenv("LOCALAPPDATA")
+    if appdata:
+        appdata_candidates = [
+            os.path.join(appdata, "RenataAI", "data", "cash_in", raw),
+            os.path.join(appdata, "RenataAI", "data", raw),
+        ]
+        for candidate in appdata_candidates:
+            if os.path.isfile(candidate):
+                return candidate
     return os.path.abspath(os.path.join(config.BASE_DIR, raw))
 
 
@@ -1950,6 +1964,91 @@ def _build_station_candidates_runtime(
     offline_index_enabled = bool(config.get("cash_in.offline_index_fallback_enabled", True))
     offline_index_non_carrier_only = bool(config.get("cash_in.offline_index_non_carrier_only", True))
     offline_index_path = _resolve_offline_index_path()
+    origin_coords = None
+    app_star_pos = getattr(app_state, "current_star_pos", None)
+    if isinstance(app_star_pos, (list, tuple)) and len(app_star_pos) >= 3:
+        try:
+            origin_coords = [
+                float(app_star_pos[0]),
+                float(app_star_pos[1]),
+                float(app_star_pos[2]),
+            ]
+        except Exception:
+            origin_coords = None
+    if origin_coords is None:
+        raw_star_pos = raw_payload.get("star_pos") or raw_payload.get("starPos")
+        if isinstance(raw_star_pos, (list, tuple)) and len(raw_star_pos) >= 3:
+            try:
+                origin_coords = [
+                    float(raw_star_pos[0]),
+                    float(raw_star_pos[1]),
+                    float(raw_star_pos[2]),
+                ]
+            except Exception:
+                origin_coords = None
+
+    def _attempt_offline_index_lookup() -> list[dict[str, Any]]:
+        nonlocal offline_index_lookup_attempted
+        nonlocal offline_index_lookup_status
+        nonlocal offline_index_date
+        nonlocal offline_index_age_days
+        nonlocal offline_index_rows_total
+        nonlocal offline_index_rows_service_match
+        nonlocal offline_index_rows_coords_match
+        nonlocal offline_index_ignored_carriers
+        nonlocal offline_index_used
+
+        offline_index_lookup_attempted = True
+        offline_candidates, offline_meta = station_candidates_from_offline_index(
+            system,
+            service=service_norm,
+            origin_coords=origin_coords,
+            index_path=offline_index_path,
+            freshness_ts=freshness_ts,
+            limit=limit,
+            non_carrier_only=offline_index_non_carrier_only,
+        )
+        offline_index_lookup_status = _as_text(offline_meta.get("lookup_status")).lower() or "not_attempted"
+        offline_index_date = _as_text(offline_meta.get("index_date"))
+        offline_index_age_days = int(offline_meta.get("index_age_days") or -1)
+        offline_index_rows_total = int(offline_meta.get("rows_total") or 0)
+        offline_index_rows_service_match = int(offline_meta.get("rows_service_match") or 0)
+        offline_index_rows_coords_match = int(offline_meta.get("rows_coords_match") or 0)
+        offline_index_ignored_carriers = int(offline_meta.get("ignored_carriers") or 0)
+        if offline_candidates:
+            offline_index_used = True
+            return offline_candidates
+        if offline_index_lookup_status == "not_attempted":
+            offline_index_lookup_status = "no_offline_index_hit"
+        return []
+
+    # Local-first path for mode without online lookup:
+    # prefer local/player memory fallback before offline index.
+    if not candidates and not lookup_enabled:
+        known = _load_local_known_candidates(service=service_norm, limit=limit)
+        if bool(known.get("used")):
+            known_rows = list(known.get("candidates") or [])
+            known_candidates = build_station_candidates(
+                known_rows,
+                default_system=system,
+                source_hint="LOCAL_KNOWN",
+                freshness_ts=freshness_ts,
+                limit=limit,
+            )
+            if known_candidates:
+                candidates = known_candidates
+                source_status = "local_known_fallback"
+                local_known_fallback_used = True
+                local_known_fallback_age_sec = float(known.get("age_sec") or 0.0)
+                local_known_fallback_count = int(known.get("count") or 0)
+
+    # Offline index fallback (after local/player memory fallback).
+    if not candidates and offline_index_enabled and not lookup_enabled:
+        offline_rows = _attempt_offline_index_lookup()
+        if offline_rows:
+            candidates = offline_rows
+            source_status = "offline_index"
+
     if not candidates and lookup_enabled:
         provider_lookup_attempted = True
         candidates = station_candidates_for_system_from_providers(
@@ -1983,29 +2082,6 @@ def _build_station_candidates_runtime(
             filter_candidates_by_service(candidates, service=service_norm)
         )
         needs_cross_system = (not candidates) or (not has_service_locally)
-
-    origin_coords = None
-    app_star_pos = getattr(app_state, "current_star_pos", None)
-    if isinstance(app_star_pos, (list, tuple)) and len(app_star_pos) >= 3:
-        try:
-            origin_coords = [
-                float(app_star_pos[0]),
-                float(app_star_pos[1]),
-                float(app_star_pos[2]),
-            ]
-        except Exception:
-            origin_coords = None
-    if origin_coords is None:
-        raw_star_pos = raw_payload.get("star_pos") or raw_payload.get("starPos")
-        if isinstance(raw_star_pos, (list, tuple)) and len(raw_star_pos) >= 3:
-            try:
-                origin_coords = [
-                    float(raw_star_pos[0]),
-                    float(raw_star_pos[1]),
-                    float(raw_star_pos[2]),
-                ]
-            except Exception:
-                origin_coords = None
 
     if needs_cross_system:
         provider_lookup_attempted = True
@@ -2134,29 +2210,10 @@ def _build_station_candidates_runtime(
                 local_known_fallback_count = int(known.get("count") or 0)
 
     if provider_lookup_attempted and not candidates and offline_index_enabled:
-        offline_index_lookup_attempted = True
-        offline_candidates, offline_meta = station_candidates_from_offline_index(
-            system,
-            service=service_norm,
-            origin_coords=origin_coords,
-            index_path=offline_index_path,
-            freshness_ts=freshness_ts,
-            limit=limit,
-            non_carrier_only=offline_index_non_carrier_only,
-        )
-        offline_index_lookup_status = _as_text(offline_meta.get("lookup_status")).lower() or "not_attempted"
-        offline_index_date = _as_text(offline_meta.get("index_date"))
-        offline_index_age_days = int(offline_meta.get("index_age_days") or -1)
-        offline_index_rows_total = int(offline_meta.get("rows_total") or 0)
-        offline_index_rows_service_match = int(offline_meta.get("rows_service_match") or 0)
-        offline_index_rows_coords_match = int(offline_meta.get("rows_coords_match") or 0)
-        offline_index_ignored_carriers = int(offline_meta.get("ignored_carriers") or 0)
-        if offline_candidates:
-            candidates = offline_candidates
+        offline_rows = _attempt_offline_index_lookup()
+        if offline_rows:
+            candidates = offline_rows
             source_status = "offline_index"
-            offline_index_used = True
-        elif offline_index_lookup_status == "not_attempted":
-            offline_index_lookup_status = "no_offline_index_hit"
 
     if not candidates:
         current_station = _as_text(getattr(app_state, "current_station", ""))
@@ -2179,12 +2236,12 @@ def _build_station_candidates_runtime(
 
     if not offline_index_enabled:
         offline_index_lookup_status = "disabled"
-    elif not provider_lookup_attempted:
-        offline_index_lookup_status = "not_applicable"
+    elif offline_index_lookup_attempted and offline_index_lookup_status == "not_attempted":
+        offline_index_lookup_status = "no_offline_index_hit"
     elif bool(candidates) and not offline_index_lookup_attempted:
         offline_index_lookup_status = "not_needed"
     elif offline_index_lookup_status == "not_attempted":
-        offline_index_lookup_status = "no_offline_index_hit"
+        offline_index_lookup_status = "not_attempted"
 
     uc_candidates = filter_candidates_by_service(candidates, service="uc")
     vista_candidates = filter_candidates_by_service(candidates, service="vista")

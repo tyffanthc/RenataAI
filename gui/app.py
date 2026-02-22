@@ -1849,6 +1849,98 @@ class RenataApp:
             return True
         return any(item.casefold() == target.casefold() for item in route)
 
+    def _open_spansh_neutron_tab(self) -> None:
+        try:
+            self.main_nb.select(self.tab_spansh)
+        except Exception:
+            pass
+        try:
+            spansh_nb = getattr(self.tab_spansh, "nb", None)
+            neutron_tab = getattr(self.tab_spansh, "tab_neutron", None)
+            if spansh_nb is not None and neutron_tab is not None:
+                spansh_nb.select(neutron_tab)
+        except Exception:
+            pass
+
+    def _trigger_cash_in_neutron_route(self, target_system: str) -> dict:
+        target = str(target_system or "").strip()
+        if not target:
+            return {"ok": False, "reason": "target_missing"}
+
+        neutron_tab = getattr(getattr(self, "tab_spansh", None), "tab_neutron", None)
+        if neutron_tab is None:
+            return {"ok": False, "reason": "neutron_tab_unavailable"}
+
+        busy_before = bool(route_manager.is_busy())
+        mode_before = str(route_manager.current_mode() or "").strip().lower()
+        if busy_before and mode_before and mode_before != "neutron":
+            return {"ok": False, "reason": "planner_busy_other_mode"}
+
+        self._open_spansh_neutron_tab()
+        current_system = str(getattr(app_state, "current_system", "") or "").strip()
+
+        try:
+            if current_system and hasattr(neutron_tab, "var_start"):
+                neutron_tab.var_start.set(current_system)
+            if hasattr(neutron_tab, "var_cel"):
+                neutron_tab.var_cel.set(target)
+            neutron_tab.run_neutron()
+        except Exception as exc:
+            _log_app_fallback(
+                "cash_in.assistant.neutron_start",
+                "cash-in fast neutron trigger failed",
+                exc,
+                interval_ms=3000,
+                target_system=target,
+            )
+            return {"ok": False, "reason": "neutron_start_failed"}
+
+        mode_after = str(route_manager.current_mode() or "").strip().lower()
+        started = mode_after == "neutron"
+        ready_now = self._has_ready_neutron_route_for_target(target)
+        return {
+            "ok": bool(started or ready_now),
+            "started": started,
+            "ready_now": ready_now,
+            "reason": "ok" if (started or ready_now) else "not_started",
+        }
+
+    def _watch_cash_in_neutron_outcome(self, target_system: str) -> None:
+        target = str(target_system or "").strip()
+        if not target:
+            return
+
+        interval_ms = 300
+        max_attempts = 120  # ~36s
+
+        def _poll(attempt: int = 0) -> None:
+            try:
+                mode_now = str(route_manager.current_mode() or "").strip().lower()
+                if bool(route_manager.is_busy()) and mode_now == "neutron" and attempt < max_attempts:
+                    self.root.after(interval_ms, lambda: _poll(attempt + 1))
+                    return
+
+                if self._has_ready_neutron_route_for_target(target):
+                    return
+
+                self.show_status(
+                    "Cash-in: nie znaleziono trasy neutronowej. Skopiowano cel systemu."
+                )
+                self._emit_cash_in_ui_callout(
+                    "Nie znalazlam trasy neutronowej. Skopiowalam cel do schowka.",
+                    action_tag="set_route:fast_neutron:fallback",
+                )
+            except Exception as exc:
+                _log_app_fallback(
+                    "cash_in.assistant.neutron_watch",
+                    "cash-in neutron fallback watcher failed",
+                    exc,
+                    interval_ms=3000,
+                    target_system=target,
+                )
+
+        self.root.after(interval_ms, _poll)
+
     def on_cash_in_assistant_action(self, action: str, option=None):
         """
         User-consent-only handoff for Cash-In options.
@@ -1952,18 +2044,33 @@ class RenataApp:
                     elif pending_station_armed:
                         tts_parts.append("Stacja zostanie skopiowana po wejsciu do systemu docelowego.")
 
-                    neutron_fallback = False
-                    if profile_hint == "FAST/NEUTRON" and copied_system and target_system:
-                        neutron_fallback = not self._has_ready_neutron_route_for_target(target_system)
-                        if neutron_fallback:
-                            tts_parts.append(
-                                "Nie znalazlam trasy neutronowej. Skopiowalam cel do schowka."
-                            )
                     if tts_parts:
                         self._emit_cash_in_ui_callout(
                             " ".join(tts_parts),
-                            action_tag=f"set_route:{route_profile.lower()}:{'fallback' if neutron_fallback else 'ok'}",
+                            action_tag=f"set_route:{route_profile.lower()}:ok",
                         )
+                    if route_profile == "FAST_NEUTRON" and target_system:
+                        neutron_trigger = self._trigger_cash_in_neutron_route(target_system)
+                        if bool(neutron_trigger.get("ok")):
+                            self._watch_cash_in_neutron_outcome(target_system)
+                        else:
+                            reason = str(neutron_trigger.get("reason") or "").strip().lower()
+                            if reason == "planner_busy_other_mode":
+                                self.show_status(
+                                    "Cash-in: planner jest zajety innym trybem. Skopiowano cel systemu."
+                                )
+                                self._emit_cash_in_ui_callout(
+                                    "Planner trasy jest teraz zajety. Skopiowalam cel do schowka.",
+                                    action_tag="set_route:fast_neutron:planner_busy",
+                                )
+                            else:
+                                self.show_status(
+                                    "Cash-in: nie udalo sie uruchomic trasy neutronowej. Skopiowano cel systemu."
+                                )
+                                self._emit_cash_in_ui_callout(
+                                    "Nie znalazlam trasy neutronowej. Skopiowalam cel do schowka.",
+                                    action_tag="set_route:fast_neutron:fallback",
+                                )
                 else:
                     reason = str(result.get("reason") or "").strip().lower()
                     if reason in {"target_missing_system", "target_missing_station", "target_not_real"}:

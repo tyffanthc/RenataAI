@@ -47,6 +47,8 @@ class F13CashInProviderResilienceTests(unittest.TestCase):
         config.config._settings["cash_in.swr_cache_fresh_ttl_sec"] = 900.0
         config.config._settings["cash_in.swr_cache_stale_ttl_sec"] = 21600.0
         config.config._settings["cash_in.swr_cache_max_items"] = 64
+        # F13 testuje sciezki provider/SWR/local-known; offline index izolujemy.
+        config.config._settings["cash_in.offline_index_fallback_enabled"] = False
 
         edsm_client._reset_provider_resilience_state_for_tests()
         cash_in_assistant._reset_cash_in_swr_cache_for_tests()

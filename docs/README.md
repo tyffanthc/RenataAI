@@ -95,3 +95,8 @@ py -m unittest tests.test_spansh_payloads
 ## Trademarks / attribution
 Projekt korzysta z danych/uslug stron trzecich (m.in. Spansh, EDSM, Inara, EDTools) oraz formatu Elite Dangerous Journal.
 Wszystkie znaki towarowe naleza do ich wlascicieli.
+
+## User-supplied data (Cash-In / offline)
+- Renata nie dostarcza ani nie hostuje dumpow danych Spansh.
+- Uzytkownik pobiera dump samodzielnie ze zrodla Spansh i importuje go lokalnie.
+- Zrodlo danych: Spansh (c) Gareth Harper.

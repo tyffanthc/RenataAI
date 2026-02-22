@@ -4,7 +4,7 @@ Publiczny opis produktu Renata. Ten plik zawiera tylko informacje przeznaczone
 do publikacji.
 
 ## Status faz (FREE/PUB)
-- Ostatnia aktualizacja: 2026-02-16
+- Ostatnia aktualizacja: 2026-02-21
 - Faza 1: DONE
 - Faza 2: DONE
 - Faza 3: DONE
