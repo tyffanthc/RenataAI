@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import math
 import tkinter as tk
 from dataclasses import dataclass
@@ -18,6 +18,9 @@ COLOR_GRID = "#222a35"
 COLOR_NODE = "#ff7100"
 COLOR_EDGE = "#4b5563"
 COLOR_HILITE = "#ffd166"
+COLOR_STATION_LAYER = "#6ee7b7"
+COLOR_TRADE_LAYER = "#60a5fa"
+COLOR_CASHIN_LAYER = "#f472b6"
 
 
 @dataclass
@@ -78,6 +81,19 @@ def _format_age_short(value: Any) -> str:
     return f"{int(round(days))}d"
 
 
+def _max_age_for_freshness_filter(value: Any) -> timedelta | None:
+    text = _as_text(value).lower()
+    if not text or text in {"all", "any", "*"}:
+        return None
+    if "6h" in text:
+        return timedelta(hours=6)
+    if "24h" in text:
+        return timedelta(hours=24)
+    if "7d" in text or "7 d" in text:
+        return timedelta(days=7)
+    return None
+
+
 class JournalMapTab(tk.Frame):
     """
     F20-2 shell zakladki mapy osadzonej w `Dziennik`.
@@ -109,6 +125,7 @@ class JournalMapTab(tk.Frame):
         self._edges: list[_MapEdge] = []
         self._selected_node_key: str | None = None
         self._station_rows_by_iid: dict[str, dict[str, Any]] = {}
+        self._node_layer_flags: dict[str, dict[str, Any]] = {}
         self._travel_nodes_meta: dict[str, Any] = {}
         self._travel_edges_meta: dict[str, Any] = {}
         self._pending_after_ids: list[str] = []
@@ -501,6 +518,89 @@ class JournalMapTab(tk.Frame):
         except Exception:
             return None
 
+    def _passes_freshness_filter(self, value: Any) -> bool:
+        max_age = _max_age_for_freshness_filter(self.freshness_var.get())
+        if max_age is None:
+            return True
+        dt = _parse_iso_ts(value)
+        if dt is None:
+            return False
+        age = datetime.now(timezone.utc) - dt
+        return age <= max_age
+
+    def _filter_rows_by_freshness(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        ts_keys: tuple[str, ...] = ("freshness_ts", "last_seen_ts", "services_freshness_ts", "snapshot_ts"),
+    ) -> list[dict[str, Any]]:
+        max_age = _max_age_for_freshness_filter(self.freshness_var.get())
+        if max_age is None:
+            return [dict(r) for r in rows if isinstance(r, dict)]
+        out: list[dict[str, Any]] = []
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            candidate_ts = ""
+            for key in ts_keys:
+                candidate_ts = _as_text(row.get(key))
+                if candidate_ts:
+                    break
+            if self._passes_freshness_filter(candidate_ts):
+                out.append(dict(row))
+        return out
+
+    def _node_key_from_row(self, row: dict[str, Any]) -> str:
+        return _as_text(row.get("key") or row.get("system_address") or row.get("system_name"))
+
+    def _compute_layer_flags_for_nodes(self, nodes_rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        flags_by_key: dict[str, dict[str, Any]] = {}
+        if not nodes_rows:
+            return flags_by_key
+        # MVP / F20-5: N+1 queries are acceptable for map prototype. We cache results per reload.
+        for row in nodes_rows:
+            if not isinstance(row, dict):
+                continue
+            key = self._node_key_from_row(row)
+            if not key:
+                continue
+            system_address = row.get("system_address")
+            system_name = _as_text(row.get("system_name"))
+            try:
+                station_rows, _meta = self.data_provider.get_stations_for_system(
+                    system_address=int(system_address) if system_address is not None else None,
+                    system_name=system_name or None,
+                    limit=200,
+                )
+            except Exception:
+                flags_by_key[key] = {
+                    "has_station": False,
+                    "has_market": False,
+                    "has_cashin": False,
+                    "stations_count": 0,
+                    "error": True,
+                }
+                continue
+            filtered = self._filter_rows_by_freshness(
+                station_rows,
+                ts_keys=("freshness_ts", "services_freshness_ts", "last_seen_ts"),
+            )
+            has_station = len(filtered) > 0
+            has_market = any(bool((dict(r).get("services") or {}).get("has_market")) for r in filtered)
+            has_cashin = any(
+                bool((dict(r).get("services") or {}).get("has_uc"))
+                or bool((dict(r).get("services") or {}).get("has_vista"))
+                for r in filtered
+            )
+            flags_by_key[key] = {
+                "has_station": bool(has_station),
+                "has_market": bool(has_market),
+                "has_cashin": bool(has_cashin),
+                "stations_count": len(filtered),
+                "error": False,
+            }
+        return flags_by_key
+
     def _travel_layout_from_system_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         # Travel-path layout (MVP default): sequence by last_seen/first_seen, rendered as readable serpentine path.
         ordered = sorted(
@@ -563,20 +663,34 @@ class JournalMapTab(tk.Frame):
         self.station_details_var.set(
             "Wybierz system na mapie, aby zobaczyc stacje i snapshoty rynku."
         )
+        self.trade_compare_tree.delete(*self.trade_compare_tree.get_children())
+        self.trade_compare_tree.insert(
+            "",
+            "end",
+            values=(
+                "INFO",
+                "-",
+                "-",
+                "-",
+                f"warstwy: T={int(bool(self.layer_travel_var.get()))}/S={int(bool(self.layer_stations_var.get()))}/Tr={int(bool(self.layer_trade_var.get()))}/C={int(bool(self.layer_cashin_var.get()))}",
+            ),
+        )
 
     def reload_from_playerdb(self) -> dict[str, Any]:
         if not bool(self.layer_travel_var.get()):
             self.set_graph_data(nodes=[], edges=[])
+            self._node_layer_flags = {}
             self._travel_nodes_meta = {"count": 0, "disabled": True}
             self._travel_edges_meta = {"count": 0, "disabled": True}
             self._refresh_system_panel_stub()
-            self.map_status_var.set("Mapa: warstwa Travel jest wylaczona.")
+            self.map_status_var.set("Mapa: warstwa Travel jest wylaczona. Wlacz Travel, aby zobaczyc systemy.")
             return {"ok": True, "travel_enabled": False, "nodes": 0, "edges": 0}
 
         time_range = str(self.time_range_var.get() or "30d")
         source_filter = self._source_filter_mode()
         nodes_rows, nodes_meta = self.data_provider.get_system_nodes(time_range=time_range, source_filter=source_filter)
         edges_rows, edges_meta = self.data_provider.get_edges(time_range=time_range)
+        nodes_rows = self._filter_rows_by_freshness(nodes_rows, ts_keys=("freshness_ts", "last_seen_ts", "first_seen_ts"))
 
         # F20-3 default renderer = travel-path layout; coords-view intentionally deferred.
         laid_out_nodes = self._travel_layout_from_system_rows(nodes_rows)
@@ -590,6 +704,7 @@ class JournalMapTab(tk.Frame):
         self._travel_nodes_meta = dict(nodes_meta or {})
         self._travel_edges_meta = dict(edges_meta or {})
         self._travel_edges_meta["render_mode"] = edges_mode
+        self._node_layer_flags = self._compute_layer_flags_for_nodes(laid_out_nodes)
 
         self.set_graph_data(nodes=laid_out_nodes, edges=edges_final)
         self._refresh_system_panel_stub()
@@ -599,9 +714,17 @@ class JournalMapTab(tk.Frame):
         status_reason = ""
         if edges_mode == "sequential_fallback":
             status_reason = " | krawedzie: fallback sekwencyjny (brak ingestu jumps)"
+        layer_state = (
+            f" | layers T={int(bool(self.layer_travel_var.get()))}"
+            f"/S={int(bool(self.layer_stations_var.get()))}"
+            f"/Tr={int(bool(self.layer_trade_var.get()))}"
+            f"/C={int(bool(self.layer_cashin_var.get()))}"
+        )
+        if count_nodes <= 0:
+            status_reason += " | brak danych po filtrach (time/freshness/source)"
         self.map_status_var.set(
             f"Mapa Travel: {count_nodes} systemow / {count_edges} krawedzi | "
-            f"time={time_range} | source={source_filter}{status_reason}"
+            f"time={time_range} | freshness={self.freshness_var.get()} | source={source_filter}{status_reason}{layer_state}"
         )
         return {
             "ok": True,
@@ -674,8 +797,16 @@ class JournalMapTab(tk.Frame):
             system_address=node.system_address,
             system_name=node.system_name,
         )
+        stations_rows = self._filter_rows_by_freshness(
+            stations_rows,
+            ts_keys=("freshness_ts", "services_freshness_ts", "last_seen_ts"),
+        )
         self._populate_system_details(node=node, stations_rows=stations_rows, stations_meta=stations_meta)
-        self._populate_station_list(stations_rows)
+        if bool(self.layer_stations_var.get()):
+            self._populate_station_list(stations_rows)
+        else:
+            self._populate_station_list([])
+            self.station_details_var.set("Warstwa Stations jest wylaczona. Wlacz, aby zobaczyc stacje i snapshoty rynku.")
 
         # Auto-select first station for quick drilldown UX.
         children = self.system_stations_tree.get_children()
@@ -689,7 +820,8 @@ class JournalMapTab(tk.Frame):
             self._select_station_by_iid(first_iid)
         else:
             self.station_market_tree.delete(*self.station_market_tree.get_children())
-            self.station_details_var.set("Brak znanych stacji w playerdb dla wybranego systemu.")
+            if bool(self.layer_stations_var.get()):
+                self.station_details_var.set("Brak znanych stacji w playerdb dla wybranego systemu (po filtrach).")
 
         self.map_status_var.set(
             f"Mapa: wybrano system {node.system_name} | stacje={len(stations_rows)} | source=playerdb"
@@ -779,6 +911,8 @@ class JournalMapTab(tk.Frame):
             return {"ok": False, "market_id": market_id, "reason": "provider_error"}
 
         for idx, snap in enumerate(snapshots or []):
+            if not self._passes_freshness_filter(snap.get("freshness_ts") or snap.get("snapshot_ts")):
+                continue
             ts = _as_text(snap.get("snapshot_ts")) or "-"
             items_count = int(snap.get("commodities_count") or len(list(snap.get("items") or [])) or 0)
             freshness_label = _format_age_short(snap.get("freshness_ts"))
@@ -790,11 +924,12 @@ class JournalMapTab(tk.Frame):
                 values=(ts, str(items_count), f"{freshness_label} | {conf}"),
             )
 
+        shown_rows = len(self.station_market_tree.get_children())
         self.station_details_var.set(
             self._station_details_text(station_row)
-            + f"\nSnapshoty rynku: {len(snapshots)}"
+            + f"\nSnapshoty rynku: {shown_rows}/{len(snapshots)} (freshness={self.freshness_var.get()})"
         )
-        return {"ok": True, "market_id": int(market_id), "snapshots": len(snapshots), "meta": dict(meta or {})}
+        return {"ok": True, "market_id": int(market_id), "snapshots": shown_rows, "meta": dict(meta or {})}
 
     def _on_station_tree_selected(self, _event=None) -> None:
         selection = self.system_stations_tree.selection() or ()
@@ -919,7 +1054,10 @@ class JournalMapTab(tk.Frame):
             c.create_text(
                 w / 2,
                 h / 2,
-                text="Personal Galaxy Map (MVP shell)\nBrak danych do renderu.\nF20-3 doda warstwe Travel (nodes + jumps).",
+                text=(
+                    "Personal Galaxy Map\nBrak danych do renderu.\n"
+                    "Sprawdz filtry time/freshness/source lub wlacz warstwe Travel."
+                ),
                 fill=COLOR_SEC,
                 justify="center",
                 font=("Segoe UI", 11),
@@ -1009,6 +1147,7 @@ class JournalMapTab(tk.Frame):
                 fill=COLOR_NODE,
                 tags=node_tags,
             )
+            self._draw_node_layer_badges(node, sx, sy, r)
             if show_labels:
                 self.map_canvas.create_text(
                     sx + 8,
@@ -1019,6 +1158,55 @@ class JournalMapTab(tk.Frame):
                     font=("Segoe UI", 8),
                     tags=node_tags,
                 )
+
+    def _draw_node_layer_badges(self, node: _MapNode, sx: float, sy: float, r: int) -> None:
+        flags = dict(self._node_layer_flags.get(node.key) or {})
+        if not flags:
+            return
+        c = self.map_canvas
+        # Stations layer: outer ring (known stations in system).
+        if bool(self.layer_stations_var.get()) and bool(flags.get("has_station")):
+            rr = r + 3
+            c.create_oval(
+                sx - rr,
+                sy - rr,
+                sx + rr,
+                sy + rr,
+                outline=COLOR_STATION_LAYER,
+                width=1.0,
+                tags=("layer_stations", f"node:{node.key}"),
+            )
+        # Trade layer: small square badge (known market service in system).
+        if bool(self.layer_trade_var.get()) and bool(flags.get("has_market")):
+            s = 3
+            c.create_rectangle(
+                sx + r + 1,
+                sy - r - 1,
+                sx + r + 1 + (s * 2),
+                sy - r - 1 + (s * 2),
+                outline=COLOR_TRADE_LAYER,
+                fill=COLOR_TRADE_LAYER,
+                tags=("layer_trade", f"node:{node.key}"),
+            )
+        # Cash-In layer: diamond badge (known UC/Vista sell service in system).
+        if bool(self.layer_cashin_var.get()) and bool(flags.get("has_cashin")):
+            d = 4
+            pts = [
+                sx,
+                sy + r + 2,
+                sx + d,
+                sy + r + 2 + d,
+                sx,
+                sy + r + 2 + (d * 2),
+                sx - d,
+                sy + r + 2 + d,
+            ]
+            c.create_polygon(
+                *pts,
+                outline=COLOR_CASHIN_LAYER,
+                fill=COLOR_CASHIN_LAYER,
+                tags=("layer_cashin", f"node:{node.key}"),
+            )
 
 
 class _WheelShim:
