@@ -589,7 +589,11 @@ def _emit_next_hop_status(level: str, code: str, text: str, *, source: str | Non
     if not utils.DEBOUNCER.is_allowed(code, cooldown_sec=2.0, context=source or ""):
         return
     emit_status(level, code, text, source=source, notify_overlay=True)
+    source_norm = str(source or "").strip().lower()
+    suppress_cash_in_neutron_tts = source_norm.startswith("cashin.spansh.neutron")
     if code == "NEXT_HOP_COPIED":
+        if suppress_cash_in_neutron_tts:
+            return
         utils.powiedz(
             text,
             message_id="MSG.NEXT_HOP_COPIED",
@@ -1228,7 +1232,12 @@ def handle_route_ready_autoclipboard(
     set_last_route_data(route, text, sig)
     _persist_last_route_context(route, text, sig, source=source or status_target)
     _set_active_route_data(route, text, sig, source or status_target)
-    if utils.DEBOUNCER.is_allowed("tts_route_found", cooldown_sec=2.0, context=source or status_target):
+    source_norm = str(source or "").strip().lower()
+    suppress_cash_in_neutron_tts = source_norm.startswith("cashin.spansh.neutron")
+    if (
+        not suppress_cash_in_neutron_tts
+        and utils.DEBOUNCER.is_allowed("tts_route_found", cooldown_sec=2.0, context=source or status_target)
+    ):
         utils.powiedz("Trasa wyznaczona.", message_id="MSG.ROUTE_FOUND")
 
     mode = str(config.get("auto_clipboard_mode", "FULL_ROUTE")).strip().upper()

@@ -29,6 +29,11 @@ def _exc_text(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
+def _is_known_dwm_invalidarg(exc: Exception) -> bool:
+    text = _exc_text(exc)
+    return "DwmSetWindowAttribute failed with HRESULT=-2147024809" in text
+
+
 def _log_app_fallback(
     key: str,
     message: str,
@@ -279,7 +284,16 @@ class RenataApp:
         try:
             apply_renata_orange_window_chrome(self.root)
         except Exception as exc:
-            _log_app_fallback("window.chrome", "window chrome color unavailable", exc)
+            if _is_known_dwm_invalidarg(exc):
+                log_event_throttled(
+                    "APP:window.chrome.unsupported",
+                    60_000,
+                    "APP",
+                    "window chrome color unsupported on this Windows build (cosmetic)",
+                    hresult="-2147024809",
+                )
+            else:
+                _log_app_fallback("window.chrome", "window chrome color unavailable", exc)
 
         self.main_nb = ttk.Notebook(self.root)
         self.main_nb.pack(fill="both", expand=1)
@@ -655,7 +669,10 @@ class RenataApp:
                         )
             return
         try:
-            path = config.get("modules_data_path", "renata_modules_data.json")
+            path = config.get(
+                "modules_data_path",
+                config.renata_user_home_file("renata_modules_data.json"),
+            )
         except Exception as exc:
             _log_app_fallback(
                 "modules.path",
@@ -663,7 +680,7 @@ class RenataApp:
                 exc,
                 interval_ms=30000,
             )
-            path = "renata_modules_data.json"
+            path = config.renata_user_home_file("renata_modules_data.json")
 
         try:
             self.modules_data = load_modules_data(path)
@@ -1647,7 +1664,10 @@ class RenataApp:
             error = None
             try:
                 error = generate_modules_data(
-                    config.get("modules_data_path", "renata_modules_data.json"),
+                    config.get(
+                        "modules_data_path",
+                        config.renata_user_home_file("renata_modules_data.json"),
+                    ),
                     config.get("modules_data_sources", None),
                 )
             except Exception as e:
@@ -1802,11 +1822,13 @@ class RenataApp:
                     "system": system,
                     "raw_text": text,
                     "cash_in_ui_action": str(action_tag or "").strip() or "ui_action",
+                    "voice_ui_user_action_bypass": True,
                 },
                 priority=priority,
                 dedup_key=f"cash_in_ui:{action_tag}:{system}",
                 cooldown_scope="entity",
                 cooldown_seconds=1.5,
+                force_tts=True,
             )
         except Exception as exc:
             _log_app_fallback(
@@ -1876,7 +1898,6 @@ class RenataApp:
         if busy_before and mode_before and mode_before != "neutron":
             return {"ok": False, "reason": "planner_busy_other_mode"}
 
-        self._open_spansh_neutron_tab()
         current_system = str(getattr(app_state, "current_system", "") or "").strip()
 
         try:
@@ -1884,6 +1905,7 @@ class RenataApp:
                 neutron_tab.var_start.set(current_system)
             if hasattr(neutron_tab, "var_cel"):
                 neutron_tab.var_cel.set(target)
+            setattr(neutron_tab, "_route_ready_source_override_once", "cashin.spansh.neutron")
             neutron_tab.run_neutron()
         except Exception as exc:
             _log_app_fallback(
@@ -1921,6 +1943,27 @@ class RenataApp:
                     return
 
                 if self._has_ready_neutron_route_for_target(target):
+                    next_hop = str(common.get_active_route_next_system() or "").strip() or target
+                    pending = app_state.get_pending_station_clipboard_snapshot()
+                    pending_active = bool(pending.get("active"))
+                    pending_target = str(pending.get("target_system") or "").strip()
+                    station_pending_for_target = bool(
+                        pending_active
+                        and pending_target
+                        and pending_target.casefold() == target.casefold()
+                    )
+                    parts = [
+                        "Znalazlam trase neutronowa.",
+                        f"Skopiowalam nastepny cel do schowka: {next_hop}.",
+                    ]
+                    if station_pending_for_target:
+                        parts.append(
+                            "Stacja zostanie skopiowana po wejsciu do systemu docelowego."
+                        )
+                    self._emit_cash_in_ui_callout(
+                        " ".join(parts),
+                        action_tag="set_route:fast_neutron:success",
+                    )
                     return
 
                 self.show_status(
@@ -2035,16 +2078,22 @@ class RenataApp:
                     self.show_status(" ".join(status_parts))
 
                     tts_parts = []
+                    emit_immediate_tts = True
+                    if route_profile == "FAST_NEUTRON" and target_system:
+                        emit_immediate_tts = False
                     if target_system:
-                        tts_parts.append(f"Ustawiono cel trasy: {target_system}.")
-                    if copied_system and target_system:
-                        tts_parts.append(f"Skopiowalam nastepny hop: {target_system}.")
+                        if copied_system:
+                            tts_parts.append(
+                                f"Ustawilam cel trasy i skopiowalam nastepny hop: {target_system}."
+                            )
+                        else:
+                            tts_parts.append(f"Ustawilam cel trasy: {target_system}.")
                     if copied_station_now and target_station:
                         tts_parts.append(f"Skopiowalam stacje: {target_station}.")
                     elif pending_station_armed:
                         tts_parts.append("Stacja zostanie skopiowana po wejsciu do systemu docelowego.")
 
-                    if tts_parts:
+                    if emit_immediate_tts and tts_parts:
                         self._emit_cash_in_ui_callout(
                             " ".join(tts_parts),
                             action_tag=f"set_route:{route_profile.lower()}:ok",

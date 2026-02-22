@@ -534,6 +534,9 @@ def _apply_cross_module_voice_priority(
     allow_tts: bool,
     allow_reason: str,
 ) -> tuple[bool, str, bool]:
+    if bool((insight.context or {}).get("voice_ui_user_action_bypass")):
+        return allow_tts, "ui_user_action_bypass", False
+
     group_id = _cross_module_group(insight.message_id)
     if not group_id:
         return allow_tts, allow_reason, False
@@ -577,6 +580,9 @@ def _apply_priority_matrix(
     allow_tts: bool,
     allow_reason: str,
 ) -> tuple[bool, str, bool]:
+    if bool((insight.context or {}).get("voice_ui_user_action_bypass")):
+        return allow_tts, "ui_user_action_bypass", False
+
     if str(allow_reason or "").startswith("cross_module_"):
         return allow_tts, allow_reason, False
 

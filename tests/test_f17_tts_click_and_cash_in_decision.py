@@ -88,8 +88,7 @@ class F17TtsClickAndCashInDecisionTests(unittest.TestCase):
         self.assertEqual(emit_mock.call_count, 1)
         ctx = dict(emit_mock.call_args.kwargs.get("context") or {})
         raw_text = str(ctx.get("raw_text") or "")
-        self.assertIn("Ustawiono cel trasy: F17_TARGET_SYS.", raw_text)
-        self.assertIn("Skopiowalam nastepny hop: F17_TARGET_SYS.", raw_text)
+        self.assertIn("Ustawilam cel trasy i skopiowalam nastepny hop: F17_TARGET_SYS.", raw_text)
         self.assertIn("Stacja zostanie skopiowana po wejsciu do systemu docelowego.", raw_text)
 
     def test_set_route_fast_neutron_emits_fallback_when_neutron_route_missing(self) -> None:

@@ -270,6 +270,11 @@ class NeutronTab(ttk.Frame):
     def run_neutron(self):
         if not self._can_start():
             return
+        # Optional one-shot source tag used by cash-in to suppress generic route TTS
+        # and let cash-in emit a single consolidated callout.
+        self._route_ready_source_override_once = str(
+            getattr(self, "_route_ready_source_override_once", "") or ""
+        ).strip()
         self._clear_results()
 
         s = self.var_start.get().strip()
@@ -469,7 +474,16 @@ class NeutronTab(ttk.Frame):
                                 offset=1,
                             )
                             common.wypelnij_liste(self.lst, opis, numerate=False)
-                        common.handle_route_ready_autoclipboard(self, tr, status_target="neu")
+                        route_ready_source = str(
+                            getattr(self, "_route_ready_source_override_once", "") or ""
+                        ).strip() or None
+                        setattr(self, "_route_ready_source_override_once", "")
+                        common.handle_route_ready_autoclipboard(
+                            self,
+                            tr,
+                            status_target="neu",
+                            source=route_ready_source,
+                        )
                         empty_state.hide_state(self.lst)
                         common.emit_status(
                             "OK",
