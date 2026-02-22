@@ -103,6 +103,30 @@ def is_captain_journal_event(event_name: Any) -> bool:
     return name in _CAPTAIN_EVENT_WHITELIST
 
 
+def classify_logbook_event(event_name: Any) -> str:
+    name = _as_text(event_name)
+    if not name:
+        return "TECH"
+
+    if name in {"Location", "FSDJump", "CarrierJump", "SupercruiseEntry", "SupercruiseExit", "ApproachBody", "Touchdown", "Liftoff"}:
+        return "Nawigacja"
+    if name in {"Docked", "Undocked"}:
+        return "Stacja"
+    if name in {"Scan", "SAAScanComplete", "SAASignalsFound", "FSSDiscoveryScan", "FSSAllBodiesFound", "CodexEntry", "SellExplorationData"}:
+        return "Eksploracja"
+    if name in {"ScanOrganic", "SellOrganicData"}:
+        return "Exobio"
+    if name in {"MarketBuy", "MarketSell"}:
+        return "Handel"
+    if name in {"ProspectedAsteroid"}:
+        return "Eksploracja"
+    if name in {"Interdicted", "EscapeInterdiction", "HullDamage"}:
+        return "Incydent"
+    if name in {"Interdiction", "UnderAttack", "ShieldState", "Died"}:
+        return "Combat"
+    return "TECH"
+
+
 def _format_summary(event_name: str, ev: dict[str, Any]) -> str:
     if event_name in {"MarketBuy", "MarketSell"}:
         verb = "Kupno" if event_name == "MarketBuy" else "Sprzedaz"
@@ -350,6 +374,7 @@ def build_logbook_feed_item(event: dict[str, Any]) -> dict[str, Any] | None:
     return {
         "timestamp": timestamp,
         "event_name": event_name,
+        "event_class": classify_logbook_event(event_name),
         "system_name": system_name,
         "station_name": station_name,
         "body_name": body_name,

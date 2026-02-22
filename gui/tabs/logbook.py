@@ -36,6 +36,17 @@ COLOR_ACCENT = "#1f2833"
 
 _CATEGORY_ALL = "(Wszystkie)"
 _CATEGORY_FALLBACK = "Dziennik/Ogolne"
+_LOGBOOK_CLASS_ALL = "Wszystkie (ALL)"
+_LOGBOOK_FEED_CLASS_ORDER = (
+    "Nawigacja",
+    "Eksploracja",
+    "Exobio",
+    "Handel",
+    "Stacja",
+    "Incydent",
+    "Combat",
+    "TECH",
+)
 _DEFAULT_METADATA_TAGS = [
     "exploration",
     "scan",
@@ -174,6 +185,11 @@ class LogbookTab(tk.Frame):
         self.preview_meta_var = tk.StringVar(value="-")
         self.logbook_status_var = tk.StringVar(value="Feed pusty.")
         self._logbook_feed_limit = 250
+        self.logbook_class_filter_var = tk.StringVar(value=_LOGBOOK_CLASS_ALL)
+        self.logbook_show_tech_var = tk.BooleanVar(value=False)
+        self._logbook_feed_sort_column = "time"
+        self._logbook_feed_sort_desc = True
+        self._logbook_feed_items: list[dict] = []
         self._selected_filter_tags: set[str] = set()
         self._active_popover: tk.Widget | None = None
         self._active_popover_anchor: tk.Widget | None = None
@@ -560,6 +576,7 @@ class LogbookTab(tk.Frame):
         header = tk.Frame(self.tab_feed, bg=COLOR_BG)
         header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 6))
         header.columnconfigure(0, weight=1)
+        header.columnconfigure(3, weight=0)
 
         tk.Label(
             header,
@@ -578,24 +595,59 @@ class LogbookTab(tk.Frame):
             command=self._clear_logbook_feed,
         ).grid(row=0, column=1, sticky="e")
 
+        tk.Label(
+            header,
+            text="Klasy:",
+            bg=COLOR_BG,
+            fg=COLOR_FG,
+        ).grid(row=1, column=0, sticky="w", pady=(6, 0))
+
+        self.logbook_class_filter_combo = ttk.Combobox(
+            header,
+            values=(_LOGBOOK_CLASS_ALL, *_LOGBOOK_FEED_CLASS_ORDER),
+            state="readonly",
+            textvariable=self.logbook_class_filter_var,
+            width=22,
+        )
+        self.logbook_class_filter_combo.grid(row=1, column=1, sticky="e", padx=(6, 0), pady=(6, 0))
+        self.logbook_class_filter_combo.bind(
+            "<<ComboboxSelected>>",
+            lambda _e: self._on_logbook_feed_filters_changed(),
+        )
+
+        self.chk_logbook_show_tech = tk.Checkbutton(
+            header,
+            text="Pokaz TECH",
+            variable=self.logbook_show_tech_var,
+            command=self._on_logbook_feed_filters_changed,
+            bg=COLOR_BG,
+            fg=COLOR_FG,
+            selectcolor=COLOR_ACCENT,
+            activebackground=COLOR_BG,
+            activeforeground=COLOR_FG,
+        )
+        self.chk_logbook_show_tech.grid(row=1, column=2, sticky="e", padx=(10, 0), pady=(6, 0))
+
         self.logbook_feed_tree = ttk.Treeview(
             self.tab_feed,
-            columns=("time", "event", "system", "location", "summary"),
+            columns=("time", "class", "event", "system", "location", "summary"),
             show="headings",
             style="Journal.Treeview",
             selectmode="browse",
         )
-        self.logbook_feed_tree.heading("time", text="Czas")
-        self.logbook_feed_tree.heading("event", text="Event")
-        self.logbook_feed_tree.heading("system", text="System")
-        self.logbook_feed_tree.heading("location", text="Miejsce")
-        self.logbook_feed_tree.heading("summary", text="Podsumowanie")
+        self.logbook_feed_tree.heading("time", text="Czas", command=lambda: self._set_logbook_feed_sort("time"))
+        self.logbook_feed_tree.heading("class", text="Klasa", command=lambda: self._set_logbook_feed_sort("class"))
+        self.logbook_feed_tree.heading("event", text="Event", command=lambda: self._set_logbook_feed_sort("event"))
+        self.logbook_feed_tree.heading("system", text="System", command=lambda: self._set_logbook_feed_sort("system"))
+        self.logbook_feed_tree.heading("location", text="Miejsce", command=lambda: self._set_logbook_feed_sort("location"))
+        self.logbook_feed_tree.heading("summary", text="Podsumowanie", command=lambda: self._set_logbook_feed_sort("summary"))
 
         self.logbook_feed_tree.column("time", width=130, anchor="w")
+        self.logbook_feed_tree.column("class", width=120, anchor="w")
         self.logbook_feed_tree.column("event", width=130, anchor="w")
         self.logbook_feed_tree.column("system", width=160, anchor="w")
         self.logbook_feed_tree.column("location", width=180, anchor="w")
-        self.logbook_feed_tree.column("summary", width=620, anchor="w")
+        self.logbook_feed_tree.column("summary", width=520, anchor="w")
 
         feed_scroll = ttk.Scrollbar(
             self.tab_feed,
@@ -753,37 +805,17 @@ class LogbookTab(tk.Frame):
         event_name = str(item.get("event_name") or "").strip()
         if not event_name:
             return
-
-        timestamp = _format_ts(str(item.get("timestamp") or ""))
-        system_name = str(item.get("system_name") or "").strip() or "-"
-        station_name = str(item.get("station_name") or "").strip()
-        body_name = str(item.get("body_name") or "").strip()
-        location = station_name or body_name or "-"
-        summary = str(item.get("summary") or "").strip() or event_name
-
-        iid = self.logbook_feed_tree.insert(
-            "",
-            0,
-            values=(timestamp, event_name, system_name, location, summary),
-        )
-        self._logbook_item_to_payload[iid] = dict(item)
-
-        children = self.logbook_feed_tree.get_children()
-        if len(children) > self._logbook_feed_limit:
-            for iid in children[self._logbook_feed_limit:]:
-                self.logbook_feed_tree.delete(iid)
-                self._logbook_item_to_payload.pop(iid, None)
-
-        count = len(self.logbook_feed_tree.get_children())
-        self.logbook_status_var.set(
-            f"Eventow w feedzie: {count} (limit {self._logbook_feed_limit})"
-        )
+        self._logbook_feed_items.append(dict(item))
+        if len(self._logbook_feed_items) > self._logbook_feed_limit:
+            self._logbook_feed_items = self._logbook_feed_items[-self._logbook_feed_limit :]
+        self._render_logbook_feed_tree()
         if persist_cache and not self._logbook_feed_restore_in_progress:
             append_logbook_feed_cache_item(item, limit=self._logbook_feed_limit)
 
     def _clear_logbook_feed(self) -> None:
         self.logbook_feed_tree.delete(*self.logbook_feed_tree.get_children())
         self._logbook_item_to_payload.clear()
+        self._logbook_feed_items.clear()
         self._selected_logbook_item_id = None
         self._refresh_logbook_nav_chips(None)
         self.logbook_status_var.set("Feed wyczyszczony.")
@@ -806,6 +838,125 @@ class LogbookTab(tk.Frame):
             f"Przywrocono feed z cache: {count} (limit {self._logbook_feed_limit})"
         )
 
+    def _on_logbook_feed_filters_changed(self) -> None:
+        self._render_logbook_feed_tree()
+
+    def _set_logbook_feed_sort(self, column: str) -> None:
+        key = str(column or "").strip().lower()
+        valid = {"time", "class", "event", "system", "location", "summary"}
+        if key not in valid:
+            return
+        if self._logbook_feed_sort_column == key:
+            self._logbook_feed_sort_desc = not bool(self._logbook_feed_sort_desc)
+        else:
+            self._logbook_feed_sort_column = key
+            self._logbook_feed_sort_desc = key == "time"
+        self._render_logbook_feed_tree()
+
+    def _logbook_item_class(self, item: dict) -> str:
+        return str(item.get("event_class") or "TECH").strip() or "TECH"
+
+    def _logbook_item_location(self, item: dict) -> str:
+        station_name = str(item.get("station_name") or "").strip()
+        body_name = str(item.get("body_name") or "").strip()
+        return station_name or body_name or "-"
+
+    def _filtered_sorted_logbook_items(self) -> list[dict]:
+        selected_class = str(self.logbook_class_filter_var.get() or "").strip()
+        show_tech = bool(self.logbook_show_tech_var.get())
+
+        rows: list[dict] = []
+        for item in self._logbook_feed_items:
+            if not isinstance(item, dict):
+                continue
+            event_class = self._logbook_item_class(item)
+            if not show_tech and event_class == "TECH":
+                continue
+            if selected_class and selected_class != _LOGBOOK_CLASS_ALL and event_class != selected_class:
+                continue
+            rows.append(item)
+
+        sort_col = str(self._logbook_feed_sort_column or "time")
+        desc = bool(self._logbook_feed_sort_desc)
+
+        def _sort_key(row: dict) -> tuple:
+            if sort_col == "time":
+                return (str(row.get("timestamp") or ""), str(row.get("event_name") or ""))
+            if sort_col == "class":
+                cls = self._logbook_item_class(row)
+                try:
+                    idx = _LOGBOOK_FEED_CLASS_ORDER.index(cls)
+                except ValueError:
+                    idx = len(_LOGBOOK_FEED_CLASS_ORDER)
+                return (idx, cls, str(row.get("timestamp") or ""))
+            if sort_col == "event":
+                return (str(row.get("event_name") or "").casefold(), str(row.get("timestamp") or ""))
+            if sort_col == "system":
+                return (str(row.get("system_name") or "").casefold(), str(row.get("timestamp") or ""))
+            if sort_col == "location":
+                return (self._logbook_item_location(row).casefold(), str(row.get("timestamp") or ""))
+            if sort_col == "summary":
+                return (str(row.get("summary") or "").casefold(), str(row.get("timestamp") or ""))
+            return (str(row.get("timestamp") or ""),)
+
+        rows.sort(key=_sort_key, reverse=desc)
+        return rows
+
+    def _render_logbook_feed_tree(self) -> None:
+        selected_payload = self._selected_logbook_item()
+        selected_signature = None
+        if isinstance(selected_payload, dict):
+            selected_signature = (
+                str(selected_payload.get("timestamp") or ""),
+                str(selected_payload.get("event_name") or ""),
+                str(selected_payload.get("summary") or ""),
+            )
+
+        self.logbook_feed_tree.delete(*self.logbook_feed_tree.get_children())
+        self._logbook_item_to_payload.clear()
+        self._selected_logbook_item_id = None
+
+        rows = self._filtered_sorted_logbook_items()
+        restore_iid: str | None = None
+        for row in rows:
+            event_name = str(row.get("event_name") or "").strip() or "-"
+            event_class = self._logbook_item_class(row)
+            timestamp = _format_ts(str(row.get("timestamp") or ""))
+            system_name = str(row.get("system_name") or "").strip() or "-"
+            location = self._logbook_item_location(row)
+            summary = str(row.get("summary") or "").strip() or event_name
+            iid = self.logbook_feed_tree.insert(
+                "",
+                "end",
+                values=(timestamp, event_class, event_name, system_name, location, summary),
+            )
+            self._logbook_item_to_payload[iid] = dict(row)
+            row_signature = (
+                str(row.get("timestamp") or ""),
+                str(row.get("event_name") or ""),
+                str(row.get("summary") or ""),
+            )
+            if selected_signature and row_signature == selected_signature:
+                restore_iid = iid
+
+        if restore_iid:
+            try:
+                self.logbook_feed_tree.selection_set(restore_iid)
+                self.logbook_feed_tree.focus(restore_iid)
+                self._selected_logbook_item_id = restore_iid
+            except Exception:
+                self._selected_logbook_item_id = None
+        else:
+            self._refresh_logbook_nav_chips(None)
+
+        visible_count = len(rows)
+        total_count = len(self._logbook_feed_items)
+        class_filter = str(self.logbook_class_filter_var.get() or _LOGBOOK_CLASS_ALL)
+        sort_label = f"{self._logbook_feed_sort_column}{' desc' if self._logbook_feed_sort_desc else ' asc'}"
+        self.logbook_status_var.set(
+            f"Eventow w feedzie: {visible_count}/{total_count} (limit {self._logbook_feed_limit}) | Klasa: {class_filter} | Sort: {sort_label}"
+        )
+
     def _on_logbook_feed_selected(self, _event=None) -> None:
         selected = self.logbook_feed_tree.selection()
         self._selected_logbook_item_id = selected[0] if selected else None
@@ -816,6 +967,7 @@ class LogbookTab(tk.Frame):
         self._refresh_logbook_nav_chips(item)
         default_category = str(item.get("default_category") or "-")
         chips = item.get("chips") or []
+        event_class = str(item.get("event_class") or "TECH")
         chips_text = ", ".join(
             f"{str(chip.get('kind') or '')}:{str(chip.get('value') or '')}"
             for chip in chips[:6]
@@ -824,7 +976,7 @@ class LogbookTab(tk.Frame):
             chips_text += ", ..."
         summary = str(item.get("summary") or "").strip() or str(item.get("event_name") or "")
         self.logbook_status_var.set(
-            f"Wybrane: {summary} | Domyslna kategoria: {default_category} | Chips: {chips_text or '-'}"
+            f"Wybrane: {summary} | Klasa: {event_class} | Domyslna kategoria: {default_category} | Chips: {chips_text or '-'}"
         )
 
     def _refresh_logbook_nav_chips(self, feed_item: dict | None) -> None:
