@@ -3,17 +3,80 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import time
 from typing import Any, Optional, Tuple, Dict
 
 import config
 from logic import utils
 
+_CACHE_ROOT_MIGRATION_DONE = False
 
-def _default_cache_dir(app_name: str = "Renata") -> str:
+
+def _merge_tree_no_overwrite(src_dir: str, dst_dir: str) -> int:
+    moved = 0
+    for root, _dirs, files in os.walk(src_dir):
+        rel = os.path.relpath(root, src_dir)
+        dst_root = dst_dir if rel in {".", ""} else os.path.join(dst_dir, rel)
+        os.makedirs(dst_root, exist_ok=True)
+        for name in files:
+            src = os.path.join(root, name)
+            dst = os.path.join(dst_root, name)
+            try:
+                if os.path.exists(dst):
+                    continue
+                shutil.move(src, dst)
+                moved += 1
+            except Exception:
+                continue
+    return moved
+
+
+def _prune_empty_dirs(path: str) -> None:
+    if not os.path.isdir(path):
+        return
+    for root, dirs, _files in os.walk(path, topdown=False):
+        for d in dirs:
+            full = os.path.join(root, d)
+            try:
+                os.rmdir(full)
+            except Exception:
+                pass
+    try:
+        os.rmdir(path)
+    except Exception:
+        pass
+
+
+def _migrate_legacy_appdata_cache_if_needed(base_appdata: str) -> None:
+    global _CACHE_ROOT_MIGRATION_DONE
+    if _CACHE_ROOT_MIGRATION_DONE:
+        return
+    _CACHE_ROOT_MIGRATION_DONE = True
+    try:
+        old_root = os.path.join(base_appdata, "Renata", "cache")
+        new_root = os.path.join(base_appdata, "RenataAI", "cache")
+        if not os.path.isdir(old_root):
+            return
+        os.makedirs(new_root, exist_ok=True)
+        moved = _merge_tree_no_overwrite(old_root, new_root)
+        _prune_empty_dirs(old_root)
+        try:
+            os.rmdir(os.path.join(base_appdata, "Renata"))
+        except Exception:
+            pass
+        if moved > 0:
+            utils.MSG_QUEUE.put(("log", f"[CACHE] migrated {moved} files to APPDATA\\\\RenataAI\\\\cache"))
+    except Exception:
+        return
+
+
+def _default_cache_dir(app_name: str = "RenataAI") -> str:
     base = os.getenv("APPDATA") or os.getenv("LOCALAPPDATA")
     if not base:
         base = os.path.join(os.path.expanduser("~"), ".cache")
+    else:
+        _migrate_legacy_appdata_cache_if_needed(base)
     return os.path.join(base, app_name, "cache")
 
 

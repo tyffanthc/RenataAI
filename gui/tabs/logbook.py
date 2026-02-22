@@ -145,7 +145,7 @@ class LogbookTab(tk.Frame):
         self.app = app
         self.manager = manager  # legacy manager kept for compatibility
         self.repository = repository or EntryRepository()
-        self._category_store_path = "user_entry_categories.json"
+        self._category_store_path = config.renata_user_home_file("user_entry_categories.json")
 
         self._category_display_to_path: dict[str, str] = {}
         self._entry_item_to_id: dict[str, str] = {}
@@ -1074,6 +1074,9 @@ class LogbookTab(tk.Frame):
 
     def _save_saved_categories(self) -> None:
         try:
+            directory = os.path.dirname(os.path.abspath(self._category_store_path))
+            if directory and not os.path.isdir(directory):
+                os.makedirs(directory, exist_ok=True)
             with open(self._category_store_path, "w", encoding="utf-8") as handle:
                 json.dump(self._saved_categories, handle, ensure_ascii=False, indent=2)
         except Exception:

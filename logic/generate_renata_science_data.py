@@ -1,3 +1,5 @@
+import os
+import config
 try:
     import pandas as pd
 except ModuleNotFoundError:
@@ -9,7 +11,7 @@ from io import StringIO
 
 EXOBIO_URL = "https://elite-dangerous.fandom.com/wiki/Exobiologist"
 EXPLORER_URL = "https://elite-dangerous.fandom.com/wiki/Explorer"
-OUTPUT_FILE = "renata_science_data.xlsx"
+OUTPUT_FILE = config.renata_user_home_file("renata_science_data.xlsx")
 
 
 def _fetch_html(url: str) -> str:
@@ -247,6 +249,9 @@ def generate_science_excel(path: str = OUTPUT_FILE) -> str | None:
     try:
         exobio_df = build_exobiology_sheet()
         carto_df = build_cartography_sheet()
+        out_dir = os.path.dirname(os.path.abspath(path))
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
 
         with pd.ExcelWriter(path, engine="xlsxwriter") as writer:
             exobio_df.to_excel(writer, index=False, sheet_name="Exobiology")

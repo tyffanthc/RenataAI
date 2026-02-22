@@ -75,10 +75,10 @@ class SettingsTab(ttk.Frame):
         return os.path.join(config.BASE_DIR, "data", "cash_in")
 
     def _default_cash_in_dump_path(self) -> str:
-        return os.path.join(self._default_cash_in_data_dir(), "galaxy_stations.json.gz")
+        return config.renata_user_home_file("galaxy_stations.json.gz")
 
     def _default_cash_in_offline_index_path(self) -> str:
-        return os.path.join(self._default_cash_in_data_dir(), "offline_station_index.json")
+        return config.renata_user_home_file("offline_station_index.json")
 
     def update_modules_status(self, loaded: bool) -> None:
         if loaded:
@@ -104,7 +104,15 @@ class SettingsTab(ttk.Frame):
         self.var_log_path = tk.StringVar(value="")
         self.var_auto_detect_logs = tk.BooleanVar(value=True)
         self.var_science_data_path = tk.StringVar(value=config.SCIENCE_EXCEL_PATH)
-        self.var_modules_data_path = tk.StringVar(value="renata_modules_data.json")
+        self.var_modules_data_path = tk.StringVar(
+            value=str(
+                config.get(
+                    "modules_data_path",
+                    config.renata_user_home_file("renata_modules_data.json"),
+                )
+                or config.renata_user_home_file("renata_modules_data.json")
+            )
+        )
 
         # SPANSH – nadal frontend only
         self.var_spansh_timeout = tk.StringVar(value="20")
@@ -146,7 +154,7 @@ class SettingsTab(ttk.Frame):
         self.var_cash_in_dump_path = tk.StringVar(value=self._default_cash_in_dump_path())
         self.var_cash_in_dump_progress = tk.DoubleVar(value=0.0)
         self.var_cash_in_dump_status = tk.StringVar(
-            value="Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data/cash_in."
+            value="Brak pobierania. Dump mozesz zapisac do folderu uzytkownika RenataAI."
         )
         self.var_cash_in_index_build_progress = tk.DoubleVar(value=0.0)
         self.var_cash_in_index_build_status = tk.StringVar(
@@ -1915,7 +1923,7 @@ class SettingsTab(ttk.Frame):
         )
         self.var_cash_in_dump_progress.set(0.0)
         self.var_cash_in_dump_status.set(
-            "Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data/cash_in."
+            "Brak pobierania. Dump mozesz zapisac do folderu uzytkownika RenataAI."
         )
         self.var_cash_in_index_build_progress.set(0.0)
         self.var_cash_in_index_build_status.set(
@@ -2245,7 +2253,8 @@ class SettingsTab(ttk.Frame):
             # klucze główne (uzgodnione z backendem)
             "log_dir": self.var_log_path.get().strip() or None,
             "science_data_path": self.var_science_data_path.get().strip() or config.SCIENCE_EXCEL_PATH,
-            "modules_data_path": self.var_modules_data_path.get().strip() or "renata_modules_data.json",
+            "modules_data_path": self.var_modules_data_path.get().strip()
+            or config.renata_user_home_file("renata_modules_data.json"),
             "language": self.var_language.get() if self.var_language.get() in ("pl", "en") else "pl",
             "theme": self.var_theme.get() if self.var_theme.get() in ("dark", "ed_orange", "ed_blue", "dark_minimal") else "dark",
 
@@ -2484,6 +2493,7 @@ class SettingsTab(ttk.Frame):
             appdata = os.getenv("APPDATA") or os.getenv("LOCALAPPDATA")
             if appdata:
                 candidates = [
+                    config.renata_user_home_file(normalized),
                     os.path.join(appdata, "RenataAI", "data", "cash_in", normalized),
                     os.path.join(appdata, "RenataAI", "data", normalized),
                 ]
@@ -2525,7 +2535,7 @@ class SettingsTab(ttk.Frame):
         else:
             self.var_cash_in_dump_progress.set(0.0)
             self.var_cash_in_dump_status.set(
-                "Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data/cash_in."
+                "Brak pobierania. Dump mozesz zapisac do folderu uzytkownika RenataAI."
             )
 
         index_status, index_resolved = self._build_file_presence_status(
@@ -2829,7 +2839,13 @@ class SettingsTab(ttk.Frame):
             str(defaults.get("science_data_path", config.SCIENCE_EXCEL_PATH) or config.SCIENCE_EXCEL_PATH)
         )
         self.var_modules_data_path.set(
-            str(defaults.get("modules_data_path", "renata_modules_data.json") or "renata_modules_data.json")
+            str(
+                defaults.get(
+                    "modules_data_path",
+                    config.renata_user_home_file("renata_modules_data.json"),
+                )
+                or config.renata_user_home_file("renata_modules_data.json")
+            )
         )
         self.var_auto_detect_logs.set(bool(defaults.get("auto_detect_logs", True)))
 
@@ -2915,7 +2931,7 @@ class SettingsTab(ttk.Frame):
         )
         self.var_cash_in_dump_progress.set(0.0)
         self.var_cash_in_dump_status.set(
-            "Brak pobierania. Dump mozesz zapisac do %APPDATA%/RenataAI/data/cash_in."
+            "Brak pobierania. Dump mozesz zapisac do folderu uzytkownika RenataAI."
         )
         self.var_cash_in_index_build_progress.set(0.0)
         self.var_cash_in_index_build_status.set(

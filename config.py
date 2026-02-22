@@ -21,8 +21,65 @@ from logic.context_state_contract import (
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _SETTINGS_SOURCE_LOGGED = False
-SCIENCE_EXCEL_PATH = "renata_science_data.xlsx"
 APP_VERSION = "v0.9.4"
+
+
+def _renata_user_home_dir() -> str:
+    return os.path.join(os.path.expanduser("~"), "RenataAI")
+
+
+def renata_user_home_dir() -> str:
+    """
+    Public helper for local user-owned data that should live in:
+    C:\\Users\\<user>\\RenataAI
+    (not in %%APPDATA%%).
+    """
+    path = _renata_user_home_dir()
+    try:
+        os.makedirs(path, exist_ok=True)
+    except Exception:
+        pass
+    return path
+
+
+def renata_user_home_file(filename: str) -> str:
+    return os.path.join(renata_user_home_dir(), str(filename or "").strip())
+
+
+_LEGACY_USER_HOME_LOOSE_FILES = (
+    "offline_station_index.json",
+    "renata_modules_data.json",
+    "renata_science_data.xlsx",
+    "user_entries.jsonl",
+    "user_entry_categories.json",
+    "user_logbook.json",
+)
+
+
+def _migrate_loose_user_home_files_if_needed() -> None:
+    """
+    Moves legacy loose files from C:\\Users\\<user>\\* into C:\\Users\\<user>\\RenataAI\\*
+    without touching %%APPDATA%% files.
+    """
+    home = os.path.expanduser("~")
+    target_dir = renata_user_home_dir()
+    for filename in _LEGACY_USER_HOME_LOOSE_FILES:
+        try:
+            src = os.path.join(home, filename)
+            dst = os.path.join(target_dir, filename)
+            if os.path.abspath(src) == os.path.abspath(dst):
+                continue
+            if not os.path.isfile(src):
+                continue
+            if os.path.exists(dst):
+                continue
+            shutil.move(src, dst)
+            print(f"[CONFIG] Migrated user file to RenataAI: {filename}")
+        except Exception:
+            continue
+
+
+SCIENCE_EXCEL_PATH = renata_user_home_file("renata_science_data.xlsx")
 
 
 def _settings_path() -> str:
@@ -99,6 +156,75 @@ def _log_settings_source(source: str) -> None:
         return
     _SETTINGS_SOURCE_LOGGED = True
     print(f"[CONFIG] Settings source={source}")
+
+
+def _migrate_legacy_local_path_setting(settings: Dict[str, Any], key: str, filename: str) -> bool:
+    """
+    Repoint legacy loose-file locations to ~/RenataAI/<filename>.
+    Only touches:
+    - bare filenames (legacy repo-relative / cwd-relative)
+    - absolute paths in user home root (C:\\Users\\<user>\\<filename>)
+    Leaves APPDATA and custom directories untouched.
+    """
+    current = settings.get(key)
+    if not isinstance(current, str):
+        return False
+
+    raw = current.strip()
+    if not raw:
+        return False
+
+    target = renata_user_home_file(filename)
+    home_root_legacy = os.path.join(os.path.expanduser("~"), filename)
+
+    def _norm(path: str) -> str:
+        return os.path.normcase(os.path.abspath(path))
+
+    is_bare = raw.casefold() == filename.casefold()
+    is_home_root_legacy = _norm(raw) == _norm(home_root_legacy)
+    already_target = _norm(raw) == _norm(target)
+
+    if already_target:
+        return False
+    if not (is_bare or is_home_root_legacy):
+        return False
+
+    settings[key] = target
+    return True
+
+
+def _migrate_legacy_dump_download_path_setting(settings: Dict[str, Any]) -> bool:
+    key = "cash_in.dump_download_path"
+    current = settings.get(key)
+    if not isinstance(current, str):
+        return False
+    raw = current.strip()
+    if not raw:
+        return False
+
+    target = renata_user_home_file("galaxy_stations.json.gz")
+    home_root_legacy = os.path.join(os.path.expanduser("~"), "galaxy_stations.json.gz")
+    appdata = os.getenv("APPDATA") or os.getenv("LOCALAPPDATA")
+
+    def _norm(path: str) -> str:
+        return os.path.normcase(os.path.abspath(path))
+
+    old_candidates = {home_root_legacy}
+    if appdata:
+        old_candidates.add(os.path.join(appdata, "RenataAI", "data", "cash_in", "galaxy_stations.json.gz"))
+        old_candidates.add(os.path.join(appdata, "RenataAI", "data", "galaxy_stations.json.gz"))
+    if raw.casefold() == "galaxy_stations.json.gz":
+        settings[key] = target
+        return True
+    try:
+        if _norm(raw) == _norm(target):
+            return False
+        if any(_norm(raw) == _norm(candidate) for candidate in old_candidates):
+            settings[key] = target
+            return True
+    except Exception:
+        return False
+    return False
 
 
 def _default_log_dir() -> str:
@@ -205,11 +331,11 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "cash_in.local_known_fallback_ttl_sec": 86400.0,
     "cash_in.local_known_fallback_max_items": 256,
     "cash_in.offline_index_fallback_enabled": True,
-    "cash_in.offline_index_path": "offline_station_index.json",
+    "cash_in.offline_index_path": renata_user_home_file("offline_station_index.json"),
     "cash_in.offline_index_non_carrier_only": True,
     "cash_in.offline_index_confidence_med_age_days": 30,
     "cash_in.dump_download_url": "https://downloads.spansh.co.uk/galaxy_stations.json.gz",
-    "cash_in.dump_download_path": "",
+    "cash_in.dump_download_path": renata_user_home_file("galaxy_stations.json.gz"),
     "cash_in.avoid_carriers_for_uc": True,
     "cash_in.carrier_ok_for_fast_mode": True,
     "cash_in.show_tariff_meta": True,
@@ -314,7 +440,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
 
     # MODULES DATA (JR-2)
     "modules_data_enabled": True,
-    "modules_data_path": "renata_modules_data.json",
+    "modules_data_path": renata_user_home_file("renata_modules_data.json"),
     "science_data_path": SCIENCE_EXCEL_PATH,
     "modules_data_autogen_enabled": True,
     "modules_data_debug": False,
@@ -456,7 +582,24 @@ class ConfigManager:
         # merge: wszystko co znamy z DEFAULT_SETTINGS + nadpisane z pliku
         merged = DEFAULT_SETTINGS.copy()
         merged.update(data)
+        paths_migrated = False
+        paths_migrated = _migrate_legacy_local_path_setting(
+            merged, "science_data_path", "renata_science_data.xlsx"
+        ) or paths_migrated
+        paths_migrated = _migrate_legacy_local_path_setting(
+            merged, "modules_data_path", "renata_modules_data.json"
+        ) or paths_migrated
+        paths_migrated = _migrate_legacy_local_path_setting(
+            merged, "cash_in.offline_index_path", "offline_station_index.json"
+        ) or paths_migrated
+        paths_migrated = _migrate_legacy_dump_download_path_setting(merged) or paths_migrated
         self._settings = merged
+        if paths_migrated:
+            try:
+                self._write_file()
+                print("[CONFIG] Migrated legacy local file paths to ~/RenataAI")
+            except Exception:
+                pass
 
     def _write_file(self) -> None:
         settings_dir = os.path.dirname(self.settings_path)
@@ -536,6 +679,7 @@ class ConfigManager:
 
 
 # Globalna instancja używana w całej aplikacji:
+_migrate_loose_user_home_files_if_needed()
 config = ConfigManager()
 
 # --- Funkcje pomocnicze dla starego stylu importu -------------------------

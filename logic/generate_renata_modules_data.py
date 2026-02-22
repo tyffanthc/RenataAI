@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import time
 import gzip
+import os
 from typing import Any, Dict, Iterable, List, Sequence
 
 import requests
+import config
 
-OUTPUT_FILE = "renata_modules_data.json"
+OUTPUT_FILE = config.renata_user_home_file("renata_modules_data.json")
 SOURCE_URLS: Sequence[str] = (
     "https://raw.githubusercontent.com/EDCD/coriolis-data/master/dist/modules.json",
     "https://raw.githubusercontent.com/EDCD/coriolis-data/master/dist/modules.json.gz",
@@ -162,6 +164,9 @@ def generate_modules_data(
         str  - blad (komunikat)
     """
     errors: List[str] = []
+    out_dir = os.path.dirname(os.path.abspath(path))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
 
     if isinstance(source_urls, dict):
         fsd_url = source_urls.get("fsd_url") or FSD_URL

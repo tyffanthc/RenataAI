@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+import config
 
 ENTRY_SCHEMA_VERSION = 1
 
@@ -206,8 +207,8 @@ class EntryRepository:
     Storage backend: JSONL.
     """
 
-    def __init__(self, path: str = "user_entries.jsonl") -> None:
-        self.path = path
+    def __init__(self, path: str | None = None) -> None:
+        self.path = str(path or config.renata_user_home_file("user_entries.jsonl"))
         self._entries: list[dict[str, Any]] = []
         self._index: dict[str, dict[str, Any]] = {}
         self._load()

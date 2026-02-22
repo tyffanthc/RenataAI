@@ -2,6 +2,7 @@ import os
 import json
 import uuid
 from datetime import datetime
+import config
 
 class LogbookManager:
     DEFAULT_FOLDERS = [
@@ -11,8 +12,8 @@ class LogbookManager:
         ("Ciekawe Miejsca",)
     ]
 
-    def __init__(self, path="user_logbook.json"):
-        self.path = path
+    def __init__(self, path=None):
+        self.path = str(path or config.renata_user_home_file("user_logbook.json"))
         self.data = []
         self._index = {}
         self.load()
@@ -28,6 +29,9 @@ class LogbookManager:
         return self.data
 
     def save(self):
+        directory = os.path.dirname(os.path.abspath(self.path))
+        if directory and not os.path.isdir(directory):
+            os.makedirs(directory, exist_ok=True)
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(self.data, f, ensure_ascii=False, indent=2)
 
