@@ -7,6 +7,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List
 
+from logic import player_local_db
 from logic.spansh_client import client as spansh_client
 from logic.utils.http_edsm import (
     edsm_nearby_systems,
@@ -483,6 +484,76 @@ def station_candidates_cross_system_from_providers(
         "nearby_reason": nearby_reason,
     }
     return candidates, meta
+
+
+def station_candidates_from_playerdb(
+    origin_system: str,
+    *,
+    service: str = "",
+    origin_coords: list[float] | tuple[float, float, float] | None = None,
+    limit: int = 24,
+    db_path: str | None = None,
+) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Shared provider for Cash-In / Personal Map over local SQLite playerdb.
+    Returns StationCandidate-like rows + provider meta.
+    """
+    system = _as_text(origin_system)
+    svc = _as_text(service).lower() or "uc"
+    max_rows = max(1, int(limit or 24))
+    resolved_db_path = db_path or player_local_db.default_playerdb_path()
+    if not os.path.isfile(resolved_db_path):
+        return [], {
+            "lookup_status": "playerdb_not_found",
+            "db_path": resolved_db_path,
+            "service": svc,
+            "count": 0,
+            "query_mode": "none",
+            "origin_coords_used": bool(origin_coords),
+            "origin_coords_from_playerdb": False,
+            "coords_missing_count": 0,
+        }
+    try:
+        rows, meta = player_local_db.query_nearest_station_candidates(
+            path=resolved_db_path,
+            origin_system_name=system or None,
+            origin_coords=origin_coords,
+            service=svc,
+            limit=max_rows,
+        )
+    except Exception as exc:
+        return [], {
+            "lookup_status": "playerdb_error",
+            "db_path": resolved_db_path,
+            "service": svc,
+            "count": 0,
+            "query_mode": "none",
+            "error": f"{type(exc).__name__}: {exc}",
+            "origin_coords_used": bool(origin_coords),
+            "origin_coords_from_playerdb": False,
+            "coords_missing_count": 0,
+        }
+
+    candidates: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        item = dict(row)
+        item.setdefault("source", "PLAYERDB")
+        item.setdefault("freshness_ts", _as_text(item.get("services_freshness_ts") or item.get("station_last_seen_ts")))
+        candidates.append(item)
+
+    out_meta = {
+        "lookup_status": "playerdb" if candidates else "playerdb_empty",
+        "db_path": resolved_db_path,
+        "service": svc,
+        "count": len(candidates),
+        "query_mode": _as_text(meta.get("query_mode")) or "none",
+        "origin_coords_used": bool(meta.get("origin_coords_used")),
+        "origin_coords_from_playerdb": bool(meta.get("origin_coords_from_playerdb")),
+        "coords_missing_count": int(meta.get("coords_missing_count") or 0),
+    }
+    return candidates, out_meta
 
 
 def _safe_coords_triplet(value: Any) -> tuple[float, float, float] | None:

@@ -10,6 +10,7 @@ from app.state import app_state
 from logic.cash_in_station_candidates import (
     build_station_candidates,
     filter_candidates_by_service,
+    station_candidates_from_playerdb,
     station_candidates_from_offline_index,
     station_candidates_cross_system_from_providers,
     station_candidates_for_system_from_providers,
@@ -1283,13 +1284,19 @@ def _station_candidates_confidence(
     source_status: str,
     swr_freshness: str = "",
     offline_index_age_days: int = -1,
+    playerdb_query_mode: str = "",
 ) -> str:
     source = _as_text(source_status).lower()
     freshness = _as_text(swr_freshness).upper()
+    playerdb_mode = _as_text(playerdb_query_mode).lower()
     if candidates_count <= 0:
         return "low"
     if source == "local_known_fallback":
         return "low"
+    if source == "playerdb":
+        if playerdb_mode == "nearest" and (uc_count > 0 or vista_count > 0):
+            return "high"
+        return "mid" if (uc_count > 0 or vista_count > 0) else "low"
     if source == "offline_index":
         if offline_index_age_days < 0:
             return "low"
@@ -1936,6 +1943,13 @@ def _build_station_candidates_runtime(
     local_known_fallback_used = False
     local_known_fallback_age_sec = 0.0
     local_known_fallback_count = 0
+    playerdb_lookup_attempted = False
+    playerdb_lookup_status = "not_attempted"
+    playerdb_used = False
+    playerdb_query_mode = "none"
+    playerdb_origin_coords_used = False
+    playerdb_origin_coords_from_playerdb = False
+    playerdb_coords_missing_count = 0
     offline_index_lookup_attempted = False
     offline_index_used = False
     offline_index_lookup_status = "not_attempted"
@@ -2032,8 +2046,40 @@ def _build_station_candidates_runtime(
             offline_index_lookup_status = "no_offline_index_hit"
         return []
 
+    def _attempt_playerdb_lookup() -> list[dict[str, Any]]:
+        nonlocal playerdb_lookup_attempted
+        nonlocal playerdb_lookup_status
+        nonlocal playerdb_used
+        nonlocal playerdb_query_mode
+        nonlocal playerdb_origin_coords_used
+        nonlocal playerdb_origin_coords_from_playerdb
+        nonlocal playerdb_coords_missing_count
+
+        playerdb_lookup_attempted = True
+        playerdb_candidates, playerdb_meta = station_candidates_from_playerdb(
+            system,
+            service=service_norm,
+            origin_coords=origin_coords,
+            limit=limit,
+        )
+        playerdb_lookup_status = _as_text(playerdb_meta.get("lookup_status")).lower() or "not_attempted"
+        playerdb_query_mode = _as_text(playerdb_meta.get("query_mode")).lower() or "none"
+        playerdb_origin_coords_used = bool(playerdb_meta.get("origin_coords_used"))
+        playerdb_origin_coords_from_playerdb = bool(playerdb_meta.get("origin_coords_from_playerdb"))
+        playerdb_coords_missing_count = int(playerdb_meta.get("coords_missing_count") or 0)
+        if playerdb_candidates:
+            playerdb_used = True
+            return list(playerdb_candidates)
+        return []
+
     # Local-first path for mode without online lookup:
-    # prefer local/player memory fallback before offline index.
+    # prefer real playerdb before bridge runtime cache and offline index.
+    if not candidates and not lookup_enabled:
+        playerdb_rows = _attempt_playerdb_lookup()
+        if playerdb_rows:
+            candidates = playerdb_rows
+            source_status = "playerdb"
+
     if not candidates and not lookup_enabled:
         known = _load_local_known_candidates(service=service_norm, limit=limit)
         if bool(known.get("used")):
@@ -2202,6 +2248,12 @@ def _build_station_candidates_runtime(
                     provider_lookup_status = restored_status
 
     if provider_lookup_attempted and not candidates:
+        playerdb_rows = _attempt_playerdb_lookup()
+        if playerdb_rows:
+            candidates = playerdb_rows
+            source_status = "playerdb"
+
+    if provider_lookup_attempted and not candidates:
         known = _load_local_known_candidates(service=service_norm, limit=limit)
         if bool(known.get("used")):
             known_rows = list(known.get("candidates") or [])
@@ -2262,6 +2314,7 @@ def _build_station_candidates_runtime(
             "providers",
             "providers_cross_system",
             "providers_cache",
+            "playerdb",
             "playerdb_bridge",
             "offline_index",
             "local_fallback",
@@ -2287,6 +2340,13 @@ def _build_station_candidates_runtime(
         "swr_profile_radius_ly": float(cross_radius_ly),
         "swr_profile_max_systems": int(cross_max_systems),
         "local_known_fallback_used": local_known_fallback_used,
+        "playerdb_lookup_attempted": playerdb_lookup_attempted,
+        "playerdb_lookup_status": playerdb_lookup_status,
+        "playerdb_used": playerdb_used,
+        "playerdb_query_mode": playerdb_query_mode,
+        "playerdb_origin_coords_used": playerdb_origin_coords_used,
+        "playerdb_origin_coords_from_playerdb": playerdb_origin_coords_from_playerdb,
+        "playerdb_coords_missing_count": playerdb_coords_missing_count,
         "playerdb_bridge_used": local_known_fallback_used,
         "playerdb_bridge_source_status": (
             "playerdb_bridge" if local_known_fallback_used else "not_used"
@@ -2338,6 +2398,7 @@ def _build_station_candidates_runtime(
             source_status=source_status,
             swr_freshness=swr_freshness,
             offline_index_age_days=offline_index_age_days,
+            playerdb_query_mode=playerdb_query_mode,
         ),
     }
     return candidates, meta
