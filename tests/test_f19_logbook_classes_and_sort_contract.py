@@ -39,6 +39,8 @@ class F19LogbookClassesAndSortContractTests(unittest.TestCase):
         self.assertIn('"style": "Treeview"', content)
         self.assertIn("def _update_logbook_feed_sort_indicators", content)
         self.assertIn("_logbook_feed_header_labels", content)
+        self.assertIn("classify_logbook_event", content)
+        self.assertIn('row["event_class"] = classify_logbook_event(event_name)', content)
         self.assertIn("def _filtered_sorted_logbook_items", content)
         self.assertIn("def _render_logbook_feed_tree", content)
 

@@ -18,7 +18,11 @@ from logic.journal_navigation import (
     resolve_entry_nav_target_typed,
     resolve_logbook_nav_target,
 )
-from logic.logbook_feed import build_logbook_info_rows, build_logbook_summary_snapshot
+from logic.logbook_feed import (
+    build_logbook_info_rows,
+    build_logbook_summary_snapshot,
+    classify_logbook_event,
+)
 from logic.logbook_feed_cache import (
     append_logbook_feed_cache_item,
     clear_logbook_feed_cache,
@@ -147,6 +151,22 @@ def _maybe_station_name(body_text: str) -> str | None:
     if any(token in lower for token in station_tokens):
         return text
     return None
+
+
+def _logbook_feed_item_signature(item: dict | None) -> str:
+    if not isinstance(item, dict):
+        return ""
+    parts = [
+        str(item.get("timestamp") or "").strip(),
+        str(item.get("event_name") or "").strip(),
+        str(item.get("system_name") or "").strip(),
+        str(item.get("station_name") or "").strip(),
+        str(item.get("body_name") or "").strip(),
+        str(item.get("summary") or "").strip(),
+    ]
+    if not any(parts):
+        return ""
+    return "\x1f".join(parts)
 
 
 class LogbookTab(tk.Frame):
@@ -882,15 +902,24 @@ class LogbookTab(tk.Frame):
     def append_logbook_feed_item(self, item: dict, *, persist_cache: bool = True) -> None:
         if not isinstance(item, dict):
             return
-        event_name = str(item.get("event_name") or "").strip()
+        row = dict(item)
+        event_name = str(row.get("event_name") or "").strip()
         if not event_name:
             return
-        self._logbook_feed_items.append(dict(item))
+        if not str(row.get("event_class") or "").strip():
+            row["event_class"] = classify_logbook_event(event_name)
+
+        incoming_sig = _logbook_feed_item_signature(row)
+        if incoming_sig:
+            for existing in self._logbook_feed_items:
+                if _logbook_feed_item_signature(existing) == incoming_sig:
+                    return
+        self._logbook_feed_items.append(row)
         if len(self._logbook_feed_items) > self._logbook_feed_limit:
             self._logbook_feed_items = self._logbook_feed_items[-self._logbook_feed_limit :]
         self._render_logbook_feed_tree()
         if persist_cache and not self._logbook_feed_restore_in_progress:
-            append_logbook_feed_cache_item(item, limit=self._logbook_feed_limit)
+            append_logbook_feed_cache_item(row, limit=self._logbook_feed_limit)
 
     def _clear_logbook_feed(self) -> None:
         self.logbook_feed_tree.delete(*self.logbook_feed_tree.get_children())
@@ -952,7 +981,13 @@ class LogbookTab(tk.Frame):
             )
 
     def _logbook_item_class(self, item: dict) -> str:
-        return str(item.get("event_class") or "TECH").strip() or "TECH"
+        event_class = str(item.get("event_class") or "").strip()
+        if event_class:
+            return event_class
+        event_name = str(item.get("event_name") or "").strip()
+        if event_name:
+            return str(classify_logbook_event(event_name) or "TECH").strip() or "TECH"
+        return "TECH"
 
     def _logbook_item_location(self, item: dict) -> str:
         station_name = str(item.get("station_name") or "").strip()
