@@ -28,6 +28,7 @@ class _MapNode:
     source: str = "playerdb"
     confidence: str = "observed"
     freshness_ts: str = ""
+    last_seen_ts: str = ""
 
 
 @dataclass
@@ -46,10 +47,10 @@ class JournalMapTab(tk.Frame):
     - placeholder/stub przyciskow i paneli pod dalsze tickety F20-3..F20-6
     """
 
-    def __init__(self, parent, app=None, *args, **kwargs):
+    def __init__(self, parent, app=None, data_provider: MapDataProvider | None = None, *args, **kwargs):
         super().__init__(parent, bg=COLOR_BG, *args, **kwargs)
         self.app = app
-        self.data_provider = MapDataProvider()
+        self.data_provider = data_provider or MapDataProvider()
 
         # View transform (world -> screen)
         self.view_scale: float = 1.0
@@ -67,6 +68,9 @@ class JournalMapTab(tk.Frame):
         self._nodes: dict[str, _MapNode] = {}
         self._edges: list[_MapEdge] = []
         self._selected_node_key: str | None = None
+        self._travel_nodes_meta: dict[str, Any] = {}
+        self._travel_edges_meta: dict[str, Any] = {}
+        self._pending_after_ids: list[str] = []
 
         # Filters (UI shell)
         self.layer_travel_var = tk.BooleanVar(value=True)
@@ -81,7 +85,29 @@ class JournalMapTab(tk.Frame):
 
         self._build_ui()
         self._bind_canvas()
-        self.after(50, self.reset_view)
+        self._schedule_after(50, self.reset_view)
+        self._schedule_after(90, self.reload_from_playerdb)
+
+    def _schedule_after(self, delay_ms: int, callback) -> str:
+        after_id = self.after(int(delay_ms), callback)
+        try:
+            self._pending_after_ids.append(str(after_id))
+        except Exception:
+            pass
+        return str(after_id)
+
+    def _cancel_pending_after_jobs(self) -> None:
+        pending = list(getattr(self, "_pending_after_ids", []) or [])
+        self._pending_after_ids = []
+        for after_id in pending:
+            try:
+                self.after_cancel(after_id)
+            except Exception:
+                pass
+
+    def destroy(self) -> None:
+        self._cancel_pending_after_jobs()
+        super().destroy()
 
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=0)
@@ -378,11 +404,7 @@ class JournalMapTab(tk.Frame):
         self.map_canvas.bind("<Button-5>", lambda e: self._on_canvas_mousewheel(_WheelShim(e, delta=-120)))
 
     def _on_filter_changed(self) -> None:
-        # F20-2 shell only: update status + redraw placeholder scene.
-        self._redraw_scene()
-        self.map_status_var.set(
-            "Mapa: shell aktywny (F20-2). Filtry zastosowane; renderer danych w kolejnych ticketach."
-        )
+        self.reload_from_playerdb()
 
     def set_graph_data(self, *, nodes: list[dict[str, Any]] | None = None, edges: list[dict[str, Any]] | None = None) -> None:
         self._nodes.clear()
@@ -404,6 +426,7 @@ class JournalMapTab(tk.Frame):
                     source=str(row.get("source") or "playerdb"),
                     confidence=str(row.get("confidence") or "observed"),
                     freshness_ts=str(row.get("freshness_ts") or ""),
+                    last_seen_ts=str(row.get("last_seen_ts") or ""),
                 )
             except Exception:
                 continue
@@ -416,6 +439,129 @@ class JournalMapTab(tk.Frame):
                 continue
             self._edges.append(_MapEdge(key=key, from_key=from_key, to_key=to_key))
         self._redraw_scene()
+
+    def _source_filter_mode(self) -> str:
+        return "include_enriched" if bool(self.source_include_enriched_var.get()) else "observed_only"
+
+    @staticmethod
+    def _safe_float(value: Any) -> float | None:
+        try:
+            if value is None:
+                return None
+            return float(value)
+        except Exception:
+            return None
+
+    def _travel_layout_from_system_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        # Travel-path layout (MVP default): sequence by last_seen/first_seen, rendered as readable serpentine path.
+        ordered = sorted(
+            [dict(r) for r in rows if isinstance(r, dict)],
+            key=lambda r: (
+                str(r.get("last_seen_ts") or r.get("first_seen_ts") or ""),
+                str(r.get("system_name") or "").casefold(),
+            ),
+        )
+        out: list[dict[str, Any]] = []
+        step_x = 18.0
+        step_y = 14.0
+        row_len = 8
+        for idx, row in enumerate(ordered):
+            grid_row = idx // row_len
+            grid_col = idx % row_len
+            if grid_row % 2 == 1:
+                grid_col = (row_len - 1) - grid_col
+            wx = grid_col * step_x
+            wy = grid_row * step_y
+            # light jitter-free curve feel for sequential travel readability
+            wy += math.sin(idx * 0.55) * 2.0
+            item = dict(row)
+            item["x"] = wx
+            item["y"] = wy
+            out.append(item)
+        return out
+
+    def _build_fallback_sequential_edges(self, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        ordered = sorted(
+            [dict(r) for r in nodes if isinstance(r, dict)],
+            key=lambda r: (
+                str(r.get("last_seen_ts") or r.get("first_seen_ts") or ""),
+                str(r.get("system_name") or "").casefold(),
+            ),
+        )
+        prev_key: str | None = None
+        for row in ordered:
+            key = str(row.get("key") or row.get("system_address") or row.get("system_name") or "").strip()
+            if not key:
+                continue
+            if prev_key and prev_key != key:
+                out.append({"key": f"{prev_key}->{key}", "from_key": prev_key, "to_key": key, "source": "playerdb_sequential"})
+            prev_key = key
+        return out
+
+    def _refresh_system_panel_stub(self) -> None:
+        # F20-3 still keeps drilldown for next ticket, but provides useful summary.
+        self.system_stations_tree.delete(*self.system_stations_tree.get_children())
+        self.station_market_tree.delete(*self.station_market_tree.get_children())
+        self.trade_compare_tree.delete(*self.trade_compare_tree.get_children())
+        nodes_count = len(self._nodes)
+        edges_count = len(self._edges)
+        self.system_details_var.set(
+            f"Travel layer: {nodes_count} systemow | {edges_count} krawedzi | "
+            f"time={self.time_range_var.get()} | freshness={self.freshness_var.get()}"
+        )
+        self.station_details_var.set(
+            "Drilldown stacji i snapshoty rynku zostana dopiete w F20-4."
+        )
+
+    def reload_from_playerdb(self) -> dict[str, Any]:
+        if not bool(self.layer_travel_var.get()):
+            self.set_graph_data(nodes=[], edges=[])
+            self._travel_nodes_meta = {"count": 0, "disabled": True}
+            self._travel_edges_meta = {"count": 0, "disabled": True}
+            self._refresh_system_panel_stub()
+            self.map_status_var.set("Mapa: warstwa Travel jest wylaczona.")
+            return {"ok": True, "travel_enabled": False, "nodes": 0, "edges": 0}
+
+        time_range = str(self.time_range_var.get() or "30d")
+        source_filter = self._source_filter_mode()
+        nodes_rows, nodes_meta = self.data_provider.get_system_nodes(time_range=time_range, source_filter=source_filter)
+        edges_rows, edges_meta = self.data_provider.get_edges(time_range=time_range)
+
+        # F20-3 default renderer = travel-path layout; coords-view intentionally deferred.
+        laid_out_nodes = self._travel_layout_from_system_rows(nodes_rows)
+        if edges_rows:
+            edges_final = edges_rows
+            edges_mode = "provider"
+        else:
+            edges_final = self._build_fallback_sequential_edges(laid_out_nodes)
+            edges_mode = "sequential_fallback"
+
+        self._travel_nodes_meta = dict(nodes_meta or {})
+        self._travel_edges_meta = dict(edges_meta or {})
+        self._travel_edges_meta["render_mode"] = edges_mode
+
+        self.set_graph_data(nodes=laid_out_nodes, edges=edges_final)
+        self._refresh_system_panel_stub()
+
+        count_nodes = len(self._nodes)
+        count_edges = len(self._edges)
+        status_reason = ""
+        if edges_mode == "sequential_fallback":
+            status_reason = " | krawedzie: fallback sekwencyjny (brak ingestu jumps)"
+        self.map_status_var.set(
+            f"Mapa Travel: {count_nodes} systemow / {count_edges} krawedzi | "
+            f"time={time_range} | source={source_filter}{status_reason}"
+        )
+        return {
+            "ok": True,
+            "travel_enabled": True,
+            "nodes": count_nodes,
+            "edges": count_edges,
+            "edges_mode": edges_mode,
+            "nodes_meta": dict(nodes_meta or {}),
+            "edges_meta": dict(edges_meta or {}),
+        }
 
     def reset_view(self) -> None:
         self.view_scale = 1.0
@@ -591,7 +737,15 @@ class JournalMapTab(tk.Frame):
                 continue
             x1, y1 = self.world_to_screen(a.x, a.y)
             x2, y2 = self.world_to_screen(b.x, b.y)
-            self.map_canvas.create_line(x1, y1, x2, y2, fill=COLOR_EDGE, width=1.0)
+            self.map_canvas.create_line(
+                x1,
+                y1,
+                x2,
+                y2,
+                fill=COLOR_EDGE,
+                width=1.0,
+                tags=("map_edge", f"edge:{edge.key}"),
+            )
 
     def _draw_nodes(self) -> None:
         show_labels = self.view_scale >= 0.8
@@ -599,7 +753,16 @@ class JournalMapTab(tk.Frame):
             sx, sy = self.world_to_screen(node.x, node.y)
             r = 4 if self.view_scale < 1.2 else 5
             outline = COLOR_HILITE if node.key == self._selected_node_key else COLOR_NODE
-            self.map_canvas.create_oval(sx - r, sy - r, sx + r, sy + r, outline=outline, fill=COLOR_NODE)
+            node_tags = ("map_node", f"node:{node.key}")
+            self.map_canvas.create_oval(
+                sx - r,
+                sy - r,
+                sx + r,
+                sy + r,
+                outline=outline,
+                fill=COLOR_NODE,
+                tags=node_tags,
+            )
             if show_labels:
                 self.map_canvas.create_text(
                     sx + 8,
@@ -608,6 +771,7 @@ class JournalMapTab(tk.Frame):
                     anchor="sw",
                     fill=COLOR_SEC,
                     font=("Segoe UI", 8),
+                    tags=node_tags,
                 )
 
 
@@ -616,4 +780,3 @@ class _WheelShim:
         self.x = getattr(event, "x", 0)
         self.y = getattr(event, "y", 0)
         self.delta = int(delta)
-
