@@ -77,7 +77,7 @@ class F3QualityGatesAndSmokeTests(unittest.TestCase):
                 gui_ref=gui_ref,
             )
 
-            # 2) Bio callout in the same system should trigger one summary.
+            # 2) Required bio callout should bypass awareness limits.
             bio_events.handle_dss_bio_signals(
                 {
                     "event": "SAASignalsFound",
@@ -88,27 +88,36 @@ class F3QualityGatesAndSmokeTests(unittest.TestCase):
                 gui_ref=gui_ref,
             )
 
-            # 3) Another awareness candidate in same system should be suppressed after summary.
-            dss_events.handle_dss_target_hint(
-                {
-                    "event": "Scan",
-                    "StarSystem": "SMOKE_F3_QUALITY_SYSTEM",
-                    "BodyName": "SMOKE_F3_BODY_3",
-                    "PlanetClass": "Rocky body",
-                    "WasMapped": False,
-                },
+            # 3) Non-required awareness candidates should still trigger summary/limit.
+            awareness.emit_callout_or_summary(
+                text="Soft callout A",
                 gui_ref=gui_ref,
+                message_id="MSG.EXOBIO_NEW_ENTRY",
+                source="smoke",
+                system_name="SMOKE_F3_QUALITY_SYSTEM",
+                body_name="SMOKE_F3_BODY_3",
+                callout_key="soft:3",
+            )
+            awareness.emit_callout_or_summary(
+                text="Soft callout B",
+                gui_ref=gui_ref,
+                message_id="MSG.EXOBIO_NEW_ENTRY",
+                source="smoke",
+                system_name="SMOKE_F3_QUALITY_SYSTEM",
+                body_name="SMOKE_F3_BODY_4",
+                callout_key="soft:4",
             )
 
         message_ids = [call.kwargs.get("message_id") for call in emit_mock.call_args_list]
         self.assertIn("MSG.ELW_DETECTED", message_ids)
+        self.assertIn("MSG.BIO_SIGNALS_HIGH", message_ids)
         self.assertEqual(message_ids.count("MSG.EXPLORATION_SYSTEM_SUMMARY"), 1)
-        self.assertEqual(len(message_ids), 2)
+        self.assertEqual(len(message_ids), 4)
 
         snap = awareness.get_awareness_snapshot("SMOKE_F3_QUALITY_SYSTEM")
         self.assertEqual(snap.get("callouts_emitted"), 1)
         self.assertTrue(bool(snap.get("summary_emitted")))
-        self.assertGreaterEqual(int(snap.get("suppressed_count") or 0), 2)
+        self.assertGreaterEqual(int(snap.get("suppressed_count") or 0), 1)
 
     def test_combat_silence_blocks_dss_and_exobio_noncritical(self) -> None:
         # DSS in combat.
