@@ -33,12 +33,12 @@ class F28QualityGatesAndSmokeTests(unittest.TestCase):
     def test_smoke_f28_route_progress_wording_and_percent_verbalization(self) -> None:
         text = prepare_tts(
             "MSG.RUNTIME_CRITICAL",
-            {"raw_text": "Do boosta. 25% drogi."},
+            {"raw_text": "Do kolejnego odcinka. 25% odcinka."},
         ) or ""
         lowered = text.lower()
-        self.assertIn("do boosta", lowered)
+        self.assertIn("kolejnego odcinka", lowered)
         self.assertIn("dwadzieścia pięć procent", lowered)
-        self.assertIn("drogi", lowered)
+        self.assertIn("odcinka", lowered)
 
     def test_smoke_f28_star_cartography_and_recovery_diagnostics(self) -> None:
         src_engine = self._saved_engine

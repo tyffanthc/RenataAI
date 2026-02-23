@@ -811,11 +811,11 @@ def _maybe_emit_milestone_progress(current_index: int, source: str | None) -> No
         if target_norm != prev_target_norm:
             next_target = target_raw
         utils.powiedz(
-            f"Cel odcinka osiagniety. {prev_target_raw}.",
+            f"Cel odcinka osiągnięty. {prev_target_raw}.",
             message_id="MSG.MILESTONE_REACHED",
             context={"target": prev_target_raw, "next_target": next_target, "source": source},
         )
-        transition_text = f"Osiagnieto milestone: {prev_target_raw}"
+        transition_text = f"Osiągnięto cel odcinka: {prev_target_raw}"
         if next_target:
             transition_text += f" -> kolejny cel: {next_target}"
         emit_status(
@@ -863,28 +863,28 @@ def _maybe_emit_milestone_progress(current_index: int, source: str | None) -> No
 
     if threshold >= 100:
         utils.powiedz(
-            f"Cel odcinka osiagniety. {target_raw}.",
+            f"Cel odcinka osiągnięty. {target_raw}.",
             message_id="MSG.MILESTONE_REACHED",
             context={"target": target_raw, "next_target": "", "source": source},
         )
         emit_status(
             "INFO",
             "MILESTONE_REACHED",
-            text=f"Osiagnieto milestone: {target_raw}",
+            text=f"Osiągnięto cel odcinka: {target_raw}",
             source=source,
             notify_overlay=False,
         )
         return
 
     utils.powiedz(
-        f"Do boosta. {threshold}% drogi.",
+        f"Do kolejnego odcinka. {threshold}% odcinka.",
         message_id="MSG.MILESTONE_PROGRESS",
         context={"percent": threshold, "target": target_raw, "source": source},
     )
     emit_status(
         "INFO",
         "MILESTONE_PROGRESS",
-        text=f"Progres do milestone {target_raw}: {threshold}%",
+        text=f"Progres do kolejnego odcinka ({target_raw}): {threshold}%",
         source=source,
         notify_overlay=False,
     )
@@ -943,14 +943,14 @@ def _maybe_emit_milestone_progress_from_navroute(current_norm: str, source: str 
     _save_active_milestone_progress_cache()
 
     utils.powiedz(
-        f"Do boosta. {threshold}% drogi.",
+        f"Do kolejnego odcinka. {threshold}% odcinka.",
         message_id="MSG.MILESTONE_PROGRESS",
         context={"percent": threshold, "target": target_raw, "source": source},
     )
     emit_status(
         "INFO",
         "MILESTONE_PROGRESS",
-        text=f"Progres do milestone {target_raw}: {threshold}%",
+        text=f"Progres do kolejnego odcinka ({target_raw}): {threshold}%",
         source=source,
         notify_overlay=False,
     )

@@ -78,7 +78,7 @@ TTS_TEMPLATE_REGISTRY: Dict[str, dict[str, object]] = {
         "template": "Wykryto błąd krytyczny runtime. Sprawdź panel statusu.",
         "raw_text_first": True,
     },
-    "MSG.MILESTONE_PROGRESS": {"template": "Trwa lot do kolejnego celu.", "raw_text_first": False},
+    "MSG.MILESTONE_PROGRESS": {"template": "Trwa lot do kolejnego odcinka trasy.", "raw_text_first": False},
     "MSG.MILESTONE_REACHED": {"template": "Cel odcinka osiągnięty.", "raw_text_first": False},
     "MSG.STARTUP_SYSTEMS": {"template": "Renata. Startuję wszystkie systemy.", "raw_text_first": False},
 }
