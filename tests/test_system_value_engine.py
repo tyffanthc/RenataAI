@@ -240,5 +240,41 @@ class SystemValueEngineTests(unittest.TestCase):
         self.assertEqual(float(stats.c_cartography or 0.0), 0.0)
         self.assertEqual(float(stats.bonus_discovery or 0.0), 0.0)
 
+    def test_scan_event_counts_star_type_with_tier_mapper(self) -> None:
+        self.engine.analyze_scan_event(
+            {
+                "event": "Scan",
+                "StarSystem": "TEST_SYS_STAR_A",
+                "BodyName": "TEST_SYS_STAR_A",
+                "BodyType": "Star",
+                "StarType": "K",
+                "WasDiscovered": False,
+            }
+        )
+        stats = self.engine.get_system_stats("TEST_SYS_STAR_A")
+        self.assertIsNotNone(stats)
+        self.assertGreater(float(stats.c_cartography or 0.0), 0.0)
+        self.assertGreater(float(stats.bonus_discovery or 0.0), 0.0)
+        body = dict((stats.cartography_bodies or {}).get("TEST_SYS_STAR_A") or {})
+        self.assertEqual(body.get("valuation_source"), "star_tier")
+        self.assertEqual(body.get("mapped_accounted"), True)
+
+    def test_scan_event_unknown_star_type_is_skipped_without_poisoning_totals(self) -> None:
+        self.engine.analyze_scan_event(
+            {
+                "event": "Scan",
+                "StarSystem": "TEST_SYS_STAR_B",
+                "BodyName": "TEST_SYS_STAR_B",
+                "BodyType": "Star",
+                "StarType": "Quantum anomaly",
+                "WasDiscovered": True,
+            }
+        )
+        stats = self.engine.get_system_stats("TEST_SYS_STAR_B")
+        self.assertIsNotNone(stats)
+        self.assertEqual(float(stats.c_cartography or 0.0), 0.0)
+        diag = self.engine.get_runtime_diagnostics()
+        self.assertGreaterEqual(int(diag.get("scan_star_skipped_unmapped") or 0), 1)
+
 if __name__ == "__main__":
     unittest.main()

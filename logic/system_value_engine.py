@@ -1,19 +1,19 @@
-# logic/system_value_engine.py
+﻿# logic/system_value_engine.py
 """
 System Value Engine (EPIC 1)
 
-Moduł odpowiedzialny za wyliczanie wartości naukowej systemu na podstawie:
+ModuĹ‚ odpowiedzialny za wyliczanie wartoĹ›ci naukowej systemu na podstawie:
 - JournalEvents (Scan, FSS/DSS, exobio),
 - arkuszy naukowych z renata_science_data.xlsx (Exobiology + Cartography).
 
-Główne metryki:
-- c_cartography  – łączna wartość skanów ciał (FSS / DSS),
-- c_exobiology   – łączna wartość skanów biologii,
-- bonus_discovery – suma bonusów First Discovery / First Footfall,
-- total          – suma wszystkiego powyżej.
+GĹ‚Ăłwne metryki:
+- c_cartography  â€“ Ĺ‚Ä…czna wartoĹ›Ä‡ skanĂłw ciaĹ‚ (FSS / DSS),
+- c_exobiology   â€“ Ĺ‚Ä…czna wartoĹ›Ä‡ skanĂłw biologii,
+- bonus_discovery â€“ suma bonusĂłw First Discovery / First Footfall,
+- total          â€“ suma wszystkiego powyĹĽej.
 
 Zastosowanie:
-- exit summary po opuszczeniu systemu (głos + log),
+- exit summary po opuszczeniu systemu (gĹ‚os + log),
 - statystyki / high-value targets dla eksploratora.
 """
 
@@ -28,7 +28,7 @@ import pandas as pd
 
 @dataclass
 class SystemStats:
-    """Stan dla pojedynczego układu gwiezdnego."""
+    """Stan dla pojedynczego ukĹ‚adu gwiezdnego."""
 
     name: str
     c_cartography: float = 0.0
@@ -36,48 +36,48 @@ class SystemStats:
     bonus_discovery: float = 0.0
 
     # Techniczne:
-    seen_bodies: Set[str] = field(default_factory=set)   # żeby nie liczyć skanu 2x
-    seen_species: Set[str] = field(default_factory=set)  # żeby nie liczyć gatunku 2x
+    seen_bodies: Set[str] = field(default_factory=set)   # ĹĽeby nie liczyÄ‡ skanu 2x
+    seen_species: Set[str] = field(default_factory=set)  # ĹĽeby nie liczyÄ‡ gatunku 2x
     high_value_targets: List[Dict[str, Any]] = field(default_factory=list)
     cartography_bodies: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # body_id -> applied valuation state
 
     # --- Discovery status 2.0 ---
-    # ile ciał faktycznie zeskanowaliśmy w tym systemie
+    # ile ciaĹ‚ faktycznie zeskanowaliĹ›my w tym systemie
     total_scanned_bodies: int = 0
-    # ile z nich miało WasDiscovered == False (czyli były dziewicze)
+    # ile z nich miaĹ‚o WasDiscovered == False (czyli byĹ‚y dziewicze)
     bodies_first_discovery_count: int = 0
-    # ile miało WasDiscovered == True (ktoś już je odkrył)
+    # ile miaĹ‚o WasDiscovered == True (ktoĹ› juĹĽ je odkryĹ‚)
     bodies_previously_discovered_count: int = 0
 
-    # Czy widzieliśmy jakiekolwiek bonusy (First Discovery / Footfall / inne)
+    # Czy widzieliĹ›my jakiekolwiek bonusy (First Discovery / Footfall / inne)
     any_discovery_bonuses: bool = False
 
-    # Flaga „wiemy na pewno, że system był wcześniej odkryty”
-    # True  – wiemy, że jakieś ciało było już odkryte
-    # False – wszystkie znane nam ciała są „WasDiscovered == False”
-    # None  – brak danych / niejednoznaczne
+    # Flaga â€žwiemy na pewno, ĹĽe system byĹ‚ wczeĹ›niej odkrytyâ€ť
+    # True  â€“ wiemy, ĹĽe jakieĹ› ciaĹ‚o byĹ‚o juĹĽ odkryte
+    # False â€“ wszystkie znane nam ciaĹ‚a sÄ… â€žWasDiscovered == Falseâ€ť
+    # None  â€“ brak danych / niejednoznaczne
     system_previously_discovered: Optional[bool] = None
 
 
 class SystemValueEngine:
     """
-    Główny silnik wyliczający wartość systemu.
+    GĹ‚Ăłwny silnik wyliczajÄ…cy wartoĹ›Ä‡ systemu.
 
     Parametr science_data:
-        - może być tuple: (exobio_df, carto_df) z logic.science_data.load_science_data()
+        - moĹĽe byÄ‡ tuple: (exobio_df, carto_df) z logic.science_data.load_science_data()
         - albo dict: {"exobio": df_exobio, "carto": df_carto}
     """
 
     def __init__(self, science_data: Any):
         self.exobio_df, self.carto_df = self._normalize_science_data(science_data)
 
-        # Szybszy dostęp po nazwie gatunku (lower-case)
+        # Szybszy dostÄ™p po nazwie gatunku (lower-case)
         self._exobio_map: Dict[str, pd.Series] = {
             str(row["Species_Name"]).strip().lower(): row
             for _, row in self.exobio_df.iterrows()
         }
 
-        # Szybszy dostęp po (Body_Type, Terraformable)
+        # Szybszy dostÄ™p po (Body_Type, Terraformable)
         self._carto_map: Dict[Tuple[str, str], pd.Series] = {
             (str(row["Body_Type"]).strip(), str(row["Terraformable"]).strip()): row
             for _, row in self.carto_df.iterrows()
@@ -86,6 +86,11 @@ class SystemValueEngine:
         # Stan per system
         self.systems: Dict[str, SystemStats] = {}
         self.current_system: Optional[str] = None
+        self._diag_counts: Dict[str, int] = {
+            "scan_star_counted": 0,
+            "scan_star_skipped_unmapped": 0,
+            "scan_planet_skipped_unmapped": 0,
+        }
 
     # ------------------------------------------------------------------
     # Publiczny interfejs
@@ -93,7 +98,7 @@ class SystemValueEngine:
 
     def set_current_system(self, system_name: Optional[str]) -> None:
         """
-        Ustawia aktualny system. Nie resetuje statystyk, tylko tworzy entry jeśli brak.
+        Ustawia aktualny system. Nie resetuje statystyk, tylko tworzy entry jeĹ›li brak.
         """
         if not system_name:
             self.current_system = None
@@ -105,7 +110,7 @@ class SystemValueEngine:
         """
         Analiza pojedynczego eventu Journal typu 'Scan' (FSS / DSS).
 
-        Zakładamy standardowy format Elite Dangerous:
+        ZakĹ‚adamy standardowy format Elite Dangerous:
         - StarSystem
         - BodyName / BodyID / Body
         - PlanetClass / StarType / BodyType
@@ -115,12 +120,12 @@ class SystemValueEngine:
         """
         system_name = event.get("StarSystem") or self.current_system
         if not system_name:
-            # Nie wiemy, jaki system – nie liczymy
+            # Nie wiemy, jaki system â€“ nie liczymy
             return
 
         stats = self._get_or_create_system(system_name)
 
-        # Identyfikator ciała (wystarczy coś unikalnego w obrębie systemu)
+        # Identyfikator ciaĹ‚a (wystarczy coĹ› unikalnego w obrÄ™bie systemu)
         body_id = (
             event.get("BodyName")
             or event.get("Body")
@@ -130,45 +135,75 @@ class SystemValueEngine:
         if not body_id:
             body_id = f"UNKNOWN_BODY_{len(stats.seen_bodies) + 1}"
 
-        # Nie liczymy wielokrotnego skanu tego samego ciała
+        # Nie liczymy wielokrotnego skanu tego samego ciaĹ‚a
         if body_id in stats.seen_bodies:
             return
         stats.seen_bodies.add(body_id)
 
-        # --- Discovery status dla tego ciała ---
+        # --- Discovery status dla tego ciaĹ‚a ---
         was_discovered = event.get("WasDiscovered")
-        # Upewniamy się, że mamy czyste bool
+        # Upewniamy siÄ™, ĹĽe mamy czyste bool
         if was_discovered in (0, 1):
             was_discovered = bool(was_discovered)
 
         stats.total_scanned_bodies += 1
 
         if was_discovered is False:
-            # Dziewicze ciało – First Discovery
+            # Dziewicze ciaĹ‚o â€“ First Discovery
             stats.bodies_first_discovery_count += 1
 
-            # Jeżeli nie mamy jeszcze żadnej informacji o systemie,
-            # zakładamy, że system nie był wcześniej odkryty
+            # JeĹĽeli nie mamy jeszcze ĹĽadnej informacji o systemie,
+            # zakĹ‚adamy, ĹĽe system nie byĹ‚ wczeĹ›niej odkryty
             if stats.system_previously_discovered is None:
                 stats.system_previously_discovered = False
 
         elif was_discovered is True:
             stats.bodies_previously_discovered_count += 1
-            # wiemy na pewno, że system jest „znany”
+            # wiemy na pewno, ĹĽe system jest â€žznanyâ€ť
             stats.system_previously_discovered = True
+
+        star_values = self._lookup_star_cartography_values(event)
+        if star_values is not None:
+            base_value = float(star_values.get("fss_value") or 0.0)
+            fd_bonus = float(star_values.get("fd_bonus") or 0.0)
+            bonus = fd_bonus if (was_discovered is False or was_discovered == 0) else 0.0
+
+            stats.c_cartography += base_value
+            stats.bonus_discovery += bonus
+            if bonus > 0.0:
+                stats.any_discovery_bonuses = True
+
+            stats.cartography_bodies[str(body_id)] = {
+                "body_type": str(star_values.get("body_type") or "Star"),
+                "terraformable": "No",
+                "was_discovered": was_discovered,
+                "fss_value": base_value,
+                "dss_value": 0.0,
+                "fd_mapped": base_value + bonus,
+                "base_applied": base_value,
+                "bonus_applied": bonus,
+                "mapped_accounted": True,
+                "valuation_source": "star_tier",
+                "star_tier": str(star_values.get("tier") or "unknown"),
+                "star_type_raw": str(star_values.get("star_type_raw") or ""),
+            }
+            self._diag_counts["scan_star_counted"] = int(self._diag_counts.get("scan_star_counted", 0)) + 1
+            return
 
         body_type, terraformable = self._extract_cartography_type(event)
         if not body_type:
-            # Np. gwiazda, której nie mamy w tabeli – pomijamy
+            # Np. gwiazda, ktĂłrej nie mamy w tabeli â€“ pomijamy
+            self._diag_counts["scan_planet_skipped_unmapped"] = int(self._diag_counts.get("scan_planet_skipped_unmapped", 0)) + 1
             return
 
         row = self._lookup_cartography_row(body_type, terraformable)
         if row is None:
+            self._diag_counts["scan_planet_skipped_unmapped"] = int(self._diag_counts.get("scan_planet_skipped_unmapped", 0)) + 1
             return
 
         was_mapped = event.get("WasMapped") or event.get("Mapped")
 
-        # Bazowa wartość: FSS lub DSS
+        # Bazowa wartoĹ›Ä‡: FSS lub DSS
         fss_value = self._finite_row_float(row, "FSS_Base_Value")
         dss_value = self._finite_row_float(row, "DSS_Mapped_Value")
         fd_mapped = self._finite_row_float(row, "First_Discovery_Mapped_Value")
@@ -180,14 +215,14 @@ class SystemValueEngine:
 
         stats.c_cartography += base_value
 
-        # Bonus First Discovery (dla planet / ciał)
+        # Bonus First Discovery (dla planet / ciaĹ‚)
         bonus = 0.0
         if was_discovered is False or was_discovered == 0:
             if was_mapped and dss_value > 0:
-                # Różnica między „zwykłym” DSS a „First Discovery mapped”
+                # RĂłĹĽnica miÄ™dzy â€žzwykĹ‚ymâ€ť DSS a â€žFirst Discovery mappedâ€ť
                 bonus = max(0.0, fd_mapped - dss_value)
             elif fss_value > 0 and dss_value > 0:
-                # Przy braku osobnej kolumny dla FSS+FD — przybliżenie:
+                # Przy braku osobnej kolumny dla FSS+FD â€” przybliĹĽenie:
                 ratio = fd_mapped / dss_value if dss_value else 1.0
                 bonus = max(0.0, fss_value * (ratio - 1.0))
 
@@ -218,6 +253,9 @@ class SystemValueEngine:
                     "estimated_value": base_value + bonus,
                 }
             )
+
+    def get_runtime_diagnostics(self) -> Dict[str, int]:
+        return {str(k): int(v or 0) for k, v in dict(self._diag_counts or {}).items()}
 
     def analyze_dss_scan_complete_event(self, event: Dict[str, Any]) -> None:
         """
@@ -279,13 +317,13 @@ class SystemValueEngine:
 
     def analyze_biology_event(self, event: Dict[str, Any]) -> None:
         """
-        Analiza eventu związanego z exobiology.
+        Analiza eventu zwiÄ…zanego z exobiology.
 
-        Obsługujemy generycznie eventy typu:
+        ObsĹ‚ugujemy generycznie eventy typu:
         - CodexEntry / ScanOrganic / inne z polami:
           Name_Localised / Species_Localised / Species / Genus_Localised / Genus / Name
 
-        Dodatkowe flagi (jeśli występują):
+        Dodatkowe flagi (jeĹ›li wystÄ™pujÄ…):
         - FirstDiscovery / IsNewSpecies / NewSpecies
         - FirstFootfall / FirstScan
         """
@@ -323,7 +361,7 @@ class SystemValueEngine:
         fd_bonus = float(row.get("First_Discovery_Bonus", 0.0) or 0.0)
         total_ff = float(row.get("Total_First_Footfall", 0.0) or 0.0)
 
-        # dolicz bazową wartość biologii
+        # dolicz bazowÄ… wartoĹ›Ä‡ biologii
         stats.c_exobiology += base_value
 
         # Flagi "first discovery / first footfall" z eventu
@@ -341,7 +379,7 @@ class SystemValueEngine:
         if is_first_discovery:
             bonus += fd_bonus
 
-        # First Footfall: zakładamy, że total_ff = base + fd_bonus + extra_ff
+        # First Footfall: zakĹ‚adamy, ĹĽe total_ff = base + fd_bonus + extra_ff
         if is_first_footfall and total_ff > 0:
             extra_ff = max(0.0, total_ff - (base_value + fd_bonus))
             bonus += extra_ff
@@ -352,14 +390,14 @@ class SystemValueEngine:
 
     def analyze_discovery_meta_event(self, event: Dict[str, Any]) -> None:
         """
-        Analiza meta-informacji discovery, które nie są czystym Scan/Biology.
+        Analiza meta-informacji discovery, ktĂłre nie sÄ… czystym Scan/Biology.
 
         Wspieramy m.in.:
         - event z polem FirstDiscoveredBy (np. Explore / SAAScanComplete wrapper),
-        - FSSSignalDiscovered (sygnały odkryte przez CMDR),
-        - ogólne CodexEntry z flagami IsNewDiscovery / NewDiscoveries.
+        - FSSSignalDiscovered (sygnaĹ‚y odkryte przez CMDR),
+        - ogĂłlne CodexEntry z flagami IsNewDiscovery / NewDiscoveries.
 
-        To jest "miękka" logika – nie rusza kredytów, tylko status.
+        To jest "miÄ™kka" logika â€“ nie rusza kredytĂłw, tylko status.
         """
         system_name = event.get("StarSystem") or self.current_system
         if not system_name:
@@ -368,26 +406,26 @@ class SystemValueEngine:
         stats = self._get_or_create_system(system_name)
         ev_type = event.get("event")
 
-        # 1) FirstDiscoveredBy – jeśli w ogóle istnieje, wiemy, że system ma „autora”
+        # 1) FirstDiscoveredBy â€“ jeĹ›li w ogĂłle istnieje, wiemy, ĹĽe system ma â€žautoraâ€ť
         first_by = event.get("FirstDiscoveredBy")
         if first_by:
-            # Niekoniecznie my, ale to oznacza, że system nie jest dziewiczy
+            # Niekoniecznie my, ale to oznacza, ĹĽe system nie jest dziewiczy
             stats.system_previously_discovered = True
 
-        # 2) FSSSignalDiscovered – wiemy, że coś odkryliśmy w tym systemie,
-        # ale nie przesądza to o dziewiczości całego układu.
+        # 2) FSSSignalDiscovered â€“ wiemy, ĹĽe coĹ› odkryliĹ›my w tym systemie,
+        # ale nie przesÄ…dza to o dziewiczoĹ›ci caĹ‚ego ukĹ‚adu.
         if ev_type == "FSSSignalDiscovered":
-            # To raczej meta-info: „coś nowego w tym systemie”
-            # Możemy jedynie traktować to jako sygnał, że discovery w ogóle istnieje.
+            # To raczej meta-info: â€žcoĹ› nowego w tym systemieâ€ť
+            # MoĹĽemy jedynie traktowaÄ‡ to jako sygnaĹ‚, ĹĽe discovery w ogĂłle istnieje.
             stats.any_discovery_bonuses = True
 
-        # 3) CodexEntry z flagami nowości
+        # 3) CodexEntry z flagami nowoĹ›ci
         if ev_type == "CodexEntry":
             if event.get("IsNewDiscovery") or event.get("NewDiscoveries"):
-                # Mamy nową odkrytą rzecz w tym systemie
+                # Mamy nowÄ… odkrytÄ… rzecz w tym systemie
                 stats.any_discovery_bonuses = True
-                # Jeśli system_previously_discovered nie został oznaczony jako True,
-                # nie nadpisujemy go tutaj – to może być nowy wpis w starym systemie.
+                # JeĹ›li system_previously_discovered nie zostaĹ‚ oznaczony jako True,
+                # nie nadpisujemy go tutaj â€“ to moĹĽe byÄ‡ nowy wpis w starym systemie.
 
     def get_discovery_status(self, system_name: str) -> Dict[str, Any]:
         """
@@ -412,15 +450,15 @@ class SystemValueEngine:
         any_virgin = stats.bodies_first_discovery_count > 0
         has_bonuses = stats.any_discovery_bonuses or stats.bonus_discovery > 0
 
-        # Definicja „dziewiczego systemu”:
-        # wszystkie ZESKANOWANE ciała miały WasDiscovered == False
+        # Definicja â€ždziewiczego systemuâ€ť:
+        # wszystkie ZESKANOWANE ciaĹ‚a miaĹ‚y WasDiscovered == False
         # (z naszej perspektywy w tym locie).
         is_virgin_system = (
             stats.total_scanned_bodies > 0
             and stats.bodies_first_discovery_count == stats.total_scanned_bodies
         )
 
-        # Jeśli mamy jednocześnie first i previously – system jest na pewno znany.
+        # JeĹ›li mamy jednoczeĹ›nie first i previously â€“ system jest na pewno znany.
         if stats.bodies_previously_discovered_count > 0:
             system_prev = True
         else:
@@ -435,7 +473,7 @@ class SystemValueEngine:
 
     def calculate_totals(self) -> Dict[str, float]:
         """
-        Zwraca sumaryczne wartości ze wszystkich systemów.
+        Zwraca sumaryczne wartoĹ›ci ze wszystkich systemĂłw.
 
         Format:
         {
@@ -457,10 +495,10 @@ class SystemValueEngine:
             "total": total,
         }
 
-    # Dodatkowe helpery do debugowania / GUI (opcjonalne użycie)
+    # Dodatkowe helpery do debugowania / GUI (opcjonalne uĹĽycie)
 
     def get_system_stats(self, system_name: str) -> Optional[SystemStats]:
-        """Zwraca obiekt SystemStats dla konkretnego układu (lub None)."""
+        """Zwraca obiekt SystemStats dla konkretnego ukĹ‚adu (lub None)."""
         return self.systems.get(system_name)
 
     # ------------------------------------------------------------------
@@ -470,14 +508,14 @@ class SystemValueEngine:
     @staticmethod
     def _normalize_science_data(science_data: Any) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
-        Normalizuje wejście science_data do tuple (exobio_df, carto_df).
+        Normalizuje wejĹ›cie science_data do tuple (exobio_df, carto_df).
         """
         if isinstance(science_data, tuple) and len(science_data) == 2:
             return science_data
         if isinstance(science_data, dict):
             return science_data["exobio"], science_data["carto"]
         raise ValueError(
-            "science_data musi być tuple(exobio_df, carto_df) "
+            "science_data musi byÄ‡ tuple(exobio_df, carto_df) "
             "albo dict {'exobio': df, 'carto': df}"
         )
 
@@ -488,16 +526,84 @@ class SystemValueEngine:
 
     # --- Cartography helpers -------------------------------------------------
 
+    @staticmethod
+    def _normalize_star_type_token(raw: Any) -> str:
+        token = str(raw or "").strip()
+        if not token:
+            return ""
+        return token.upper().replace(" ", "").replace("-", "").replace("_", "")
+
+    def _lookup_star_cartography_values(self, event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Best-effort support for star Scan valuation (`StarType`).
+
+        The Cartography sheet used by Renata is planet-centric, so stars would otherwise
+        be skipped and summary could remain at 0 Cr during "star-heavy" exploration.
+        """
+        star_type_raw = str(event.get("StarType") or "").strip()
+        if not star_type_raw:
+            return None
+
+        token = self._normalize_star_type_token(star_type_raw)
+        if not token:
+            return None
+
+        tier: Optional[str] = None
+        if "BLACKHOLE" in token or token in {"H", "SUPERMASSIVEBLACKHOLE"}:
+            tier = "black_hole"
+        elif "NEUTRON" in token or token == "N":
+            tier = "neutron"
+        elif "WOLFRAYET" in token or token in {"W", "WC", "WN", "WO"}:
+            tier = "wolf_rayet"
+        elif "WHITEDWARF" in token or token.startswith("D"):
+            tier = "white_dwarf"
+        elif "TTAURI" in token or "PROTO" in token or token == "TTS":
+            tier = "protostar"
+        elif "HERBIG" in token or "AEBE" in token:
+            tier = "herbig_ae_be"
+        elif token in {"C", "CN", "CJ"} or token.startswith("S"):
+            tier = "carbon_like"
+        elif token.startswith("L") or token.startswith("T") or token.startswith("Y"):
+            tier = "brown_dwarf"
+        elif token[:1] in {"O", "B", "A", "F", "G", "K", "M"}:
+            tier = "main_sequence"
+
+        tier_values: Dict[str, Tuple[float, float, str]] = {
+            # Conservative FSS + first discovery bonus heuristics (runtime summary only).
+            "main_sequence": (1200.0, 1200.0, "Star"),
+            "brown_dwarf": (600.0, 600.0, "Brown Dwarf"),
+            "protostar": (900.0, 900.0, "Protostar"),
+            "herbig_ae_be": (2500.0, 2500.0, "Herbig Ae/Be Star"),
+            "carbon_like": (3500.0, 3500.0, "Carbon Star"),
+            "white_dwarf": (14000.0, 14000.0, "White Dwarf"),
+            "wolf_rayet": (18000.0, 18000.0, "Wolf-Rayet Star"),
+            "neutron": (22000.0, 22000.0, "Neutron Star"),
+            "black_hole": (32000.0, 32000.0, "Black Hole"),
+        }
+
+        if tier not in tier_values:
+            self._diag_counts["scan_star_skipped_unmapped"] = int(self._diag_counts.get("scan_star_skipped_unmapped", 0)) + 1
+            return None
+
+        fss_value, fd_bonus, body_type = tier_values[tier]
+        return {
+            "tier": tier,
+            "star_type_raw": star_type_raw,
+            "body_type": body_type,
+            "fss_value": float(fss_value),
+            "fd_bonus": float(fd_bonus),
+        }
+
     def _extract_cartography_type(
         self, event: Dict[str, Any]
     ) -> Tuple[Optional[str], str]:
         """
-        Wyciąga (Body_Type, Terraformable) w formacie zgodnym z arkuszem Cartography.
+        WyciÄ…ga (Body_Type, Terraformable) w formacie zgodnym z arkuszem Cartography.
 
         Zwraca:
-            (body_type, terraformable) – np. ("Water World", "Yes")
+            (body_type, terraformable) â€“ np. ("Water World", "Yes")
 
-        Jeśli nie uda się ustalić typu – (None, "No").
+        JeĹ›li nie uda siÄ™ ustaliÄ‡ typu â€“ (None, "No").
         """
         terraform_state = str(event.get("TerraformState") or "").lower().strip()
         terraformable = "Yes" if terraform_state in {
@@ -508,9 +614,11 @@ class SystemValueEngine:
         } else "No"
 
         planet_class = str(event.get("PlanetClass") or "").lower().strip()
+        if str(event.get("StarType") or "").strip() and not planet_class:
+            return None, terraformable
         body_type = None
 
-        # Najczęstsze klasy planet – mapowanie do Body_Type z Excela
+        # NajczÄ™stsze klasy planet â€“ mapowanie do Body_Type z Excela
         mapping = {
             "ammonia world": "Ammonia World",
             "earth-like world": "Earth-like World",
@@ -545,16 +653,16 @@ class SystemValueEngine:
         if planet_class in mapping:
             body_type = mapping[planet_class]
         elif planet_class:
-            # miękkie dopasowanie – capitalizacja, bez gwarancji
+            # miÄ™kkie dopasowanie â€“ capitalizacja, bez gwarancji
             candidate = planet_class.title()
-            # np. "High Metal Content World" → spróbujmy zastąpić "World" na "Planet"
+            # np. "High Metal Content World" â†’ sprĂłbujmy zastÄ…piÄ‡ "World" na "Planet"
             if "high metal content world" in planet_class:
                 body_type = "High Metal Content Planet"
             else:
                 body_type = candidate
 
         if body_type is None:
-            # Jeśli kompletnie nie rozpoznaliśmy – traktujemy jako „Planet Type” (fallback)
+            # JeĹ›li kompletnie nie rozpoznaliĹ›my â€“ traktujemy jako â€žPlanet Typeâ€ť (fallback)
             body_type = "Planet Type"
 
         return body_type, terraformable
@@ -567,12 +675,12 @@ class SystemValueEngine:
         if row is not None and self._row_has_finite_cartography_values(row):
             return row
 
-        # Fallback: jeśli nie ma wariantu terraformable – spróbuj niezależnie od tej kolumny
+        # Fallback: jeĹ›li nie ma wariantu terraformable â€“ sprĂłbuj niezaleĹĽnie od tej kolumny
         for (bt, tf), row in self._carto_map.items():
             if bt == body_type and self._row_has_finite_cartography_values(row):
                 return row
 
-        # Ostateczny fallback: jeśli w arkuszu jest ogólny „Planet Type”
+        # Ostateczny fallback: jeĹ›li w arkuszu jest ogĂłlny â€žPlanet Typeâ€ť
         key_generic = ("Planet Type", terraformable)
         row_generic = self._carto_map.get(key_generic)
         if row_generic is not None and self._row_has_finite_cartography_values(row_generic):
@@ -621,11 +729,11 @@ class SystemValueEngine:
 
     def _normalize_species_name(self, raw_name: str) -> Optional[str]:
         """
-        Normalizuje nazwę gatunku z Codex/Journal do formy jak w arkuszu Exobiology.
+        Normalizuje nazwÄ™ gatunku z Codex/Journal do formy jak w arkuszu Exobiology.
 
-        Przykłady:
-        - "$Codex_Ent_Aleoida_Arcus_Name;" → "Aleoida Arcus"
-        - "Aleoida Arcus"                   → "Aleoida Arcus"
+        PrzykĹ‚ady:
+        - "$Codex_Ent_Aleoida_Arcus_Name;" â†’ "Aleoida Arcus"
+        - "Aleoida Arcus"                   â†’ "Aleoida Arcus"
         """
         if not raw_name:
             return None
@@ -639,10 +747,10 @@ class SystemValueEngine:
             name = name.replace("$Codex_Ent_", "")
             name = name.replace("_Name", "")
             name = name.replace("_name", "")
-            # Zamiana underscore → spacja
+            # Zamiana underscore â†’ spacja
             name = name.replace("_", " ")
 
-        # Porządkujemy capitalizację (pierwsza litera wielka w każdym członie)
+        # PorzÄ…dkujemy capitalizacjÄ™ (pierwsza litera wielka w kaĹĽdym czĹ‚onie)
         name = " ".join(part.capitalize() for part in name.split())
 
         return name or None
@@ -653,10 +761,11 @@ class SystemValueEngine:
         if row is not None:
             return row
 
-        # fallback – delikatniejsze porównanie: usuwamy spacje
+        # fallback â€“ delikatniejsze porĂłwnanie: usuwamy spacje
         key_nospace = key.replace(" ", "")
         for k, v in self._exobio_map.items():
             if k.replace(" ", "") == key_nospace:
                 return v
 
         return None
+
