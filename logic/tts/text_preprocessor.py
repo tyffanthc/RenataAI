@@ -90,7 +90,64 @@ _PLAIN_POLISH_REPLACEMENTS = {
     "Wzroslo": "Wzrosło",
     "postepu": "postępu",
     "Postepu": "Postępu",
+    "Rozwaz": "Rozważ",
+    "rozwaz": "rozważ",
+    "domknieciu": "domknięciu",
+    "Domknieciu": "Domknięciu",
+    "pozniej": "później",
+    "Pozniej": "Później",
 }
+
+_UNITS_0_19 = {
+    0: "zero",
+    1: "jeden",
+    2: "dwa",
+    3: "trzy",
+    4: "cztery",
+    5: "pięć",
+    6: "sześć",
+    7: "siedem",
+    8: "osiem",
+    9: "dziewięć",
+    10: "dziesięć",
+    11: "jedenaście",
+    12: "dwanaście",
+    13: "trzynaście",
+    14: "czternaście",
+    15: "piętnaście",
+    16: "szesnaście",
+    17: "siedemnaście",
+    18: "osiemnaście",
+    19: "dziewiętnaście",
+}
+_TENS = {
+    2: "dwadzieścia",
+    3: "trzydzieści",
+    4: "czterdzieści",
+    5: "pięćdziesiąt",
+    6: "sześćdziesiąt",
+    7: "siedemdziesiąt",
+    8: "osiemdziesiąt",
+    9: "dziewięćdziesiąt",
+}
+_HUNDREDS = {
+    1: "sto",
+    2: "dwieście",
+    3: "trzysta",
+    4: "czterysta",
+    5: "pięćset",
+    6: "sześćset",
+    7: "siedemset",
+    8: "osiemset",
+    9: "dziewięćset",
+}
+_GROUPS = [
+    ("", "", ""),
+    ("tysiąc", "tysiące", "tysięcy"),
+    ("milion", "miliony", "milionów"),
+    ("miliard", "miliardy", "miliardów"),
+    ("bilion", "biliony", "bilionów"),
+]
 
 
 def _repair_polish_text(value: Any) -> str:
@@ -104,6 +161,132 @@ def _repair_polish_text(value: Any) -> str:
         if plain in text:
             text = text.replace(plain, fixed)
     return text
+
+
+def _plural_form_pl(value: int, one: str, few: str, many: str) -> str:
+    n = abs(int(value))
+    if n == 1:
+        return one
+    if 10 <= (n % 100) <= 19:
+        return many
+    if 2 <= (n % 10) <= 4:
+        return few
+    return many
+
+
+def _int_to_words_pl_under_1000(value: int) -> str:
+    n = abs(int(value))
+    parts: list[str] = []
+    h = n // 100
+    if h:
+        parts.append(_HUNDREDS.get(h, ""))
+    rem = n % 100
+    if rem in _UNITS_0_19:
+        if rem:
+            parts.append(_UNITS_0_19[rem])
+    else:
+        t = rem // 10
+        u = rem % 10
+        if t:
+            parts.append(_TENS.get(t, ""))
+        if u:
+            parts.append(_UNITS_0_19[u])
+    return " ".join(x for x in parts if x).strip()
+
+
+def _int_to_words_pl(value: int) -> str:
+    n = int(value)
+    if n == 0:
+        return _UNITS_0_19[0]
+    sign = "minus " if n < 0 else ""
+    n_abs = abs(n)
+    group_idx = 0
+    parts_rev: list[str] = []
+    while n_abs > 0:
+        group_val = n_abs % 1000
+        n_abs //= 1000
+        if group_val:
+            words = _int_to_words_pl_under_1000(group_val)
+            if group_idx == 0:
+                chunk = words
+            else:
+                one, few, many = _GROUPS[group_idx] if group_idx < len(_GROUPS) else (
+                    f"10^{group_idx*3}",
+                    f"10^{group_idx*3}",
+                    f"10^{group_idx*3}",
+                )
+                # "jeden tysiąc" -> "tysiąc", but "jeden milion" is acceptable and clearer for TTS.
+                if group_idx == 1 and group_val == 1:
+                    chunk = one
+                else:
+                    chunk = f"{words} {_plural_form_pl(group_val, one, few, many)}".strip()
+            parts_rev.append(chunk.strip())
+        group_idx += 1
+    return sign + " ".join(reversed([x for x in parts_rev if x])).strip()
+
+
+def _decimal_to_words_pl(value_text: str) -> str:
+    text = _repair_polish_text(value_text).strip()
+    text = text.replace(" ", "")
+    if not text:
+        return ""
+    negative = text.startswith("-")
+    if negative:
+        text = text[1:]
+    if "," in text:
+        int_part, frac = text.split(",", 1)
+    elif "." in text:
+        int_part, frac = text.split(".", 1)
+    else:
+        try:
+            return _int_to_words_pl(int(text))
+        except Exception:
+            return _repair_polish_text(value_text).strip()
+    try:
+        int_words = _int_to_words_pl(int(int_part or "0"))
+    except Exception:
+        return _repair_polish_text(value_text).strip()
+    frac_digits = [ch for ch in frac if ch.isdigit()]
+    if not frac_digits:
+        return ("minus " if negative else "") + int_words
+    frac_words = " ".join(_UNITS_0_19[int(ch)] for ch in frac_digits)
+    return f"{'minus ' if negative else ''}{int_words} przecinek {frac_words}".strip()
+
+
+def _verbalize_tts_numbers(text: str) -> str:
+    if not text:
+        return ""
+
+    def _credits_sub(match: re.Match[str]) -> str:
+        raw_num = str(match.group("num") or "")
+        digits = re.sub(r"\s+", "", raw_num)
+        try:
+            n = int(digits)
+        except Exception:
+            return match.group(0)
+        unit = _plural_form_pl(n, "kredyt", "kredyty", "kredytów")
+        return f"{_int_to_words_pl(n)} {unit}"
+
+    def _percent_sub(match: re.Match[str]) -> str:
+        raw_num = str(match.group("num") or "")
+        words = _decimal_to_words_pl(raw_num)
+        if not words:
+            return match.group(0)
+        unit = "procent" if str(raw_num).strip() in {"1", "1.0", "1,0"} else "procent"
+        return f"{words} {unit}"
+
+    def _ly_sub(match: re.Match[str]) -> str:
+        raw_num = str(match.group("num") or "")
+        words = _decimal_to_words_pl(raw_num)
+        if not words:
+            return match.group(0)
+        return f"{words} lat świetlnych"
+
+    out = text
+    out = re.sub(r"\b(?P<num>\d[\d ]*)\s*(?:Cr|CR|cr)\b", _credits_sub, out)
+    out = re.sub(r"(?P<num>\d+(?:[.,]\d+)?)\s*%", _percent_sub, out)
+    out = re.sub(r"\b(?P<num>\d+(?:[.,]\d+)?)\s*(?:LY|ly)\b", _ly_sub, out)
+    return out
 
 
 def _render_template(message_id: str, **fields: Any) -> str:
@@ -148,6 +331,7 @@ def _normalize_station_name(value: Any) -> str:
 
 def _finalize_tts(text: str) -> str:
     text = _repair_polish_text(text)
+    text = _verbalize_tts_numbers(text)
     text = text.replace("?", ".").replace("!", ".").replace(",", ".")
     text = re.sub(r"\.{2,}", ".", text)
     text = re.sub(r"\s+", " ", text).strip()
@@ -166,7 +350,7 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         if raw_text:
             fixed = _repair_polish_text(raw_text).strip()
             if fixed:
-                return fixed
+                return _finalize_tts(fixed)
 
     if message_id == "MSG.EXPLORATION_SYSTEM_SUMMARY":
         system = _normalize_system_name(ctx.get("system"))
