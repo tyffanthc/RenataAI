@@ -159,6 +159,11 @@ class JournalMapTab(tk.Frame):
         self._trade_picker_window = None
         self._trade_picker_search_var = None
         self._trade_picker_tree = None
+        self._trade_picker_tree_vsb = None
+        self._trade_picker_tree_hsb = None
+        self._trade_picker_station_only_var = None
+        self._trade_picker_station_only_chk = None
+        self._trade_picker_station_filter_status_var = None
         self._trade_picker_available: list[str] = []
         self._trade_picker_selected: set[str] = set()
 
@@ -1536,6 +1541,7 @@ class JournalMapTab(tk.Frame):
                 return
         except Exception:
             return
+        self._trade_picker_refresh_station_filter_status()
         self._trade_picker_refresh_rows()
 
     def _open_trade_commodity_picker(self) -> None:
@@ -1577,7 +1583,7 @@ class JournalMapTab(tk.Frame):
 
         controls = tk.Frame(win, bg=COLOR_BG)
         controls.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 6))
-        controls.columnconfigure(0, weight=1)
+        controls.columnconfigure(3, weight=1)
         tk.Button(
             controls,
             text="Zaznacz wszystkie",
@@ -1595,8 +1601,40 @@ class JournalMapTab(tk.Frame):
             command=self._trade_picker_clear_all,
         ).grid(row=0, column=1, sticky="w", padx=(8, 0))
 
+        station_only_var = tk.BooleanVar(value=False)
+        self._trade_picker_station_only_var = station_only_var
+        station_only_chk = tk.Checkbutton(
+            controls,
+            text="Pokaż tylko dostępne na stacji",
+            variable=station_only_var,
+            bg=COLOR_BG,
+            fg=COLOR_FG,
+            selectcolor=COLOR_ACCENT,
+            activebackground=COLOR_BG,
+            activeforeground=COLOR_FG,
+            command=self._trade_picker_refresh_rows,
+        )
+        station_only_chk.grid(row=0, column=2, sticky="w", padx=(14, 0))
+        self._trade_picker_station_only_chk = station_only_chk
+
+        station_filter_status_var = tk.StringVar(value="")
+        self._trade_picker_station_filter_status_var = station_filter_status_var
+        tk.Label(
+            controls,
+            textvariable=station_filter_status_var,
+            bg=COLOR_BG,
+            fg=COLOR_SEC,
+            anchor="e",
+            justify="right",
+        ).grid(row=0, column=3, sticky="e", padx=(10, 0))
+
+        tree_wrap = tk.Frame(win, bg=COLOR_BG)
+        tree_wrap.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 6))
+        tree_wrap.columnconfigure(0, weight=1)
+        tree_wrap.rowconfigure(0, weight=1)
+
         tree = ttk.Treeview(
-            win,
+            tree_wrap,
             columns=("sel", "commodity"),
             show="headings",
             style="Treeview",
@@ -1606,10 +1644,17 @@ class JournalMapTab(tk.Frame):
         tree.heading("commodity", text="Towar")
         tree.column("sel", width=50, anchor="center")
         tree.column("commodity", width=500, anchor="w")
-        tree.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 6))
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb = ttk.Scrollbar(tree_wrap, orient="vertical", command=tree.yview)
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb = ttk.Scrollbar(tree_wrap, orient="horizontal", command=tree.xview)
+        hsb.grid(row=1, column=0, sticky="ew")
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         tree.bind("<Double-Button-1>", lambda _e: self._trade_picker_toggle_selected_row())
         tree.bind("<Return>", lambda _e: self._trade_picker_toggle_selected_row())
         self._trade_picker_tree = tree
+        self._trade_picker_tree_vsb = vsb
+        self._trade_picker_tree_hsb = hsb
 
         hint = tk.Label(
             win,
@@ -1633,6 +1678,7 @@ class JournalMapTab(tk.Frame):
 
         self._trade_picker_selected = {str(v) for v in (self._trade_selected_commodities or [])}
         win.protocol("WM_DELETE_WINDOW", self._trade_picker_close)
+        self._trade_picker_refresh_station_filter_status()
         self._trade_picker_refresh_rows()
         try:
             search_entry.focus_set()
@@ -1642,9 +1688,110 @@ class JournalMapTab(tk.Frame):
     def _trade_picker_filtered_commodities(self) -> list[str]:
         query = _as_text(getattr(self._trade_picker_search_var, "get", lambda: "")()).casefold()
         values = list(self._trade_picker_available or [])
+        station_only = bool(getattr(self._trade_picker_station_only_var, "get", lambda: False)())
+        if station_only:
+            available_on_station, meta = self._trade_picker_current_station_available_commodities()
+            if not bool(meta.get("ok")):
+                return []
+            values = [v for v in values if str(v).casefold() in available_on_station]
         if not query:
             return values
         return [v for v in values if query in str(v).casefold()]
+
+    def _trade_picker_selected_station_row(self) -> dict[str, Any] | None:
+        try:
+            sel = self.system_stations_tree.selection() or ()
+        except Exception:
+            return None
+        if not sel:
+            return None
+        row = self._station_rows_by_iid.get(str(sel[0]))
+        return dict(row) if isinstance(row, dict) else None
+
+    def _trade_picker_current_station_available_commodities(self) -> tuple[set[str], dict[str, Any]]:
+        row = self._trade_picker_selected_station_row()
+        if not isinstance(row, dict):
+            return set(), {"ok": False, "reason": "no_selected_station"}
+        market_id = row.get("market_id")
+        if market_id is None:
+            return set(), {"ok": False, "reason": "station_no_market_id", "station_name": _as_text(row.get("station_name"))}
+        try:
+            snapshots, _meta = self.data_provider.get_market_last_seen(int(market_id), limit=1)
+        except Exception as exc:
+            return set(), {
+                "ok": False,
+                "reason": "provider_error",
+                "station_name": _as_text(row.get("station_name")),
+                "error": type(exc).__name__,
+            }
+        if not snapshots:
+            return set(), {"ok": False, "reason": "no_market_snapshot", "station_name": _as_text(row.get("station_name"))}
+        latest = dict(snapshots[0] or {})
+        out: set[str] = set()
+        for item in list(latest.get("items") or []):
+            if not isinstance(item, dict):
+                continue
+            commodity = _as_text(item.get("commodity"))
+            if commodity:
+                out.add(commodity.casefold())
+        return out, {
+            "ok": True,
+            "reason": "ok",
+            "station_name": _as_text(row.get("station_name")) or "-",
+            "market_id": int(market_id),
+            "commodities_count": len(out),
+        }
+
+    def _trade_picker_refresh_station_filter_status(self) -> None:
+        status_var = getattr(self, "_trade_picker_station_filter_status_var", None)
+        chk = getattr(self, "_trade_picker_station_only_chk", None)
+        chk_var = getattr(self, "_trade_picker_station_only_var", None)
+        if status_var is None:
+            return
+        row = self._trade_picker_selected_station_row()
+        if not isinstance(row, dict):
+            try:
+                status_var.set("Filtr stacji: brak wybranej stacji")
+            except Exception:
+                pass
+            if chk_var is not None:
+                try:
+                    chk_var.set(False)
+                except Exception:
+                    pass
+            if chk is not None:
+                try:
+                    chk.configure(state="disabled")
+                except Exception:
+                    pass
+            return
+        station_name = _as_text(row.get("station_name")) or "-"
+        market_id = row.get("market_id")
+        if market_id is None:
+            try:
+                status_var.set(f"Filtr stacji: {station_name} (brak MarketID)")
+            except Exception:
+                pass
+            if chk_var is not None:
+                try:
+                    chk_var.set(False)
+                except Exception:
+                    pass
+            if chk is not None:
+                try:
+                    chk.configure(state="disabled")
+                except Exception:
+                    pass
+            return
+        if chk is not None:
+            try:
+                chk.configure(state="normal")
+            except Exception:
+                pass
+        try:
+            status_var.set(f"Stacja: {station_name}")
+        except Exception:
+            pass
 
     def _trade_picker_refresh_rows(self) -> None:
         tree = getattr(self, "_trade_picker_tree", None)
@@ -1698,7 +1845,12 @@ class JournalMapTab(tk.Frame):
         win = getattr(self, "_trade_picker_window", None)
         self._trade_picker_window = None
         self._trade_picker_tree = None
+        self._trade_picker_tree_vsb = None
+        self._trade_picker_tree_hsb = None
         self._trade_picker_search_var = None
+        self._trade_picker_station_only_var = None
+        self._trade_picker_station_only_chk = None
+        self._trade_picker_station_filter_status_var = None
         try:
             if win is not None and bool(win.winfo_exists()):
                 try:
@@ -2160,6 +2312,7 @@ class JournalMapTab(tk.Frame):
         if not isinstance(row, dict):
             return {"ok": False, "reason": "station_row_not_found", "iid": str(iid)}
         result = self._populate_station_market_snapshots(row)
+        self._refresh_trade_picker_rows_if_open()
         return {"ok": True, "iid": str(iid), "station_name": _as_text(row.get("station_name")), **result}
 
     def reset_view(self) -> None:
