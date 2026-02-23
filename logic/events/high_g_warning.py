@@ -156,7 +156,7 @@ def _emit_high_g_callout(
     gui_ref=None,
 ) -> bool:
     raw_text = (
-        "Wykryto wysokie przeciazenie grawitacyjne. "
+        "Wykryto wysokie przeciążenie grawitacyjne. "
         "Ogranicz opadanie."
     )
     return bool(

@@ -2040,7 +2040,7 @@ class LogbookTab(tk.Frame):
             else:
                 date_to = _to_iso_date(date_to_text, end_of_day=True)
         except ValueError:
-            self.status_var.set("Niepoprawny format daty. Uzyj YYYY-MM-DD.")
+            self.status_var.set("Niepoprawny format daty. Użyj YYYY-MM-DD.")
             return None
 
         if date_from:

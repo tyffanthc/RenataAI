@@ -326,9 +326,9 @@ def _build_payload(mode: str) -> CombatAwarenessPayload | None:
     being_interdicted = bool(_RUNTIME.get("being_interdicted"))
 
     options = [
-        "Rozwaz przerwanie eskalacji i odzyskanie kontroli sytuacji.",
-        "Rozwaz oddzielenie sie od zagrozenia i zabezpieczenie postepu.",
-        "Jesli chcesz, sprawdz panel ryzyka i konsekwencji.",
+        "Rozważ przerwanie eskalacji i odzyskanie kontroli sytuacji.",
+        "Rozważ oddzielenie się od zagrożenia i zabezpieczenie postępu.",
+        "Jeśli chcesz, sprawdź panel ryzyka i konsekwencji.",
     ]
     note = "Renata sygnalizuje wzorzec ryzyka; decyzja pozostaje po stronie pilota."
 

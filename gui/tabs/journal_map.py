@@ -867,12 +867,12 @@ class JournalMapTab(tk.Frame):
     def _map_ppm_action_set_neutron_route(self, target: str) -> dict[str, Any]:
         neutron_tab = getattr(getattr(self.app, "tab_spansh", None), "tab_neutron", None)
         if neutron_tab is None:
-            self.map_status_var.set("Mapa: planner neutronowy jest niedostepny.")
+            self.map_status_var.set("Mapa: planner neutronowy jest niedostępny.")
             return {"ok": False, "reason": "neutron_tab_unavailable"}
         if bool(route_manager.is_busy()):
             mode_now = str(route_manager.current_mode() or "").strip().lower()
             if mode_now and mode_now != "neutron":
-                self.map_status_var.set("Mapa: planner jest zajety innym trybem. Sprobuj za chwile.")
+                self.map_status_var.set("Mapa: planner jest zajęty innym trybem. Spróbuj za chwilę.")
                 return {"ok": False, "reason": "planner_busy_other_mode"}
         current_system = str(getattr(app_state, "current_system", "") or "").strip()
         try:

@@ -264,9 +264,9 @@ def _build_payload(mode: str) -> SurvivalRebuyPayload | None:
     reason = "none"
     risk_status = "RISK_LOW"
     options = [
-        "Rozwaz wycofanie i zabezpieczenie danych.",
-        "Rozwaz szybki cash-in przy bezpiecznej stacji.",
-        "Kontynuuj swiadomie i monitoruj kadlub oraz ryzyko.",
+        "Rozważ wycofanie i zabezpieczenie danych.",
+        "Rozważ szybki cash-in przy bezpiecznej stacji.",
+        "Kontynuuj świadomie i monitoruj kadłub oraz ryzyko.",
     ]
     note = "Renata sygnalizuje konsekwencje, ale decyzja pozostaje po stronie pilota."
 
@@ -341,24 +341,24 @@ def _tts_line(payload: SurvivalRebuyPayload) -> str:
     if payload.reason == "no_rebuy":
         return (
             "Brak rebuy. Jedna strata oznacza utrate statku i postepu. "
-            "Rozwaz wycofanie i zabezpieczenie danych."
+            "Rozważ wycofanie i zabezpieczenie danych."
         )
     if payload.reason == "combat_hull_critical":
         return (
             "Kadlub jest krytyczny w warunkach walki. "
-            "Rozwaz wycofanie i bezpieczny cash-in."
+            "Rozważ wycofanie i bezpieczny cash-in."
         )
     if payload.reason == "rebuy_borderline":
         return (
-            "Rebuy jest na granicy. Jedna strata moze mocno cofnac progres. "
-            "Rozwaz bezpieczny cash-in."
+            "Rebuy jest na granicy. Jedna strata może mocno cofnąć progres. "
+            "Rozważ bezpieczny cash-in."
         )
     if payload.reason == "combat_hull_high_var":
         return (
-            "Ryzyko jest wysokie wzgledem danych lub ladunku. "
-            "Rozwaz wycofanie i domkniecie zysku."
+            "Ryzyko jest wysokie względem danych lub ładunku. "
+            "Rozważ wycofanie i domknięcie zysku."
         )
-    return "Ryzyko przetrwania wzroslo. Sprawdz opcje zabezpieczenia postepu."
+    return "Ryzyko przetrwania wzrosło. Sprawdź opcje zabezpieczenia postępu."
 
 
 def trigger_survival_rebuy_awareness(*, gui_ref=None, mode: str = "auto") -> bool:

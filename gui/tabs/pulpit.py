@@ -889,7 +889,7 @@ class PulpitTab(ttk.Frame):
             return
         if not callable(self._on_cash_in_action):
             self.log("[CASH_IN] Brak podpietego callbacku on_cash_in_action.")
-            self._show_info_panel("cash", "Cash-in: akcja route handoff niedostepna.")
+            self._show_info_panel("cash", "Cash-in: akcja route handoff niedostępna.")
             return
         try:
             self._on_cash_in_action("set_route", dict(option))
@@ -904,7 +904,7 @@ class PulpitTab(ttk.Frame):
             return
         if not callable(self._on_cash_in_action):
             self.log("[CASH_IN] Brak podpietego callbacku on_cash_in_action.")
-            self._show_info_panel("cash", "Cash-in: akcja Copy next hop niedostepna.")
+            self._show_info_panel("cash", "Cash-in: akcja Copy next hop niedostępna.")
             return
         try:
             self._on_cash_in_action("copy_next_hop", dict(option))
@@ -914,7 +914,7 @@ class PulpitTab(ttk.Frame):
 
     def _apply_mode_selection(self, mode_id: str | None) -> None:
         if self._app_state is None:
-            self.log("[MODE] Brak app_state - zmiana trybu niedostepna.")
+            self.log("[MODE] Brak app_state - zmiana trybu niedostępna.")
             return
         try:
             if mode_id is None:

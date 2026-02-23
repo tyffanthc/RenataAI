@@ -525,7 +525,7 @@ def _queue_log_line(text: str) -> None:
 def execute_voice_stt_action(
     action: Callable[[], Any] | None = None,
     *,
-    fallback_message: str = "Tryb glosowy STT niedostepny w tym profilu. Uzyj UI/hotkey.",
+    fallback_message: str = "Tryb głosowy STT niedostępny w tym profilu. Użyj UI/hotkey.",
     on_unavailable: Callable[[], None] | None = None,
 ) -> tuple[bool, Any | None]:
     """
@@ -556,5 +556,5 @@ def execute_voice_stt_action(
         return True, action()
     except Exception as exc:
         print(f"[VOICE_STT] action failed: {type(exc).__name__}: {exc}")
-        _queue_log_line("Akcja glosowa STT chwilowo niedostepna. Uzyj UI/hotkey.")
+        _queue_log_line("Akcja głosowa STT chwilowo niedostępna. Użyj UI/hotkey.")
         return False, None

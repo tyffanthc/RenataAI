@@ -159,7 +159,7 @@ class SettingsTab(ttk.Frame):
         )
         self.var_cash_in_index_build_progress = tk.DoubleVar(value=0.0)
         self.var_cash_in_index_build_status = tk.StringVar(
-            value="Brak konwersji. Uzyj 'Zbuduj offline index' po pobraniu dumpa."
+            value="Brak konwersji. Użyj 'Zbuduj offline index' po pobraniu dumpa."
         )
 
         self.var_fss_assistant = tk.BooleanVar(value=True)             # fss_assistant
@@ -1942,7 +1942,7 @@ class SettingsTab(ttk.Frame):
         )
         self.var_cash_in_index_build_progress.set(0.0)
         self.var_cash_in_index_build_status.set(
-            "Brak konwersji. Uzyj 'Zbuduj offline index' po pobraniu dumpa."
+            "Brak konwersji. Użyj 'Zbuduj offline index' po pobraniu dumpa."
         )
         self._refresh_cash_in_status_from_files()
         self.var_route_progress_messages.set(
@@ -2568,7 +2568,7 @@ class SettingsTab(ttk.Frame):
         else:
             self.var_cash_in_index_build_progress.set(0.0)
             self.var_cash_in_index_build_status.set(
-                "Brak konwersji. Uzyj 'Zbuduj offline index' po pobraniu dumpa."
+                "Brak konwersji. Użyj 'Zbuduj offline index' po pobraniu dumpa."
             )
         if path_changed:
             self._persist_cash_in_paths_silent()
@@ -2950,7 +2950,7 @@ class SettingsTab(ttk.Frame):
         )
         self.var_cash_in_index_build_progress.set(0.0)
         self.var_cash_in_index_build_status.set(
-            "Brak konwersji. Uzyj 'Zbuduj offline index' po pobraniu dumpa."
+            "Brak konwersji. Użyj 'Zbuduj offline index' po pobraniu dumpa."
         )
         self._refresh_cash_in_status_from_files()
 

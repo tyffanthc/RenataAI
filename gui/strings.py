@@ -26,7 +26,7 @@ LABEL_MARKET_AGE_CUTOFF = "Starsze niz [YYYY-MM-DD HH:MM]"
 LABEL_MARKET_AGE_SLIDER = "Wiek rynku [h]"
 
 LABEL_LOOP = "Petla"
-LABEL_USE_MAP = "Uzyj mapy"
+LABEL_USE_MAP = "Użyj mapy"
 LABEL_AVOID_THARGOIDS = "Unikaj Thargoidow"
 
 BUTTON_CALCULATE = "Wyznacz trase"
