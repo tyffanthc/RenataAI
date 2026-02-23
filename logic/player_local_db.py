@@ -5,12 +5,29 @@ import sqlite3
 import json
 import hashlib
 import math
+import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterator
 
 PLAYERDB_SCHEMA_VERSION = 1
 PLAYERDB_SCHEMA_NAME_V1 = "player_local_db_v1"
+DEFAULT_FIXTURE_PREFIXES: tuple[str, ...] = (
+    "F19_",
+    "F20_",
+    "F21_",
+    "F22_",
+    "F23_",
+    "F24_",
+    "F25_",
+    "F26_",
+    "F27_",
+    "F28_",
+    "F29_",
+    "SMOKE_",
+    "QG_",
+    "TEST_",
+)
 
 
 def _utc_now_iso() -> str:
@@ -1152,6 +1169,189 @@ def query_nearest_station_candidates(
     return candidates, meta
 
 
+def _prefix_sql_where(columns: list[str], prefixes: list[str]) -> tuple[str, list[Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+    for col in columns:
+        parts: list[str] = []
+        for pref in prefixes:
+            parts.append(f"{col} LIKE ? COLLATE NOCASE")
+            params.append(f"{pref}%")
+        if parts:
+            clauses.append("(" + " OR ".join(parts) + ")")
+    if not clauses:
+        return ("0=1", [])
+    return (" OR ".join(clauses), params)
+
+
+def _count_query(conn: sqlite3.Connection, sql: str, params: list[Any]) -> int:
+    row = conn.execute(sql, tuple(params)).fetchone()
+    try:
+        return int(row[0] if row is not None else 0)
+    except Exception:
+        return 0
+
+
+def cleanup_fixture_test_data(
+    *,
+    path: str | None = None,
+    prefixes: list[str] | tuple[str, ...] | None = None,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    db_path = str(path or default_playerdb_path())
+    prefix_list = [
+        _as_text(p).upper()
+        for p in (prefixes or DEFAULT_FIXTURE_PREFIXES)
+        if _as_text(p)
+    ]
+    # Normalize to unique, deterministic order.
+    prefix_list = sorted(set(prefix_list))
+    if not prefix_list:
+        return {
+            "ok": False,
+            "reason": "no_prefixes",
+            "path": db_path,
+            "dry_run": bool(dry_run),
+            "prefixes": [],
+        }
+
+    with playerdb_connection(path=db_path, ensure_schema=True) as conn:
+        stations_where, stations_params = _prefix_sql_where(
+            ["system_name", "station_name"],
+            prefix_list,
+        )
+        systems_where, systems_params = _prefix_sql_where(["system_name"], prefix_list)
+        cashin_where, cashin_params = _prefix_sql_where(["system_name", "station_name"], prefix_list)
+        trade_where, trade_params = _prefix_sql_where(["system_name", "station_name"], prefix_list)
+
+        fixture_station_rows = conn.execute(
+            f"""
+            SELECT id, market_id, system_name, station_name
+            FROM stations
+            WHERE {stations_where};
+            """,
+            tuple(stations_params),
+        ).fetchall()
+        station_ids = [int(r["id"]) for r in fixture_station_rows]
+        station_market_ids = [int(r["market_id"]) for r in fixture_station_rows if r["market_id"] is not None]
+
+        fixture_snapshot_ids: set[int] = set()
+        if station_market_ids:
+            placeholders = ",".join(["?"] * len(station_market_ids))
+            rows = conn.execute(
+                f"SELECT id FROM market_snapshots WHERE station_market_id IN ({placeholders});",
+                tuple(station_market_ids),
+            ).fetchall()
+            fixture_snapshot_ids.update(int(r["id"]) for r in rows)
+        rows = conn.execute(
+            f"""
+            SELECT id FROM market_snapshots
+            WHERE {stations_where};
+            """,
+            tuple(stations_params),
+        ).fetchall()
+        fixture_snapshot_ids.update(int(r["id"]) for r in rows)
+
+        snapshot_ids = sorted(fixture_snapshot_ids)
+        snapshot_item_count = 0
+        if snapshot_ids:
+            placeholders = ",".join(["?"] * len(snapshot_ids))
+            snapshot_item_count = _count_query(
+                conn,
+                f"SELECT COUNT(*) FROM market_snapshot_items WHERE snapshot_id IN ({placeholders});",
+                snapshot_ids,
+            )
+
+        report = {
+            "ok": True,
+            "path": db_path,
+            "dry_run": bool(dry_run),
+            "prefixes": prefix_list,
+            "counts": {
+                "systems": _count_query(conn, f"SELECT COUNT(*) FROM systems WHERE {systems_where};", systems_params),
+                "stations": len(station_ids),
+                "market_snapshots": len(snapshot_ids),
+                "market_snapshot_items": int(snapshot_item_count),
+                "cashin_history": _count_query(
+                    conn,
+                    f"SELECT COUNT(*) FROM cashin_history WHERE {cashin_where};",
+                    cashin_params,
+                ),
+                "trade_history": _count_query(
+                    conn,
+                    f"SELECT COUNT(*) FROM trade_history WHERE {trade_where};",
+                    trade_params,
+                ),
+            },
+            "preview": {
+                "systems": [
+                    _as_text(r["system_name"])
+                    for r in conn.execute(
+                        f"SELECT system_name FROM systems WHERE {systems_where} ORDER BY system_name LIMIT 10;",
+                        tuple(systems_params),
+                    ).fetchall()
+                ],
+                "stations": [
+                    {
+                        "system_name": _as_text(r["system_name"]),
+                        "station_name": _as_text(r["station_name"]),
+                    }
+                    for r in fixture_station_rows[:10]
+                ],
+            },
+        }
+        report["counts"]["total_rows"] = sum(int(v or 0) for v in report["counts"].values())
+
+        if dry_run:
+            return report
+
+        conn.execute("BEGIN;")
+        try:
+            if snapshot_ids:
+                placeholders = ",".join(["?"] * len(snapshot_ids))
+                # market_snapshot_items are ON DELETE CASCADE, but we also report them explicitly.
+                conn.execute(
+                    f"DELETE FROM market_snapshots WHERE id IN ({placeholders});",
+                    tuple(snapshot_ids),
+                )
+            conn.execute(f"DELETE FROM cashin_history WHERE {cashin_where};", tuple(cashin_params))
+            conn.execute(f"DELETE FROM trade_history WHERE {trade_where};", tuple(trade_params))
+            conn.execute(f"DELETE FROM stations WHERE {stations_where};", tuple(stations_params))
+            conn.execute(f"DELETE FROM systems WHERE {systems_where};", tuple(systems_params))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        return report
+
+
+def _fixture_cleanup_cli(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m logic.player_local_db",
+        description="Cleanup fixture/test records from player_local.db by prefixes (dry-run by default).",
+    )
+    parser.add_argument("--path", default=None, help="Path to player_local.db (default: runtime APPDATA path)")
+    parser.add_argument(
+        "--prefix",
+        action="append",
+        dest="prefixes",
+        help="Fixture prefix (repeatable). Defaults include F19_/F20_/.../SMOKE_/QG_/TEST_.",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply deletions. Without this flag, command runs in dry-run mode.",
+    )
+    args = parser.parse_args(argv)
+    report = cleanup_fixture_test_data(
+        path=args.path,
+        prefixes=args.prefixes,
+        dry_run=not bool(args.apply),
+    )
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0 if report.get("ok") else 1
+
+
 @contextmanager
 def playerdb_connection(*, path: str | None = None, ensure_schema: bool = True) -> Iterator[sqlite3.Connection]:
     db_path = str(path or default_playerdb_path())
@@ -1162,3 +1362,7 @@ def playerdb_connection(*, path: str | None = None, ensure_schema: bool = True) 
         yield conn
     finally:
         conn.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(_fixture_cleanup_cli())
