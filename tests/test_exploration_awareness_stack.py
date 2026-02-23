@@ -31,27 +31,27 @@ class ExplorationAwarenessStackTests(unittest.TestCase):
         ):
             first = awareness.emit_callout_or_summary(
                 text="Callout A",
-                message_id="MSG.ELW_DETECTED",
+                message_id="MSG.EXOBIO_NEW_ENTRY",
                 source="test",
                 system_name="Sol",
                 body_name="Sol A 1",
-                callout_key="elw:sol_a_1",
+                callout_key="soft:sol_a_1",
             )
             second = awareness.emit_callout_or_summary(
                 text="Callout B",
-                message_id="MSG.WW_DETECTED",
+                message_id="MSG.EXOBIO_NEW_ENTRY",
                 source="test",
                 system_name="Sol",
                 body_name="Sol A 2",
-                callout_key="ww:sol_a_2",
+                callout_key="soft:sol_a_2",
             )
             third = awareness.emit_callout_or_summary(
                 text="Callout C",
-                message_id="MSG.TERRAFORMABLE_DETECTED",
+                message_id="MSG.EXOBIO_NEW_ENTRY",
                 source="test",
                 system_name="Sol",
                 body_name="Sol A 3",
-                callout_key="terraformable:sol_a_3",
+                callout_key="soft:sol_a_3",
             )
 
         self.assertEqual(first, "callout")
@@ -104,7 +104,7 @@ class ExplorationAwarenessStackTests(unittest.TestCase):
         ):
             first = awareness.emit_callout_or_summary(
                 text="Callout 1",
-                message_id="MSG.ELW_DETECTED",
+                message_id="MSG.EXOBIO_NEW_ENTRY",
                 source="test",
                 system_name="SystemA",
                 body_name="A1",
@@ -112,7 +112,7 @@ class ExplorationAwarenessStackTests(unittest.TestCase):
             )
             second = awareness.emit_callout_or_summary(
                 text="Callout 2",
-                message_id="MSG.WW_DETECTED",
+                message_id="MSG.EXOBIO_NEW_ENTRY",
                 source="test",
                 system_name="SystemB",
                 body_name="B1",
@@ -120,7 +120,7 @@ class ExplorationAwarenessStackTests(unittest.TestCase):
             )
             third = awareness.emit_callout_or_summary(
                 text="Callout 3",
-                message_id="MSG.BIO_SIGNALS_HIGH",
+                message_id="MSG.EXOBIO_NEW_ENTRY",
                 source="test",
                 system_name="SystemC",
                 body_name="C1",
@@ -136,4 +136,3 @@ class ExplorationAwarenessStackTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

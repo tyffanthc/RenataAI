@@ -24,6 +24,14 @@ _SESSION_CALLOUTS_EMITTED = 0
 _DEFAULT_MAX_CALLOUTS_PER_SYSTEM = 3
 _DEFAULT_MAX_CALLOUTS_PER_SESSION = 60
 
+_REQUIRED_EXPLORATION_CALLOUTS = {
+    "MSG.ELW_DETECTED",
+    "MSG.WW_DETECTED",
+    "MSG.TERRAFORMABLE_DETECTED",
+    "MSG.DSS_TARGET_HINT",
+    "MSG.BIO_SIGNALS_HIGH",
+}
+
 
 def _as_text(value: Any) -> str:
     return str(value or "").strip()
@@ -106,6 +114,7 @@ def emit_callout_or_summary(
         "Oznaczylam najlepsze kandydaty."
     ),
     summary_message_id: str = "MSG.EXPLORATION_SYSTEM_SUMMARY",
+    required_callout: bool = False,
 ) -> str:
     """
     Exploration awareness anti-spam gate:
@@ -126,31 +135,39 @@ def emit_callout_or_summary(
     state: _SystemAwarenessState
 
     emit_mode = "callout"
+    is_required = bool(required_callout) or str(message_id or "").strip().upper() in _REQUIRED_EXPLORATION_CALLOUTS
     with _LOCK:
         state = _SYSTEM_STATE.setdefault(system_key, _SystemAwarenessState())
 
         if key_norm in state.emitted_keys:
             return "dropped_duplicate"
 
-        per_system_limit = _max_callouts_per_system()
-        per_session_limit = _max_callouts_per_session()
-        over_system_limit = state.callouts_emitted >= per_system_limit
-        over_session_limit = _SESSION_CALLOUTS_EMITTED >= per_session_limit
-
-        if over_system_limit or over_session_limit:
-            state.suppressed_count += 1
-            if state.summary_emitted:
-                return "dropped_limit"
-            state.summary_emitted = True
-            emit_mode = "summary"
-        else:
+        if is_required:
+            # Required exploration callouts are deterministic and must not be
+            # dropped by the awareness limiter. We still dedupe by key.
             state.emitted_keys.add(key_norm)
-            state.callouts_emitted += 1
-            _SESSION_CALLOUTS_EMITTED += 1
+        else:
+            per_system_limit = _max_callouts_per_system()
+            per_session_limit = _max_callouts_per_session()
+            over_system_limit = state.callouts_emitted >= per_system_limit
+            over_session_limit = _SESSION_CALLOUTS_EMITTED >= per_session_limit
+
+            if over_system_limit or over_session_limit:
+                state.suppressed_count += 1
+                if state.summary_emitted:
+                    return "dropped_limit"
+                state.summary_emitted = True
+                emit_mode = "summary"
+            else:
+                state.emitted_keys.add(key_norm)
+                state.callouts_emitted += 1
+                _SESSION_CALLOUTS_EMITTED += 1
 
     ctx = _default_context(system_name, body_name)
     if context:
         ctx.update(dict(context))
+    if is_required:
+        ctx["exploration_awareness_required"] = True
 
     if emit_mode == "summary":
         ctx["suppressed_count"] = int(state.suppressed_count)
@@ -181,4 +198,3 @@ def emit_callout_or_summary(
         cooldown_seconds=30.0,
     )
     return "callout"
-
