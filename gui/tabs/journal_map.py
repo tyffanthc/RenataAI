@@ -2170,21 +2170,34 @@ class JournalMapTab(tk.Frame):
 
     def center_on_current_system(self) -> None:
         current_name = str(getattr(app_state, "current_system", "") or "").strip()
+        current_node = self._find_current_system_rendered_node()
+        if current_node is not None:
+            self._center_world_point(float(current_node.x), float(current_node.y))
+            self._redraw_scene()
+            self.map_status_var.set(f"Mapa: wycentrowano na aktualnym systemie ({current_node.system_name}).")
+            return
+
+        if current_name:
+            self._redraw_scene()
+            self.map_status_var.set(
+                f"Mapa: aktualny system ({current_name}) nie jest widoczny na mapie (po filtrach/warstwach)."
+            )
+            return
+
         current_star_pos = getattr(app_state, "current_star_pos", None)
         if isinstance(current_star_pos, (list, tuple)) and len(current_star_pos) >= 3:
             try:
                 wx = float(current_star_pos[0])
-                wy = float(current_star_pos[2])  # x/z -> 2D
+                wy = float(current_star_pos[2])  # x/z -> 2D (shell fallback)
                 self._center_world_point(wx, wy)
                 self._redraw_scene()
-                self.map_status_var.set(f"Mapa: wycentrowano na aktualnym systemie ({current_name or 'current'}).")
+                self.map_status_var.set("Mapa: wycentrowano na fallback current StarPos (shell).")
                 return
             except Exception:
                 pass
-        # fallback shell behavior
-        self._center_world_point(0.0, 0.0)
+
         self._redraw_scene()
-        self.map_status_var.set("Mapa: brak wspolrzednych aktualnego systemu (playerdb/current StarPos).")
+        self.map_status_var.set("Mapa: brak danych do wycentrowania aktualnego systemu.")
 
     def _on_canvas_configure(self, _event=None) -> None:
         # If offsets are zero (first layout), center origin.
@@ -2396,6 +2409,18 @@ class JournalMapTab(tk.Frame):
         if not current_name:
             return False
         return current_name.casefold() == _as_text(node.system_name).casefold()
+
+    def _find_current_system_rendered_node(self) -> _MapNode | None:
+        current_name = _as_text(getattr(app_state, "current_system", ""))
+        if not current_name:
+            return None
+        for node in (self._nodes or {}).values():
+            try:
+                if current_name.casefold() == _as_text(getattr(node, "system_name", "")).casefold():
+                    return node
+            except Exception:
+                continue
+        return None
 
     def _draw_node_state_rings(self, node: _MapNode, sx: float, sy: float, r: int) -> None:
         c = self.map_canvas
