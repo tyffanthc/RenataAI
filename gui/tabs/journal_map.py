@@ -26,6 +26,10 @@ COLOR_CURRENT_RING = "#22c55e"
 COLOR_STATION_LAYER = "#6ee7b7"
 COLOR_TRADE_LAYER = "#60a5fa"
 COLOR_CASHIN_LAYER = "#f472b6"
+COLOR_EXOBIO_LAYER = "#2dd4bf"
+COLOR_EXPLORATION_LAYER = "#facc15"
+COLOR_INCIDENT_LAYER = "#ef4444"
+COLOR_COMBAT_LAYER = "#fb7185"
 
 
 @dataclass
@@ -152,11 +156,19 @@ class JournalMapTab(tk.Frame):
         self.layer_stations_var = tk.BooleanVar(value=True)
         self.layer_trade_var = tk.BooleanVar(value=False)
         self.layer_cashin_var = tk.BooleanVar(value=False)
+        self.layer_exobio_var = tk.BooleanVar(value=False)
+        self.layer_exploration_var = tk.BooleanVar(value=False)
+        self.layer_incidents_var = tk.BooleanVar(value=False)
+        self.layer_combat_var = tk.BooleanVar(value=False)
         self.time_range_var = tk.StringVar(value="30d")
         self.freshness_var = tk.StringVar(value="any")
         self.source_include_enriched_var = tk.BooleanVar(value=False)
         self.trade_compare_commodity_var = tk.StringVar(value="")
         self.map_status_var = tk.StringVar(value="Mapa gotowa (shell). Brak danych do renderu.")
+        self.legend_collapsed_var = tk.BooleanVar(value=False)
+        self.legend_toggle_text_var = tk.StringVar(value="Ukryj")
+        self.legend_text_var = tk.StringVar(value="")
+        self._action_layers_meta: dict[str, Any] = {}
 
         self._build_ui()
         self._build_map_context_menu()
@@ -197,6 +209,7 @@ class JournalMapTab(tk.Frame):
         self.left_frame.grid(row=0, column=0, sticky="nsw", padx=(10, 6), pady=(10, 6))
         self.left_frame.grid_propagate(False)
         self.left_frame.columnconfigure(0, weight=1)
+        self.left_frame.rowconfigure(5, weight=1)
 
         tk.Label(
             self.left_frame,
@@ -222,6 +235,10 @@ class JournalMapTab(tk.Frame):
                 ("Stations", self.layer_stations_var),
                 ("Trade", self.layer_trade_var),
                 ("Cash-In", self.layer_cashin_var),
+                ("Exobio", self.layer_exobio_var),
+                ("Exploration", self.layer_exploration_var),
+                ("Incidents", self.layer_incidents_var),
+                ("Combat", self.layer_combat_var),
             )
         ):
             chk = tk.Checkbutton(
@@ -322,6 +339,47 @@ class JournalMapTab(tk.Frame):
             state="disabled",
         )
         self.btn_export_placeholder.grid(row=4, column=0, sticky="ew")
+
+        legend_box = tk.LabelFrame(
+            self.left_frame,
+            text="Legenda",
+            bg=COLOR_BG,
+            fg=COLOR_FG,
+            bd=1,
+            relief="groove",
+            labelanchor="nw",
+        )
+        legend_box.grid(row=5, column=0, sticky="nsew", pady=(6, 0))
+        legend_box.columnconfigure(0, weight=1)
+        legend_box.rowconfigure(1, weight=1)
+
+        legend_head = tk.Frame(legend_box, bg=COLOR_BG)
+        legend_head.grid(row=0, column=0, sticky="ew")
+        legend_head.columnconfigure(0, weight=1)
+        self.legend_toggle_btn = tk.Button(
+            legend_head,
+            textvariable=self.legend_toggle_text_var,
+            bg=COLOR_ACCENT,
+            fg=COLOR_FG,
+            relief="flat",
+            command=self._toggle_legend,
+            width=10,
+        )
+        self.legend_toggle_btn.grid(row=0, column=1, sticky="e", padx=6, pady=(4, 2))
+
+        self.legend_body_frame = tk.Frame(legend_box, bg=COLOR_BG)
+        self.legend_body_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 6))
+        self.legend_body_frame.columnconfigure(0, weight=1)
+        self.legend_label = tk.Label(
+            self.legend_body_frame,
+            textvariable=self.legend_text_var,
+            bg=COLOR_BG,
+            fg=COLOR_SEC,
+            justify="left",
+            anchor="nw",
+            wraplength=270,
+        )
+        self.legend_label.grid(row=0, column=0, sticky="nsew")
 
         # Center panel (canvas)
         self.center_frame = tk.Frame(self, bg=COLOR_BG)
@@ -472,6 +530,7 @@ class JournalMapTab(tk.Frame):
             anchor="w",
         )
         status.grid(row=1, column=0, columnspan=3, sticky="ew", padx=10, pady=(0, 10))
+        self._refresh_legend()
 
     def _bind_canvas(self) -> None:
         self.map_canvas.bind("<Configure>", self._on_canvas_configure)
@@ -735,6 +794,68 @@ class JournalMapTab(tk.Frame):
         except Exception:
             pass
 
+    def _toggle_legend(self) -> None:
+        collapsed = not bool(self.legend_collapsed_var.get())
+        self.legend_collapsed_var.set(collapsed)
+        try:
+            if collapsed:
+                self.legend_body_frame.grid_remove()
+                self.legend_toggle_text_var.set("Pokaz")
+            else:
+                self.legend_body_frame.grid()
+                self.legend_toggle_text_var.set("Ukryj")
+        except Exception:
+            pass
+        self._refresh_legend()
+
+    def _refresh_legend(self) -> None:
+        lines: list[str] = []
+        if bool(self.legend_collapsed_var.get()):
+            self.legend_text_var.set("")
+            return
+
+        # Base state overlays (always relevant to map interaction).
+        lines.extend(
+            [
+                "Otoczki:",
+                "• biala = wybrany system",
+                "• zielona = aktualny system gracza",
+            ]
+        )
+
+        active_items: list[str] = []
+        if bool(self.layer_stations_var.get()):
+            active_items.append("• ring zielony = znane stacje w systemie")
+        if bool(self.layer_trade_var.get()):
+            active_items.append("• kwadrat niebieski = znany rynek (Trade)")
+        if bool(self.layer_cashin_var.get()):
+            active_items.append("• romb rozowy = znane UC/Vista na stacjach (Cash-In)")
+        if bool(self.layer_exploration_var.get()):
+            active_items.append("• badge zolty = historia eksploracji (cash-in UC)")
+        if bool(self.layer_exobio_var.get()):
+            active_items.append("• badge turkusowy = historia exobio (cash-in Vista)")
+        if bool(self.layer_incidents_var.get()):
+            if bool((self._action_layers_meta or {}).get("supports_incidents")):
+                active_items.append("• badge czerwony = incydenty")
+            else:
+                active_items.append("• Incidents: brak danych w playerdb (future)")
+        if bool(self.layer_combat_var.get()):
+            if bool((self._action_layers_meta or {}).get("supports_combat")):
+                active_items.append("• badge rozowo-czerwony = combat")
+            else:
+                active_items.append("• Combat: brak danych w playerdb (future)")
+
+        if active_items:
+            lines.append("")
+            lines.append("Aktywne warstwy:")
+            lines.extend(active_items)
+
+        lines.append("")
+        lines.append("Zoom:")
+        lines.append("• maly zoom: mniej badge / label")
+        lines.append("• duzy zoom: wiecej badge i etykiet")
+        self.legend_text_var.set("\n".join(lines))
+
     def _on_filter_changed(self) -> None:
         self.reload_from_playerdb()
 
@@ -827,7 +948,30 @@ class JournalMapTab(tk.Frame):
     def _compute_layer_flags_for_nodes(self, nodes_rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         flags_by_key: dict[str, dict[str, Any]] = {}
         if not nodes_rows:
+            self._action_layers_meta = {}
             return flags_by_key
+        action_flags_by_system_cf: dict[str, dict[str, Any]] = {}
+        self._action_layers_meta = {}
+        system_names = [
+            _as_text(dict(r).get("system_name"))
+            for r in (nodes_rows or [])
+            if isinstance(r, dict) and _as_text(dict(r).get("system_name"))
+        ]
+        getter = getattr(self.data_provider, "get_system_action_flags", None)
+        if callable(getter):
+            try:
+                action_flags_by_system_cf, action_meta = getter(
+                    system_names=system_names,
+                    time_range=str(self.time_range_var.get() or "all"),
+                    freshness_filter=str(self.freshness_var.get() or "any"),
+                    limit=max(100, len(system_names) * 2),
+                )
+                if not isinstance(action_flags_by_system_cf, dict):
+                    action_flags_by_system_cf = {}
+                self._action_layers_meta = dict(action_meta or {})
+            except Exception:
+                action_flags_by_system_cf = {}
+                self._action_layers_meta = {"error": True}
         # MVP / F20-5: N+1 queries are acceptable for map prototype. We cache results per reload.
         for row in nodes_rows:
             if not isinstance(row, dict):
@@ -863,11 +1007,17 @@ class JournalMapTab(tk.Frame):
                 or bool((dict(r).get("services") or {}).get("has_vista"))
                 for r in filtered
             )
+            activity = dict(action_flags_by_system_cf.get(system_name.casefold()) or {})
             flags_by_key[key] = {
                 "has_station": bool(has_station),
                 "has_market": bool(has_market),
                 "has_cashin": bool(has_cashin),
+                "has_exobio": bool(activity.get("has_exobio")),
+                "has_exploration": bool(activity.get("has_exploration")),
+                "has_incident": bool(activity.get("has_incident")),
+                "has_combat": bool(activity.get("has_combat")),
                 "stations_count": len(filtered),
+                "action_freshness_ts": _as_text(activity.get("last_action_ts")),
                 "error": False,
             }
         return flags_by_key
@@ -945,7 +1095,16 @@ class JournalMapTab(tk.Frame):
                 "-",
                 "-",
                 "-",
-                f"warstwy: T={int(bool(self.layer_travel_var.get()))}/S={int(bool(self.layer_stations_var.get()))}/Tr={int(bool(self.layer_trade_var.get()))}/C={int(bool(self.layer_cashin_var.get()))}",
+                (
+                    f"warstwy: T={int(bool(self.layer_travel_var.get()))}"
+                    f"/S={int(bool(self.layer_stations_var.get()))}"
+                    f"/Tr={int(bool(self.layer_trade_var.get()))}"
+                    f"/C={int(bool(self.layer_cashin_var.get()))}"
+                    f"/Ex={int(bool(self.layer_exobio_var.get()))}"
+                    f"/Xp={int(bool(self.layer_exploration_var.get()))}"
+                    f"/I={int(bool(self.layer_incidents_var.get()))}"
+                    f"/Cb={int(bool(self.layer_combat_var.get()))}"
+                ),
             ),
         )
         self._sync_trade_highlight_button_state()
@@ -956,7 +1115,9 @@ class JournalMapTab(tk.Frame):
             self._node_layer_flags = {}
             self._travel_nodes_meta = {"count": 0, "disabled": True}
             self._travel_edges_meta = {"count": 0, "disabled": True}
+            self._action_layers_meta = {}
             self._refresh_system_panel_stub()
+            self._refresh_legend()
             self.map_status_var.set("Mapa: warstwa Travel jest wylaczona. Wlacz Travel, aby zobaczyc systemy.")
             return {"ok": True, "travel_enabled": False, "nodes": 0, "edges": 0}
 
@@ -995,6 +1156,10 @@ class JournalMapTab(tk.Frame):
             f"/S={int(bool(self.layer_stations_var.get()))}"
             f"/Tr={int(bool(self.layer_trade_var.get()))}"
             f"/C={int(bool(self.layer_cashin_var.get()))}"
+            f"/Ex={int(bool(self.layer_exobio_var.get()))}"
+            f"/Xp={int(bool(self.layer_exploration_var.get()))}"
+            f"/I={int(bool(self.layer_incidents_var.get()))}"
+            f"/Cb={int(bool(self.layer_combat_var.get()))}"
         )
         if count_nodes <= 0:
             status_reason += " | brak danych po filtrach (time/freshness/source)"
@@ -1002,6 +1167,7 @@ class JournalMapTab(tk.Frame):
             f"Mapa Travel: {count_nodes} systemow / {count_edges} krawedzi | "
             f"time={time_range} | freshness={self.freshness_var.get()} | source={source_filter}{status_reason}{layer_state}"
         )
+        self._refresh_legend()
         return {
             "ok": True,
             "travel_enabled": True,
@@ -1552,7 +1718,7 @@ class JournalMapTab(tk.Frame):
             )
 
     def _draw_nodes(self) -> None:
-        show_labels = self.view_scale >= 0.8
+        show_labels = self.view_scale >= 0.90
         for node in self._nodes.values():
             sx, sy = self.world_to_screen(node.x, node.y)
             r = 4 if self.view_scale < 1.2 else 5
@@ -1633,8 +1799,10 @@ class JournalMapTab(tk.Frame):
         if not flags:
             return
         c = self.map_canvas
+        show_service_badges = bool(self.view_scale >= 0.45)
+        show_action_badges = bool(self.view_scale >= 0.75)
         # Stations layer: outer ring (known stations in system).
-        if bool(self.layer_stations_var.get()) and bool(flags.get("has_station")):
+        if show_service_badges and bool(self.layer_stations_var.get()) and bool(flags.get("has_station")):
             rr = r + 3
             c.create_oval(
                 sx - rr,
@@ -1646,7 +1814,7 @@ class JournalMapTab(tk.Frame):
                 tags=("layer_stations", f"node:{node.key}"),
             )
         # Trade layer: small square badge (known market service in system).
-        if bool(self.layer_trade_var.get()) and bool(flags.get("has_market")):
+        if show_service_badges and bool(self.layer_trade_var.get()) and bool(flags.get("has_market")):
             s = 3
             c.create_rectangle(
                 sx + r + 1,
@@ -1658,7 +1826,7 @@ class JournalMapTab(tk.Frame):
                 tags=("layer_trade", f"node:{node.key}"),
             )
         # Cash-In layer: diamond badge (known UC/Vista sell service in system).
-        if bool(self.layer_cashin_var.get()) and bool(flags.get("has_cashin")):
+        if show_service_badges and bool(self.layer_cashin_var.get()) and bool(flags.get("has_cashin")):
             d = 4
             pts = [
                 sx,
@@ -1676,6 +1844,31 @@ class JournalMapTab(tk.Frame):
                 fill=COLOR_CASHIN_LAYER,
                 tags=("layer_cashin", f"node:{node.key}"),
             )
+
+        if not show_action_badges:
+            return
+
+        def _dot(cx: float, cy: float, color: str, tag_name: str) -> None:
+            rr = 2.8
+            c.create_oval(
+                cx - rr,
+                cy - rr,
+                cx + rr,
+                cy + rr,
+                outline=color,
+                fill=color,
+                tags=(tag_name, "layer_action_badge", f"node:{node.key}"),
+            )
+
+        # Action badges (history/activity): badge/dot markers, not extra rings.
+        if bool(self.layer_exploration_var.get()) and bool(flags.get("has_exploration")):
+            _dot(sx - r - 6, sy - r - 6, COLOR_EXPLORATION_LAYER, "layer_exploration")
+        if bool(self.layer_exobio_var.get()) and bool(flags.get("has_exobio")):
+            _dot(sx - r - 6, sy + r + 6, COLOR_EXOBIO_LAYER, "layer_exobio")
+        if bool(self.layer_incidents_var.get()) and bool(flags.get("has_incident")):
+            _dot(sx - r - 8, sy, COLOR_INCIDENT_LAYER, "layer_incidents")
+        if bool(self.layer_combat_var.get()) and bool(flags.get("has_combat")):
+            _dot(sx, sy - r - 9, COLOR_COMBAT_LAYER, "layer_combat")
 
     def _draw_trade_compare_highlight(self, node: _MapNode, sx: float, sy: float, r: int) -> None:
         if not bool(self.layer_trade_var.get()):

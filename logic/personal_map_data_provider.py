@@ -469,3 +469,86 @@ class MapDataProvider:
             "freshness_filter": _as_text(freshness_filter) or "any",
             "db_path": self.db_path,
         }
+
+    def get_system_action_flags(
+        self,
+        *,
+        system_names: list[str] | None = None,
+        time_range: str = "all",
+        freshness_filter: str = "any",
+        limit: int = 5000,
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+        """
+        Best-effort aktywnosci systemowe dla warstw mapy (F21-3).
+
+        Aktualny baseline PlayerDB (F16) daje pewne dane tylko dla:
+        - Exploration (cash-in UC)
+        - Exobio (cash-in Vista)
+
+        Incidents / Combat zostaja future-ready i sa raportowane w meta jako unsupported.
+        """
+        max_rows = max(1, int(limit or 5000))
+        cutoff = _cutoff_for_time_range(time_range)
+        max_age = _max_age_for_freshness_filter(freshness_filter)
+
+        names_cf: set[str] = set()
+        for item in system_names or []:
+            text = _as_text(item)
+            if text:
+                names_cf.add(text.casefold())
+
+        sql = """
+            SELECT
+                MIN(system_name) AS system_name,
+                MAX(CASE WHEN upper(service) = 'UC' THEN 1 ELSE 0 END) AS has_exploration,
+                MAX(CASE WHEN upper(service) = 'VISTA' THEN 1 ELSE 0 END) AS has_exobio,
+                MAX(event_ts) AS last_action_ts
+            FROM cashin_history
+            WHERE system_name IS NOT NULL AND trim(system_name) != ''
+        """
+        params: list[Any] = []
+        if cutoff is not None:
+            sql += " AND event_ts >= ?"
+            params.append(cutoff.isoformat().replace("+00:00", "Z"))
+        if names_cf:
+            placeholders = ",".join("?" for _ in names_cf)
+            sql += f" AND lower(system_name) IN ({placeholders})"
+            params.extend(sorted(names_cf))
+        sql += " GROUP BY lower(system_name) ORDER BY MAX(event_ts) DESC LIMIT ?"
+        params.append(max_rows)
+
+        with player_local_db.playerdb_connection(path=self.db_path, ensure_schema=True) as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+
+        out: dict[str, dict[str, Any]] = {}
+        now = datetime.now(timezone.utc)
+        for row in rows:
+            system_name = _as_text(row["system_name"])
+            if not system_name:
+                continue
+            last_action_ts = _as_text(row["last_action_ts"])
+            if max_age is not None:
+                dt = _parse_iso_ts(last_action_ts)
+                if dt is None or (now - dt) > max_age:
+                    continue
+            out[system_name.casefold()] = {
+                "system_name": system_name,
+                "has_exobio": bool(int(row["has_exobio"] or 0)),
+                "has_exploration": bool(int(row["has_exploration"] or 0)),
+                "has_incident": False,
+                "has_combat": False,
+                "last_action_ts": last_action_ts,
+                "source": "playerdb",
+                "confidence": "observed",
+            }
+
+        return out, {
+            "count": len(out),
+            "time_range": _as_text(time_range) or "all",
+            "freshness_filter": _as_text(freshness_filter) or "any",
+            "supports_exobio": True,
+            "supports_exploration": True,
+            "supports_incidents": False,
+            "supports_combat": False,
+            "db_path": self.db_path,
+        }
