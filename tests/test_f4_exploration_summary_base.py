@@ -78,8 +78,9 @@ class F4ExplorationSummaryBaseTests(unittest.TestCase):
         payload = dict(ctx.get("summary_payload") or {})
         self.assertEqual(payload.get("system"), "F4_SUMMARY_TEST_SYSTEM")
         self.assertTrue(bool(payload.get("highlights")))
-        self.assertTrue(bool(payload.get("next_step")))
-        self.assertIn("cash_in_signal", payload)
+        self.assertEqual(str(payload.get("next_step") or ""), "Dokończ FSS")
+        self.assertEqual(str(payload.get("cash_in_signal") or ""), "wysoki")
+        self.assertIn("Dokończ FSS.", raw_text)
 
     def test_auto_trigger_is_guarded_by_signature_change(self) -> None:
         data = self._sample_data()
@@ -121,6 +122,22 @@ class F4ExplorationSummaryBaseTests(unittest.TestCase):
         payload = dict(ctx.get("summary_payload") or {})
         self.assertEqual(float(payload.get("cash_in_system_estimated") or 0.0), 0.0)
         self.assertEqual(float(payload.get("cash_in_session_estimated") or 0.0), 0.0)
+
+    def test_pick_next_step_polish_microcopy_is_repaired(self) -> None:
+        data = self._sample_data()
+        data.scanned_bodies = data.total_bodies = 12
+        data.elw_count = data.ww_count = data.hmc_t_count = 0
+        data.biology_species_count = 1
+        self.assertEqual(
+            exploration_summary._pick_next_step(data),
+            "Rozważ lądowanie pod exobio",
+        )
+
+        data.biology_species_count = 0
+        self.assertEqual(exploration_summary._pick_next_step(data), "Leć dalej")
+
+        data.total_value = 4_000_000.0
+        self.assertEqual(exploration_summary._cash_in_signal(data), "średni")
 
 
 if __name__ == "__main__":

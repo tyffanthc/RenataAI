@@ -62,7 +62,7 @@ def _build_highlights(data: ExitSummaryData) -> list[str]:
         and data.total_bodies > data.scanned_bodies
     ):
         remaining = max(0, int(data.total_bodies - data.scanned_bodies))
-        highlights.append(f"Do dokończenia FSS: {remaining}")
+        highlights.append(f"Do doko\u0144czenia FSS: {remaining}")
 
     return highlights[:5]
 
@@ -73,16 +73,16 @@ def _pick_next_step(data: ExitSummaryData) -> str:
         and data.total_bodies is not None
         and data.total_bodies > data.scanned_bodies
     ):
-        return "Doko?cz FSS"
+        return "Doko\u0144cz FSS"
     if data.elw_count + data.ww_count + data.hmc_t_count > 0:
-        return "Rozwa? DSS na top celach"
+        return "Rozwa\u017c DSS na top celach"
     if data.biology_species_count > 0:
-        return "Rozwa? l?dowanie pod exobio"
-    return "Le? dalej"
+        return "Rozwa\u017c l\u0105dowanie pod exobio"
+    return "Le\u0107 dalej"
 
 
 def _pick_system_quality_hint(data: ExitSummaryData) -> str:
-    """Lekka klasyfikacja systemu po domkni?ciu FSS (heurystyka v1)."""
+    """Lekka klasyfikacja systemu po domkni\u0119ciu FSS (heurystyka v1)."""
     if (
         data.scanned_bodies is not None
         and data.total_bodies is not None
@@ -122,7 +122,7 @@ def _cash_in_signal(data: ExitSummaryData) -> str:
     if total >= 15_000_000:
         return "wysoki"
     if total >= 3_000_000:
-        return "średni"
+        return "\u015bredni"
     return "niski"
 
 
