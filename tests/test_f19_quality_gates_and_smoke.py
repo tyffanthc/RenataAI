@@ -5,6 +5,7 @@ import os
 import queue
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from logic.event_handler import EventHandler
 from logic.logbook_feed import build_logbook_info_rows, build_logbook_summary_snapshot
@@ -12,6 +13,7 @@ from logic.logbook_feed_cache import (
     append_logbook_feed_cache_item,
     load_logbook_feed_cache,
 )
+from logic import player_local_db
 from logic.utils import MSG_QUEUE
 
 
@@ -26,12 +28,23 @@ class F19QualityGatesAndSmokeTests(unittest.TestCase):
         return items
 
     def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self._db_path = os.path.join(self._tmp.name, "db", "player_local.db")
+        self._runtime_db_path = player_local_db.default_playerdb_path()
+        self._default_path_patch = patch(
+            "logic.player_local_db.default_playerdb_path",
+            return_value=self._db_path,
+        )
+        self._default_path_patch.start()
         self._drain_queue()
 
     def tearDown(self) -> None:
         self._drain_queue()
+        self._default_path_patch.stop()
+        self._tmp.cleanup()
 
     def test_quality_gate_f19_feed_items_have_class_summary_chips_and_raw_event(self) -> None:
+        self.assertNotEqual(os.path.abspath(self._db_path), os.path.abspath(self._runtime_db_path))
         router = EventHandler()
         for ev in (
             {
@@ -114,6 +127,7 @@ class F19QualityGatesAndSmokeTests(unittest.TestCase):
         self.assertEqual(int((snapshot.get("class_counts") or {}).get("Exobio") or 0), 1)
 
     def test_smoke_f19_journal_replay_sequence_to_feed_cache_and_summary(self) -> None:
+        self.assertNotEqual(os.path.abspath(self._db_path), os.path.abspath(self._runtime_db_path))
         router = EventHandler()
         sequence = [
             {
@@ -211,4 +225,3 @@ class F19QualityGatesAndSmokeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
