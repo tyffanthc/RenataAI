@@ -2692,6 +2692,7 @@ def trigger_cash_in_assistant(
     gui_ref=None,
     mode: str = "auto",
     summary_payload: dict[str, Any] | None = None,
+    suppress_tts: bool = False,
 ) -> bool:
     if not bool(config.get("cash_in_assistant_enabled", True)):
         return False
@@ -2835,6 +2836,11 @@ def trigger_cash_in_assistant(
         "confidence": payload.confidence,
         "cash_in_payload": asdict(payload),
     }
+    if suppress_tts:
+        # Summary-driven auto call should populate panel/state without cutting into
+        # exploration summary voice line.
+        context["suppress_tts"] = True
+        context["voice_sequence_reason"] = "after_exploration_summary"
 
     dedup_key = (
         f"cash_in_manual:{payload.system}:{payload.signature}"

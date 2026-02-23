@@ -100,6 +100,9 @@ class F4QualityGatesAndSmokeTests(unittest.TestCase):
         self.assertFalse(second)
         self.assertEqual(summary_emit.call_count, 1)
         self.assertEqual(cash_emit.call_count, 1)
+        cash_ctx = dict(cash_emit.call_args.kwargs.get("context") or {})
+        self.assertTrue(bool(cash_ctx.get("suppress_tts")))
+        self.assertEqual(cash_ctx.get("voice_sequence_reason"), "after_exploration_summary")
         self.assertTrue(str(getattr(app_state, "last_exploration_summary_signature", "") or "").strip())
         self.assertTrue(str(getattr(app_state, "last_cash_in_signature", "") or "").strip())
 
@@ -180,4 +183,3 @@ class F4QualityGatesAndSmokeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

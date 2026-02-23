@@ -262,6 +262,7 @@ def trigger_exploration_summary(
             gui_ref=gui_ref,
             mode=mode_norm,
             summary_payload=asdict(payload),
+            suppress_tts=(mode_norm == "auto"),
         )
     except Exception:
         pass
