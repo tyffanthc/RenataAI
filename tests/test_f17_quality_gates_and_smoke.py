@@ -41,8 +41,10 @@ class F17QualityGatesAndSmokeTests(unittest.TestCase):
         route_manager.clear_route()
         config.config._settings["high_g_warning"] = True
         config.config._settings["high_g_warning_threshold_g"] = 2.0
+        high_g_warning._reset_state_for_tests()  # noqa: SLF001
 
     def tearDown(self) -> None:
+        high_g_warning._reset_state_for_tests()  # noqa: SLF001
         config.config._settings = self._orig_settings
         app_state.clear_pending_station_clipboard(source="test.f17.qg.teardown")
         if bool(self._saved_pending.get("active")):
@@ -73,12 +75,18 @@ class F17QualityGatesAndSmokeTests(unittest.TestCase):
             self.assertNotEqual(policy.intent, "silent")
 
     def test_quality_gate_high_g_and_runtime_critical_callouts(self) -> None:
-        high_g_event = {
+        high_g_scan = {
             "event": "Scan",
             "BodyName": "F17_QG_HIGH_G",
             "StarSystem": "F17_QG_ORIGIN",
             "SurfaceGravity": 24.6,
         }
+        high_g_event = {
+            "event": "ApproachBody",
+            "BodyName": "F17_QG_HIGH_G",
+            "StarSystem": "F17_QG_ORIGIN",
+        }
+        high_g_warning.handle_journal_event(high_g_scan, gui_ref=None)
         with patch("logic.events.high_g_warning.emit_insight") as highg_emit_mock:
             ok_high_g = high_g_warning.handle_journal_event(high_g_event, gui_ref=None)
         self.assertTrue(ok_high_g)

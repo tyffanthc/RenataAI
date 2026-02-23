@@ -15,19 +15,39 @@ class F17TtsOperationalCalloutsTests(unittest.TestCase):
         self._orig_settings = dict(config.config._settings)
         config.config._settings["high_g_warning"] = True
         config.config._settings["high_g_warning_threshold_g"] = 2.0
+        high_g_warning._reset_state_for_tests()  # noqa: SLF001
 
     def tearDown(self) -> None:
+        high_g_warning._reset_state_for_tests()  # noqa: SLF001
         config.config._settings = self._orig_settings
 
-    def test_high_g_warning_emits_for_high_scan_gravity(self) -> None:
-        event = {
+    def test_high_g_warning_scan_only_caches_without_emit(self) -> None:
+        scan_event = {
             "event": "Scan",
             "BodyName": "F17 HighG Body",
             "StarSystem": "F17_SYS",
             "SurfaceGravity": 24.6,
         }
         with patch("logic.events.high_g_warning.emit_insight") as emit_mock:
-            ok = high_g_warning.handle_journal_event(event, gui_ref=None)
+            ok = high_g_warning.handle_journal_event(scan_event, gui_ref=None)
+        self.assertFalse(ok)
+        self.assertEqual(emit_mock.call_count, 0)
+
+    def test_high_g_warning_emits_for_high_approach_gravity_from_scan_cache(self) -> None:
+        scan_event = {
+            "event": "Scan",
+            "BodyName": "F17 HighG Body",
+            "StarSystem": "F17_SYS",
+            "SurfaceGravity": 24.6,
+        }
+        approach_event = {
+            "event": "ApproachBody",
+            "BodyName": "F17 HighG Body",
+            "StarSystem": "F17_SYS",
+        }
+        high_g_warning.handle_journal_event(scan_event, gui_ref=None)
+        with patch("logic.events.high_g_warning.emit_insight") as emit_mock:
+            ok = high_g_warning.handle_journal_event(approach_event, gui_ref=None)
         self.assertTrue(ok)
         self.assertEqual(emit_mock.call_count, 1)
         kwargs = emit_mock.call_args.kwargs

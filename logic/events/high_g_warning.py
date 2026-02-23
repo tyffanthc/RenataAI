@@ -7,6 +7,12 @@ from app.state import app_state
 from logic.insight_dispatcher import emit_insight
 
 
+# Cache last known gravity from body scans so approach/orbit events can announce High-G
+# even if the approach payload does not carry `SurfaceGravity`.
+_BODY_GRAVITY_CACHE_G: dict[str, float] = {}
+_STATUS_ORBIT_CONTEXT_ACTIVE = False
+
+
 def _as_text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -67,6 +73,81 @@ def _extract_body_name(payload: dict[str, Any]) -> str:
     return _as_text(getattr(app_state, "current_body", "")) or "unknown_body"
 
 
+def _cache_key(*, system_name: str, body_name: str) -> str:
+    return f"{_as_text(system_name).casefold()}::{_as_text(body_name).casefold()}"
+
+
+def _remember_gravity_g(
+    *,
+    system_name: str,
+    body_name: str,
+    gravity_g: float | None,
+) -> None:
+    if gravity_g is None or gravity_g <= 0.0:
+        return
+    key = _cache_key(system_name=system_name, body_name=body_name)
+    if not key or key == "::":
+        return
+    _BODY_GRAVITY_CACHE_G[key] = float(gravity_g)
+
+
+def _lookup_cached_gravity_g(
+    *,
+    system_name: str,
+    body_name: str,
+) -> float | None:
+    key = _cache_key(system_name=system_name, body_name=body_name)
+    if not key or key == "::":
+        return None
+    raw = _BODY_GRAVITY_CACHE_G.get(key)
+    if raw is None:
+        return None
+    return _safe_float(raw)
+
+
+def _status_bool(payload: dict[str, Any], *keys: str) -> bool | None:
+    for key in keys:
+        if key not in payload:
+            continue
+        value = payload.get(key)
+        if isinstance(value, bool):
+            return value
+        text = _as_text(value).lower()
+        if text in {"1", "true", "yes", "on"}:
+            return True
+        if text in {"0", "false", "no", "off"}:
+            return False
+    return None
+
+
+def _is_orbit_or_glide_entry_status(status_data: dict[str, Any]) -> bool:
+    """
+    Best-effort detector for orbit approach context from Status.json payload.
+
+    We intentionally avoid relying on a specific Flags/Flags2 bit mapping here because
+    payload formats vary across runtimes/parsers. If explicit boolean fields are present,
+    emit only on rising edge.
+    """
+    global _STATUS_ORBIT_CONTEXT_ACTIVE
+
+    if not isinstance(status_data, dict):
+        return False
+
+    orbital = _status_bool(status_data, "OrbitalCruise", "InOrbitalCruise", "orbital_cruise")
+    glide = _status_bool(status_data, "GlideMode", "InGlide", "glide_mode", "glide")
+
+    current = bool(orbital) or bool(glide)
+    rising = current and (not _STATUS_ORBIT_CONTEXT_ACTIVE)
+    _STATUS_ORBIT_CONTEXT_ACTIVE = current
+    return bool(rising)
+
+
+def _reset_state_for_tests() -> None:
+    global _STATUS_ORBIT_CONTEXT_ACTIVE
+    _BODY_GRAVITY_CACHE_G.clear()
+    _STATUS_ORBIT_CONTEXT_ACTIVE = False
+
+
 def _emit_high_g_callout(
     *,
     gravity_g: float,
@@ -103,13 +184,7 @@ def handle_journal_event(ev: dict[str, Any], gui_ref=None) -> bool:
     if not bool(config.get("high_g_warning", True)):
         return False
     event_name = _as_text((ev or {}).get("event"))
-    if event_name not in {"Scan", "Touchdown", "ApproachBody", "Location"}:
-        return False
-
-    gravity_g = _extract_gravity_g(ev or {})
-    if gravity_g is None:
-        return False
-    if gravity_g < _resolve_threshold_g():
+    if event_name not in {"Scan", "Touchdown", "ApproachBody"}:
         return False
 
     body_name = _extract_body_name(ev or {})
@@ -118,6 +193,21 @@ def handle_journal_event(ev: dict[str, Any], gui_ref=None) -> bool:
         or _as_text(getattr(app_state, "current_system", ""))
         or "unknown"
     )
+
+    gravity_g = _extract_gravity_g(ev or {})
+    if event_name == "Scan":
+        _remember_gravity_g(system_name=system_name, body_name=body_name, gravity_g=gravity_g)
+        return False
+
+    if gravity_g is None:
+        gravity_g = _lookup_cached_gravity_g(system_name=system_name, body_name=body_name)
+    if gravity_g is None:
+        return False
+    if gravity_g < _resolve_threshold_g():
+        return False
+
+    # Keep cache fresh if approach/touchdown carried gravity explicitly.
+    _remember_gravity_g(system_name=system_name, body_name=body_name, gravity_g=gravity_g)
     return _emit_high_g_callout(
         gravity_g=gravity_g,
         body_name=body_name,
@@ -133,8 +223,6 @@ def handle_status_update(status_data: dict[str, Any], gui_ref=None) -> bool:
     gravity_g = _extract_gravity_g(status_data or {})
     if gravity_g is None:
         return False
-    if gravity_g < _resolve_threshold_g():
-        return False
 
     body_name = (
         _as_text((status_data or {}).get("BodyName"))
@@ -147,10 +235,16 @@ def handle_status_update(status_data: dict[str, Any], gui_ref=None) -> bool:
         or _as_text(getattr(app_state, "current_system", ""))
         or "unknown"
     )
+    _remember_gravity_g(system_name=system_name, body_name=body_name, gravity_g=gravity_g)
+
+    if gravity_g < _resolve_threshold_g():
+        return False
+    if not _is_orbit_or_glide_entry_status(status_data or {}):
+        return False
+
     return _emit_high_g_callout(
         gravity_g=gravity_g,
         body_name=body_name,
         system_name=system_name,
         gui_ref=gui_ref,
     )
-
