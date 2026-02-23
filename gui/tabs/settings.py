@@ -10,6 +10,7 @@ import urllib.request
 import config
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
 from gui.window_chrome import apply_renata_orange_window_chrome
+from gui.window_focus import bring_window_to_front
 from logic.cash_in_offline_index_builder import build_offline_index_from_spansh_dump
 from logic.capabilities import (
     CAP_SETTINGS_FULL,
@@ -1389,7 +1390,14 @@ class SettingsTab(ttk.Frame):
         ttk.Button(btn_row, text="Zapisz", command=on_save).grid(row=0, column=1, padx=6)
 
         dialog.protocol("WM_DELETE_WINDOW", _on_close)
-        dialog.focus_force()
+        bring_window_to_front(
+            dialog,
+            source="settings.jackpot_dialog.open",
+            user_initiated=True,
+            deiconify=False,
+            request_focus=True,
+            force_focus=False,
+        )
 
     # ------------------------------------------------------------------ #
     #   Zakładka: INŻYNIER
@@ -1520,7 +1528,14 @@ class SettingsTab(ttk.Frame):
         btns.pack(fill="x", padx=10, pady=10)
         ttk.Button(btns, text="Cancel", command=self._close_tables_columns_dialog).pack(side="right")
         ttk.Button(btns, text="Save", command=_on_save).pack(side="right", padx=6)
-        dialog.focus_force()
+        bring_window_to_front(
+            dialog,
+            source="settings.tables_columns_dialog.open",
+            user_initiated=True,
+            deiconify=False,
+            request_focus=True,
+            force_focus=False,
+        )
 
     def _close_tables_columns_dialog(self) -> None:
         dialog = getattr(self, "_tables_columns_dialog", None)

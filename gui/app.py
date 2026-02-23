@@ -12,6 +12,7 @@ from gui.menu_bar import RenataMenuBar
 from gui.tabs.settings_window import SettingsWindow
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
 from gui.window_chrome import apply_renata_orange_window_chrome
+from gui.window_focus import bring_window_to_front
 from gui.tabs.logbook import LogbookTab
 import webbrowser
 from logic.generate_renata_science_data import generate_science_excel
@@ -1569,10 +1570,14 @@ class RenataApp:
             )
 
     def _overlay_show_details(self):
-        try:
-            self.root.focus_force()
-        except Exception as exc:
-            _log_app_fallback("overlay.focus", "failed to focus main window from overlay", exc)
+        # Focus-safe: do not force foreground from runtime overlay actions.
+        bring_window_to_front(
+            self.root,
+            source="overlay.show_details",
+            user_initiated=True,
+            deiconify=False,
+            request_focus=False,
+        )
 
     def _overlay_copy_next(self):
         if not config.get("features.clipboard.next_hop_stepper", True):

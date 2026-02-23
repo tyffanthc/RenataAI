@@ -10,6 +10,7 @@ from typing import Any
 from app.route_manager import route_manager
 from app.state import app_state
 from gui import common
+from gui.window_focus import bring_window_to_front
 from logic.personal_map_data_provider import MapDataProvider
 
 COLOR_BG = "#0b0c10"
@@ -1549,9 +1550,14 @@ class JournalMapTab(tk.Frame):
         win = getattr(self, "_trade_picker_window", None)
         try:
             if win is not None and bool(win.winfo_exists()):
-                win.deiconify()
-                win.lift()
-                win.focus_force()
+                bring_window_to_front(
+                    win,
+                    source="journal_map.trade_picker.reopen",
+                    user_initiated=True,
+                    deiconify=True,
+                    request_focus=True,
+                    force_focus=False,
+                )
                 self._trade_picker_refresh_rows()
                 return
         except Exception:

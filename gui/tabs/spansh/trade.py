@@ -31,6 +31,7 @@ from app.route_manager import route_manager
 
 from app.state import app_state
 from gui.window_chrome import apply_renata_orange_window_chrome
+from gui.window_focus import bring_window_to_front
 from logic.utils.renata_log import log_event, log_event_throttled
 
 
@@ -1902,9 +1903,14 @@ class TradeTab(ttk.Frame):
         if existing is not None:
             try:
                 if existing.winfo_exists():
-                    existing.deiconify()
-                    existing.lift()
-                    existing.focus_set()
+                    bring_window_to_front(
+                        existing,
+                        source="spansh.trade.station_picker.reopen",
+                        user_initiated=True,
+                        deiconify=True,
+                        request_focus=True,
+                        force_focus=False,
+                    )
                     return
             except Exception:
                 pass
