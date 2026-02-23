@@ -3,7 +3,7 @@ import os
 import glob
 
 from logic.event_handler import handler
-from logic.utils import powiedz
+from logic.utils import powiedz, MSG_QUEUE
 from logic.insight_dispatcher import emit_insight
 from app.state import app_state
 import config
@@ -92,7 +92,7 @@ class MainLoop:
             self._tail_file(path)
 
     # ------------------------------------------------------------------ #
-    def _bootstrap_state(self, path, max_lines: int = 2000) -> None:
+    def _bootstrap_state(self, path, max_lines: int = 8000) -> None:
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 lines = f.readlines()[-max_lines:]
@@ -115,10 +115,14 @@ class MainLoop:
         try:
             from logic.events import exploration_value_recovery
 
-            exploration_value_recovery.bootstrap_system_value_from_journal_lines(
+            recovery_stats = exploration_value_recovery.bootstrap_system_value_from_journal_lines(
                 lines,
                 max_lines=max_lines,
             )
+            if isinstance(recovery_stats, dict):
+                diag_lines = list(recovery_stats.get("diagnostics") or [])
+                if diag_lines:
+                    MSG_QUEUE.put(("log", "[BOOTSTRAP] Value recovery: " + " | ".join(str(x) for x in diag_lines)))
         except Exception as e:
             self._log_error(f"Bootstrap value recovery error: {e}")
 

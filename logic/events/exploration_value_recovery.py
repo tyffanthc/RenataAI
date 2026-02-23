@@ -14,10 +14,19 @@ def _as_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _body_id_from_event(event: Dict[str, Any]) -> str:
+    body = (
+        event.get("BodyName")
+        or event.get("Body")
+        or (str(event.get("BodyID")) if event.get("BodyID") is not None else "")
+    )
+    return _as_text(body)
+
+
 def recover_system_value_from_journal_lines(
     lines: list[str] | tuple[str, ...] | None,
     *,
-    max_lines: int = 4000,
+    max_lines: int = 12000,
 ) -> Dict[str, Any]:
     if not isinstance(lines, (list, tuple)) or not lines:
         return {
@@ -48,6 +57,9 @@ def recover_system_value_from_journal_lines(
     bio_events = 0
     meta_events = 0
     used_system_fallback = 0
+    scan_counted = 0
+    dss_upgrade_applied = 0
+    dss_skipped_missing_prior_scan = 0
 
     for raw_line in list(lines)[-max_lines:]:
         try:
@@ -78,9 +90,13 @@ def recover_system_value_from_journal_lines(
 
         try:
             if event_name == "Scan":
+                before_total = float(engine.calculate_totals().get("total") or 0.0)
                 engine.analyze_scan_event(ev_work)
+                after_total = float(engine.calculate_totals().get("total") or 0.0)
                 recovered_events += 1
                 scan_events += 1
+                if after_total > before_total:
+                    scan_counted += 1
                 continue
 
             if event_name in {"ScanOrganic", "CodexEntry"}:
@@ -91,12 +107,37 @@ def recover_system_value_from_journal_lines(
                 continue
 
             if event_name == "SAAScanComplete":
+                system_name = _as_text(ev_work.get("StarSystem")) or current_system
+                body_id = _body_id_from_event(ev_work)
+                stats_before = None
+                row_before = None
+                if system_name:
+                    try:
+                        stats_before = engine.get_system_stats(system_name)
+                    except Exception:
+                        stats_before = None
+                if stats_before and body_id:
+                    row_before = dict((getattr(stats_before, "cartography_bodies", {}) or {}).get(body_id) or {})
+                before_carto = float(engine.calculate_totals().get("c_cartography") or 0.0)
+                before_bonus = float(engine.calculate_totals().get("bonus_discovery") or 0.0)
                 engine.analyze_dss_scan_complete_event(ev_work)
                 engine.analyze_discovery_meta_event(ev_work)
+                after_carto = float(engine.calculate_totals().get("c_cartography") or 0.0)
+                after_bonus = float(engine.calculate_totals().get("bonus_discovery") or 0.0)
+                if (after_carto > before_carto) or (after_bonus > before_bonus):
+                    dss_upgrade_applied += 1
+                elif body_id and not row_before:
+                    dss_skipped_missing_prior_scan += 1
                 recovered_events += 1
                 meta_events += 1
         except Exception:
             continue
+
+    diagnostics = [
+        f"Scan counted: {int(scan_counted)}",
+        f"DSS upgrade applied: {int(dss_upgrade_applied)}",
+        f"DSS skipped (missing prior Scan): {int(dss_skipped_missing_prior_scan)}",
+    ]
 
     return {
         "recovered": bool(recovered_events),
@@ -105,6 +146,10 @@ def recover_system_value_from_journal_lines(
         "bio_events": bio_events,
         "meta_events": meta_events,
         "used_system_fallback": used_system_fallback,
+        "scan_counted": scan_counted,
+        "dss_upgrade_applied": dss_upgrade_applied,
+        "dss_skipped_missing_prior_scan": dss_skipped_missing_prior_scan,
+        "diagnostics": diagnostics,
         "reason": "ok",
     }
 
@@ -112,6 +157,6 @@ def recover_system_value_from_journal_lines(
 def bootstrap_system_value_from_journal_lines(
     lines: list[str] | tuple[str, ...] | None,
     *,
-    max_lines: int = 4000,
+    max_lines: int = 12000,
 ) -> Dict[str, Any]:
     return recover_system_value_from_journal_lines(lines, max_lines=max_lines)

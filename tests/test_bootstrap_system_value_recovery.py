@@ -112,6 +112,55 @@ class BootstrapSystemValueRecoveryTests(unittest.TestCase):
         body_state = dict((getattr(stats, "cartography_bodies", {}) or {}).get("BOOTSTRAP_RECOVERY_SYS C 1") or {})
         self.assertTrue(bool(body_state.get("mapped_accounted")))
 
+    def test_recovery_reports_diagnostics_for_scan_and_dss_outcomes(self) -> None:
+        lines = [
+            json.dumps({"event": "Location", "StarSystem": "BOOTSTRAP_RECOVERY_SYS"}),
+            json.dumps(
+                {
+                    "event": "Scan",
+                    "StarSystem": "BOOTSTRAP_RECOVERY_SYS",
+                    "BodyName": "BOOTSTRAP_RECOVERY_SYS STAR",
+                    "BodyType": "Star",
+                    "StarType": "K",
+                    "WasDiscovered": False,
+                    "WasMapped": False,
+                }
+            ),
+            json.dumps(
+                {
+                    "event": "SAAScanComplete",
+                    "StarSystem": "BOOTSTRAP_RECOVERY_SYS",
+                    "BodyName": "BOOTSTRAP_RECOVERY_SYS MISSING",
+                }
+            ),
+            json.dumps(
+                {
+                    "event": "Scan",
+                    "StarSystem": "BOOTSTRAP_RECOVERY_SYS",
+                    "BodyName": "BOOTSTRAP_RECOVERY_SYS D 1",
+                    "PlanetClass": "Water world",
+                    "TerraformState": "Terraformable",
+                    "WasDiscovered": False,
+                    "WasMapped": False,
+                }
+            ),
+            json.dumps(
+                {
+                    "event": "SAAScanComplete",
+                    "StarSystem": "BOOTSTRAP_RECOVERY_SYS",
+                    "BodyName": "BOOTSTRAP_RECOVERY_SYS D 1",
+                }
+            ),
+        ]
+        result = recover_system_value_from_journal_lines(lines, max_lines=500)
+        self.assertGreaterEqual(int(result.get("scan_counted") or 0), 1)
+        self.assertGreaterEqual(int(result.get("dss_upgrade_applied") or 0), 1)
+        self.assertGreaterEqual(int(result.get("dss_skipped_missing_prior_scan") or 0), 1)
+        diagnostics = [str(x) for x in list(result.get("diagnostics") or [])]
+        self.assertTrue(any("Scan counted" in x for x in diagnostics))
+        self.assertTrue(any("DSS upgrade applied" in x for x in diagnostics))
+        self.assertTrue(any("missing prior Scan" in x for x in diagnostics))
+
 
 if __name__ == "__main__":
     unittest.main()
