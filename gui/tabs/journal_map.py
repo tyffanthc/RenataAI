@@ -152,6 +152,10 @@ class JournalMapTab(tk.Frame):
         self._travel_edges_meta: dict[str, Any] = {}
         self._pending_after_ids: list[str] = []
         self._map_ppm_node_key: str | None = None
+        self._tooltip_visible = False
+        self._tooltip_node_key: str | None = None
+        self._tooltip_text_cache = ""
+        self._tooltip_last_pos: tuple[int, int] | None = None
         self._trade_picker_window = None
         self._trade_picker_search_var = None
         self._trade_picker_tree = None
@@ -573,6 +577,7 @@ class JournalMapTab(tk.Frame):
         self.map_canvas.bind("<ButtonPress-1>", self._on_canvas_press)
         self.map_canvas.bind("<B1-Motion>", self._on_canvas_drag)
         self.map_canvas.bind("<ButtonRelease-1>", self._on_canvas_release)
+        self.map_canvas.bind("<Leave>", self._on_canvas_leave)
         self.map_canvas.bind("<Button-3>", self._on_canvas_context_menu)
         self.map_canvas.bind("<MouseWheel>", self._on_canvas_mousewheel)
         # Linux compatibility (no-op on Windows if never fired)
@@ -580,6 +585,8 @@ class JournalMapTab(tk.Frame):
         self.map_canvas.bind("<Button-5>", lambda e: self._on_canvas_mousewheel(_WheelShim(e, delta=-120)))
         self.map_canvas.tag_bind("map_node", "<ButtonPress-1>", self._on_canvas_node_click)
         self.map_canvas.tag_bind("map_node", "<Double-Button-1>", self._on_canvas_node_double_click)
+        self.map_canvas.tag_bind("map_node", "<Motion>", self._on_canvas_node_motion)
+        self.map_canvas.tag_bind("map_node", "<Leave>", self._on_canvas_node_leave)
 
     def _build_map_context_menu(self) -> None:
         self._map_context_menu = tk.Menu(self, tearoff=0, bg=COLOR_BG, fg=COLOR_FG, activebackground=COLOR_ACCENT)
@@ -699,6 +706,7 @@ class JournalMapTab(tk.Frame):
         if not key:
             self.map_status_var.set("Mapa: PPM jest dostepne po kliknieciu na system (node).")
             return None
+        self._hide_map_tooltip()
         self._map_ppm_node_key = key
         self._pan_active = False
         self._set_map_cursor("arrow")
@@ -829,6 +837,124 @@ class JournalMapTab(tk.Frame):
             self.map_canvas.configure(cursor=str(cursor_name))
         except Exception:
             pass
+
+    def _tooltip_active_badges_for_node(self, node_key: str) -> list[str]:
+        flags = dict((self._node_layer_flags or {}).get(str(node_key)) or {})
+        out: list[str] = []
+        if bool(self.layer_stations_var.get()) and bool(flags.get("has_station")):
+            out.append("Stations")
+        if bool(self.layer_trade_var.get()) and bool(flags.get("has_market")):
+            out.append("Trade")
+        if bool(self.layer_cashin_var.get()) and bool(flags.get("has_cashin")):
+            out.append("Cash-In")
+        if bool(self.layer_exobio_var.get()) and bool(flags.get("has_exobio")):
+            out.append("Exobio")
+        if bool(self.layer_exploration_var.get()) and bool(flags.get("has_exploration")):
+            out.append("Exploration")
+        if bool(self.layer_incidents_var.get()) and bool(flags.get("has_incident")):
+            out.append("Incidents")
+        if bool(self.layer_combat_var.get()) and bool(flags.get("has_combat")):
+            out.append("Combat")
+        return out
+
+    def _tooltip_text_for_node(self, node: _MapNode) -> str:
+        flags = dict((self._node_layer_flags or {}).get(node.key) or {})
+        last_seen = _as_text(node.last_seen_ts or node.first_seen_ts)
+        age = _format_age_short(last_seen)
+        stations_count = int(flags.get("stations_count") or 0)
+        badges = self._tooltip_active_badges_for_node(node.key)
+        badges_text = ", ".join(badges) if badges else "-"
+        return "\n".join(
+            [
+                f"System: {node.system_name}",
+                f"Last seen: {age} ({last_seen or '-'})",
+                f"Stacje: {stations_count}",
+                f"Warstwy: {badges_text}",
+            ]
+        )
+
+    def _show_map_tooltip(self, node: _MapNode, *, sx: int, sy: int) -> None:
+        text = self._tooltip_text_for_node(node)
+        c = self.map_canvas
+        # Keep tooltip inside canvas viewport.
+        x = int(sx) + 14
+        y = int(sy) + 14
+        cw = max(1, int(c.winfo_width() or 1))
+        ch = max(1, int(c.winfo_height() or 1))
+        if x > cw - 260:
+            x = max(8, int(sx) - 250)
+        if y > ch - 90:
+            y = max(8, int(sy) - 74)
+
+        c.delete("map_tooltip")
+        text_id = c.create_text(
+            x + 8,
+            y + 6,
+            text=text,
+            anchor="nw",
+            fill=COLOR_SEC,
+            font=("Segoe UI", 8),
+            tags=("map_tooltip", "map_tooltip_text"),
+        )
+        bbox = c.bbox(text_id)
+        if bbox:
+            x1, y1, x2, y2 = bbox
+            c.create_rectangle(
+                x1 - 6,
+                y1 - 4,
+                x2 + 6,
+                y2 + 4,
+                fill=COLOR_BG,
+                outline=COLOR_ACCENT,
+                width=1,
+                tags=("map_tooltip", "map_tooltip_bg"),
+            )
+            c.tag_raise(text_id)
+        self._tooltip_visible = True
+        self._tooltip_node_key = str(node.key)
+        self._tooltip_text_cache = text
+        self._tooltip_last_pos = (int(sx), int(sy))
+
+    def _hide_map_tooltip(self) -> None:
+        try:
+            self.map_canvas.delete("map_tooltip")
+        except Exception:
+            pass
+        self._tooltip_visible = False
+        self._tooltip_node_key = None
+        self._tooltip_text_cache = ""
+        self._tooltip_last_pos = None
+
+    def _on_canvas_node_motion(self, event=None):
+        if self._pan_active:
+            self._hide_map_tooltip()
+            return None
+        key = self._canvas_current_node_key()
+        if not key:
+            self._hide_map_tooltip()
+            return None
+        node = (self._nodes or {}).get(str(key))
+        if node is None:
+            self._hide_map_tooltip()
+            return None
+        sx = int(getattr(event, "x", 0))
+        sy = int(getattr(event, "y", 0))
+        text = self._tooltip_text_for_node(node)
+        if (
+            self._tooltip_visible
+            and self._tooltip_node_key == str(node.key)
+            and self._tooltip_text_cache == text
+            and self._tooltip_last_pos is not None
+            and abs(int(self._tooltip_last_pos[0]) - sx) < 3
+            and abs(int(self._tooltip_last_pos[1]) - sy) < 3
+        ):
+            return None
+        self._show_map_tooltip(node, sx=sx, sy=sy)
+        return None
+
+    def _on_canvas_node_leave(self, _event=None):
+        self._hide_map_tooltip()
+        return None
 
     def _toggle_legend(self) -> None:
         collapsed = not bool(self.legend_collapsed_var.get())
@@ -1758,6 +1884,7 @@ class JournalMapTab(tk.Frame):
         if not key:
             return None
         self._pan_active = False
+        self._hide_map_tooltip()
         self._set_map_cursor("arrow")
         self.select_system_node(key)
         return "break"
@@ -1767,6 +1894,7 @@ class JournalMapTab(tk.Frame):
         if not key:
             return None
         self._pan_active = False
+        self._hide_map_tooltip()
         self._set_map_cursor("arrow")
         self.select_system_node(key)
         node = self._nodes.get(key)
@@ -1975,10 +2103,12 @@ class JournalMapTab(tk.Frame):
         # If offsets are zero (first layout), center origin.
         if abs(self.view_offset_x) < 1e-6 and abs(self.view_offset_y) < 1e-6:
             self._center_world_point(0.0, 0.0)
+        self._hide_map_tooltip()
         self._redraw_scene()
 
     def _on_canvas_press(self, event) -> None:
         self._pan_active = True
+        self._hide_map_tooltip()
         self._pan_last_x = int(getattr(event, "x", 0))
         self._pan_last_y = int(getattr(event, "y", 0))
         self._set_map_cursor("arrow")
@@ -1986,6 +2116,7 @@ class JournalMapTab(tk.Frame):
     def _on_canvas_drag(self, event) -> None:
         if not self._pan_active:
             return
+        self._hide_map_tooltip()
         x = int(getattr(event, "x", 0))
         y = int(getattr(event, "y", 0))
         dx = x - self._pan_last_x
@@ -1999,9 +2130,15 @@ class JournalMapTab(tk.Frame):
 
     def _on_canvas_release(self, _event=None) -> None:
         self._pan_active = False
+        self._hide_map_tooltip()
         self._set_map_cursor("arrow")
 
+    def _on_canvas_leave(self, _event=None) -> None:
+        self._hide_map_tooltip()
+        return None
+
     def _on_canvas_mousewheel(self, event) -> None:
+        self._hide_map_tooltip()
         canvas = self.map_canvas
         try:
             px = float(getattr(event, "x", canvas.winfo_width() / 2.0))
@@ -2047,6 +2184,7 @@ class JournalMapTab(tk.Frame):
 
     def _redraw_scene(self) -> None:
         c = self.map_canvas
+        self._hide_map_tooltip()
         c.delete("all")
         w = max(1, int(c.winfo_width() or 1))
         h = max(1, int(c.winfo_height() or 1))
