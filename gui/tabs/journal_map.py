@@ -188,6 +188,80 @@ class JournalMapTab(tk.Frame):
         self._schedule_after(50, self.reset_view)
         self._schedule_after(90, self.reload_from_playerdb)
 
+    def export_persisted_ui_state(self) -> dict[str, Any]:
+        return {
+            "layers": {
+                "travel": bool(self.layer_travel_var.get()),
+                "stations": bool(self.layer_stations_var.get()),
+                "trade": bool(self.layer_trade_var.get()),
+                "cash_in": bool(self.layer_cashin_var.get()),
+                "exobio": bool(self.layer_exobio_var.get()),
+                "exploration": bool(self.layer_exploration_var.get()),
+                "incidents": bool(self.layer_incidents_var.get()),
+                "combat": bool(self.layer_combat_var.get()),
+            },
+            "filters": {
+                "time_range": _as_text(self.time_range_var.get()) or "30d",
+                "freshness": _as_text(self.freshness_var.get()) or "any",
+                "source_include_enriched": bool(self.source_include_enriched_var.get()),
+            },
+            "legend": {
+                "collapsed": bool(self.legend_collapsed_var.get()),
+            },
+        }
+
+    def apply_persisted_ui_state(self, state: dict[str, Any] | None) -> None:
+        if not isinstance(state, dict):
+            return
+
+        layers = state.get("layers")
+        if isinstance(layers, dict):
+            for key, var in (
+                ("travel", self.layer_travel_var),
+                ("stations", self.layer_stations_var),
+                ("trade", self.layer_trade_var),
+                ("cash_in", self.layer_cashin_var),
+                ("exobio", self.layer_exobio_var),
+                ("exploration", self.layer_exploration_var),
+                ("incidents", self.layer_incidents_var),
+                ("combat", self.layer_combat_var),
+            ):
+                if key in layers:
+                    try:
+                        var.set(bool(layers.get(key)))
+                    except Exception:
+                        pass
+
+        filters = state.get("filters")
+        if isinstance(filters, dict):
+            time_range = _as_text(filters.get("time_range"))
+            if time_range in {"7d", "30d", "all"}:
+                self.time_range_var.set(time_range)
+            freshness = _as_text(filters.get("freshness"))
+            if freshness in {"<=6h", "<=24h", "<=7d", "any"}:
+                self.freshness_var.set(freshness)
+            if "source_include_enriched" in filters:
+                try:
+                    self.source_include_enriched_var.set(bool(filters.get("source_include_enriched")))
+                except Exception:
+                    pass
+
+        legend = state.get("legend")
+        if isinstance(legend, dict) and "collapsed" in legend:
+            collapsed = bool(legend.get("collapsed"))
+            try:
+                self.legend_collapsed_var.set(collapsed)
+                if collapsed:
+                    self.legend_body_frame.grid_remove()
+                    self.legend_toggle_text_var.set("Pokaz")
+                else:
+                    self.legend_body_frame.grid()
+                    self.legend_toggle_text_var.set("Ukryj")
+            except Exception:
+                pass
+
+        self._refresh_legend()
+
     def _schedule_after(self, delay_ms: int, callback) -> str:
         after_id = self.after(int(delay_ms), callback)
         try:
@@ -969,6 +1043,7 @@ class JournalMapTab(tk.Frame):
         except Exception:
             pass
         self._refresh_legend()
+        self._notify_owner_ui_state_changed()
 
     def _refresh_legend(self) -> None:
         lines: list[str] = []
@@ -1019,7 +1094,19 @@ class JournalMapTab(tk.Frame):
         self.legend_text_var.set("\n".join(lines))
 
     def _on_filter_changed(self) -> None:
+        self._notify_owner_ui_state_changed()
         self.reload_from_playerdb()
+
+    def _notify_owner_ui_state_changed(self) -> None:
+        owner = getattr(self, "logbook_owner", None)
+        if owner is None:
+            return
+        callback = getattr(owner, "_persist_ui_state", None)
+        if callable(callback):
+            try:
+                callback()
+            except Exception:
+                pass
 
     def set_graph_data(self, *, nodes: list[dict[str, Any]] | None = None, edges: list[dict[str, Any]] | None = None) -> None:
         self._nodes.clear()

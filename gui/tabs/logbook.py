@@ -5,6 +5,7 @@ import tkinter as tk
 import time
 from datetime import datetime, timezone
 from tkinter import messagebox, simpledialog, ttk
+from typing import Any
 
 import config
 from app.state import app_state
@@ -219,11 +220,16 @@ class LogbookTab(tk.Frame):
         self._active_popover_opened_at: float = 0.0
         self._ui_state_suppress_persist = True
         self._pending_subtab_key = "entries"
+        self._pending_map_ui_state: dict[str, Any] = {}
         self._logbook_feed_restore_in_progress = False
         self._load_ui_state()
 
         self._configure_style()
         self._build_ui()
+        try:
+            self.tab_map.apply_persisted_ui_state(self._pending_map_ui_state)
+        except Exception:
+            pass
         self._restore_logbook_feed_from_cache()
         self.sub_notebook.bind("<<NotebookTabChanged>>", self._on_subtab_changed, add="+")
         self._restore_subtab_from_ui_state()
@@ -1505,6 +1511,10 @@ class LogbookTab(tk.Frame):
             subtab_key = str(journal_state.get("active_subtab_key") or "").strip().lower()
             if subtab_key in {"entries", "feed", "map"}:
                 self._pending_subtab_key = subtab_key
+
+            map_state = journal_state.get("map")
+            if isinstance(map_state, dict):
+                self._pending_map_ui_state = dict(map_state)
         except Exception:
             pass
 
@@ -1541,6 +1551,15 @@ class LogbookTab(tk.Frame):
         if bool(getattr(self, "_ui_state_suppress_persist", False)):
             return
         try:
+            map_state: dict[str, Any] = {}
+            try:
+                exporter = getattr(self.tab_map, "export_persisted_ui_state", None)
+                if callable(exporter):
+                    out = exporter()
+                    if isinstance(out, dict):
+                        map_state = dict(out)
+            except Exception:
+                map_state = {}
             config.update_ui_state(
                 {
                     "journal": {
@@ -1555,6 +1574,7 @@ class LogbookTab(tk.Frame):
                             "pinned_only": bool(self.filter_pinned_only_var.get()),
                             "sort": str(self.sort_var.get() or "Najnowsze"),
                         },
+                        "map": map_state,
                     }
                 }
             )
