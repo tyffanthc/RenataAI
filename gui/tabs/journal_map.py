@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from tkinter import ttk
 from typing import Any
 
+from app.route_manager import route_manager
 from app.state import app_state
+from gui import common
 from logic.personal_map_data_provider import MapDataProvider
 
 COLOR_BG = "#0b0c10"
@@ -106,10 +108,19 @@ class JournalMapTab(tk.Frame):
     - placeholder/stub przyciskow i paneli pod dalsze tickety F20-3..F20-6
     """
 
-    def __init__(self, parent, app=None, data_provider: MapDataProvider | None = None, *args, **kwargs):
+    def __init__(
+        self,
+        parent,
+        app=None,
+        data_provider: MapDataProvider | None = None,
+        logbook_owner=None,
+        *args,
+        **kwargs,
+    ):
         super().__init__(parent, bg=COLOR_BG, *args, **kwargs)
         self.app = app
         self.data_provider = data_provider or MapDataProvider()
+        self.logbook_owner = logbook_owner
 
         # View transform (world -> screen)
         self.view_scale: float = 1.0
@@ -134,6 +145,7 @@ class JournalMapTab(tk.Frame):
         self._travel_nodes_meta: dict[str, Any] = {}
         self._travel_edges_meta: dict[str, Any] = {}
         self._pending_after_ids: list[str] = []
+        self._map_ppm_node_key: str | None = None
 
         # Filters (UI shell)
         self.layer_travel_var = tk.BooleanVar(value=True)
@@ -147,6 +159,7 @@ class JournalMapTab(tk.Frame):
         self.map_status_var = tk.StringVar(value="Mapa gotowa (shell). Brak danych do renderu.")
 
         self._build_ui()
+        self._build_map_context_menu()
         self._bind_canvas()
         self._schedule_after(50, self.reset_view)
         self._schedule_after(90, self.reload_from_playerdb)
@@ -465,12 +478,256 @@ class JournalMapTab(tk.Frame):
         self.map_canvas.bind("<ButtonPress-1>", self._on_canvas_press)
         self.map_canvas.bind("<B1-Motion>", self._on_canvas_drag)
         self.map_canvas.bind("<ButtonRelease-1>", self._on_canvas_release)
+        self.map_canvas.bind("<Button-3>", self._on_canvas_context_menu)
         self.map_canvas.bind("<MouseWheel>", self._on_canvas_mousewheel)
         # Linux compatibility (no-op on Windows if never fired)
         self.map_canvas.bind("<Button-4>", lambda e: self._on_canvas_mousewheel(_WheelShim(e, delta=120)))
         self.map_canvas.bind("<Button-5>", lambda e: self._on_canvas_mousewheel(_WheelShim(e, delta=-120)))
         self.map_canvas.tag_bind("map_node", "<ButtonPress-1>", self._on_canvas_node_click)
         self.map_canvas.tag_bind("map_node", "<Double-Button-1>", self._on_canvas_node_double_click)
+
+    def _build_map_context_menu(self) -> None:
+        self._map_context_menu = tk.Menu(self, tearoff=0, bg=COLOR_BG, fg=COLOR_FG, activebackground=COLOR_ACCENT)
+        self._map_context_menu_set_target = tk.Menu(
+            self._map_context_menu, tearoff=0, bg=COLOR_BG, fg=COLOR_FG, activebackground=COLOR_ACCENT
+        )
+        self._map_context_menu_add_entry = tk.Menu(
+            self._map_context_menu, tearoff=0, bg=COLOR_BG, fg=COLOR_FG, activebackground=COLOR_ACCENT
+        )
+        self._map_context_menu.add_cascade(label="Ustaw cel", menu=self._map_context_menu_set_target)
+        self._map_context_menu_set_target.add_command(
+            label="Trasa zwykla",
+            command=lambda: self._map_ppm_action_set_route(neutron=False),
+        )
+        self._map_context_menu_set_target.add_command(
+            label="Trasa neutronowa",
+            command=lambda: self._map_ppm_action_set_route(neutron=True),
+        )
+        self._map_context_menu.add_command(label="Kopiuj cel", command=self._map_ppm_action_copy_target)
+        self._map_context_menu.add_separator()
+        self._map_context_menu.add_cascade(label="Dodaj wpis", menu=self._map_context_menu_add_entry)
+        self._map_context_menu.add_command(
+            label="Dodaj wpis i edytuj",
+            command=lambda: self._map_ppm_action_add_entry(edit_after=True),
+        )
+        self._map_context_menu.add_separator()
+        self._map_context_menu.add_command(label="Wycentruj na tym systemie", command=self._map_ppm_action_center_on_node)
+        self._map_context_menu.add_command(
+            label="Pokaz tylko ten system w panelu",
+            command=self._map_ppm_action_focus_panel,
+        )
+
+    def _resolve_map_ppm_node_key(self, event=None) -> str | None:
+        key = self._canvas_current_node_key()
+        if key:
+            return key
+        if event is None:
+            return None
+        try:
+            x = int(getattr(event, "x", 0))
+            y = int(getattr(event, "y", 0))
+            item_ids = self.map_canvas.find_overlapping(x - 1, y - 1, x + 1, y + 1)
+        except Exception:
+            return None
+        for item_id in reversed(tuple(item_ids or ())):
+            try:
+                tags = self.map_canvas.gettags(item_id) or ()
+            except Exception:
+                continue
+            for tag in tags:
+                text = str(tag)
+                if text.startswith("node:"):
+                    return text.split(":", 1)[1].strip() or None
+        return None
+
+    def _map_ppm_target_node(self) -> _MapNode | None:
+        key = _as_text(self._map_ppm_node_key)
+        if not key:
+            return None
+        return self._nodes.get(key)
+
+    def _map_ppm_available_categories(self) -> list[str]:
+        owner = getattr(self, "logbook_owner", None)
+        getter = getattr(owner, "map_get_available_entry_categories", None)
+        if callable(getter):
+            try:
+                rows = [str(v).strip() for v in list(getter() or []) if str(v).strip()]
+                if rows:
+                    return rows
+            except Exception:
+                pass
+        return []
+
+    def _map_ppm_rebuild_add_entry_menu(self) -> None:
+        menu = self._map_context_menu_add_entry
+        try:
+            menu.delete(0, "end")
+        except Exception:
+            return
+        categories = self._map_ppm_available_categories()
+        if not categories:
+            menu.add_command(
+                label="Brak kategorii",
+                state="disabled",
+            )
+            menu.add_command(
+                label="Dodaj do domyslnej kategorii",
+                command=lambda: self._map_ppm_action_add_entry(edit_after=False, category_path=None),
+            )
+            return
+        for category in categories:
+            menu.add_command(
+                label=category,
+                command=lambda c=category: self._map_ppm_action_add_entry(edit_after=False, category_path=c),
+            )
+
+    def _map_ppm_set_menu_states(self) -> None:
+        node = self._map_ppm_target_node()
+        has_node = node is not None
+        has_app = self.app is not None
+        has_owner = self.logbook_owner is not None
+        neutron_tab = getattr(getattr(self.app, "tab_spansh", None), "tab_neutron", None) if has_app else None
+        neutron_busy_other = bool(route_manager.is_busy()) and str(route_manager.current_mode() or "").strip().lower() not in {"", "neutron"}
+        neutron_ready = bool(has_node and neutron_tab is not None and not neutron_busy_other)
+
+        self._map_context_menu.entryconfigure("Ustaw cel", state=("normal" if has_node else "disabled"))
+        self._map_context_menu_set_target.entryconfigure("Trasa zwykla", state=("normal" if has_node else "disabled"))
+        self._map_context_menu_set_target.entryconfigure("Trasa neutronowa", state=("normal" if neutron_ready else "disabled"))
+        self._map_context_menu.entryconfigure("Kopiuj cel", state=("normal" if has_node else "disabled"))
+        self._map_context_menu.entryconfigure("Dodaj wpis", state=("normal" if (has_node and has_owner) else "disabled"))
+        self._map_context_menu.entryconfigure("Dodaj wpis i edytuj", state=("normal" if (has_node and has_owner) else "disabled"))
+        self._map_context_menu.entryconfigure("Wycentruj na tym systemie", state=("normal" if has_node else "disabled"))
+        self._map_context_menu.entryconfigure("Pokaz tylko ten system w panelu", state=("normal" if has_node else "disabled"))
+
+    def _on_canvas_context_menu(self, event) -> str | None:
+        key = self._resolve_map_ppm_node_key(event)
+        if not key:
+            self.map_status_var.set("Mapa: PPM jest dostepne po kliknieciu na system (node).")
+            return None
+        self._map_ppm_node_key = key
+        self._pan_active = False
+        self._set_map_cursor("arrow")
+        self._map_ppm_rebuild_add_entry_menu()
+        self._map_ppm_set_menu_states()
+        try:
+            self._map_context_menu.tk_popup(int(getattr(event, "x_root", 0)), int(getattr(event, "y_root", 0)))
+        finally:
+            try:
+                self._map_context_menu.grab_release()
+            except Exception:
+                pass
+        return "break"
+
+    def _map_ppm_action_focus_panel(self) -> dict[str, Any]:
+        node = self._map_ppm_target_node()
+        if node is None:
+            self.map_status_var.set("Mapa: brak wybranego node do akcji PPM.")
+            return {"ok": False, "reason": "node_missing"}
+        result = self.select_system_node(node.key)
+        if bool(result.get("ok")):
+            self.map_status_var.set(f"Mapa: fokus panelu ustawiony na system {node.system_name}.")
+        return result
+
+    def _map_ppm_action_center_on_node(self) -> dict[str, Any]:
+        node = self._map_ppm_target_node()
+        if node is None:
+            self.map_status_var.set("Mapa: brak wybranego node do wycentrowania.")
+            return {"ok": False, "reason": "node_missing"}
+        self._center_world_point(node.x, node.y)
+        self._redraw_scene()
+        self.map_status_var.set(f"Mapa: wycentrowano na systemie {node.system_name}.")
+        return {"ok": True, "system_name": node.system_name}
+
+    def _map_ppm_action_copy_target(self) -> dict[str, Any]:
+        node = self._map_ppm_target_node()
+        if node is None:
+            self.map_status_var.set("Mapa: brak celu do skopiowania.")
+            return {"ok": False, "reason": "node_missing"}
+        copied = bool(common.copy_text_to_clipboard(node.system_name, context="map.ppm.system"))
+        if copied:
+            self.map_status_var.set(f"Mapa: skopiowano cel systemu: {node.system_name}.")
+            return {"ok": True, "copied": True, "system_name": node.system_name}
+        self.map_status_var.set(f"Mapa: nie udalo sie skopiowac celu: {node.system_name}.")
+        return {"ok": False, "reason": "clipboard_failed", "system_name": node.system_name}
+
+    def _map_ppm_action_set_route(self, *, neutron: bool) -> dict[str, Any]:
+        node = self._map_ppm_target_node()
+        if node is None:
+            self.map_status_var.set("Mapa: brak celu do ustawienia trasy.")
+            return {"ok": False, "reason": "node_missing"}
+        target = str(node.system_name or "").strip()
+        if not target:
+            self.map_status_var.set("Mapa: wybrany node nie ma poprawnej nazwy systemu.")
+            return {"ok": False, "reason": "target_missing"}
+        if neutron:
+            return self._map_ppm_action_set_neutron_route(target)
+        app_state.set_route_intent(target, source="journal.map.ppm.intent", route_profile="SAFE")
+        copied = bool(common.copy_text_to_clipboard(target, context="journal.map.ppm.intent.system"))
+        self.map_status_var.set(
+            f"Mapa: ustawiono cel trasy (zwykla): {target}." + (" Skopiowano cel." if copied else "")
+        )
+        if self.app is not None and hasattr(self.app, "show_status"):
+            try:
+                self.app.show_status(f"Mapa: ustawiono cel trasy -> {target}.")
+            except Exception:
+                pass
+        return {"ok": True, "target": target, "route": "normal", "copied": copied}
+
+    def _map_ppm_action_set_neutron_route(self, target: str) -> dict[str, Any]:
+        neutron_tab = getattr(getattr(self.app, "tab_spansh", None), "tab_neutron", None)
+        if neutron_tab is None:
+            self.map_status_var.set("Mapa: planner neutronowy jest niedostepny.")
+            return {"ok": False, "reason": "neutron_tab_unavailable"}
+        if bool(route_manager.is_busy()):
+            mode_now = str(route_manager.current_mode() or "").strip().lower()
+            if mode_now and mode_now != "neutron":
+                self.map_status_var.set("Mapa: planner jest zajety innym trybem. Sprobuj za chwile.")
+                return {"ok": False, "reason": "planner_busy_other_mode"}
+        current_system = str(getattr(app_state, "current_system", "") or "").strip()
+        try:
+            if current_system and hasattr(neutron_tab, "var_start"):
+                neutron_tab.var_start.set(current_system)
+            if hasattr(neutron_tab, "var_cel"):
+                neutron_tab.var_cel.set(target)
+            setattr(neutron_tab, "_route_ready_source_override_once", "map.spansh.neutron")
+            neutron_tab.run_neutron()
+        except Exception:
+            self.map_status_var.set("Mapa: nie udalo sie uruchomic trasy neutronowej.")
+            return {"ok": False, "reason": "neutron_start_failed"}
+        copied = bool(common.copy_text_to_clipboard(target, context="journal.map.ppm.neutron.target"))
+        self.map_status_var.set(
+            "Mapa: uruchomiono planner trasy neutronowej."
+            + (f" Skopiowano cel: {target}." if copied else "")
+        )
+        return {"ok": True, "route": "neutron", "target": target, "copied": copied}
+
+    def _map_ppm_action_add_entry(self, *, edit_after: bool, category_path: str | None = None) -> dict[str, Any]:
+        node = self._map_ppm_target_node()
+        if node is None:
+            self.map_status_var.set("Mapa: brak systemu do utworzenia wpisu.")
+            return {"ok": False, "reason": "node_missing"}
+        owner = getattr(self, "logbook_owner", None)
+        creator = getattr(owner, "map_create_entry_for_system", None)
+        if not callable(creator):
+            self.map_status_var.set("Mapa: logbook owner nie obsluguje tworzenia wpisu z mapy.")
+            return {"ok": False, "reason": "entry_owner_unavailable"}
+        try:
+            result = creator(
+                node.system_name,
+                category_path=category_path,
+                edit_after=bool(edit_after),
+            )
+        except Exception:
+            self.map_status_var.set("Mapa: nie udalo sie utworzyc wpisu z mapy.")
+            return {"ok": False, "reason": "entry_create_failed"}
+        if isinstance(result, dict) and bool(result.get("ok")):
+            msg = "Mapa: dodano wpis i otwarto edycje." if edit_after else "Mapa: dodano wpis."
+            if result.get("category_path"):
+                msg += f" Kategoria: {result.get('category_path')}."
+            self.map_status_var.set(msg)
+            return dict(result)
+        self.map_status_var.set("Mapa: tworzenie wpisu anulowane lub nieudane.")
+        return {"ok": False, "reason": "entry_create_rejected"}
 
     def _set_map_cursor(self, cursor_name: str) -> None:
         try:

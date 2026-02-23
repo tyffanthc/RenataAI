@@ -15,7 +15,7 @@ class F20MapTkinterShellAndPanZoomContractTests(unittest.TestCase):
             content = handle.read()
 
         self.assertIn("from gui.tabs.journal_map import JournalMapTab", content)
-        self.assertIn("self.tab_map = JournalMapTab(self.sub_notebook, app=self.app)", content)
+        self.assertIn("self.tab_map = JournalMapTab(self.sub_notebook, app=self.app, logbook_owner=self)", content)
         self.assertIn('self.sub_notebook.add(self.tab_map, text="Mapa")', content)
         self.assertIn('if subtab_key in {"entries", "feed", "map"}', content)
         self.assertIn('if selected == str(self.tab_map):', content)
@@ -99,4 +99,3 @@ class F20MapTkinterShellAndPanZoomContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

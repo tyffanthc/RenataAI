@@ -277,7 +277,7 @@ class LogbookTab(tk.Frame):
 
         self.tab_entries = tk.Frame(self.sub_notebook, bg=COLOR_BG)
         self.tab_feed = tk.Frame(self.sub_notebook, bg=COLOR_BG)
-        self.tab_map = JournalMapTab(self.sub_notebook, app=self.app)
+        self.tab_map = JournalMapTab(self.sub_notebook, app=self.app, logbook_owner=self)
         self.sub_notebook.add(self.tab_entries, text="Wpisy")
         self.sub_notebook.add(self.tab_feed, text="Logbook")
         self.sub_notebook.add(self.tab_map, text="Mapa")
@@ -2439,6 +2439,66 @@ class LogbookTab(tk.Frame):
         if self._saved_categories:
             return self._saved_categories[0]
         return _CATEGORY_FALLBACK
+
+    # Map (F21 PPM) callbacks
+    def map_get_available_entry_categories(self) -> list[str]:
+        categories = [str(v).strip() for v in self._collect_available_categories() if str(v).strip()]
+        if not categories:
+            categories = [self._default_category_for_new_entry()]
+        return categories
+
+    def map_create_entry_for_system(
+        self,
+        system_name: str,
+        *,
+        category_path: str | None = None,
+        edit_after: bool = False,
+    ) -> dict:
+        system = str(system_name or "").strip()
+        if not system:
+            return {"ok": False, "reason": "system_missing"}
+
+        category = str(category_path or "").strip() or self._default_category_for_new_entry()
+        payload = {
+            "category_path": category,
+            "title": f"Mapa: {system}",
+            "body": "",
+            "location": {
+                "system_name": system,
+                "station_name": None,
+                "body_name": None,
+                "coords_lat": None,
+                "coords_lon": None,
+            },
+            "source": {"kind": "map_ppm"},
+        }
+        try:
+            created = self.repository.create_entry(payload)
+        except EntryValidationError as exc:
+            messagebox.showerror("Walidacja wpisu", str(exc), parent=self)
+            return {"ok": False, "reason": "validation_error"}
+
+        created_id = str(created.get("id") or "").strip()
+        self._selected_entry_id = created_id or self._selected_entry_id
+        self._refresh_categories()
+        self._refresh_entries()
+
+        edited = False
+        if bool(edit_after) and created_id:
+            try:
+                edited = bool(self._edit_entry_by_id(created_id))
+            except EntryValidationError as exc:
+                messagebox.showerror("Walidacja wpisu", str(exc), parent=self)
+                return {"ok": False, "reason": "edit_validation_error", "entry_id": created_id}
+
+        self.status_var.set("Wpis z mapy zapisany." if not edit_after else ("Wpis z mapy utworzony i zaktualizowany." if edited else "Wpis z mapy utworzony. Edycje anulowano."))
+        return {
+            "ok": True,
+            "entry_id": created_id,
+            "system_name": system,
+            "category_path": category,
+            "edited": bool(edited),
+        }
 
     def _open_entry_dialog(self, *, initial: dict | None = None):
         if initial:
