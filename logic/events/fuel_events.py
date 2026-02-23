@@ -78,6 +78,13 @@ def handle_status_update(status: dict, gui_ref=None):
     except (TypeError, ValueError):
         fuel_percent = None
 
+    # Niepewna probka liczbowa (np. transient startup/SCO/launch) bez flagi low-fuel z gry
+    # nie moze budowac alertu ani pending-confirmation. Traktujemy jako "brak decyzji".
+    if uncertain_low_sample and not low_fuel_flag:
+        LOW_FUEL_FLAG_PENDING = False
+        LOW_FUEL_FLAG_PENDING_TS = 0.0
+        return
+
     try:
         threshold = float(config.get("fuel_warning_threshold_pct", 15))
     except (TypeError, ValueError):
