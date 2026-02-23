@@ -16,6 +16,7 @@ class ExplorationSummaryPayload:
     scanned_bodies: int | None
     total_bodies: int | None
     highlights: list[str]
+    system_quality_hint: str
     next_step: str
     cash_in_signal: str
     cash_in_system_estimated: float
@@ -72,12 +73,42 @@ def _pick_next_step(data: ExitSummaryData) -> str:
         and data.total_bodies is not None
         and data.total_bodies > data.scanned_bodies
     ):
-        return "Dokończ FSS"
+        return "Doko?cz FSS"
     if data.elw_count + data.ww_count + data.hmc_t_count > 0:
-        return "Rozważ DSS na top celach"
+        return "Rozwa? DSS na top celach"
     if data.biology_species_count > 0:
-        return "Rozważ lądowanie pod exobio"
-    return "Leć dalej"
+        return "Rozwa? l?dowanie pod exobio"
+    return "Le? dalej"
+
+
+def _pick_system_quality_hint(data: ExitSummaryData) -> str:
+    """Lekka klasyfikacja systemu po domkni?ciu FSS (heurystyka v1)."""
+    if (
+        data.scanned_bodies is not None
+        and data.total_bodies is not None
+        and data.total_bodies > data.scanned_bodies
+    ):
+        return ""
+
+    exobio_targets = max(0, int(data.biology_species_count or 0))
+    dss_targets = (
+        max(0, int(data.elw_count or 0))
+        + max(0, int(data.ww_count or 0))
+        + max(0, int(data.hmc_t_count or 0))
+    )
+    target_score = exobio_targets + dss_targets
+
+    if target_score <= 0 and _safe_float(data.total_value) <= 0.0:
+        return "Tutaj nie ma nic warto\u015bciowego"
+    if exobio_targets > 0 and exobio_targets <= 3 and dss_targets <= 0:
+        return "Ma\u0142o obiekt\u00f3w badawczych"
+    if exobio_targets > 3 or target_score > 3:
+        return "Ten system wymaga dog\u0142\u0119bnej analizy"
+    if exobio_targets > 0:
+        return "Ma\u0142o obiekt\u00f3w badawczych"
+    if dss_targets > 0:
+        return "Ten system wymaga dog\u0142\u0119bnej analizy"
+    return ""
 
 
 def _confidence_for_payload(data: ExitSummaryData) -> str:
@@ -114,7 +145,8 @@ def _build_payload(
         totals = {"total": 0.0}
 
     highlights = _build_highlights(data)
-    next_step = _pick_next_step(data)
+    quality_hint = _pick_system_quality_hint(data)
+    next_step = quality_hint or _pick_next_step(data)
     cash_signal = _cash_in_signal(data)
     confidence = _confidence_for_payload(data)
 
@@ -123,6 +155,7 @@ def _build_payload(
         scanned_bodies=data.scanned_bodies,
         total_bodies=data.total_bodies,
         highlights=highlights,
+        system_quality_hint=quality_hint,
         next_step=next_step,
         cash_in_signal=cash_signal,
         cash_in_system_estimated=_safe_float(data.total_value),

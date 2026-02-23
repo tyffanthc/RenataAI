@@ -837,8 +837,9 @@ def handle_exobio_status_position(status: Dict[str, Any], gui_ref=None) -> None:
 def handle_dss_bio_signals(ev: Dict[str, Any], gui_ref=None) -> None:
     """
     Event: SAASignalsFound
-    If 'Biological' signals >= 3:
-      "Potwierdzono liczne sygnały biologiczne. Warto wylądować."
+    If biological signals are present:
+      - low count: krótki hint o małej liczbie sygnałów,
+      - high count (>=3): mocny hint o wartości lądowania.
     One message per body.
     """
     if ev.get("event") != "SAASignalsFound":
@@ -867,21 +868,28 @@ def handle_dss_bio_signals(ev: Dict[str, Any], gui_ref=None) -> None:
             except (TypeError, ValueError):
                 continue
 
+    if bio_count <= 0:
+        return
+
+    DSS_BIO_WARNED_BODIES.add(body)
+    body_txt = _as_text(body)
     if bio_count >= 3:
-        DSS_BIO_WARNED_BODIES.add(body)
-        msg = "Potwierdzono liczne sygnały biologiczne. Warto wylądować."
-        emit_callout_or_summary(
-            text=msg,
-            gui_ref=gui_ref,
-            message_id="MSG.BIO_SIGNALS_HIGH",
-            source="exploration_bio_events",
-            system_name=_current_system(ev),
-            body_name=_as_text(body),
-            callout_key=f"bio_signals:{_as_text(body).lower() or 'unknown'}",
-            event_type="BODY_DISCOVERED",
-            priority="P2_NORMAL",
-            context={"raw_text": msg, "body": _as_text(body), "system": _current_system(ev)},
-        )
+        msg = f"Planeta {body_txt} ma liczne sygnały biologiczne. Warto wylądować."
+    else:
+        msg = f"Planeta {body_txt} ma mało sygnałów biologicznych. Możliwy krótki rekonesans."
+
+    emit_callout_or_summary(
+        text=msg,
+        gui_ref=gui_ref,
+        message_id="MSG.BIO_SIGNALS_HIGH",
+        source="exploration_bio_events",
+        system_name=_current_system(ev),
+        body_name=body_txt,
+        callout_key=f"bio_signals:{_as_text(body).lower() or 'unknown'}",
+        event_type="BODY_DISCOVERED",
+        priority="P2_NORMAL",
+        context={"raw_text": msg, "body": body_txt, "system": _current_system(ev), "bio_signals_count": bio_count},
+    )
 
 
 def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
