@@ -993,6 +993,18 @@ class RenataApp:
                             interval_ms=3000,
                         )
 
+                elif msg_type == "playerdb_updated":
+                    try:
+                        if hasattr(self.tab_journal, "notify_playerdb_updated"):
+                            self.tab_journal.notify_playerdb_updated(content)
+                    except Exception as exc:
+                        _log_app_fallback(
+                            "queue.playerdb_updated",
+                            "failed to notify journal map about playerdb update",
+                            exc,
+                            interval_ms=3000,
+                        )
+
                 elif msg_type == "exploration_summary":
                     try:
                         self.tab_pulpit.update_exploration_summary(content)

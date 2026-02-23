@@ -1582,12 +1582,27 @@ class LogbookTab(tk.Frame):
             pass
 
     def _on_subtab_changed(self, _event=None) -> None:
+        try:
+            if self._resolve_active_subtab_key() == "map":
+                callback = getattr(self.tab_map, "on_parent_map_subtab_activated", None)
+                if callable(callback):
+                    callback()
+        except Exception:
+            pass
         self._persist_ui_state()
 
     def _on_filters_changed(self) -> None:
         self._sync_pinboard_button_label()
         self._persist_ui_state()
         self._refresh_entries()
+
+    def notify_playerdb_updated(self, payload: dict | None = None) -> None:
+        try:
+            callback = getattr(self.tab_map, "notify_playerdb_updated", None)
+            if callable(callback):
+                callback(payload)
+        except Exception:
+            pass
 
     def _set_filter_tag_display(self) -> None:
         if not self._selected_filter_tags:

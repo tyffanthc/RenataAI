@@ -43,6 +43,25 @@ def _log_router_fallback(
     )
 
 
+def _emit_playerdb_updated(
+    *,
+    source: str,
+    event_name: str,
+) -> None:
+    try:
+        MSG_QUEUE.put(
+            (
+                "playerdb_updated",
+                {
+                    "source": str(source or "").strip() or "unknown",
+                    "event_name": str(event_name or "").strip() or "unknown",
+                },
+            )
+        )
+    except Exception:
+        return
+
+
 class EventHandler:
     """
     Obsługuje eventy Elite Dangerous Journal.
@@ -97,6 +116,7 @@ class EventHandler:
             _log_router_fallback("cargo.ship_state", "cargo update: ship_state sync failed", exc)
 
     def on_market_update(self, market_data: dict, gui_ref=None) -> None:
+        playerdb_ingest_ok = False
         try:
             from app.state import app_state
 
@@ -105,8 +125,11 @@ class EventHandler:
                 fallback_system_name=str(getattr(app_state, "current_system", "") or "").strip() or None,
                 fallback_station_name=str(getattr(app_state, "current_station", "") or "").strip() or None,
             )
+            playerdb_ingest_ok = True
         except Exception as exc:
             _log_router_fallback("market.playerdb_ingest", "market update: playerdb ingest failed", exc)
+        if playerdb_ingest_ok:
+            _emit_playerdb_updated(source="market_json", event_name="Market")
         try:
             cargo_value_estimator.update_market_snapshot(market_data, source="market_json")
         except Exception as exc:
@@ -156,6 +179,7 @@ class EventHandler:
             return
 
         if typ in {"Location", "FSDJump", "CarrierJump", "Docked", "SellExplorationData", "SellOrganicData"}:
+            playerdb_ingest_ok = False
             try:
                 from app.state import app_state
 
@@ -164,6 +188,7 @@ class EventHandler:
                     fallback_system_name=str(getattr(app_state, "current_system", "") or "").strip() or None,
                     fallback_station_name=str(getattr(app_state, "current_station", "") or "").strip() or None,
                 )
+                playerdb_ingest_ok = True
             except Exception as exc:
                 _log_router_fallback(
                     "journal.playerdb_ingest",
@@ -171,6 +196,8 @@ class EventHandler:
                     exc,
                     event=str(typ),
                 )
+            if playerdb_ingest_ok:
+                _emit_playerdb_updated(source="journal", event_name=str(typ))
 
         try:
             feed_item = build_logbook_feed_item(ev)

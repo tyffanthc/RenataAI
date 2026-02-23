@@ -167,6 +167,10 @@ class JournalMapTab(tk.Frame):
         self._trade_picker_station_filter_status_var = None
         self._trade_picker_available: list[str] = []
         self._trade_picker_selected: set[str] = set()
+        self._auto_refresh_dirty = False
+        self._auto_refresh_debounce_ms = 650
+        self._auto_refresh_after_id: str | None = None
+        self._auto_refresh_last_update: dict[str, Any] = {}
 
         # Filters (UI shell)
         self.layer_travel_var = tk.BooleanVar(value=True)
@@ -286,6 +290,10 @@ class JournalMapTab(tk.Frame):
                 pass
 
     def destroy(self) -> None:
+        try:
+            self._cancel_auto_refresh_debounce()
+        except Exception:
+            pass
         self._cancel_pending_after_jobs()
         try:
             self._trade_picker_close()
@@ -1111,6 +1119,88 @@ class JournalMapTab(tk.Frame):
         if callable(callback):
             try:
                 callback()
+            except Exception:
+                pass
+
+    def _is_map_subtab_active(self) -> bool:
+        owner = getattr(self, "logbook_owner", None)
+        resolver = getattr(owner, "_resolve_active_subtab_key", None)
+        if callable(resolver):
+            try:
+                return str(resolver() or "") == "map"
+            except Exception:
+                return True
+        return True
+
+    def _is_map_runtime_visible_for_auto_refresh(self) -> bool:
+        # "Visible enough" for refresh means the Journal subtab "Mapa" is selected.
+        # We intentionally do not require the top-level main tab to be active to avoid
+        # deferred refresh getting stuck until the user toggles a map filter manually.
+        return bool(self._is_map_subtab_active())
+
+    def _cancel_auto_refresh_debounce(self) -> None:
+        after_id = getattr(self, "_auto_refresh_after_id", None)
+        self._auto_refresh_after_id = None
+        if not after_id:
+            return
+        try:
+            self.after_cancel(after_id)
+        except Exception:
+            pass
+
+    def _schedule_auto_refresh_debounce(self, *, delay_ms: int | None = None) -> None:
+        self._cancel_auto_refresh_debounce()
+        delay = int(delay_ms if delay_ms is not None else self._auto_refresh_debounce_ms)
+        try:
+            self._auto_refresh_after_id = str(self.after(delay, self._run_debounced_auto_refresh))
+        except Exception:
+            self._auto_refresh_after_id = None
+
+    def notify_playerdb_updated(self, payload: dict | None = None) -> dict[str, Any]:
+        data = dict(payload or {}) if isinstance(payload, dict) else {}
+        source = _as_text(data.get("source")) or "unknown"
+        event_name = _as_text(data.get("event_name")) or "unknown"
+        self._auto_refresh_last_update = {"source": source, "event_name": event_name}
+        self._auto_refresh_dirty = True
+        if self._is_map_runtime_visible_for_auto_refresh():
+            self._schedule_auto_refresh_debounce()
+            return {"ok": True, "scheduled": True, "deferred": False, "source": source, "event_name": event_name}
+        return {"ok": True, "scheduled": False, "deferred": True, "source": source, "event_name": event_name}
+
+    def on_parent_map_subtab_activated(self) -> None:
+        if bool(self._auto_refresh_dirty):
+            self._schedule_auto_refresh_debounce(delay_ms=120)
+
+    def _run_debounced_auto_refresh(self) -> None:
+        self._auto_refresh_after_id = None
+        if not bool(self._auto_refresh_dirty):
+            return
+        if not self._is_map_runtime_visible_for_auto_refresh():
+            return
+
+        selected_key = str(self._selected_node_key or "").strip() or None
+        self._auto_refresh_dirty = False
+        result = self.reload_from_playerdb()
+
+        reselected = False
+        if selected_key and selected_key in self._nodes:
+            try:
+                sel_result = self.select_system_node(selected_key)
+                reselected = bool(isinstance(sel_result, dict) and sel_result.get("ok"))
+            except Exception:
+                reselected = False
+
+        info = dict(self._auto_refresh_last_update or {})
+        event_name = _as_text(info.get("event_name")) or "playerdb"
+        source = _as_text(info.get("source")) or "playerdb"
+        if isinstance(result, dict) and bool(result.get("ok")):
+            parts = ["Mapa: auto-refresh po update playerdb"]
+            if event_name:
+                parts.append(f"{event_name}/{source}")
+            if reselected:
+                parts.append("zachowano selekcje")
+            try:
+                self.map_status_var.set(" | ".join(parts))
             except Exception:
                 pass
 
