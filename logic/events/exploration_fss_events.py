@@ -370,7 +370,12 @@ def handle_fss_all_bodies_found(ev: Dict[str, Any], gui_ref=None):
     ObsĹ‚uga eventu FSSAllBodiesFound â€” wszystko znalezione.
     """
     global FSS_TOTAL_BODIES, FSS_DISCOVERED
-    if FSS_TOTAL_BODIES > 0:
-        FSS_DISCOVERED = FSS_TOTAL_BODIES
+    if FSS_TOTAL_BODIES <= 0:
+        return
+
+    # FSSAllBodiesFound confirms discovery coverage in FSS, but should not
+    # overwrite our Scan-based progress counter. Otherwise Renata can announce
+    # "System w pelni przeskanowany" before the player actually reaches N/N scans.
+    if FSS_DISCOVERED >= FSS_TOTAL_BODIES:
         _check_fss_thresholds(gui_ref)
         _maybe_speak_fss_full(gui_ref)
