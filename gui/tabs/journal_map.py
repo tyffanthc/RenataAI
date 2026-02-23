@@ -18,6 +18,9 @@ COLOR_GRID = "#222a35"
 COLOR_NODE = "#ff7100"
 COLOR_EDGE = "#4b5563"
 COLOR_HILITE = "#ffd166"
+COLOR_SELECTED_RING = "#ffffff"
+COLOR_SELECTED_RING_SHADOW = "#111827"
+COLOR_CURRENT_RING = "#22c55e"
 COLOR_STATION_LAYER = "#6ee7b7"
 COLOR_TRADE_LAYER = "#60a5fa"
 COLOR_CASHIN_LAYER = "#f472b6"
@@ -319,7 +322,7 @@ class JournalMapTab(tk.Frame):
             highlightthickness=1,
             highlightbackground=COLOR_ACCENT,
             relief="flat",
-            cursor="fleur",
+            cursor="arrow",
         )
         self.map_canvas.grid(row=0, column=0, sticky="nsew")
 
@@ -468,6 +471,12 @@ class JournalMapTab(tk.Frame):
         self.map_canvas.bind("<Button-5>", lambda e: self._on_canvas_mousewheel(_WheelShim(e, delta=-120)))
         self.map_canvas.tag_bind("map_node", "<ButtonPress-1>", self._on_canvas_node_click)
         self.map_canvas.tag_bind("map_node", "<Double-Button-1>", self._on_canvas_node_double_click)
+
+    def _set_map_cursor(self, cursor_name: str) -> None:
+        try:
+            self.map_canvas.configure(cursor=str(cursor_name))
+        except Exception:
+            pass
 
     def _on_filter_changed(self) -> None:
         self.reload_from_playerdb()
@@ -906,6 +915,7 @@ class JournalMapTab(tk.Frame):
         if not key:
             return None
         self._pan_active = False
+        self._set_map_cursor("arrow")
         self.select_system_node(key)
         return "break"
 
@@ -914,6 +924,7 @@ class JournalMapTab(tk.Frame):
         if not key:
             return None
         self._pan_active = False
+        self._set_map_cursor("arrow")
         self.select_system_node(key)
         node = self._nodes.get(key)
         if node is not None:
@@ -1127,6 +1138,7 @@ class JournalMapTab(tk.Frame):
         self._pan_active = True
         self._pan_last_x = int(getattr(event, "x", 0))
         self._pan_last_y = int(getattr(event, "y", 0))
+        self._set_map_cursor("arrow")
 
     def _on_canvas_drag(self, event) -> None:
         if not self._pan_active:
@@ -1137,12 +1149,14 @@ class JournalMapTab(tk.Frame):
         dy = y - self._pan_last_y
         self._pan_last_x = x
         self._pan_last_y = y
+        self._set_map_cursor("fleur")
         self.view_offset_x += dx
         self.view_offset_y += dy
         self._redraw_scene()
 
     def _on_canvas_release(self, _event=None) -> None:
         self._pan_active = False
+        self._set_map_cursor("arrow")
 
     def _on_canvas_mousewheel(self, event) -> None:
         canvas = self.map_canvas
@@ -1285,19 +1299,19 @@ class JournalMapTab(tk.Frame):
         for node in self._nodes.values():
             sx, sy = self.world_to_screen(node.x, node.y)
             r = 4 if self.view_scale < 1.2 else 5
-            outline = COLOR_HILITE if node.key == self._selected_node_key else COLOR_NODE
             node_tags = ("map_node", f"node:{node.key}")
             self.map_canvas.create_oval(
                 sx - r,
                 sy - r,
                 sx + r,
                 sy + r,
-                outline=outline,
+                outline=COLOR_NODE,
                 fill=COLOR_NODE,
                 tags=node_tags,
             )
             self._draw_node_layer_badges(node, sx, sy, r)
             self._draw_trade_compare_highlight(node, sx, sy, r)
+            self._draw_node_state_rings(node, sx, sy, r)
             if show_labels:
                 self.map_canvas.create_text(
                     sx + 8,
@@ -1308,6 +1322,54 @@ class JournalMapTab(tk.Frame):
                     font=("Segoe UI", 8),
                     tags=node_tags,
                 )
+
+    def _is_current_system_node(self, node: _MapNode) -> bool:
+        current_name = _as_text(getattr(app_state, "current_system", ""))
+        if not current_name:
+            return False
+        return current_name.casefold() == _as_text(node.system_name).casefold()
+
+    def _draw_node_state_rings(self, node: _MapNode, sx: float, sy: float, r: int) -> None:
+        c = self.map_canvas
+        node_tag = f"node:{node.key}"
+        is_selected = bool(node.key == self._selected_node_key)
+        is_current = bool(self._is_current_system_node(node))
+
+        # Current position ring (outer, green) so it can coexist with selected ring.
+        if is_current:
+            rr = r + 10
+            c.create_oval(
+                sx - rr,
+                sy - rr,
+                sx + rr,
+                sy + rr,
+                outline=COLOR_CURRENT_RING,
+                width=2.0,
+                tags=("node_state_ring", "node_current_ring", node_tag),
+            )
+
+        # Selected ring with contrast (dark shadow + white ring) for readability on bright overlays.
+        if is_selected:
+            rr_shadow = r + 8
+            c.create_oval(
+                sx - rr_shadow,
+                sy - rr_shadow,
+                sx + rr_shadow,
+                sy + rr_shadow,
+                outline=COLOR_SELECTED_RING_SHADOW,
+                width=3.0,
+                tags=("node_state_ring", "node_selected_ring_shadow", node_tag),
+            )
+            rr = r + 7
+            c.create_oval(
+                sx - rr,
+                sy - rr,
+                sx + rr,
+                sy + rr,
+                outline=COLOR_SELECTED_RING,
+                width=2.0,
+                tags=("node_state_ring", "node_selected_ring", node_tag),
+            )
 
     def _draw_node_layer_badges(self, node: _MapNode, sx: float, sy: float, r: int) -> None:
         flags = dict(self._node_layer_flags.get(node.key) or {})
