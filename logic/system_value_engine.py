@@ -20,6 +20,7 @@ Zastosowanie:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Any, Dict, Optional, Set, Tuple, List
 
 import pandas as pd
@@ -168,9 +169,9 @@ class SystemValueEngine:
         was_mapped = event.get("WasMapped") or event.get("Mapped")
 
         # Bazowa wartość: FSS lub DSS
-        fss_value = float(row.get("FSS_Base_Value", 0.0) or 0.0)
-        dss_value = float(row.get("DSS_Mapped_Value", 0.0) or 0.0)
-        fd_mapped = float(row.get("First_Discovery_Mapped_Value", 0.0) or 0.0)
+        fss_value = self._finite_row_float(row, "FSS_Base_Value")
+        dss_value = self._finite_row_float(row, "DSS_Mapped_Value")
+        fd_mapped = self._finite_row_float(row, "First_Discovery_Mapped_Value")
 
         if was_mapped:
             base_value = dss_value
@@ -516,10 +517,20 @@ class SystemValueEngine:
             "earthlike world": "Earth-like World",
             "water world": "Water World",
             "high metal content world": "High Metal Content Planet",
+            "high metal content body": "High Metal Content Planet",
+            "high metal content planet": "High Metal Content Planet",
             "icy body": "Icy Body",
+            "icy world": "Icy Body",
+            "icy planet": "Icy Body",
             "metal rich body": "Metal Rich Body",
+            "metal-rich body": "Metal Rich Body",
+            "metal rich world": "Metal Rich Body",
+            "metal-rich world": "Metal Rich Body",
             "rocky body": "Rocky Body",
+            "rocky world": "Rocky Body",
+            "rocky planet": "Rocky Body",
             "rocky ice world": "Rocky Ice Body",
+            "rocky ice body": "Rocky Ice Body",
             "class i gas giant": "Class I Gas Giant",
             "class ii gas giant": "Class II Gas Giant",
             "class iii gas giant": "Class III Gas Giant",
@@ -552,17 +563,44 @@ class SystemValueEngine:
         self, body_type: str, terraformable: str
     ) -> Optional[pd.Series]:
         key = (body_type, terraformable)
-        if key in self._carto_map:
-            return self._carto_map[key]
+        row = self._carto_map.get(key)
+        if row is not None and self._row_has_finite_cartography_values(row):
+            return row
 
         # Fallback: jeśli nie ma wariantu terraformable – spróbuj niezależnie od tej kolumny
         for (bt, tf), row in self._carto_map.items():
-            if bt == body_type:
+            if bt == body_type and self._row_has_finite_cartography_values(row):
                 return row
 
         # Ostateczny fallback: jeśli w arkuszu jest ogólny „Planet Type”
         key_generic = ("Planet Type", terraformable)
-        return self._carto_map.get(key_generic)
+        row_generic = self._carto_map.get(key_generic)
+        if row_generic is not None and self._row_has_finite_cartography_values(row_generic):
+            return row_generic
+
+        row_generic_any = None
+        for (bt, _tf), row in self._carto_map.items():
+            if bt == "Planet Type" and self._row_has_finite_cartography_values(row):
+                row_generic_any = row
+                break
+        return row_generic_any
+
+    @staticmethod
+    def _finite_row_float(row: pd.Series, key: str) -> float:
+        try:
+            out = float(row.get(key, 0.0) or 0.0)
+        except Exception:
+            return 0.0
+        if not math.isfinite(out):
+            return 0.0
+        return out
+
+    @classmethod
+    def _row_has_finite_cartography_values(cls, row: pd.Series) -> bool:
+        return any(
+            cls._finite_row_float(row, key) > 0.0
+            for key in ("FSS_Base_Value", "DSS_Mapped_Value", "First_Discovery_Mapped_Value")
+        )
 
     def _is_high_value_target(self, body_type: str, terraformable: str) -> bool:
         """

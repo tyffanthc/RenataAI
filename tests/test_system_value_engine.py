@@ -32,6 +32,13 @@ def _science_data():
                 "DSS_Mapped_Value": 150.0,
                 "First_Discovery_Mapped_Value": 300.0,
             },
+            {
+                "Body_Type": "High Metal Content Planet",
+                "Terraformable": "Yes",
+                "FSS_Base_Value": 700.0,
+                "DSS_Mapped_Value": 1000.0,
+                "First_Discovery_Mapped_Value": 2000.0,
+            },
         ]
     )
     return exobio_df, carto_df
@@ -182,6 +189,56 @@ class SystemValueEngineTests(unittest.TestCase):
         stats = self.engine.get_system_stats("TEST_SYS_G")
         self.assertAlmostEqual(stats.c_cartography, 1500.0, places=3)
         self.assertAlmostEqual(stats.bonus_discovery, 1500.0, places=3)
+
+    def test_scan_event_maps_high_metal_content_body_alias(self) -> None:
+        event = {
+            "event": "Scan",
+            "StarSystem": "TEST_SYS_H",
+            "BodyName": "TEST_SYS_H 3",
+            "PlanetClass": "High metal content body",
+            "TerraformState": "Terraformable",
+            "WasDiscovered": True,
+            "WasMapped": False,
+        }
+        self.engine.analyze_scan_event(event)
+        stats = self.engine.get_system_stats("TEST_SYS_H")
+        self.assertIsNotNone(stats)
+        self.assertAlmostEqual(float(stats.c_cartography or 0.0), 700.0, places=3)
+
+    def test_nan_planet_type_fallback_does_not_poison_totals(self) -> None:
+        exo, carto = _science_data()
+        carto = pd.concat(
+            [
+                carto[carto["Body_Type"] != "Planet Type"],
+                pd.DataFrame(
+                    [
+                        {
+                            "Body_Type": "Planet Type",
+                            "Terraformable": "Terraformable?",
+                            "FSS_Base_Value": float("nan"),
+                            "DSS_Mapped_Value": float("nan"),
+                            "First_Discovery_Mapped_Value": float("nan"),
+                        }
+                    ]
+                ),
+            ],
+            ignore_index=True,
+        )
+        engine = SystemValueEngine((exo, carto))
+        engine.analyze_scan_event(
+            {
+                "event": "Scan",
+                "StarSystem": "TEST_SYS_I",
+                "BodyName": "TEST_SYS_I 1",
+                "PlanetClass": "Unknown prototype body",
+                "WasDiscovered": False,
+                "WasMapped": False,
+            }
+        )
+        stats = engine.get_system_stats("TEST_SYS_I")
+        self.assertIsNotNone(stats)
+        self.assertEqual(float(stats.c_cartography or 0.0), 0.0)
+        self.assertEqual(float(stats.bonus_discovery or 0.0), 0.0)
 
 if __name__ == "__main__":
     unittest.main()
