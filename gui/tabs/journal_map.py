@@ -146,10 +146,17 @@ class JournalMapTab(tk.Frame):
         self._node_layer_flags: dict[str, dict[str, Any]] = {}
         self._trade_highlight_node_keys: set[str] = set()
         self._trade_compare_rows: list[dict[str, Any]] = []
+        self._trade_compare_rows_by_iid: dict[str, dict[str, Any]] = {}
+        self._trade_selected_commodities: list[str] = []
         self._travel_nodes_meta: dict[str, Any] = {}
         self._travel_edges_meta: dict[str, Any] = {}
         self._pending_after_ids: list[str] = []
         self._map_ppm_node_key: str | None = None
+        self._trade_picker_window = None
+        self._trade_picker_search_var = None
+        self._trade_picker_tree = None
+        self._trade_picker_available: list[str] = []
+        self._trade_picker_selected: set[str] = set()
 
         # Filters (UI shell)
         self.layer_travel_var = tk.BooleanVar(value=True)
@@ -164,6 +171,7 @@ class JournalMapTab(tk.Frame):
         self.freshness_var = tk.StringVar(value="any")
         self.source_include_enriched_var = tk.BooleanVar(value=False)
         self.trade_compare_commodity_var = tk.StringVar(value="")
+        self.trade_selected_summary_var = tk.StringVar(value="Brak wybranych towarow.")
         self.map_status_var = tk.StringVar(value="Mapa gotowa (shell). Brak danych do renderu.")
         self.legend_collapsed_var = tk.BooleanVar(value=False)
         self.legend_toggle_text_var = tk.StringVar(value="Ukryj")
@@ -195,6 +203,10 @@ class JournalMapTab(tk.Frame):
 
     def destroy(self) -> None:
         self._cancel_pending_after_jobs()
+        try:
+            self._trade_picker_close()
+        except Exception:
+            pass
         super().destroy()
 
     def _build_ui(self) -> None:
@@ -483,18 +495,18 @@ class JournalMapTab(tk.Frame):
         trade_ctl = tk.Frame(self.right_frame, bg=COLOR_BG)
         trade_ctl.grid(row=8, column=0, sticky="ew", pady=(2, 4))
         trade_ctl.columnconfigure(0, weight=1)
-        self.trade_commodity_combo = ttk.Combobox(
+        self.trade_pick_btn = tk.Button(
             trade_ctl,
-            textvariable=self.trade_compare_commodity_var,
-            values=(),
-            width=18,
+            text="Wybierz towary...",
+            bg=COLOR_ACCENT,
+            fg=COLOR_FG,
+            relief="flat",
+            command=self._open_trade_commodity_picker,
         )
-        self.trade_commodity_combo.grid(row=0, column=0, sticky="ew", padx=(0, 6))
-        self.trade_commodity_combo.bind("<<ComboboxSelected>>", self._on_trade_commodity_changed)
-        self.trade_commodity_combo.bind("<Return>", self._on_trade_commodity_changed)
+        self.trade_pick_btn.grid(row=0, column=0, sticky="w", padx=(0, 6))
         self.trade_highlight_btn = tk.Button(
             trade_ctl,
-            text="Highlight",
+            text="Odswiez",
             bg=COLOR_ACCENT,
             fg=COLOR_FG,
             relief="flat",
@@ -503,23 +515,47 @@ class JournalMapTab(tk.Frame):
         )
         self.trade_highlight_btn.grid(row=0, column=1, sticky="e")
 
+        tk.Label(
+            self.right_frame,
+            textvariable=self.trade_selected_summary_var,
+            bg=COLOR_BG,
+            fg=COLOR_SEC,
+            anchor="w",
+            justify="left",
+            wraplength=360,
+        ).grid(row=9, column=0, sticky="ew", pady=(0, 4))
+
+        # Legacy MVP combobox kept as hidden compatibility path (F20 tests / fallback single commodity).
+        self.trade_commodity_combo = ttk.Combobox(
+            trade_ctl,
+            textvariable=self.trade_compare_commodity_var,
+            values=(),
+            width=18,
+        )
+        self.trade_commodity_combo.grid(row=1, column=0, sticky="ew", padx=(0, 6))
+        self.trade_commodity_combo.bind("<<ComboboxSelected>>", self._on_trade_commodity_changed)
+        self.trade_commodity_combo.bind("<Return>", self._on_trade_commodity_changed)
+        self.trade_commodity_combo.grid_remove()
+
         self.trade_compare_tree = ttk.Treeview(
             self.right_frame,
-            columns=("mode", "system", "station", "price", "age"),
+            columns=("mode", "commodity", "system", "station", "price", "age"),
             show="headings",
             style="Treeview",
             height=6,
         )
         for col, title, width, anchor in (
             ("mode", "Tryb", 50, "w"),
-            ("system", "System", 120, "w"),
-            ("station", "Stacja", 100, "w"),
+            ("commodity", "Towar", 95, "w"),
+            ("system", "System", 95, "w"),
+            ("station", "Stacja", 90, "w"),
             ("price", "Cena", 60, "e"),
             ("age", "Age", 50, "w"),
         ):
             self.trade_compare_tree.heading(col, text=title)
             self.trade_compare_tree.column(col, width=width, anchor=anchor)
         self.trade_compare_tree.grid(row=10, column=0, sticky="nsew")
+        self.trade_compare_tree.bind("<<TreeviewSelect>>", self._on_trade_compare_row_selected)
 
         # Bottom status
         status = tk.Label(
@@ -1077,6 +1113,7 @@ class JournalMapTab(tk.Frame):
         self._station_rows_by_iid.clear()
         self._trade_highlight_node_keys.clear()
         self._trade_compare_rows = []
+        self._trade_compare_rows_by_iid.clear()
         nodes_count = len(self._nodes)
         edges_count = len(self._edges)
         self.system_details_var.set(
@@ -1092,6 +1129,7 @@ class JournalMapTab(tk.Frame):
             "end",
             values=(
                 "INFO",
+                "-",
                 "-",
                 "-",
                 "-",
@@ -1203,35 +1241,274 @@ class JournalMapTab(tk.Frame):
             self.trade_commodity_combo["values"] = tuple(merged)
         except Exception:
             pass
+        self._trade_picker_available = list(merged)
+        self._trade_picker_selected = {
+            item for item in self._trade_picker_selected
+            if any(item.casefold() == str(v).casefold() for v in merged)
+        }
+        self._sync_trade_selected_summary()
+        self._refresh_trade_picker_rows_if_open()
         self._sync_trade_highlight_button_state()
 
     def _sync_trade_highlight_button_state(self) -> None:
         commodity = _as_text(self.trade_compare_commodity_var.get())
-        state = "normal" if commodity else "disabled"
+        state = "normal" if (commodity or self._trade_selected_commodities) else "disabled"
         try:
             self.trade_highlight_btn.configure(state=state)
         except Exception:
             pass
+
+    def _sync_trade_selected_summary(self) -> None:
+        selected = list(self._trade_selected_commodities or [])
+        if not selected:
+            self.trade_selected_summary_var.set("Brak wybranych towarow.")
+            return
+        preview = ", ".join(selected[:3])
+        suffix = f" (+{len(selected) - 3})" if len(selected) > 3 else ""
+        self.trade_selected_summary_var.set(f"Wybrane towary ({len(selected)}): {preview}{suffix}")
 
     def _on_trade_commodity_changed(self, _event=None):
         self._sync_trade_highlight_button_state()
         return None
 
     def _refresh_trade_compare_if_needed(self) -> None:
+        if self._trade_selected_commodities:
+            self._run_trade_compare_multi(self._trade_selected_commodities)
+            return
         commodity = _as_text(self.trade_compare_commodity_var.get())
         if not commodity:
             self._trade_highlight_node_keys.clear()
             self._trade_compare_rows = []
+            self._trade_compare_rows_by_iid.clear()
             self._redraw_scene()
             return
         self._run_trade_compare(commodity)
 
     def _on_trade_highlight_clicked(self) -> None:
+        if self._trade_selected_commodities:
+            self._run_trade_compare_multi(self._trade_selected_commodities)
+            return
         commodity = _as_text(self.trade_compare_commodity_var.get())
         if not commodity:
             self._sync_trade_highlight_button_state()
             return
         self._run_trade_compare(commodity)
+
+    def _set_trade_selected_commodities(self, values: list[str]) -> None:
+        seen: set[str] = set()
+        out: list[str] = []
+        for item in values or []:
+            text = _as_text(item)
+            if not text:
+                continue
+            key = text.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(text)
+        self._trade_selected_commodities = out
+        # Keep legacy single value in sync for fallback/tests.
+        if out:
+            self.trade_compare_commodity_var.set(out[0])
+        self._sync_trade_selected_summary()
+        self._sync_trade_highlight_button_state()
+
+    def _refresh_trade_picker_rows_if_open(self) -> None:
+        win = getattr(self, "_trade_picker_window", None)
+        tree = getattr(self, "_trade_picker_tree", None)
+        if win is None or tree is None:
+            return
+        try:
+            if not bool(win.winfo_exists()):
+                return
+        except Exception:
+            return
+        self._trade_picker_refresh_rows()
+
+    def _open_trade_commodity_picker(self) -> None:
+        parent = self.winfo_toplevel()
+        win = getattr(self, "_trade_picker_window", None)
+        try:
+            if win is not None and bool(win.winfo_exists()):
+                win.deiconify()
+                win.lift()
+                win.focus_force()
+                self._trade_picker_refresh_rows()
+                return
+        except Exception:
+            pass
+
+        win = tk.Toplevel(parent)
+        self._trade_picker_window = win
+        win.title("Wybierz towary - Trade Compare")
+        win.configure(bg=COLOR_BG)
+        win.transient(parent)
+        try:
+            win.grab_set()
+        except Exception:
+            pass
+        win.geometry("620x540")
+        win.minsize(520, 420)
+        win.columnconfigure(0, weight=1)
+        win.rowconfigure(2, weight=1)
+
+        search_var = tk.StringVar(value="")
+        self._trade_picker_search_var = search_var
+        top = tk.Frame(win, bg=COLOR_BG)
+        top.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
+        top.columnconfigure(1, weight=1)
+        tk.Label(top, text="Szukaj:", bg=COLOR_BG, fg=COLOR_FG).grid(row=0, column=0, sticky="w")
+        search_entry = tk.Entry(top, textvariable=search_var, bg=COLOR_ACCENT, fg=COLOR_FG, insertbackground=COLOR_FG)
+        search_entry.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+        search_entry.bind("<KeyRelease>", lambda _e: self._trade_picker_refresh_rows())
+
+        controls = tk.Frame(win, bg=COLOR_BG)
+        controls.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 6))
+        controls.columnconfigure(0, weight=1)
+        tk.Button(
+            controls,
+            text="Zaznacz wszystkie",
+            bg=COLOR_ACCENT,
+            fg=COLOR_FG,
+            relief="flat",
+            command=self._trade_picker_select_all,
+        ).grid(row=0, column=0, sticky="w")
+        tk.Button(
+            controls,
+            text="Wyczysc",
+            bg=COLOR_ACCENT,
+            fg=COLOR_FG,
+            relief="flat",
+            command=self._trade_picker_clear_all,
+        ).grid(row=0, column=1, sticky="w", padx=(8, 0))
+
+        tree = ttk.Treeview(
+            win,
+            columns=("sel", "commodity"),
+            show="headings",
+            style="Treeview",
+            height=16,
+        )
+        tree.heading("sel", text="[ ]")
+        tree.heading("commodity", text="Towar")
+        tree.column("sel", width=50, anchor="center")
+        tree.column("commodity", width=500, anchor="w")
+        tree.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 6))
+        tree.bind("<Double-Button-1>", lambda _e: self._trade_picker_toggle_selected_row())
+        tree.bind("<Return>", lambda _e: self._trade_picker_toggle_selected_row())
+        self._trade_picker_tree = tree
+
+        hint = tk.Label(
+            win,
+            text="Towary pochodza z Market.json (commodities), nie materialy inżynierskie.",
+            bg=COLOR_BG,
+            fg=COLOR_SEC,
+            anchor="w",
+            justify="left",
+        )
+        hint.grid(row=3, column=0, sticky="ew", padx=10, pady=(0, 6))
+
+        bottom = tk.Frame(win, bg=COLOR_BG)
+        bottom.grid(row=4, column=0, sticky="ew", padx=10, pady=(0, 10))
+        bottom.columnconfigure(0, weight=1)
+        tk.Button(bottom, text="Anuluj", bg=COLOR_ACCENT, fg=COLOR_FG, relief="flat", command=self._trade_picker_close).grid(
+            row=0, column=1, sticky="e", padx=(0, 8)
+        )
+        tk.Button(bottom, text="Akceptuj", bg=COLOR_ACCENT, fg=COLOR_FG, relief="flat", command=self._trade_picker_accept).grid(
+            row=0, column=2, sticky="e"
+        )
+
+        self._trade_picker_selected = {str(v) for v in (self._trade_selected_commodities or [])}
+        win.protocol("WM_DELETE_WINDOW", self._trade_picker_close)
+        self._trade_picker_refresh_rows()
+        try:
+            search_entry.focus_set()
+        except Exception:
+            pass
+
+    def _trade_picker_filtered_commodities(self) -> list[str]:
+        query = _as_text(getattr(self._trade_picker_search_var, "get", lambda: "")()).casefold()
+        values = list(self._trade_picker_available or [])
+        if not query:
+            return values
+        return [v for v in values if query in str(v).casefold()]
+
+    def _trade_picker_refresh_rows(self) -> None:
+        tree = getattr(self, "_trade_picker_tree", None)
+        if tree is None:
+            return
+        try:
+            tree.delete(*tree.get_children())
+        except Exception:
+            return
+        for idx, commodity in enumerate(self._trade_picker_filtered_commodities()):
+            selected = str(commodity) in (self._trade_picker_selected or set())
+            tree.insert(
+                "",
+                "end",
+                iid=f"c:{idx}",
+                values=("[x]" if selected else "[ ]", commodity),
+            )
+
+    def _trade_picker_toggle_selected_row(self) -> None:
+        tree = getattr(self, "_trade_picker_tree", None)
+        if tree is None:
+            return
+        sel = tree.selection() or ()
+        if not sel:
+            return
+        iid = str(sel[0])
+        values = tree.item(iid, "values") or ()
+        commodity = _as_text(values[1] if len(values) > 1 else "")
+        if not commodity:
+            return
+        if commodity in self._trade_picker_selected:
+            self._trade_picker_selected.remove(commodity)
+        else:
+            self._trade_picker_selected.add(commodity)
+        self._trade_picker_refresh_rows()
+        try:
+            tree.selection_set(iid)
+            tree.focus(iid)
+        except Exception:
+            pass
+
+    def _trade_picker_select_all(self) -> None:
+        self._trade_picker_selected = set(self._trade_picker_filtered_commodities())
+        self._trade_picker_refresh_rows()
+
+    def _trade_picker_clear_all(self) -> None:
+        self._trade_picker_selected = set()
+        self._trade_picker_refresh_rows()
+
+    def _trade_picker_close(self) -> None:
+        win = getattr(self, "_trade_picker_window", None)
+        self._trade_picker_window = None
+        self._trade_picker_tree = None
+        self._trade_picker_search_var = None
+        try:
+            if win is not None and bool(win.winfo_exists()):
+                try:
+                    win.grab_release()
+                except Exception:
+                    pass
+                win.destroy()
+        except Exception:
+            pass
+
+    def _trade_picker_accept(self) -> None:
+        selected_sorted = sorted(set(self._trade_picker_selected or set()), key=lambda v: str(v).casefold())
+        self._set_trade_selected_commodities(selected_sorted)
+        self._trade_picker_close()
+        if selected_sorted:
+            self._run_trade_compare_multi(selected_sorted)
+        else:
+            self._trade_compare_rows = []
+            self._trade_compare_rows_by_iid.clear()
+            self.trade_compare_tree.delete(*self.trade_compare_tree.get_children())
+            self._trade_highlight_node_keys.clear()
+            self._redraw_scene()
+            self.map_status_var.set("Mapa: wyczyszczono wybor towarow Trade compare.")
 
     def _node_keys_for_system_name(self, system_name: Any) -> list[str]:
         target = _as_text(system_name).casefold()
@@ -1239,14 +1516,40 @@ class JournalMapTab(tk.Frame):
             return []
         return [key for key, node in (self._nodes or {}).items() if _as_text(node.system_name).casefold() == target]
 
+    def _highlight_trade_compare_for_commodity(self, commodity: str) -> None:
+        commodity_cf = _as_text(commodity).casefold()
+        self._trade_highlight_node_keys.clear()
+        if not commodity_cf:
+            self._redraw_scene()
+            return
+        for row in self._trade_compare_rows or []:
+            if not isinstance(row, dict):
+                continue
+            if _as_text(row.get("commodity")).casefold() != commodity_cf:
+                continue
+            for key in self._node_keys_for_system_name(row.get("system_name")):
+                self._trade_highlight_node_keys.add(key)
+        self._redraw_scene()
+
+    def _on_trade_compare_row_selected(self, _event=None) -> None:
+        selection = self.trade_compare_tree.selection() or ()
+        if not selection:
+            return
+        row = self._trade_compare_rows_by_iid.get(str(selection[0])) or {}
+        commodity = _as_text(row.get("commodity"))
+        if commodity:
+            self._highlight_trade_compare_for_commodity(commodity)
+            self.map_status_var.set(f"Mapa: Trade compare aktywny towar '{commodity}'.")
+
     def _run_trade_compare(self, commodity: str) -> dict[str, Any]:
         commodity_name = _as_text(commodity)
         self.trade_compare_tree.delete(*self.trade_compare_tree.get_children())
         self._trade_highlight_node_keys.clear()
         self._trade_compare_rows = []
+        self._trade_compare_rows_by_iid.clear()
         self._sync_trade_highlight_button_state()
         if not commodity_name:
-            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "wybierz towar"))
+            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "-", "wybierz towar"))
             self._redraw_scene()
             return {"ok": False, "reason": "missing_commodity"}
 
@@ -1268,7 +1571,7 @@ class JournalMapTab(tk.Frame):
                 limit=5,
             )
         except Exception as exc:
-            self.trade_compare_tree.insert("", "end", values=("ERR", "-", "-", "-", type(exc).__name__))
+            self.trade_compare_tree.insert("", "end", values=("ERR", "-", "-", "-", "-", type(exc).__name__))
             self._redraw_scene()
             return {"ok": False, "reason": "provider_error"}
 
@@ -1283,10 +1586,13 @@ class JournalMapTab(tk.Frame):
                 price = int(row.get("price") or 0)
                 age = _format_age_short(row.get("freshness_ts"))
                 conf = _as_text(row.get("confidence")) or "observed"
+                iid = f"tc:{rows_inserted}"
+                self._trade_compare_rows_by_iid[iid] = dict(row)
                 self.trade_compare_tree.insert(
                     "",
                     "end",
-                    values=(mode_label, system_name, station_name, f"{price}", f"{age} | {conf}"),
+                    iid=iid,
+                    values=(mode_label, commodity_name, system_name, station_name, f"{price}", f"{age} | {conf}"),
                 )
                 for key in self._node_keys_for_system_name(system_name):
                     self._trade_highlight_node_keys.add(key)
@@ -1296,9 +1602,20 @@ class JournalMapTab(tk.Frame):
             self.trade_compare_tree.insert(
                 "",
                 "end",
-                values=("INFO", "-", "-", "-", "brak danych po filtrach"),
+                values=("INFO", commodity_name, "-", "-", "-", "brak danych po filtrach"),
             )
-        self._redraw_scene()
+        else:
+            # Default active commodity highlight (single commodity mode = all rows same commodity).
+            self._highlight_trade_compare_for_commodity(commodity_name)
+            rows = self.trade_compare_tree.get_children()
+            if rows:
+                try:
+                    self.trade_compare_tree.selection_set(rows[0])
+                    self.trade_compare_tree.focus(rows[0])
+                except Exception:
+                    pass
+        if rows_inserted <= 0:
+            self._redraw_scene()
 
         trade_layer_on = bool(self.layer_trade_var.get())
         suffix = "" if trade_layer_on else " (warstwa Trade wylaczona - highlight ukryty)"
@@ -1315,6 +1632,109 @@ class JournalMapTab(tk.Frame):
             "highlight_nodes": len(self._trade_highlight_node_keys),
             "sell_meta": dict(sell_meta or {}),
             "buy_meta": dict(buy_meta or {}),
+        }
+
+    def _run_trade_compare_multi(self, commodities: list[str]) -> dict[str, Any]:
+        selected = []
+        seen: set[str] = set()
+        for item in commodities or []:
+            text = _as_text(item)
+            if not text:
+                continue
+            key = text.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            selected.append(text)
+        self._set_trade_selected_commodities(selected)
+
+        self.trade_compare_tree.delete(*self.trade_compare_tree.get_children())
+        self._trade_compare_rows = []
+        self._trade_compare_rows_by_iid.clear()
+        self._trade_highlight_node_keys.clear()
+        self._sync_trade_highlight_button_state()
+        if not selected:
+            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "-", "wybierz towary"))
+            self._redraw_scene()
+            return {"ok": False, "reason": "missing_commodities"}
+
+        rows_inserted = 0
+        total_sell = 0
+        total_buy = 0
+        provider_errors = 0
+        for commodity_name in selected:
+            try:
+                sell_rows, _sell_meta = self.data_provider.get_top_prices(
+                    commodity_name,
+                    "sell",
+                    time_range=str(self.time_range_var.get() or "all"),
+                    freshness_filter=str(self.freshness_var.get() or "any"),
+                    limit=5,
+                )
+                buy_rows, _buy_meta = self.data_provider.get_top_prices(
+                    commodity_name,
+                    "buy",
+                    time_range=str(self.time_range_var.get() or "all"),
+                    freshness_filter=str(self.freshness_var.get() or "any"),
+                    limit=5,
+                )
+            except Exception:
+                provider_errors += 1
+                continue
+
+            total_sell += len(sell_rows or [])
+            total_buy += len(buy_rows or [])
+            for mode_label, rows in (("SELL", sell_rows), ("BUY", buy_rows)):
+                for row in rows or []:
+                    if not isinstance(row, dict):
+                        continue
+                    rec = dict(row)
+                    self._trade_compare_rows.append(rec)
+                    system_name = _as_text(rec.get("system_name")) or "-"
+                    station_name = _as_text(rec.get("station_name")) or "-"
+                    price = int(rec.get("price") or 0)
+                    age = _format_age_short(rec.get("freshness_ts"))
+                    conf = _as_text(rec.get("confidence")) or "observed"
+                    iid = f"tcm:{rows_inserted}"
+                    self._trade_compare_rows_by_iid[iid] = rec
+                    self.trade_compare_tree.insert(
+                        "",
+                        "end",
+                        iid=iid,
+                        values=(mode_label, commodity_name, system_name, station_name, f"{price}", f"{age} | {conf}"),
+                    )
+                    rows_inserted += 1
+
+        if rows_inserted <= 0:
+            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "-", "brak danych po filtrach"))
+            self._redraw_scene()
+            self.map_status_var.set("Mapa: Trade compare (multi) - brak danych dla wybranych towarow.")
+            return {"ok": False, "reason": "no_rows", "commodities": selected, "provider_errors": provider_errors}
+
+        # Auto-select first row and highlight by active commodity.
+        rows = self.trade_compare_tree.get_children()
+        if rows:
+            try:
+                self.trade_compare_tree.selection_set(rows[0])
+                self.trade_compare_tree.focus(rows[0])
+            except Exception:
+                pass
+            row = self._trade_compare_rows_by_iid.get(str(rows[0])) or {}
+            active_commodity = _as_text(row.get("commodity")) or selected[0]
+            self._highlight_trade_compare_for_commodity(active_commodity)
+
+        trade_layer_on = bool(self.layer_trade_var.get())
+        suffix = "" if trade_layer_on else " (warstwa Trade wylaczona - highlight ukryty)"
+        self.map_status_var.set(
+            f"Mapa: Trade compare multi ({len(selected)} towarow) | sell={total_sell} buy={total_buy} | rows={rows_inserted}{suffix}"
+        )
+        return {
+            "ok": True,
+            "commodities": list(selected),
+            "rows_inserted": rows_inserted,
+            "sell_count": total_sell,
+            "buy_count": total_buy,
+            "provider_errors": provider_errors,
         }
 
     def _canvas_current_node_key(self) -> str | None:
