@@ -282,6 +282,15 @@ class EventHandler:
             exploration_dss_events.handle_dss_scan_complete(ev, gui_ref)
             try:
                 from app.state import app_state
+                app_state.system_value_engine.analyze_dss_scan_complete_event(ev)
+            except Exception as exc:
+                _log_router_fallback(
+                    "saa.dss_value",
+                    "SAAScanComplete DSS value analysis failed",
+                    exc,
+                )
+            try:
+                from app.state import app_state
                 app_state.system_value_engine.analyze_discovery_meta_event(ev)
             except Exception as exc:
                 _log_router_fallback(

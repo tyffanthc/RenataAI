@@ -149,6 +149,39 @@ class SystemValueEngineTests(unittest.TestCase):
             places=6,
         )
 
+    def test_saa_scan_complete_upgrades_existing_fss_body_to_dss_value_once(self) -> None:
+        scan_fss = {
+            "event": "Scan",
+            "StarSystem": "TEST_SYS_G",
+            "BodyName": "TEST_SYS_G 1",
+            "PlanetClass": "Water world",
+            "TerraformState": "Terraformable",
+            "WasDiscovered": False,
+            "WasMapped": False,
+        }
+        saa_done = {
+            "event": "SAAScanComplete",
+            "StarSystem": "TEST_SYS_G",
+            "BodyName": "TEST_SYS_G 1",
+        }
+
+        self.engine.analyze_scan_event(scan_fss)
+        stats = self.engine.get_system_stats("TEST_SYS_G")
+        self.assertIsNotNone(stats)
+        self.assertAlmostEqual(stats.c_cartography, 1000.0, places=3)
+        # FSS estimate bonus (1000 * ((3000/1500)-1)) = 1000
+        self.assertAlmostEqual(stats.bonus_discovery, 1000.0, places=3)
+
+        self.engine.analyze_dss_scan_complete_event(saa_done)
+        stats = self.engine.get_system_stats("TEST_SYS_G")
+        self.assertAlmostEqual(stats.c_cartography, 1500.0, places=3)
+        self.assertAlmostEqual(stats.bonus_discovery, 1500.0, places=3)
+
+        # Dedupe: repeated SAAScanComplete should not change totals again.
+        self.engine.analyze_dss_scan_complete_event(saa_done)
+        stats = self.engine.get_system_stats("TEST_SYS_G")
+        self.assertAlmostEqual(stats.c_cartography, 1500.0, places=3)
+        self.assertAlmostEqual(stats.bonus_discovery, 1500.0, places=3)
 
 if __name__ == "__main__":
     unittest.main()

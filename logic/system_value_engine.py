@@ -38,6 +38,7 @@ class SystemStats:
     seen_bodies: Set[str] = field(default_factory=set)   # żeby nie liczyć skanu 2x
     seen_species: Set[str] = field(default_factory=set)  # żeby nie liczyć gatunku 2x
     high_value_targets: List[Dict[str, Any]] = field(default_factory=list)
+    cartography_bodies: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # body_id -> applied valuation state
 
     # --- Discovery status 2.0 ---
     # ile ciał faktycznie zeskanowaliśmy w tym systemie
@@ -193,6 +194,19 @@ class SystemValueEngine:
         if bonus > 0:
             stats.any_discovery_bonuses = True
 
+        # Track applied cartography state so SAAScanComplete can upgrade FSS -> DSS.
+        stats.cartography_bodies[str(body_id)] = {
+            "body_type": body_type,
+            "terraformable": terraformable,
+            "was_discovered": was_discovered,
+            "fss_value": fss_value,
+            "dss_value": dss_value,
+            "fd_mapped": fd_mapped,
+            "base_applied": base_value,
+            "bonus_applied": bonus,
+            "mapped_accounted": bool(was_mapped),
+        }
+
         # High-Value Targets (ELW / WW / terraformable)
         if self._is_high_value_target(body_type, terraformable):
             stats.high_value_targets.append(
@@ -203,6 +217,64 @@ class SystemValueEngine:
                     "estimated_value": base_value + bonus,
                 }
             )
+
+    def analyze_dss_scan_complete_event(self, event: Dict[str, Any]) -> None:
+        """
+        Upgrade cartography valuation for a body when DSS mapping completes (SAAScanComplete).
+
+        Journal SAAScanComplete usually does not carry enough body type/value metadata on its
+        own, so this method upgrades a body that was previously seen in `Scan` based on the
+        cached row/values captured during `analyze_scan_event`.
+        """
+        if str(event.get("event") or "").strip() != "SAAScanComplete":
+            return
+
+        system_name = event.get("StarSystem") or self.current_system
+        if not system_name:
+            return
+
+        stats = self.systems.get(str(system_name))
+        if not stats:
+            return
+
+        body_id = (
+            event.get("BodyName")
+            or event.get("Body")
+            or (str(event.get("BodyID")) if event.get("BodyID") is not None else None)
+        )
+        if not body_id:
+            return
+
+        row = stats.cartography_bodies.get(str(body_id))
+        if not isinstance(row, dict):
+            return
+
+        if bool(row.get("mapped_accounted")):
+            return
+
+        current_base = float(row.get("base_applied", 0.0) or 0.0)
+        current_bonus = float(row.get("bonus_applied", 0.0) or 0.0)
+        dss_value = float(row.get("dss_value", 0.0) or 0.0)
+        fd_mapped = float(row.get("fd_mapped", 0.0) or 0.0)
+        was_discovered = row.get("was_discovered")
+
+        if dss_value <= 0.0:
+            row["mapped_accounted"] = True
+            return
+
+        target_base = dss_value
+        target_bonus = 0.0
+        if was_discovered is False or was_discovered == 0:
+            target_bonus = max(0.0, fd_mapped - dss_value)
+
+        stats.c_cartography += (target_base - current_base)
+        stats.bonus_discovery += (target_bonus - current_bonus)
+        if target_bonus > 0.0:
+            stats.any_discovery_bonuses = True
+
+        row["base_applied"] = target_base
+        row["bonus_applied"] = target_bonus
+        row["mapped_accounted"] = True
 
     def analyze_biology_event(self, event: Dict[str, Any]) -> None:
         """

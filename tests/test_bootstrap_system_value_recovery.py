@@ -82,7 +82,36 @@ class BootstrapSystemValueRecoveryTests(unittest.TestCase):
         self.assertIsNotNone(stats)
         self.assertEqual(int(getattr(stats, "total_scanned_bodies", 0)), 1)
 
+    def test_recovery_upgrades_fss_value_when_saa_scan_complete_is_present(self) -> None:
+        lines = [
+            json.dumps({"event": "Location", "StarSystem": "BOOTSTRAP_RECOVERY_SYS"}),
+            json.dumps(
+                {
+                    "event": "Scan",
+                    "StarSystem": "BOOTSTRAP_RECOVERY_SYS",
+                    "BodyName": "BOOTSTRAP_RECOVERY_SYS C 1",
+                    "PlanetClass": "Water world",
+                    "TerraformState": "Terraformable",
+                    "WasDiscovered": False,
+                    "WasMapped": False,
+                }
+            ),
+            json.dumps(
+                {
+                    "event": "SAAScanComplete",
+                    "StarSystem": "BOOTSTRAP_RECOVERY_SYS",
+                    "BodyName": "BOOTSTRAP_RECOVERY_SYS C 1",
+                }
+            ),
+        ]
+        recover_system_value_from_journal_lines(lines, max_lines=200)
+        stats = app_state.system_value_engine.get_system_stats("BOOTSTRAP_RECOVERY_SYS")
+        self.assertIsNotNone(stats)
+        # Water World row in project science data should produce >0 and be upgraded by DSS.
+        self.assertGreater(float(getattr(stats, "c_cartography", 0.0) or 0.0), 0.0)
+        body_state = dict((getattr(stats, "cartography_bodies", {}) or {}).get("BOOTSTRAP_RECOVERY_SYS C 1") or {})
+        self.assertTrue(bool(body_state.get("mapped_accounted")))
+
 
 if __name__ == "__main__":
     unittest.main()
-

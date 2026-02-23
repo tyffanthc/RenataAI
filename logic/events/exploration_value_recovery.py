@@ -91,6 +91,7 @@ def recover_system_value_from_journal_lines(
                 continue
 
             if event_name == "SAAScanComplete":
+                engine.analyze_dss_scan_complete_event(ev_work)
                 engine.analyze_discovery_meta_event(ev_work)
                 recovered_events += 1
                 meta_events += 1
@@ -114,4 +115,3 @@ def bootstrap_system_value_from_journal_lines(
     max_lines: int = 4000,
 ) -> Dict[str, Any]:
     return recover_system_value_from_journal_lines(lines, max_lines=max_lines)
-
