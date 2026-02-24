@@ -352,18 +352,35 @@ def handle_fss_discovery_scan(ev: Dict[str, Any], gui_ref=None):
     """
     ObsĹ‚uga eventu FSSDiscoveryScan â€” ustawienie liczby ciaĹ‚ w systemie.
     """
+    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES
     body_count = ev.get("BodyCount") or 0
     try:
         count = int(body_count)
     except Exception:
         count = 0
 
-    reset_fss_progress()
-    if count > 0:
-        _set_fss_total_bodies(count)
-        utils.MSG_QUEUE.put(
-            ("log", f"[FSS] System ma {count} ciaĹ‚ (wg FSSDiscoveryScan).")
-        )
+    if count <= 0:
+        return
+
+    # Navigation events (Location/FSDJump/CarrierJump) already reset FSS state on
+    # system entry. Repeating FSSDiscoveryScan in the same system should NOT wipe
+    # current progress, otherwise milestones can be re-triggered from 0% and the
+    # player hears stale percentages after partial scans.
+    has_progress = bool(FSS_SCANNED_BODIES) or int(FSS_DISCOVERED or 0) > 0
+    if has_progress:
+        previous_total = int(FSS_TOTAL_BODIES or 0)
+        # Keep progress and only refresh total body count metadata.
+        FSS_TOTAL_BODIES = max(count, int(FSS_DISCOVERED or 0))
+        if FSS_TOTAL_BODIES != previous_total:
+            utils.MSG_QUEUE.put(
+                ("log", f"[FSS] Zaktualizowano BodyCount (bez resetu progresu): {previous_total} -> {FSS_TOTAL_BODIES}.")
+            )
+        return
+
+    _set_fss_total_bodies(count)
+    utils.MSG_QUEUE.put(
+        ("log", f"[FSS] System ma {count} ciaĹ‚ (wg FSSDiscoveryScan).")
+    )
 
 
 def handle_fss_all_bodies_found(ev: Dict[str, Any], gui_ref=None):
