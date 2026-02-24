@@ -219,12 +219,22 @@ def _persist_exobio_state(*, force: bool = False) -> bool:
         config.update_anti_spam_state({"exobio": payload})
         _EXOBIO_LAST_PERSIST_TS = now
         return True
-    except Exception:
+    except Exception as exc:
+        _log_exobio_fallback(
+            "persist.anti_spam_state",
+            "failed to persist exobio state via anti_spam_state",
+            exc,
+        )
         try:
             config.STATE["exobio_state"] = payload
             _EXOBIO_LAST_PERSIST_TS = now
             return True
-        except Exception:
+        except Exception as exc2:
+            _log_exobio_fallback(
+                "persist.config_state",
+                "failed to persist exobio state via config.STATE fallback",
+                exc2,
+            )
             return False
 
 
@@ -342,7 +352,12 @@ def load_exobio_state_from_contract(*, force: bool = False) -> Dict[str, Any]:
         raw = anti_spam_state.get("exobio") if isinstance(anti_spam_state, dict) else {}
         if isinstance(raw, dict):
             payload = raw
-    except Exception:
+    except Exception as exc:
+        _log_exobio_fallback(
+            "load.anti_spam_state",
+            "failed to read persisted exobio anti_spam_state payload",
+            exc,
+        )
         payload = {}
 
     if not payload:
@@ -350,7 +365,12 @@ def load_exobio_state_from_contract(*, force: bool = False) -> Dict[str, Any]:
             raw = config.STATE.get("exobio_state", {})
             if isinstance(raw, dict):
                 payload = raw
-        except Exception:
+        except Exception as exc:
+            _log_exobio_fallback(
+                "load.config_state",
+                "failed to read persisted exobio config.STATE payload",
+                exc,
+            )
             payload = {}
 
     if not payload:
@@ -377,7 +397,13 @@ def recover_exobio_from_journal_lines(
     for raw_line in list(lines)[-max_lines:]:
         try:
             ev = json.loads(raw_line)
-        except Exception:
+        except Exception as exc:
+            _log_exobio_fallback(
+                "recover.journal_json",
+                "failed to parse journal line during exobio recovery",
+                exc,
+                interval_ms=5000,
+            )
             continue
         if not isinstance(ev, dict):
             continue
