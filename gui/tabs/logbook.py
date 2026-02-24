@@ -30,6 +30,7 @@ from logic.logbook_feed_cache import (
     clear_logbook_feed_cache,
     load_logbook_feed_cache,
 )
+from logic.utils.renata_log import log_event_throttled
 
 try:
     import pyperclip
@@ -229,7 +230,12 @@ class LogbookTab(tk.Frame):
         try:
             self.tab_map.apply_persisted_ui_state(self._pending_map_ui_state)
         except Exception:
-            pass
+            log_event_throttled(
+                "logbook.map_ui_state.apply",
+                3000,
+                "WARN",
+                "Logbook: failed to apply persisted map UI state",
+            )
         self._restore_logbook_feed_from_cache()
         self.sub_notebook.bind("<<NotebookTabChanged>>", self._on_subtab_changed, add="+")
         self._restore_subtab_from_ui_state()
@@ -1516,7 +1522,12 @@ class LogbookTab(tk.Frame):
             if isinstance(map_state, dict):
                 self._pending_map_ui_state = dict(map_state)
         except Exception:
-            pass
+            log_event_throttled(
+                "logbook.ui_state.load",
+                3000,
+                "WARN",
+                "Logbook: failed to load persisted UI state",
+            )
 
     def _resolve_active_subtab_key(self) -> str:
         try:
@@ -1534,18 +1545,33 @@ class LogbookTab(tk.Frame):
             try:
                 self.sub_notebook.select(self.tab_map)
             except Exception:
-                pass
+                log_event_throttled(
+                    "logbook.subtab.restore.map",
+                    3000,
+                    "WARN",
+                    "Logbook: failed to restore subtab 'map'",
+                )
             return
         if self._pending_subtab_key == "feed":
             try:
                 self.sub_notebook.select(self.tab_feed)
             except Exception:
-                pass
+                log_event_throttled(
+                    "logbook.subtab.restore.feed",
+                    3000,
+                    "WARN",
+                    "Logbook: failed to restore subtab 'feed'",
+                )
             return
         try:
             self.sub_notebook.select(self.tab_entries)
         except Exception:
-            pass
+            log_event_throttled(
+                "logbook.subtab.restore.entries",
+                3000,
+                "WARN",
+                "Logbook: failed to restore subtab 'entries'",
+            )
 
     def _persist_ui_state(self) -> None:
         if bool(getattr(self, "_ui_state_suppress_persist", False)):
@@ -1559,6 +1585,12 @@ class LogbookTab(tk.Frame):
                     if isinstance(out, dict):
                         map_state = dict(out)
             except Exception:
+                log_event_throttled(
+                    "logbook.map_ui_state.export",
+                    3000,
+                    "WARN",
+                    "Logbook: failed to export map UI state for persistence",
+                )
                 map_state = {}
             config.update_ui_state(
                 {
@@ -1579,7 +1611,12 @@ class LogbookTab(tk.Frame):
                 }
             )
         except Exception:
-            pass
+            log_event_throttled(
+                "logbook.ui_state.persist",
+                3000,
+                "WARN",
+                "Logbook: failed to persist UI state",
+            )
 
     def _on_subtab_changed(self, _event=None) -> None:
         try:
@@ -1588,7 +1625,12 @@ class LogbookTab(tk.Frame):
                 if callable(callback):
                     callback()
         except Exception:
-            pass
+            log_event_throttled(
+                "logbook.subtab_changed.map_activate",
+                3000,
+                "WARN",
+                "Logbook: map subtab activation callback failed",
+            )
         self._persist_ui_state()
 
     def _on_filters_changed(self) -> None:
@@ -1602,7 +1644,12 @@ class LogbookTab(tk.Frame):
             if callable(callback):
                 callback(payload)
         except Exception:
-            pass
+            log_event_throttled(
+                "logbook.playerdb_updated.notify",
+                2000,
+                "WARN",
+                "Logbook: failed to notify map tab about playerdb update",
+            )
 
     def _set_filter_tag_display(self) -> None:
         if not self._selected_filter_tags:
@@ -1635,7 +1682,12 @@ class LogbookTab(tk.Frame):
                 if popover.winfo_exists():
                     popover.destroy()
             except Exception:
-                pass
+                log_event_throttled(
+                    "logbook.popover.destroy",
+                    3000,
+                    "WARN",
+                    "Logbook: failed to destroy active popover",
+                )
 
     def _on_global_click_maybe_close_popover(self, event) -> None:
         popover = self._active_popover
@@ -2436,6 +2488,12 @@ class LogbookTab(tk.Frame):
         try:
             from logic.insight_dispatcher import emit_insight
         except Exception:
+            log_event_throttled(
+                "logbook.ppm_callout.import_emit_insight",
+                3000,
+                "WARN",
+                "Logbook: failed to import insight dispatcher for PPM callout",
+            )
             return
         payload = dict(context or {})
         payload["raw_text"] = text
@@ -2453,6 +2511,12 @@ class LogbookTab(tk.Frame):
                 cooldown_seconds=8.0,
             )
         except Exception:
+            log_event_throttled(
+                "logbook.ppm_callout.emit",
+                3000,
+                "WARN",
+                f"Logbook: failed to emit PPM callout ({message_id})",
+            )
             return
 
     def _get_smart_context(self) -> tuple[str, str, str]:
@@ -2920,6 +2984,12 @@ class LogbookTab(tk.Frame):
         try:
             app_state.set_route_intent(target, source="journal.entries")
         except Exception:
+            log_event_throttled(
+                "logbook.entry.set_route_intent",
+                2000,
+                "WARN",
+                "Logbook: failed to set route intent from selected entry",
+            )
             self.status_var.set("Nie udalo sie ustawic celu nawigacji.")
             return
 
@@ -2927,7 +2997,12 @@ class LogbookTab(tk.Frame):
             try:
                 pyperclip.copy(target)
             except Exception:
-                pass
+                log_event_throttled(
+                    "logbook.entry.copy_target",
+                    2000,
+                    "WARN",
+                    "Logbook: failed to copy entry navigation target to clipboard",
+                )
         self.status_var.set(f"Ustawiono cel [{target_kind}]: {target}")
         self._emit_ppm_callout(
             f"Ustawiono cel nawigacji: {target}.",
@@ -2948,6 +3023,12 @@ class LogbookTab(tk.Frame):
         try:
             app_state.set_route_intent(target, source="journal.logbook.event")
         except Exception:
+            log_event_throttled(
+                "logbook.feed_event.set_route_intent",
+                2000,
+                "WARN",
+                "Logbook: failed to set route intent from logbook event",
+            )
             self.logbook_status_var.set("Nie udalo sie ustawic celu z eventu.")
             return
         self.logbook_status_var.set(f"Ustawiono cel z eventu: {target}")
@@ -2964,6 +3045,12 @@ class LogbookTab(tk.Frame):
         try:
             app_state.set_route_intent(target, source="journal.logbook.chip")
         except Exception:
+            log_event_throttled(
+                "logbook.chip.set_route_intent",
+                2000,
+                "WARN",
+                "Logbook: failed to set route intent from chip",
+            )
             self.logbook_status_var.set("Nie udalo sie ustawic celu z chipa.")
             return
         self.logbook_status_var.set(f"Ustawiono cel z chipa: {target}")
@@ -2981,7 +3068,12 @@ class LogbookTab(tk.Frame):
             try:
                 pyperclip.copy(target)
             except Exception:
-                pass
+                log_event_throttled(
+                    "logbook.chip.copy",
+                    2000,
+                    "WARN",
+                    "Logbook: failed to copy chip target to clipboard",
+                )
         self.logbook_status_var.set(f"Skopiowano chip: {target}")
 
     def _toggle_pin_selected_entry(self) -> None:
@@ -3017,7 +3109,12 @@ class LogbookTab(tk.Frame):
             try:
                 pyperclip.copy(system_name)
             except Exception:
-                pass
+                log_event_throttled(
+                    "logbook.entry.copy_system",
+                    2000,
+                    "WARN",
+                    "Logbook: failed to copy entry system to clipboard",
+                )
         self.status_var.set(f"Skopiowano system: {system_name}")
         self._emit_ppm_callout(
             f"Skopiowano system: {system_name}.",
