@@ -53,7 +53,7 @@ class F17TtsOperationalCalloutsTests(unittest.TestCase):
         kwargs = emit_mock.call_args.kwargs
         self.assertEqual(kwargs.get("message_id"), "MSG.HIGH_G_WARNING")
         ctx = dict(kwargs.get("context") or {})
-        self.assertIn("wysokie przeciazenie grawitacyjne", str(ctx.get("raw_text") or "").lower())
+        self.assertIn("wysokie przeciążenie grawitacyjne", str(ctx.get("raw_text") or "").lower())
 
     def test_high_g_warning_ignored_for_low_gravity(self) -> None:
         event = {

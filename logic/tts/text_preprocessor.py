@@ -332,7 +332,9 @@ def _normalize_station_name(value: Any) -> str:
 def _finalize_tts(text: str) -> str:
     text = _repair_polish_text(text)
     text = _verbalize_tts_numbers(text)
-    text = text.replace("?", ".").replace("!", ".").replace(",", ".")
+    # Keep commas - they improve Polish prosody (lists, clauses, number phrasing).
+    # We normalize hard sentence terminators only.
+    text = text.replace("?", ".").replace("!", ".")
     text = re.sub(r"\.{2,}", ".", text)
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"\s*\.\s*", ". ", text).strip()

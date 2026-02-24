@@ -28,6 +28,14 @@ class F28TtsNumberVerbalizationAndRawTextFirstTests(unittest.TestCase):
         self.assertIn("trzydzieści trzy przecinek dziewięć lat świetlnych", lowered)
 
 
+    def test_commas_are_preserved_for_prosody(self) -> None:
+        text = prepare_tts(
+            "MSG.CASH_IN_ASSISTANT",
+            {"raw_text": "Rozwaz teraz, po domknieciu systemu albo pozniej."},
+        ) or ""
+        self.assertIn(",", text)
+
+
 if __name__ == "__main__":
     unittest.main()
 
