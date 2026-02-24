@@ -275,7 +275,13 @@ class TradeTab(ttk.Frame):
                 if key in flags:
                     var.set(bool(flags.get(key)))
         except Exception:
-            pass
+            log_event_throttled(
+                "WARN",
+                "TRADE_UI_STATE_RESTORE_FAILED",
+                "Spansh Trade: restore UI state failed",
+                cooldown_sec=120.0,
+                context="spansh.trade.ui_state.restore",
+            )
 
     def _persist_trade_ui_state(self) -> None:
         if bool(getattr(self, "_ui_state_suppress_persist", False)):
@@ -291,7 +297,13 @@ class TradeTab(ttk.Frame):
                 }
             )
         except Exception:
-            pass
+            log_event_throttled(
+                "WARN",
+                "TRADE_UI_STATE_PERSIST_FAILED",
+                "Spansh Trade: persist UI state failed",
+                cooldown_sec=120.0,
+                context="spansh.trade.ui_state.persist",
+            )
 
     def _on_trade_flag_var_changed(self, *_args) -> None:
         self._persist_trade_ui_state()
@@ -877,7 +889,13 @@ class TradeTab(ttk.Frame):
             try:
                 child.destroy()
             except Exception:
-                pass
+                log_event_throttled(
+                    "WARN",
+                    "TRADE_SELL_ASSIST_CARD_DESTROY_FAILED",
+                    "Spansh Trade: sell-assist card destroy failed",
+                    cooldown_sec=60.0,
+                    context="spansh.trade.sell_assist.clear",
+                )
 
     def _dismiss_sell_assist(self) -> None:
         self._sell_assist_dismissed = True
@@ -957,7 +975,13 @@ class TradeTab(ttk.Frame):
             try:
                 child.destroy()
             except Exception:
-                pass
+                log_event_throttled(
+                    "WARN",
+                    "TRADE_SELL_ASSIST_CARD_DESTROY_FAILED",
+                    "Spansh Trade: sell-assist card destroy failed",
+                    cooldown_sec=60.0,
+                    context="spansh.trade.sell_assist.render",
+                )
 
         payload = decision_space or {}
         options = list(payload.get("options") or [])
@@ -1003,6 +1027,13 @@ class TradeTab(ttk.Frame):
         try:
             from logic.insight_dispatcher import emit_insight
         except Exception:
+            log_event_throttled(
+                "WARN",
+                "TRADE_DATA_STALE_CALLOUT_IMPORT_FAILED",
+                "Spansh Trade: stale-data callout import failed",
+                cooldown_sec=120.0,
+                context="spansh.trade.data_stale.import",
+            )
             return
         first = rows[0] if rows else {}
         system = str(first.get("from_system") or getattr(app_state, "current_system", "") or "unknown").strip() or "unknown"
@@ -1027,6 +1058,13 @@ class TradeTab(ttk.Frame):
                 cooldown_seconds=120.0,
             )
         except Exception:
+            log_event_throttled(
+                "WARN",
+                "TRADE_DATA_STALE_CALLOUT_EMIT_FAILED",
+                "Spansh Trade: stale-data callout emit failed",
+                cooldown_sec=120.0,
+                context=f"spansh.trade.data_stale.emit:{system}",
+            )
             return
 
     def _toggle_trade_details(self) -> None:
@@ -1041,7 +1079,13 @@ class TradeTab(ttk.Frame):
             try:
                 self.trade_details_body.pack_forget()
             except Exception:
-                pass
+                log_event_throttled(
+                    "WARN",
+                    "TRADE_DETAILS_PANEL_COLLAPSE_FAILED",
+                    "Spansh Trade: collapse details panel failed",
+                    cooldown_sec=60.0,
+                    context="spansh.trade.details.collapse",
+                )
             return
 
         self.var_trade_details_toggle.set("Ukryj szczegoly kroku")
@@ -1049,7 +1093,13 @@ class TradeTab(ttk.Frame):
             if not self.trade_details_body.winfo_manager():
                 self.trade_details_body.pack(fill="both", expand=True, pady=(4, 0))
         except Exception:
-            pass
+            log_event_throttled(
+                "WARN",
+                "TRADE_DETAILS_PANEL_EXPAND_FAILED",
+                "Spansh Trade: expand details panel failed",
+                cooldown_sec=60.0,
+                context="spansh.trade.details.expand",
+            )
         self.root.after_idle(self._position_trade_splitter_for_details)
 
     def _position_trade_splitter_for_details(self) -> None:
@@ -1069,7 +1119,13 @@ class TradeTab(ttk.Frame):
         try:
             self.trade_split.sashpos(0, sash_pos)
         except Exception:
-            pass
+            log_event_throttled(
+                "WARN",
+                "TRADE_DETAILS_SPLITTER_POSITION_FAILED",
+                "Spansh Trade: details splitter position failed",
+                cooldown_sec=60.0,
+                context="spansh.trade.details.splitter",
+            )
 
     def _on_trade_table_mapped(self, _event=None) -> None:
         if not isinstance(self.lst_trade, ttk.Treeview):
@@ -1595,7 +1651,13 @@ class TradeTab(ttk.Frame):
             if rendered:
                 return str(rendered[0]).strip()
         except Exception:
-            pass
+            log_event_throttled(
+                "WARN",
+                "TRADE_ROW_RENDER_FALLBACK",
+                "Spansh Trade: row render fallback used",
+                cooldown_sec=60.0,
+                context="spansh.trade.results.row_render",
+            )
         return str(row_text or "").strip()
 
     def _selected_internal_indices(self) -> list[int]:
@@ -1956,6 +2018,13 @@ class TradeTab(ttk.Frame):
             try:
                 stations = edsm_stations_for_system(raw_system) or []
             except Exception:
+                log_event_throttled(
+                    "WARN",
+                    "TRADE_STATION_LOOKUP_EDSM_FAILED",
+                    "Spansh Trade: EDSM station lookup failed",
+                    cooldown_sec=60.0,
+                    context=f"spansh.trade.station_lookup.edsm:{raw_system.lower()}",
+                )
                 stations = []
             if stations:
                 self._remember_station_list(raw_system, stations)
@@ -1967,6 +2036,13 @@ class TradeTab(ttk.Frame):
             try:
                 stations = spansh_client.stations_for_system(raw_system, None) or []
             except Exception:
+                log_event_throttled(
+                    "WARN",
+                    "TRADE_STATION_LOOKUP_SPANSH_FAILED",
+                    "Spansh Trade: Spansh station lookup failed",
+                    cooldown_sec=60.0,
+                    context=f"spansh.trade.station_lookup.spansh:{raw_system.lower()}",
+                )
                 stations = []
             if stations:
                 self._remember_station_list(raw_system, stations)
@@ -1983,7 +2059,13 @@ class TradeTab(ttk.Frame):
             try:
                 self.e_system.focus_set()
             except Exception:
-                pass
+                log_event_throttled(
+                    "WARN",
+                    "TRADE_STATION_PICKER_FOCUS_FAILED",
+                    "Spansh Trade: focus system field failed",
+                    cooldown_sec=60.0,
+                    context="spansh.trade.station_picker.focus_system",
+                )
             return
 
         # Re-open existing picker if still alive.
@@ -2001,7 +2083,13 @@ class TradeTab(ttk.Frame):
                     )
                     return
             except Exception:
-                pass
+                log_event_throttled(
+                    "WARN",
+                    "TRADE_STATION_PICKER_REOPEN_FAILED",
+                    "Spansh Trade: reopen station picker failed",
+                    cooldown_sec=60.0,
+                    context="spansh.trade.station_picker.reopen",
+                )
             self._station_picker_window = None
 
         stations_all = self._load_station_candidates(system)
@@ -2018,7 +2106,13 @@ class TradeTab(ttk.Frame):
         try:
             apply_renata_orange_window_chrome(top)
         except Exception:
-            pass
+            log_event_throttled(
+                "WARN",
+                "TRADE_STATION_PICKER_CHROME_FAILED",
+                "Spansh Trade: station picker chrome styling failed",
+                cooldown_sec=120.0,
+                context="spansh.trade.station_picker.chrome",
+            )
 
         info_var = tk.StringVar(value=f"Dostepne stacje: {len(stations_all)}")
         query_var = tk.StringVar()
@@ -2086,7 +2180,13 @@ class TradeTab(ttk.Frame):
                 if hasattr(self, "ac_station"):
                     self.ac_station.hide()
             except Exception:
-                pass
+                log_event_throttled(
+                    "WARN",
+                    "TRADE_STATION_PICKER_AC_HIDE_FAILED",
+                    "Spansh Trade: station autocomplete hide failed",
+                    cooldown_sec=60.0,
+                    context="spansh.trade.station_picker.ac_hide",
+                )
             _close_picker()
 
         def _close_picker() -> None:
@@ -2099,7 +2199,13 @@ class TradeTab(ttk.Frame):
                 try:
                     self.e_station.focus_set()
                 except Exception:
-                    pass
+                    log_event_throttled(
+                        "WARN",
+                        "TRADE_STATION_PICKER_FOCUS_RESTORE_FAILED",
+                        "Spansh Trade: restore station field focus failed",
+                        cooldown_sec=60.0,
+                        context="spansh.trade.station_picker.focus_restore",
+                    )
 
         f_btn = ttk.Frame(f_top)
         f_btn.pack(fill="x", pady=(10, 0))
@@ -2724,7 +2830,13 @@ class TradeTab(ttk.Frame):
                     widget.focus(first)
                     widget.see(first)
                 except Exception:
-                    pass
+                    log_event_throttled(
+                        "WARN",
+                        "TRADE_RESULTS_SELECT_FIRST_FAILED",
+                        "Spansh Trade: select first row failed (treeview)",
+                        cooldown_sec=60.0,
+                        context="spansh.trade.results.select_first.tree",
+                    )
         else:
             try:
                 widget.selection_clear(0, tk.END)
@@ -2732,7 +2844,13 @@ class TradeTab(ttk.Frame):
                 widget.activate(0)
                 widget.see(0)
             except Exception:
-                pass
+                log_event_throttled(
+                    "WARN",
+                    "TRADE_RESULTS_SELECT_FIRST_FAILED",
+                    "Spansh Trade: select first row failed (listbox)",
+                    cooldown_sec=60.0,
+                    context="spansh.trade.results.select_first.list",
+                )
         if reveal_details:
             self._show_trade_leg_details_by_index(0)
         else:
@@ -2999,7 +3117,13 @@ class TradeTab(ttk.Frame):
 
         except Exception:
 
-            pass
+            log_event_throttled(
+                "WARN",
+                "TRADE_MAX_HOP_SET_FAILED",
+                "Spansh Trade: set max hop failed",
+                cooldown_sec=60.0,
+                context="spansh.trade.max_hop.set",
+            )
 
         finally:
 
