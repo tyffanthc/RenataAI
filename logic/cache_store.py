@@ -9,6 +9,7 @@ from typing import Any, Optional, Tuple, Dict
 
 import config
 from logic import utils
+from logic.utils.renata_log import log_event_throttled
 
 _CACHE_ROOT_MIGRATION_DONE = False
 
@@ -27,7 +28,16 @@ def _merge_tree_no_overwrite(src_dir: str, dst_dir: str) -> int:
                     continue
                 shutil.move(src, dst)
                 moved += 1
-            except Exception:
+            except Exception as exc:
+                log_event_throttled(
+                    "cache.migrate.move_file",
+                    5000,
+                    "WARN",
+                    "Cache migration: failed to move cache file",
+                    src=src,
+                    dst=dst,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
                 continue
     return moved
 
@@ -40,12 +50,26 @@ def _prune_empty_dirs(path: str) -> None:
             full = os.path.join(root, d)
             try:
                 os.rmdir(full)
-            except Exception:
-                pass
+            except Exception as exc:
+                log_event_throttled(
+                    "cache.prune.rmdir.child",
+                    5000,
+                    "WARN",
+                    "Cache prune: failed to remove empty child directory",
+                    path=full,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
     try:
         os.rmdir(path)
-    except Exception:
-        pass
+    except Exception as exc:
+        log_event_throttled(
+            "cache.prune.rmdir.root",
+            5000,
+            "WARN",
+            "Cache prune: failed to remove empty cache directory",
+            path=path,
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
 
 def _migrate_legacy_appdata_cache_if_needed(base_appdata: str) -> None:
@@ -63,11 +87,23 @@ def _migrate_legacy_appdata_cache_if_needed(base_appdata: str) -> None:
         _prune_empty_dirs(old_root)
         try:
             os.rmdir(os.path.join(base_appdata, "Renata"))
-        except Exception:
-            pass
+        except Exception as exc:
+            log_event_throttled(
+                "cache.migrate.remove_legacy_root",
+                5000,
+                "WARN",
+                "Cache migration: failed to remove legacy APPDATA\\\\Renata root",
+                error=f"{type(exc).__name__}: {exc}",
+            )
         if moved > 0:
             utils.MSG_QUEUE.put(("log", f"[CACHE] migrated {moved} files to APPDATA\\\\RenataAI\\\\cache"))
     except Exception:
+        log_event_throttled(
+            "cache.migrate.legacy_root",
+            5000,
+            "WARN",
+            "Cache migration: legacy APPDATA cache migration failed",
+        )
         return
 
 
@@ -138,8 +174,15 @@ class CacheStore:
             _emit_cache_status("WARN", "CACHE_CORRUPT", "Cache corrupt")
             try:
                 os.remove(path)
-            except Exception:
-                pass
+            except Exception as exc:
+                log_event_throttled(
+                    "cache.get.remove_corrupt",
+                    5000,
+                    "WARN",
+                    "Cache: failed to remove corrupt cache file",
+                    path=path,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
             meta["reason"] = "corrupt"
             return False, None, meta
 
@@ -211,4 +254,12 @@ class CacheStore:
         try:
             os.remove(path)
         except Exception:
+            log_event_throttled(
+                "cache.delete",
+                3000,
+                "WARN",
+                "Cache: failed to delete cache key file",
+                key=str(key),
+                path=path,
+            )
             return
