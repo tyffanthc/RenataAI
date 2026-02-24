@@ -38,6 +38,19 @@ _SYSTEM_KEYS_BY_SCHEMA = {
 }
 
 
+def _log_common_tables_soft_failure(key: str, msg: str, **fields) -> None:
+    try:
+        log_event_throttled(
+            f"common_tables:{key}",
+            5000,
+            "GUI",
+            msg,
+            **fields,
+        )
+    except Exception:
+        return
+
+
 def _clean_system_candidate(value) -> str:
     text = str(value or "").strip()
     if not text:
@@ -219,8 +232,13 @@ def _on_listbox_checkbox_click(event):
     _refresh_listbox_checkbox_view(lb)
     try:
         lb.activate(row_id)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_common_tables_soft_failure(
+            "listbox_activate_after_checkbox_toggle",
+            "listbox activate after checkbox toggle failed",
+            row_id=row_id,
+            error=f"{type(exc).__name__}: {exc}",
+        )
     return "break"
 
 
@@ -486,8 +504,13 @@ def podswietl_cel(lb, idx) -> None:
         lb.selection_set(i)
         lb.activate(i)
         lb.see(i)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_common_tables_soft_failure(
+            "highlight_target_listbox",
+            "highlight target in listbox failed",
+            index=i,
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
 def _format_bool(value) -> str:
     if value is True:
@@ -1044,8 +1067,13 @@ def _save_column_presets(schema_id: str, presets: dict[str, list[str]], active: 
     new_cfg[schema_id] = {"active": active, "presets": presets}
     try:
         config.save({"column_presets": new_cfg})
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_common_tables_soft_failure(
+            "save_column_presets",
+            "saving column presets failed",
+            schema_id=schema_id,
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
 def _is_persist_sort_enabled() -> bool:
     return bool(config.get("features.tables.persist_sort_enabled", False))
@@ -1073,8 +1101,15 @@ def _save_sort_state(schema_id: str, column: str, desc: bool) -> None:
     new_cfg[schema_id] = {"column": column, "desc": bool(desc)}
     try:
         config.save({"tables_sort_state": new_cfg})
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_common_tables_soft_failure(
+            "save_sort_state",
+            "saving table sort state failed",
+            schema_id=schema_id,
+            column=column,
+            desc=bool(desc),
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
 def _get_saved_visible_columns(schema_id: str) -> list[str] | None:
     cfg = config.get("tables_visible_columns", {})
@@ -1104,8 +1139,14 @@ def _save_visible_columns(schema_id: str, visible: list[str]) -> None:
     new_tables[schema_id] = {"visible_columns": list(visible)}
     try:
         config.save({"tables_visible_columns": new_cfg, "tables": new_tables})
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_common_tables_soft_failure(
+            "save_visible_columns",
+            "saving visible table columns failed",
+            schema_id=schema_id,
+            count=len(list(visible or [])),
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
 def _refresh_table_listbox(listbox) -> None:
     schema_id = getattr(listbox, "_renata_table_schema", None)
@@ -1121,15 +1162,27 @@ def _refresh_table_listbox(listbox) -> None:
             numerate=False,
             show_copied_suffix=False,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_common_tables_soft_failure(
+            "refresh_table_listbox_fill",
+            "refresh table listbox fill failed",
+            schema_id=schema_id,
+            rows=len(list(rows or [])),
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        return
     _set_list_header(listbox, header)
     observer = _LISTBOX_REFRESH_OBSERVER
     if callable(observer):
         try:
             observer(listbox, schema_id, list(lines), _get_visible_columns(schema_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_common_tables_soft_failure(
+                "refresh_observer",
+                "listbox refresh observer failed",
+                schema_id=schema_id,
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
 def _refresh_table_treeview(tree) -> None:
     schema_id = getattr(tree, "_renata_table_schema", None)

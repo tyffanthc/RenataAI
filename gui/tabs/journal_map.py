@@ -12,6 +12,7 @@ from app.state import app_state
 from gui import common
 from gui.window_focus import bring_window_to_front
 from logic.personal_map_data_provider import MapDataProvider
+from logic.utils.renata_log import log_event_throttled
 
 COLOR_BG = "#0b0c10"
 COLOR_FG = "#ff7100"
@@ -31,6 +32,19 @@ COLOR_EXOBIO_LAYER = "#2dd4bf"
 COLOR_EXPLORATION_LAYER = "#facc15"
 COLOR_INCIDENT_LAYER = "#ef4444"
 COLOR_COMBAT_LAYER = "#fb7185"
+
+
+def _log_map_soft_failure(key: str, msg: str, **fields: Any) -> None:
+    try:
+        log_event_throttled(
+            f"journal_map:{key}",
+            5000,
+            "GUI",
+            msg,
+            **fields,
+        )
+    except Exception:
+        return
 
 
 @dataclass
@@ -241,8 +255,13 @@ class JournalMapTab(tk.Frame):
                 if key in layers:
                     try:
                         var.set(bool(layers.get(key)))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _log_map_soft_failure(
+                            "apply_state_layer_var",
+                            "apply persisted map layer state failed",
+                            layer=key,
+                            error=f"{type(exc).__name__}: {exc}",
+                        )
 
         filters = state.get("filters")
         if isinstance(filters, dict):
@@ -255,14 +274,23 @@ class JournalMapTab(tk.Frame):
             if "source_include_enriched" in filters:
                 try:
                     self.source_include_enriched_var.set(bool(filters.get("source_include_enriched")))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log_map_soft_failure(
+                        "apply_state_source_filter",
+                        "apply persisted map source filter failed",
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
             render_mode = _as_text(filters.get("render_mode"))
             if render_mode in {"Trasa", "Mapa"}:
                 try:
                     self.render_mode_var.set(render_mode)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log_map_soft_failure(
+                        "apply_state_render_mode",
+                        "apply persisted map render mode failed",
+                        value=render_mode,
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
 
         legend = state.get("legend")
         if isinstance(legend, dict) and "collapsed" in legend:
@@ -275,8 +303,13 @@ class JournalMapTab(tk.Frame):
                 else:
                     self.legend_body_frame.grid()
                     self.legend_toggle_text_var.set("Ukryj")
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "apply_state_legend",
+                    "apply persisted map legend state failed",
+                    collapsed=collapsed,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
 
         self._refresh_legend()
 
@@ -1625,8 +1658,13 @@ class JournalMapTab(tk.Frame):
             merged.append(text)
         try:
             self.trade_commodity_combo["values"] = tuple(merged)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "trade_combo_values",
+                "refresh trade commodity values failed",
+                count=len(merged),
+                error=f"{type(exc).__name__}: {exc}",
+            )
         self._trade_picker_available = list(merged)
         self._trade_picker_selected = {
             item for item in self._trade_picker_selected
@@ -1641,8 +1679,13 @@ class JournalMapTab(tk.Frame):
         state = "normal" if (commodity or self._trade_selected_commodities) else "disabled"
         try:
             self.trade_highlight_btn.configure(state=state)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "trade_highlight_button_state",
+                "sync trade highlight button state failed",
+                state=state,
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     def _sync_trade_selected_summary(self) -> None:
         selected = list(self._trade_selected_commodities or [])

@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+from logic.utils.renata_log import log_event_throttled
 
 
 class UIState:
@@ -97,6 +98,19 @@ MICROCOPY = {
 }
 
 
+def _log_empty_state_soft_failure(key: str, msg: str, **fields) -> None:
+    try:
+        log_event_throttled(
+            f"empty_state:{key}",
+            5000,
+            "GUI",
+            msg,
+            **fields,
+        )
+    except Exception:
+        return
+
+
 def get_copy(key: str, lang: str = "pl") -> tuple[str, str]:
     lang_map = MICROCOPY.get(lang) or MICROCOPY.get("pl", {})
     return lang_map.get(key, ("", ""))
@@ -152,8 +166,12 @@ def _place_overlay(target, overlay, display_mode: str) -> None:
         overlay.place(in_=target, x=0, y=0, relwidth=1, relheight=1)
     try:
         overlay.lift()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_empty_state_soft_failure(
+            "overlay_lift",
+            "empty-state overlay lift failed",
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
 
 def _resolve_treeview_overlay_colors(tree: ttk.Treeview) -> tuple[str, str]:
@@ -295,16 +313,24 @@ def show_state(
 
     try:
         container.pack_forget()
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_empty_state_soft_failure(
+            "container_pack_forget",
+            "empty-state container pack_forget failed",
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
     try:
         if pack_info:
             frame.pack(**pack_info)
         else:
             frame.pack(fill="both", expand=True)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_empty_state_soft_failure(
+            "frame_pack_show",
+            "empty-state frame pack failed",
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
     container._renata_state_visible = True  # type: ignore[attr-defined]
     container._renata_state_kind = kind  # type: ignore[attr-defined]
@@ -336,6 +362,10 @@ def hide_state(target) -> None:
             container.pack(**pack_info)
         else:
             container.pack(fill="both", expand=True)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_empty_state_soft_failure(
+            "container_pack_restore",
+            "empty-state container restore pack failed",
+            error=f"{type(exc).__name__}: {exc}",
+        )
     container._renata_state_visible = False  # type: ignore[attr-defined]
