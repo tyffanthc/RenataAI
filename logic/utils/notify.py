@@ -185,11 +185,31 @@ def powiedz(tekst, gui_ref=None, *, message_id=None, context=None, force: bool =
 def _watek_mowy(tekst):
     try:
         _speak_tts(tekst)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_notify_soft_failure(
+            "tts_thread",
+            f"TTS: blad syntezy mowy ({type(exc).__name__}).",
+        )
 
 
 _TTS_ENGINE_LOGGED = False
+
+
+def _log_notify_soft_failure(key: str, text: str, *, cooldown_sec: float = 5.0) -> None:
+    try:
+        debouncer = globals().get("DEBOUNCER")
+        if debouncer is not None:
+            try:
+                if not debouncer.can_send(f"NOTIFY_SOFT_{key}", float(cooldown_sec)):
+                    return
+            except Exception:
+                pass
+        _queue_log_line(text)
+    except Exception:
+        try:
+            print(text)
+        except Exception:
+            return
 
 
 def _log_tts_engine(line: str) -> None:
@@ -219,6 +239,10 @@ def _speak_tts(tekst: str) -> None:
                 if engine == "auto":
                     _log_tts_engine("TTS engine selected=pyttsx3 reason=piper_not_found")
         except Exception:
+            _log_notify_soft_failure(
+                "tts_piper_path",
+                "TTS Piper: blad inicjalizacji lub odtwarzania.",
+            )
             if engine == "piper":
                 return
 
@@ -253,7 +277,10 @@ def _speak_pyttsx3(tekst: str) -> None:
         eng.runAndWait()
         eng.stop()
     except Exception:
-        pass
+        _log_notify_soft_failure(
+            "tts_pyttsx3",
+            "TTS pyttsx3: blad syntezy mowy.",
+        )
 
 
 class NotificationDebouncer:
@@ -546,7 +573,10 @@ def execute_voice_stt_action(
             try:
                 on_unavailable()
             except Exception:
-                pass
+                _log_notify_soft_failure(
+                    "stt_on_unavailable_callback",
+                    "STT fallback callback failed.",
+                )
         return False, None
 
     if action is None:
