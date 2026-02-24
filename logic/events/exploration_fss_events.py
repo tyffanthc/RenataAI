@@ -44,6 +44,7 @@ def _fss_gate_context(system_name: str | None, *, body_name: str | None = None) 
         "var_status": "VAR_MEDIUM",
         "trust_status": "TRUST_HIGH",
         "confidence": "high",
+        "fss_milestone_sequence": True,
     }
     if body_name:
         ctx["body"] = body_name

@@ -583,6 +583,9 @@ def _apply_priority_matrix(
     if bool((insight.context or {}).get("voice_ui_user_action_bypass")):
         return allow_tts, "ui_user_action_bypass", False
 
+    if bool((insight.context or {}).get("fss_milestone_sequence")):
+        return allow_tts, allow_reason, False
+
     if str(allow_reason or "").startswith("cross_module_"):
         return allow_tts, allow_reason, False
 

@@ -184,6 +184,7 @@ class JournalMapTab(tk.Frame):
         self.time_range_var = tk.StringVar(value="30d")
         self.freshness_var = tk.StringVar(value="any")
         self.source_include_enriched_var = tk.BooleanVar(value=False)
+        self.render_mode_var = tk.StringVar(value="Trasa")
         self.trade_compare_commodity_var = tk.StringVar(value="")
         self.trade_selected_summary_var = tk.StringVar(value="Brak wybranych towarow.")
         self.map_status_var = tk.StringVar(value="Mapa gotowa (shell). Brak danych do renderu.")
@@ -214,6 +215,7 @@ class JournalMapTab(tk.Frame):
                 "time_range": _as_text(self.time_range_var.get()) or "30d",
                 "freshness": _as_text(self.freshness_var.get()) or "any",
                 "source_include_enriched": bool(self.source_include_enriched_var.get()),
+                "render_mode": _as_text(self.render_mode_var.get()) or "Trasa",
             },
             "legend": {
                 "collapsed": bool(self.legend_collapsed_var.get()),
@@ -253,6 +255,12 @@ class JournalMapTab(tk.Frame):
             if "source_include_enriched" in filters:
                 try:
                     self.source_include_enriched_var.set(bool(filters.get("source_include_enriched")))
+                except Exception:
+                    pass
+            render_mode = _as_text(filters.get("render_mode"))
+            if render_mode in {"Trasa", "Mapa"}:
+                try:
+                    self.render_mode_var.set(render_mode)
                 except Exception:
                     pass
 
@@ -407,7 +415,20 @@ class JournalMapTab(tk.Frame):
             activebackground=COLOR_BG,
             activeforeground=COLOR_FG,
         )
-        include_enriched_chk.grid(row=2, column=0, columnspan=2, sticky="w", padx=8, pady=(4, 6))
+        include_enriched_chk.grid(row=2, column=0, columnspan=2, sticky="w", padx=8, pady=(4, 4))
+
+        tk.Label(filters_box, text="Tryb renderowania:", bg=COLOR_BG, fg=COLOR_FG).grid(
+            row=3, column=0, sticky="w", padx=8, pady=(4, 6)
+        )
+        render_mode_combo = ttk.Combobox(
+            filters_box,
+            values=("Trasa", "Mapa"),
+            state="readonly",
+            textvariable=self.render_mode_var,
+            width=10,
+        )
+        render_mode_combo.grid(row=3, column=1, sticky="ew", padx=(4, 8), pady=(4, 6))
+        render_mode_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_filter_changed())
 
         btn_box = tk.Frame(self.left_frame, bg=COLOR_BG)
         btn_box.grid(row=3, column=0, sticky="ew", pady=(0, 6))
@@ -1395,6 +1416,58 @@ class JournalMapTab(tk.Frame):
             out.append(item)
         return out
 
+    def _coords_layout_from_system_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        Mapa (coords) layout: rzutuje rzeczywiste współrzędne galaktyczne (StarPos x, z) na 2D.
+
+        Konwencja ED:
+          x = galaktyczny wschód/zachód, z = galaktyczny N/S (ku rdzeniu), y = wysokość (ignorujemy).
+        Rzut top-down: x → canvas_x, z → canvas_y (z invertowane, żeby N był u góry).
+        Systemy bez współrzędnych trafiają do pasa awaryjnego poniżej mapy.
+        Gdy żaden system nie ma współrzędnych — fallback na travel layout.
+        """
+        SCALE_TARGET = 160.0  # docelowe jednostki canvas (podobny zakres co travel layout)
+
+        with_coords = [
+            dict(r) for r in rows
+            if isinstance(r, dict) and r.get("x") is not None and r.get("z") is not None
+        ]
+        without_coords = [
+            dict(r) for r in rows
+            if isinstance(r, dict) and (r.get("x") is None or r.get("z") is None)
+        ]
+
+        if not with_coords:
+            return self._travel_layout_from_system_rows(rows)
+
+        xs = [float(r["x"]) for r in with_coords]
+        zs = [float(r["z"]) for r in with_coords]
+        min_x, max_x = min(xs), max(xs)
+        min_z, max_z = min(zs), max(zs)
+        range_x = max(max_x - min_x, 1.0)
+        range_z = max(max_z - min_z, 1.0)
+
+        # Uniform scale — dłuższa oś dopasowana do SCALE_TARGET
+        scale = SCALE_TARGET / max(range_x, range_z)
+
+        out: list[dict[str, Any]] = []
+        for row in with_coords:
+            item = dict(row)
+            item["x"] = (float(row["x"]) - min_x) * scale
+            # Invertujemy z — galaktyczna północ jest u góry (mniejsze canvas_y)
+            item["y"] = (max_z - float(row["z"])) * scale
+            out.append(item)
+
+        # Systemy bez coords → pas awaryjny poniżej mapy
+        fallback_y = range_z * scale + 30.0
+        for idx, row in enumerate(without_coords):
+            item = dict(row)
+            item["x"] = float(idx % 10) * 14.0
+            item["y"] = fallback_y + float(idx // 10) * 12.0
+            out.append(item)
+
+        return out
+
     def _build_fallback_sequential_edges(self, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         ordered = sorted(
@@ -1474,8 +1547,11 @@ class JournalMapTab(tk.Frame):
         edges_rows, edges_meta = self.data_provider.get_edges(time_range=time_range)
         nodes_rows = self._filter_rows_by_freshness(nodes_rows, ts_keys=("freshness_ts", "last_seen_ts", "first_seen_ts"))
 
-        # F20-3 default renderer = travel-path layout; coords-view intentionally deferred.
-        laid_out_nodes = self._travel_layout_from_system_rows(nodes_rows)
+        render_mode = _as_text(self.render_mode_var.get() or "Trasa")
+        if render_mode == "Mapa":
+            laid_out_nodes = self._coords_layout_from_system_rows(nodes_rows)
+        else:
+            laid_out_nodes = self._travel_layout_from_system_rows(nodes_rows)
         if edges_rows:
             edges_final = edges_rows
             edges_mode = "provider"
@@ -1511,7 +1587,7 @@ class JournalMapTab(tk.Frame):
         if count_nodes <= 0:
             status_reason += " | brak danych po filtrach (time/freshness/source)"
         self.map_status_var.set(
-            f"Mapa Travel: {count_nodes} systemow / {count_edges} krawedzi | "
+            f"Mapa {render_mode}: {count_nodes} systemow / {count_edges} krawedzi | "
             f"time={time_range} | freshness={self.freshness_var.get()} | source={source_filter}{status_reason}{layer_state}"
         )
         self._refresh_legend()
