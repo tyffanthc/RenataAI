@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import config
+from logic.utils.renata_log import log_event_throttled
 
 ENTRY_SCHEMA_VERSION = 1
 
@@ -260,8 +261,15 @@ class EntryRepository:
             if os.path.exists(temp_path):
                 try:
                     os.remove(temp_path)
-                except OSError:
-                    pass
+                except OSError as exc:
+                    log_event_throttled(
+                        "entry_repo.persist.cleanup_tmp",
+                        5000,
+                        "WARN",
+                        "Entry repository: failed to remove temp JSONL file after persist",
+                        path=temp_path,
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
 
     def _clone(self, entry: dict[str, Any]) -> dict[str, Any]:
         return copy.deepcopy(entry)
