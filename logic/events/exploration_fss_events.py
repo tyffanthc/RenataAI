@@ -8,6 +8,7 @@ import config
 from logic.utils import DEBOUNCER
 from logic.insight_dispatcher import emit_insight
 from logic import utils
+from logic.utils.renata_log import log_event_throttled
 from app.state import app_state
 
 from logic.events.exploration_high_value_events import (
@@ -94,6 +95,15 @@ def _wire_exit_summary_to_runtime(gui_ref=None) -> None:
             total_bodies=FSS_TOTAL_BODIES if FSS_TOTAL_BODIES > 0 else None,
         )
     except Exception:
+        log_event_throttled(
+            "exploration.fss.exit_summary_wire",
+            5000,
+            "FSS",
+            "failed to trigger exploration summary after full scan",
+            system=getattr(app_state, "current_system", None),
+            scanned_bodies=int(FSS_DISCOVERED or 0),
+            total_bodies=int(FSS_TOTAL_BODIES or 0),
+        )
         return
 
 
@@ -357,6 +367,13 @@ def handle_fss_discovery_scan(ev: Dict[str, Any], gui_ref=None):
     try:
         count = int(body_count)
     except Exception:
+        log_event_throttled(
+            "exploration.fss.body_count_parse",
+            5000,
+            "FSS",
+            "invalid FSSDiscoveryScan BodyCount; ignoring event",
+            body_count=body_count,
+        )
         count = 0
 
     if count <= 0:
