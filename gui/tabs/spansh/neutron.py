@@ -17,6 +17,20 @@ from gui.ui_thread import run_on_ui_thread
 from gui.common_autocomplete import AutocompleteController, edsm_single_system_lookup
 from app.route_manager import route_manager
 from app.state import app_state
+from logic.utils.renata_log import log_event_throttled
+
+
+def _log_neutron_soft_failure(key: str, msg: str, **fields) -> None:
+    try:
+        log_event_throttled(
+            f"spansh_neutron:{key}",
+            5000,
+            "GUI",
+            msg,
+            **fields,
+        )
+    except Exception:
+        return
 
 
 class NeutronTab(ttk.Frame):
@@ -173,8 +187,12 @@ class NeutronTab(ttk.Frame):
             common.render_table_treeview(self.lst, "neutron", [])
             try:
                 self.lst.bind("<Configure>", self._on_results_tree_configure, add="+")
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_neutron_soft_failure(
+                    "bind_results_tree_configure",
+                    "bind neutron results tree configure failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
         else:
             self.lst = common.stworz_liste_trasy(fr, title=ui.LIST_TITLE_NEUTRON)
         common.attach_results_context_menu(
@@ -209,8 +227,12 @@ class NeutronTab(ttk.Frame):
         route_manager.clear_route()
         try:
             app_state.clear_spansh_milestones(source="spansh.neutron.clear")
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_neutron_soft_failure(
+                "clear_spansh_milestones",
+                "clear neutron milestones failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
         try:
             intent_target = str(self.var_cel.get() or "").strip()
             if intent_target:
@@ -224,8 +246,12 @@ class NeutronTab(ttk.Frame):
                     is_off_route=False,
                     source="spansh.neutron.clear.idle",
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_neutron_soft_failure(
+                "clear_route_awareness",
+                "reset neutron route awareness on clear failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
         common.emit_status(
             "INFO",
             "ROUTE_CLEARED",
@@ -295,8 +321,13 @@ class NeutronTab(ttk.Frame):
         if cel:
             try:
                 app_state.set_route_intent(cel, source="spansh.neutron.intent")
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_neutron_soft_failure(
+                    "set_route_intent_before_run",
+                    "set neutron route intent before run failed",
+                    target=cel,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
         self._set_busy(True)
         route_manager.start_route_thread("neutron", self._th, args=args, gui_ref=self.root)
 
@@ -410,8 +441,13 @@ class NeutronTab(ttk.Frame):
                                 is_off_route=False,
                                 source="spansh.neutron.route_found",
                             )
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            _log_neutron_soft_failure(
+                                "route_found_awareness",
+                                "update route awareness for neutron route_found failed",
+                                route_len=len(tr),
+                                error=f"{type(exc).__name__}: {exc}",
+                            )
                         try:
                             milestones = self._build_neutron_milestones(tr, details)
                             app_state.set_spansh_milestones(
@@ -419,8 +455,13 @@ class NeutronTab(ttk.Frame):
                                 mode="neutron",
                                 source="spansh.neutron",
                             )
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            _log_neutron_soft_failure(
+                                "route_found_milestones",
+                                "set neutron milestones failed",
+                                route_len=len(tr),
+                                error=f"{type(exc).__name__}: {exc}",
+                            )
                         if (
                             config.get("features.tables.spansh_schema_enabled", True)
                             and config.get("features.tables.schema_renderer_enabled", True)
@@ -515,8 +556,12 @@ class NeutronTab(ttk.Frame):
                                     is_off_route=False,
                                     source="spansh.neutron.route_empty.idle",
                                 )
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            _log_neutron_soft_failure(
+                                "route_empty_awareness",
+                                "update route awareness for neutron route_empty failed",
+                                error=f"{type(exc).__name__}: {exc}",
+                            )
                         common.emit_status(
                             "ERROR",
                             "ROUTE_EMPTY",
