@@ -5,6 +5,7 @@ from typing import Any
 import config
 from app.state import app_state
 from logic.insight_dispatcher import emit_insight
+from logic.utils.renata_log import log_event_throttled
 
 
 # Cache last known gravity from body scans so approach/orbit events can announce High-G
@@ -28,6 +29,12 @@ def _resolve_threshold_g() -> float:
     try:
         value = float(config.get("high_g_warning_threshold_g", 2.0) or 2.0)
     except Exception:
+        log_event_throttled(
+            "high_g.threshold_config",
+            10000,
+            "HIGHG",
+            "invalid high_g_warning_threshold_g config; using default",
+        )
         value = 2.0
     return max(0.5, value)
 
