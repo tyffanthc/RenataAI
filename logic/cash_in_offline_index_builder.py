@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict
 
+from logic.utils.renata_log import log_event_throttled
 
 ProgressCallback = Callable[[float, str], None]
 
@@ -355,10 +356,24 @@ def build_offline_index_from_spansh_dump(
         try:
             if temp_station_path and os.path.isfile(temp_station_path):
                 os.remove(temp_station_path)
-        except Exception:
-            pass
+        except Exception as exc:
+            log_event_throttled(
+                "cash_in_offline_index.cleanup.temp_station",
+                5000,
+                "WARN",
+                "Offline index builder: failed to remove temp station file",
+                path=str(temp_station_path or ""),
+                error=f"{type(exc).__name__}: {exc}",
+            )
         try:
             if os.path.isfile(output_tmp):
                 os.remove(output_tmp)
-        except Exception:
-            pass
+        except Exception as exc:
+            log_event_throttled(
+                "cash_in_offline_index.cleanup.output_tmp",
+                5000,
+                "WARN",
+                "Offline index builder: failed to remove temp output file",
+                path=str(output_tmp or ""),
+                error=f"{type(exc).__name__}: {exc}",
+            )
