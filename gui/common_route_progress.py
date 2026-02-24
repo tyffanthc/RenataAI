@@ -3,6 +3,7 @@ import threading
 from tkinter import ttk
 import config
 from logic import utils
+from logic.utils.renata_log import log_event_throttled
 from gui.common_clipboard import (
     compute_route_signature,
     format_route_for_clipboard,
@@ -49,6 +50,19 @@ _ROUTE_MILESTONE_CACHE_SECTION = "route_milestone_progress_cache"
 _ROUTE_MILESTONE_CACHE: dict[str, dict] = {}
 _ROUTE_MILESTONE_CACHE_LOADED = False
 _ROUTE_MILESTONE_CACHE_LAST_PERSIST_TS = 0.0
+
+
+def _log_route_progress_soft_failure(key: str, msg: str, **fields) -> None:
+    try:
+        log_event_throttled(
+            f"route_progress:{key}",
+            5000,
+            "GUI",
+            msg,
+            **fields,
+        )
+    except Exception:
+        return
 
 
 def _route_milestone_ttl_sec() -> float:
@@ -460,8 +474,12 @@ def _set_active_route_data(route, text, sig, source: str | None) -> None:
                 source=source or "route_empty.intent",
             )
             return
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_route_progress_soft_failure(
+            "route_empty_intent_snapshot",
+            "route empty intent snapshot read failed",
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
     _sync_route_awareness_state(
         route_mode="idle",
@@ -568,8 +586,14 @@ def _update_active_route_list_mark(route_index: int | None) -> None:
                 numerate=False,
                 show_copied_suffix=False,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_route_progress_soft_failure(
+                "route_table_refresh_after_mark",
+                "route table list refresh after copied mark failed",
+                schema_id=_ACTIVE_ROUTE_TABLE_SCHEMA or "",
+                route_index=route_index,
+                error=f"{type(exc).__name__}: {exc}",
+            )
         _set_list_header(_ACTIVE_ROUTE_LISTBOX, header)
         return
     list_index = route_index + _ACTIVE_ROUTE_LIST_OFFSET
@@ -582,8 +606,14 @@ def _update_active_route_list_mark(route_index: int | None) -> None:
             numerate=_ACTIVE_ROUTE_LIST_NUMERATE,
             show_copied_suffix=True,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_route_progress_soft_failure(
+            "route_list_refresh_after_mark",
+            "route list refresh after copied mark failed",
+            list_index=list_index,
+            route_index=route_index,
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
 def _emit_next_hop_status(level: str, code: str, text: str, *, source: str | None) -> None:
     if not utils.DEBOUNCER.is_allowed(code, cooldown_sec=2.0, context=source or ""):
@@ -1134,8 +1164,13 @@ def _persist_last_route_context(route, text, sig, *, source: str | None = None) 
         try:
             config.STATE["last_route"] = payload
             config.STATE["last_plan_id"] = plan_id
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_route_progress_soft_failure(
+                "persist_last_route_context_fallback",
+                "persisting last route context fallback failed",
+                plan_id=plan_id,
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
 
 def load_last_route_context_from_domain_state(*, force: bool = False) -> bool:
@@ -1340,8 +1375,12 @@ def handle_route_ready_autoclipboard(
         try:
             owner.after(0, _do_copy)
             return
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_route_progress_soft_failure(
+                "schedule_copy_after",
+                "scheduling route clipboard copy on UI thread failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     _do_copy()
 
