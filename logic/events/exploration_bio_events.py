@@ -45,6 +45,30 @@ def _log_exobio_fallback(key: str, message: str, exc: Exception, *, interval_ms:
     )
 
 
+def _log_bio_signals_diag(
+    stage: str,
+    *,
+    body: Any = None,
+    system: Any = None,
+    bio_count: Any = None,
+    reason: str = "",
+    interval_ms: int = 2000,
+) -> None:
+    body_txt = _as_text(body) or "unknown"
+    system_txt = _as_text(system) or _as_text(getattr(app_state, "current_system", "")) or "unknown"
+    log_event_throttled(
+        f"EXOBIO:BIO_SIGNALS:{stage}:{system_txt}:{body_txt}",
+        interval_ms,
+        "EXOBIO",
+        "SAASignalsFound diagnostics",
+        stage=str(stage or "").strip() or "unknown",
+        system=system_txt,
+        body=body_txt,
+        bio_count=(None if bio_count is None else int(bio_count)),
+        reason=str(reason or "").strip(),
+    )
+
+
 def reset_bio_flags(*, persist: bool = False) -> None:
     """Reset local anti-spam flags for biology helpers."""
     global DSS_BIO_WARNED_BODIES, EXOBIO_SCAN_WARNED, EXOBIO_CODEX_WARNED
@@ -847,14 +871,17 @@ def handle_dss_bio_signals(ev: Dict[str, Any], gui_ref=None) -> None:
 
     body = ev.get("BodyName") or ev.get("Body") or ev.get("BodyID")
     if not body:
+        _log_bio_signals_diag("skip", reason="missing_body", system=_current_system(ev))
         return
 
     global DSS_BIO_WARNED_BODIES
     if body in DSS_BIO_WARNED_BODIES:
+        _log_bio_signals_diag("skip", body=body, system=_current_system(ev), reason="duplicate_body")
         return
 
     signals = ev.get("Signals") or []
     if not isinstance(signals, list):
+        _log_bio_signals_diag("skip", body=body, system=_current_system(ev), reason="invalid_signals_payload")
         return
 
     bio_count = 0
@@ -869,6 +896,7 @@ def handle_dss_bio_signals(ev: Dict[str, Any], gui_ref=None) -> None:
                 continue
 
     if bio_count <= 0:
+        _log_bio_signals_diag("skip", body=body, system=_current_system(ev), bio_count=0, reason="no_biological_signals")
         return
 
     DSS_BIO_WARNED_BODIES.add(body)
@@ -877,6 +905,8 @@ def handle_dss_bio_signals(ev: Dict[str, Any], gui_ref=None) -> None:
         msg = f"Planeta {body_txt} ma liczne sygnały biologiczne. Warto wylądować."
     else:
         msg = f"Planeta {body_txt} ma mało sygnałów biologicznych. Możliwy krótki rekonesans."
+
+    _log_bio_signals_diag("emit", body=body_txt, system=_current_system(ev), bio_count=bio_count, reason="bio_signals_found")
 
     emit_callout_or_summary(
         text=msg,
