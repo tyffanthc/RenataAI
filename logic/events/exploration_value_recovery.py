@@ -4,6 +4,7 @@ import json
 from typing import Any, Dict
 
 from app.state import app_state
+from logic.utils.renata_log import log_event_throttled
 
 
 _SYSTEM_EVENTS = {"Location", "FSDJump", "CarrierJump"}
@@ -65,6 +66,12 @@ def recover_system_value_from_journal_lines(
         try:
             ev = json.loads(raw_line)
         except Exception:
+            log_event_throttled(
+                "exploration.value_recovery.json",
+                5000,
+                "BOOTSTRAP",
+                "value recovery skipped invalid journal line",
+            )
             continue
         if not isinstance(ev, dict):
             continue
@@ -77,7 +84,13 @@ def recover_system_value_from_journal_lines(
                 try:
                     engine.set_current_system(next_system)
                 except Exception:
-                    pass
+                    log_event_throttled(
+                        "exploration.value_recovery.set_system",
+                        5000,
+                        "BOOTSTRAP",
+                        "value recovery failed to sync engine current system",
+                        system=next_system,
+                    )
             continue
 
         if event_name not in _VALUE_EVENTS:
@@ -115,6 +128,13 @@ def recover_system_value_from_journal_lines(
                     try:
                         stats_before = engine.get_system_stats(system_name)
                     except Exception:
+                        log_event_throttled(
+                            "exploration.value_recovery.get_stats",
+                            5000,
+                            "BOOTSTRAP",
+                            "value recovery failed to read system stats snapshot",
+                            system=system_name,
+                        )
                         stats_before = None
                 if stats_before and body_id:
                     row_before = dict((getattr(stats_before, "cartography_bodies", {}) or {}).get(body_id) or {})
@@ -131,6 +151,13 @@ def recover_system_value_from_journal_lines(
                 recovered_events += 1
                 meta_events += 1
         except Exception:
+            log_event_throttled(
+                "exploration.value_recovery.process_event",
+                5000,
+                "BOOTSTRAP",
+                "value recovery failed to process event",
+                event=event_name,
+            )
             continue
 
     diagnostics = [
