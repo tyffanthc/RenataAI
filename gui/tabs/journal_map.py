@@ -669,6 +669,7 @@ class JournalMapTab(tk.Frame):
             self.trade_compare_tree.column(col, width=width, anchor=anchor)
         self.trade_compare_tree.grid(row=10, column=0, sticky="nsew")
         self.trade_compare_tree.bind("<<TreeviewSelect>>", self._on_trade_compare_row_selected)
+        self.trade_compare_tree.bind("<Configure>", self._on_trade_compare_tree_configure, add="+")
 
         # Bottom status
         status = tk.Label(
@@ -2078,6 +2079,45 @@ class JournalMapTab(tk.Frame):
             self._highlight_trade_compare_for_commodity(commodity)
             self.map_status_var.set(f"Mapa: Trade compare aktywny towar '{commodity}'.")
 
+    def _on_trade_compare_tree_configure(self, _event=None) -> None:
+        self._reflow_trade_compare_tree_columns()
+
+    def _reflow_trade_compare_tree_columns(self) -> None:
+        tree = getattr(self, "trade_compare_tree", None)
+        if not isinstance(tree, ttk.Treeview):
+            return
+        try:
+            columns = list(tree["columns"] or ())
+        except Exception:
+            return
+        if not columns:
+            return
+        try:
+            tree_width = int(tree.winfo_width() or 0)
+        except Exception:
+            return
+        if tree_width <= 0:
+            return
+        try:
+            total = sum(int(tree.column(col, "width") or 0) for col in columns)
+        except Exception:
+            return
+        extra = tree_width - total - 20
+        if extra <= 0:
+            return
+        elastic_cols = [col for col in ("system", "station", "commodity", "age") if col in columns]
+        if not elastic_cols:
+            return
+        share = max(1, extra // len(elastic_cols))
+        remainder = max(0, extra - (share * len(elastic_cols)))
+        for idx, col in enumerate(elastic_cols):
+            try:
+                current = int(tree.column(col, "width") or 0)
+                bonus = share + (1 if idx < remainder else 0)
+                tree.column(col, width=max(60, current + bonus), stretch=True)
+            except Exception:
+                continue
+
     def _run_trade_compare(self, commodity: str) -> dict[str, Any]:
         commodity_name = _as_text(commodity)
         self.trade_compare_tree.delete(*self.trade_compare_tree.get_children())
@@ -2151,6 +2191,7 @@ class JournalMapTab(tk.Frame):
                     self.trade_compare_tree.focus(rows[0])
                 except Exception:
                     pass
+        self._reflow_trade_compare_tree_columns()
         if rows_inserted <= 0:
             self._redraw_scene()
 
@@ -2246,6 +2287,7 @@ class JournalMapTab(tk.Frame):
             self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "-", "brak danych po filtrach"))
             self._redraw_scene()
             self.map_status_var.set("Mapa: Trade compare (multi) - brak danych dla wybranych towarow.")
+            self._reflow_trade_compare_tree_columns()
             return {"ok": False, "reason": "no_rows", "commodities": selected, "provider_errors": provider_errors}
 
         # Auto-select first row and highlight by active commodity.
@@ -2259,6 +2301,7 @@ class JournalMapTab(tk.Frame):
             row = self._trade_compare_rows_by_iid.get(str(rows[0])) or {}
             active_commodity = _as_text(row.get("commodity")) or selected[0]
             self._highlight_trade_compare_for_commodity(active_commodity)
+        self._reflow_trade_compare_tree_columns()
 
         trade_layer_on = bool(self.layer_trade_var.get())
         suffix = "" if trade_layer_on else " (warstwa Trade wylaczona - highlight ukryty)"

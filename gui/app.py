@@ -528,7 +528,7 @@ class RenataApp:
     def _show_about_dialog(self):
         import tkinter.messagebox as mbox
 
-        release_url = "https://github.com/tyffanthc/RenataAI/releases/tag/v0.9.1-preview"
+        release_url = "https://github.com/tyffanthc/RenataAI/releases/latest"
         text = (
             f"R.E.N.A.T.A. {config.APP_VERSION}\n"
             "Route, Exploration & Navigation Assistant for Trading & Analysis.\n\n"

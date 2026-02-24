@@ -171,6 +171,10 @@ class NeutronTab(ttk.Frame):
         if self._use_treeview:
             self.lst = common.stworz_tabele_trasy(fr, title=ui.LIST_TITLE_NEUTRON)
             common.render_table_treeview(self.lst, "neutron", [])
+            try:
+                self.lst.bind("<Configure>", self._on_results_tree_configure, add="+")
+            except Exception:
+                pass
         else:
             self.lst = common.stworz_liste_trasy(fr, title=ui.LIST_TITLE_NEUTRON)
         common.attach_results_context_menu(
@@ -427,6 +431,7 @@ class NeutronTab(ttk.Frame):
                             self._results_row_offset = 0
                             if self._use_treeview:
                                 common.render_table_treeview(self.lst, "neutron", rows)
+                                self._reflow_results_tree_columns()
                                 common.register_active_route_list(
                                     self.lst,
                                     [],
@@ -486,9 +491,13 @@ class NeutronTab(ttk.Frame):
                         )
                         empty_state.hide_state(self.lst)
                         common.emit_status(
-                            "OK",
-                            "ROUTE_FOUND",
-                            text=f"Znaleziono {len(tr)}",
+                            ("WARN" if len(tr) <= 2 else "OK"),
+                            ("ROUTE_FOUND_MINIMAL" if len(tr) <= 2 else "ROUTE_FOUND"),
+                            text=(
+                                "Brak realnej trasy neutronowej (start + cel)."
+                                if len(tr) <= 2
+                                else f"Znaleziono {len(tr)}"
+                            ),
                             source="spansh.neutron",
                             ui_target="neu",
                         )
@@ -564,6 +573,46 @@ class NeutronTab(ttk.Frame):
             self.lbl_status.config(text=raw, foreground=color)
         else:
             self.lbl_status.config(text=raw)
+
+    def _on_results_tree_configure(self, _event=None) -> None:
+        self._reflow_results_tree_columns()
+
+    def _reflow_results_tree_columns(self) -> None:
+        if not self._use_treeview:
+            return
+        tree = getattr(self, "lst", None)
+        if tree is None:
+            return
+        try:
+            columns = list(tree["columns"] or [])
+        except Exception:
+            return
+        if "system_name" not in columns:
+            return
+        try:
+            tree_width = int(tree.winfo_width() or 0)
+        except Exception:
+            return
+        if tree_width <= 0:
+            return
+        try:
+            total = 0
+            for col in columns:
+                total += int(tree.column(col, "width") or 0)
+        except Exception:
+            return
+
+        # Keep neutron results readable when there are only 2 rows (start+cel):
+        # let the System column absorb remaining width instead of leaving a huge
+        # empty area that looks like a broken table.
+        extra = tree_width - total - 20
+        if extra <= 0:
+            return
+        try:
+            current = int(tree.column("system_name", "width") or 0)
+            tree.column("system_name", width=max(140, current + extra), stretch=True)
+        except Exception:
+            return
 
     def _build_last_request_ui(self, parent: ttk.Frame) -> None:
         self.last_req_frame = ttk.Frame(parent)

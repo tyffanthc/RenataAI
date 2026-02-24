@@ -669,6 +669,7 @@ class TradeTab(ttk.Frame):
             common.render_table_treeview(self.lst_trade, "trade", [])
             self._apply_trade_tree_compact_columns()
             self.lst_trade.bind("<Map>", self._on_trade_table_mapped, add="+")
+            self.lst_trade.bind("<Configure>", self._on_trade_results_tree_configure, add="+")
 
         else:
 
@@ -758,6 +759,7 @@ class TradeTab(ttk.Frame):
         self.tree_leg_commodities.column("profit_t", anchor="e", width=95, stretch=False)
         self.tree_leg_commodities.column("profit_total", anchor="e", width=115, stretch=False)
         self.tree_leg_commodities.pack(side="left", fill="both", expand=True)
+        self.tree_leg_commodities.bind("<Configure>", self._on_trade_leg_tree_configure, add="+")
         leg_scroll.config(command=self.tree_leg_commodities.yview)
         self._clear_trade_leg_details(collapse=True)
         self._set_trade_details_collapsed(True, force=True)
@@ -776,6 +778,92 @@ class TradeTab(ttk.Frame):
                 self.lst_trade.column(col, stretch=False)
             except Exception:
                 continue
+        # Keep the compact profile, but allow a few text columns to absorb extra width
+        # so short result sets do not look "broken" on wide windows.
+        for col in ("from_system", "from_station", "to_system", "to_station", "commodity"):
+            if col not in columns:
+                continue
+            try:
+                self.lst_trade.column(col, stretch=True)
+            except Exception:
+                continue
+        self._reflow_trade_results_tree_columns()
+
+    def _on_trade_results_tree_configure(self, _event=None) -> None:
+        self._reflow_trade_results_tree_columns()
+
+    def _reflow_trade_results_tree_columns(self) -> None:
+        if not isinstance(self.lst_trade, ttk.Treeview):
+            return
+        tree = self.lst_trade
+        try:
+            columns = list(tree["columns"] or [])
+        except Exception:
+            return
+        if not columns:
+            return
+        try:
+            tree_width = int(tree.winfo_width() or 0)
+        except Exception:
+            return
+        if tree_width <= 0:
+            return
+        try:
+            total = 0
+            for col in columns:
+                total += int(tree.column(col, "width") or 0)
+        except Exception:
+            return
+        extra = tree_width - total - 24
+        if extra <= 0:
+            return
+
+        elastic_cols = [col for col in ("to_station", "from_station", "commodity", "to_system", "from_system") if col in columns]
+        if not elastic_cols:
+            return
+        share = max(1, extra // len(elastic_cols))
+        remainder = max(0, extra - (share * len(elastic_cols)))
+        for idx, col in enumerate(elastic_cols):
+            try:
+                current = int(tree.column(col, "width") or 0)
+                bonus = share + (1 if idx < remainder else 0)
+                tree.column(col, width=max(80, current + bonus), stretch=True)
+            except Exception:
+                continue
+
+    def _on_trade_leg_tree_configure(self, _event=None) -> None:
+        self._reflow_trade_leg_tree_columns()
+
+    def _reflow_trade_leg_tree_columns(self) -> None:
+        tree = getattr(self, "tree_leg_commodities", None)
+        if not isinstance(tree, ttk.Treeview):
+            return
+        try:
+            tree_width = int(tree.winfo_width() or 0)
+        except Exception:
+            return
+        if tree_width <= 0:
+            return
+        try:
+            columns = list(tree["columns"] or [])
+        except Exception:
+            return
+        if not columns or "commodity" not in columns:
+            return
+        try:
+            total = 0
+            for col in columns:
+                total += int(tree.column(col, "width") or 0)
+        except Exception:
+            return
+        extra = tree_width - total - 18
+        if extra <= 0:
+            return
+        try:
+            current = int(tree.column("commodity", "width") or 0)
+            tree.column("commodity", width=max(140, current + extra), stretch=True)
+        except Exception:
+            return
 
     def _clear_sell_assist(self) -> None:
         self._sell_assist_decision_space = None
@@ -2580,6 +2668,7 @@ class TradeTab(ttk.Frame):
                 "end",
                 values=(name, amount, buy_price, sell_price, profit_unit, total_profit),
             )
+        self._reflow_trade_leg_tree_columns()
 
     def _get_primary_selected_internal_index(self) -> int | None:
         widget = self._results_widget
