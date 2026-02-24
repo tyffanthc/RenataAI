@@ -7,6 +7,7 @@ from typing import Any, Dict
 import config
 
 from logic.insight_dispatcher import emit_insight
+from logic.utils.renata_log import log_event_throttled
 
 
 @dataclass
@@ -45,6 +46,12 @@ def _max_callouts_per_system() -> int:
     try:
         raw = int(config.get("exploration.awareness.max_callouts_per_system", _DEFAULT_MAX_CALLOUTS_PER_SYSTEM))
     except Exception:
+        log_event_throttled(
+            "exploration.awareness.max_per_system",
+            10000,
+            "EXPL",
+            "invalid exploration awareness per-system limit; using default",
+        )
         raw = _DEFAULT_MAX_CALLOUTS_PER_SYSTEM
     return max(1, raw)
 
@@ -53,6 +60,12 @@ def _max_callouts_per_session() -> int:
     try:
         raw = int(config.get("exploration.awareness.max_callouts_per_session", _DEFAULT_MAX_CALLOUTS_PER_SESSION))
     except Exception:
+        log_event_throttled(
+            "exploration.awareness.max_per_session",
+            10000,
+            "EXPL",
+            "invalid exploration awareness per-session limit; using default",
+        )
         raw = _DEFAULT_MAX_CALLOUTS_PER_SESSION
     return max(1, raw)
 

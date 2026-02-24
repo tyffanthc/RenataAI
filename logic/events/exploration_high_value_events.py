@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 from app.state import app_state
 from logic.events.exploration_awareness import emit_callout_or_summary
+from logic.utils.renata_log import log_event_throttled
 
 
 # --- HIGH VALUE PLANETS (S2-LOGIC-03) ---
@@ -71,6 +72,15 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
                 mask &= df["Terraformable_norm"] == terraformable
             return bool(df[mask].shape[0] > 0)
         except Exception:
+            log_event_throttled(
+                "exploration.high_value.has_body_type",
+                5000,
+                "EXPL",
+                "high-value cartography lookup failed",
+                keyword=keyword,
+                terraformable=terraformable,
+                planet_class=planet_class,
+            )
             return False
 
     # 1) Earth-like World
