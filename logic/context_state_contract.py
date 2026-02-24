@@ -8,6 +8,8 @@ import tempfile
 import time
 from typing import Any, Dict
 
+from logic.utils.renata_log import log_event_throttled
+
 STATE_SCHEMA_VERSION = 1
 STATE_LAYER_KEYS = ("ui_state", "preferences", "domain_state", "anti_spam_state")
 
@@ -272,6 +274,13 @@ def load_state_contract_file(path: str) -> Dict[str, Any]:
         with open(path, "r", encoding="utf-8") as handle:
             payload = json.load(handle)
     except Exception:
+        log_event_throttled(
+            "state_contract.load_fallback_default",
+            5000,
+            "STATE",
+            "State contract load failed; using default contract",
+            path=path,
+        )
         return default_state_contract()
     return migrate_state_contract_payload(payload)
 
@@ -313,5 +322,11 @@ def save_state_contract_file(path: str, payload: Dict[str, Any]) -> Dict[str, An
             try:
                 os.remove(tmp_path)
             except Exception:
-                pass
+                log_event_throttled(
+                    "state_contract.save_tmp_cleanup",
+                    5000,
+                    "STATE",
+                    "State contract temp file cleanup failed",
+                    tmp_path=tmp_path,
+                )
     return contract
