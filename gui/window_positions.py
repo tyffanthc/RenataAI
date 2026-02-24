@@ -1,4 +1,5 @@
 import config
+from logic.utils.renata_log import log_event_throttled
 
 
 def _get_positions() -> dict:
@@ -16,15 +17,28 @@ def _get_positions() -> dict:
 def _save_positions(data: dict) -> None:
     try:
         config.save({"window_positions": data})
-    except Exception:
-        pass
+    except Exception as exc:
+        log_event_throttled(
+            "GUI:window_positions.save",
+            5000,
+            "GUI",
+            "failed to save window positions",
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
 
 def _center_window(window, width: int, height: int) -> None:
     try:
         sw = window.winfo_screenwidth()
         sh = window.winfo_screenheight()
-    except Exception:
+    except Exception as exc:
+        log_event_throttled(
+            "GUI:window_positions.center_metrics",
+            5000,
+            "GUI",
+            "failed to read screen metrics for centering window",
+            error=f"{type(exc).__name__}: {exc}",
+        )
         return
     x = max(0, int((sw - width) / 2))
     y = max(0, int((sh - height) / 2))
@@ -94,8 +108,14 @@ def bind_window_geometry(window, key: str, *, include_size: bool = False, delay_
         if job:
             try:
                 window.after_cancel(job)
-            except Exception:
-                pass
+            except Exception as exc:
+                log_event_throttled(
+                    "GUI:window_positions.after_cancel",
+                    3000,
+                    "GUI",
+                    "failed to cancel pending geometry save job",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
         window._renata_geo_job = window.after(  # type: ignore[attr-defined]
             delay_ms,
             lambda: save_window_geometry(window, key, include_size=include_size),
