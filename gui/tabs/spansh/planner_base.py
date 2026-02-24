@@ -12,9 +12,23 @@ from gui import empty_state
 from gui import strings as ui
 from gui.ui_thread import run_on_ui_thread
 from logic import utils
+from logic.utils.renata_log import log_event_throttled
 
 
 ComputeFn = Callable[..., tuple[list[str], list[dict[str, Any]]]]
+
+
+def _log_planner_soft_failure(key: str, msg: str, **fields: Any) -> None:
+    try:
+        log_event_throttled(
+            f"spansh_planner:{key}",
+            5000,
+            "GUI",
+            msg,
+            **fields,
+        )
+    except Exception:
+        return
 
 
 class SpanshPlannerBase(ttk.Frame):
@@ -450,12 +464,20 @@ class SpanshPlannerBase(ttk.Frame):
         config.STATE["trasa"] = []
         try:
             route_manager.clear_route()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_planner_soft_failure(
+                "reset_shared_route_state_clear_route",
+                "clear route manager state failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
         try:
             app_state.clear_spansh_milestones(source="spansh.clear")
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_planner_soft_failure(
+                "reset_shared_route_state_clear_milestones",
+                "clear spansh milestones failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
         try:
             snap = app_state.get_route_awareness_snapshot()
             if snap.get("route_mode") == "intent" and snap.get("route_target"):
@@ -477,8 +499,12 @@ class SpanshPlannerBase(ttk.Frame):
                     is_off_route=False,
                     source="planner.clear.idle",
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_planner_soft_failure(
+                "reset_shared_route_state_awareness",
+                "reset route awareness after planner clear failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     # ------------------------------------------------------------------ Busy / lifecycle
 
@@ -523,8 +549,14 @@ class SpanshPlannerBase(ttk.Frame):
         if intent_target:
             try:
                 app_state.set_route_intent(intent_target, source=f"{self._status_source}.intent")
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_planner_soft_failure(
+                    "start_route_thread_set_intent",
+                    "set route intent before planner thread failed",
+                    mode=self._mode_key,
+                    target=intent_target,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
         self._set_busy(True)
         route_manager.start_route_thread(self._mode_key, target, args=args, gui_ref=self.root)
 
@@ -671,8 +703,14 @@ class SpanshPlannerBase(ttk.Frame):
                         is_off_route=False,
                         source=f"{self._status_source}.route_found",
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log_planner_soft_failure(
+                        "apply_route_result_awareness_found",
+                        "update route awareness on route_found failed",
+                        mode=self._mode_key,
+                        route_len=len(route),
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
                 self._render_route_rows(list_widget, route, rows)
                 common.handle_route_ready_autoclipboard(self, route, status_target=self._status_target)
                 common.emit_status(
@@ -716,8 +754,13 @@ class SpanshPlannerBase(ttk.Frame):
                             is_off_route=False,
                             source=f"{self._status_source}.route_empty.idle",
                         )
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_planner_soft_failure(
+                    "apply_route_result_awareness_empty",
+                    "update route awareness on route_empty failed",
+                    mode=self._mode_key,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
             self._show_empty_state(list_widget)
         finally:
             self._set_busy(False)
