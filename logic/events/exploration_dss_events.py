@@ -6,6 +6,7 @@ import config
 from app.state import app_state
 from logic.events.exploration_awareness import emit_callout_or_summary
 from logic.insight_dispatcher import emit_insight
+from logic.utils.renata_log import log_event_throttled
 
 
 DSS_TARGET_HINT_BODIES = set()
@@ -121,6 +122,14 @@ def _estimate_mapped_value_from_carto(ev: Dict[str, Any], gui_ref=None) -> float
         value = float(rows["DSS_Mapped_Value"].max() or 0.0)
         return max(0.0, value)
     except Exception:
+        log_event_throttled(
+            "dss.estimate_value_from_carto",
+            5000,
+            "DSS",
+            "failed to estimate mapped value from cartography table",
+            planet_class=planet_class,
+            terraform_state=terraform_state,
+        )
         return 0.0
 
 
@@ -216,6 +225,16 @@ def handle_dss_scan_complete(ev: Dict[str, Any], gui_ref=None) -> None:
         target_i = int(efficiency_target)
         efficient = target_i > 0 and probes_i <= target_i
     except Exception:
+        log_event_throttled(
+            "dss.efficiency_parse",
+            5000,
+            "DSS",
+            "failed to parse DSS efficiency payload",
+            probes_used=probes_used,
+            efficiency_target=efficiency_target,
+            body=body_name,
+            system=system_name,
+        )
         efficient = False
 
     completion_text = f"Mapowanie DSS ukonczone: {body_name}."
