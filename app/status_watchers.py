@@ -77,6 +77,17 @@ class BaseWatcher:
             self._log_once("Niekrytyczny problem odczytu JSON.")
             return None
 
+    def _log_dispatch_soft_failure(self, event_kind: str) -> None:
+        kind = str(event_kind or "update").strip().lower() or "update"
+        label = str(self._label or "WATCHER").strip().upper() or "WATCHER"
+        log_event_throttled(
+            "WARN",
+            f"{label}_{kind.upper()}_DISPATCH_FAILED",
+            f"{label} watcher: dispatch {kind} failed",
+            cooldown_sec=120.0,
+            context=f"watcher.{label.lower()}.dispatch:{kind}",
+        )
+
 
 class StatusWatcher(BaseWatcher):
     def __init__(self, handler, gui_ref, app_state, config):
@@ -102,7 +113,7 @@ class StatusWatcher(BaseWatcher):
         try:
             self._handler.on_status_update(data, self._gui_ref)
         except Exception:
-            pass
+            self._log_dispatch_soft_failure("status_update")
 
 
 class MarketWatcher(BaseWatcher):
@@ -128,7 +139,7 @@ class MarketWatcher(BaseWatcher):
         try:
             self._handler.on_market_update(data, self._gui_ref)
         except Exception:
-            pass
+            self._log_dispatch_soft_failure("market_update")
 
 
 class CargoWatcher(BaseWatcher):
@@ -154,7 +165,7 @@ class CargoWatcher(BaseWatcher):
         try:
             self._handler.on_cargo_update(data, self._gui_ref)
         except Exception:
-            pass
+            self._log_dispatch_soft_failure("cargo_update")
 
 
 class NavRouteWatcher(BaseWatcher):
@@ -180,5 +191,5 @@ class NavRouteWatcher(BaseWatcher):
         try:
             self._handler.on_navroute_update(data, self._gui_ref)
         except Exception:
-            pass
+            self._log_dispatch_soft_failure("navroute_update")
 
