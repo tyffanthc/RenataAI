@@ -100,7 +100,13 @@ class AppState:
         try:
             self.system_value_engine.set_current_system(self.current_system)
         except Exception:
-            pass
+            log_event_throttled(
+                "state.init.set_current_system",
+                5000,
+                "STATE",
+                "SystemValueEngine set_current_system failed during AppState init",
+                system=self.current_system,
+            )
 
         # --- Exit Summary Generator (EPIC 2–4) ---
         self.exit_summary = ExitSummaryGenerator(self.system_value_engine)
@@ -231,7 +237,13 @@ class AppState:
             try:
                 self.system_value_engine.set_current_system(system_name)
             except Exception:
-                pass
+                log_event_throttled(
+                    "state.set_system.value_engine",
+                    3000,
+                    "STATE",
+                    "SystemValueEngine set_current_system failed",
+                    system=system_name,
+                )
         utils.MSG_QUEUE.put(("start_label", system_name))
         log_event_throttled("state.system", 500, "STATE", f"System = {system_name}")
 
