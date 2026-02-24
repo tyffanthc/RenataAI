@@ -39,7 +39,12 @@ class AddEntryDialog(tk.Toplevel):
         try:
             apply_renata_orange_window_chrome(self)
         except Exception:
-            pass
+            log_event_throttled(
+                "GUI:add_entry.chrome",
+                5000,
+                "GUI",
+                "failed to apply window chrome in add-entry dialog",
+            )
         restore_window_geometry(self, "add_entry_dialog", include_size=True)
         bind_window_geometry(self, "add_entry_dialog", include_size=True)
         self._maybe_fetch_coords()
@@ -186,7 +191,15 @@ class AddEntryDialog(tk.Toplevel):
     def _fetch_spansh_suggestions(self, query: str):
         try:
             raw = pobierz_sugestie(query)
-        except Exception:
+        except Exception as exc:
+            log_event_throttled(
+                "GUI:add_entry.fetch_suggestions",
+                5000,
+                "GUI",
+                "failed to fetch system suggestions in add-entry dialog",
+                query=query,
+                error=f"{type(exc).__name__}: {exc}",
+            )
             return
 
         names = raw if isinstance(raw, list) else []
@@ -218,8 +231,14 @@ class AddEntryDialog(tk.Toplevel):
         try:
             color = "#ff5555" if error else COLOR_SEC
             self.lbl_coords_status.config(text=text, fg=color)
-        except Exception:
-            pass
+        except Exception as exc:
+            log_event_throttled(
+                "GUI:add_entry.coords_status",
+                5000,
+                "GUI",
+                "failed to update coords status in add-entry dialog",
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     def _on_system_selected(self, event=None):
         self._maybe_fetch_coords()
@@ -233,7 +252,14 @@ class AddEntryDialog(tk.Toplevel):
             return
         try:
             from logic.utils.http_edsm import is_edsm_enabled
-        except Exception:
+        except Exception as exc:
+            log_event_throttled(
+                "GUI:add_entry.import_http_edsm",
+                10000,
+                "GUI",
+                "failed to import EDSM availability helper in add-entry dialog",
+                error=f"{type(exc).__name__}: {exc}",
+            )
             return
         if not is_edsm_enabled():
             return
@@ -245,7 +271,14 @@ class AddEntryDialog(tk.Toplevel):
     def _fetch_coords(self, system: str):
         try:
             from logic.utils.edsm_provider import lookup_system, get_last_reason
-        except Exception:
+        except Exception as exc:
+            log_event_throttled(
+                "GUI:add_entry.import_edsm_provider",
+                10000,
+                "GUI",
+                "failed to import EDSM provider in add-entry dialog",
+                error=f"{type(exc).__name__}: {exc}",
+            )
             return
         info = lookup_system(system)
         if info:
@@ -266,8 +299,14 @@ class AddEntryDialog(tk.Toplevel):
             self.entry_coords.delete(0, "end")
             self.entry_coords.insert(0, coords)
             self._set_coords_status("Wspolrzedne uzupelnione z EDSM.", False)
-        except Exception:
-            pass
+        except Exception as exc:
+            log_event_throttled(
+                "GUI:add_entry.apply_coords",
+                5000,
+                "GUI",
+                "failed to apply EDSM coords in add-entry dialog",
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     # --------------------------------------------------
     #  Obsługa przycisków
