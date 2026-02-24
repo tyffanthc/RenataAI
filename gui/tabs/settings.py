@@ -11,6 +11,7 @@ import config
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
 from gui.window_chrome import apply_renata_orange_window_chrome
 from gui.window_focus import bring_window_to_front
+from logic.utils.renata_log import log_event_throttled
 from logic.cash_in_offline_index_builder import build_offline_index_from_spansh_dump
 from logic.capabilities import (
     CAP_SETTINGS_FULL,
@@ -61,6 +62,12 @@ class SettingsTab(ttk.Frame):
             try:
                 initial_cfg = self._get_config() or {}
             except Exception:
+                log_event_throttled(
+                    "settings.init_cfg.get",
+                    5000,
+                    "SETTINGS",
+                    "Initial config callback failed",
+                )
                 initial_cfg = {}
         self._free_profile = not resolve_capabilities(initial_cfg or None).has(CAP_SETTINGS_FULL)
         self._scroll_tabs: Dict[tk.Widget, Dict[str, Any]] = {}
@@ -596,12 +603,24 @@ class SettingsTab(ttk.Frame):
             try:
                 initial_loaded = bool(self.controller.is_science_data_available())
             except Exception:
+                log_event_throttled(
+                    "settings.science_status.initial",
+                    5000,
+                    "SETTINGS",
+                    "Initial science status check failed",
+                )
                 initial_loaded = False
         self.update_science_status(initial_loaded)
         if self.controller and hasattr(self.controller, "is_modules_data_available"):
             try:
                 self.update_modules_status(bool(self.controller.is_modules_data_available()))
             except Exception:
+                log_event_throttled(
+                    "settings.modules_status.initial",
+                    5000,
+                    "SETTINGS",
+                    "Initial modules status check failed",
+                )
                 self.update_modules_status(False)
         else:
             self.update_modules_status(False)
@@ -1258,12 +1277,24 @@ class SettingsTab(ttk.Frame):
             try:
                 initial_loaded = bool(self.controller.is_science_data_available())
             except Exception:
+                log_event_throttled(
+                    "settings.science_status.initial.dup",
+                    5000,
+                    "SETTINGS",
+                    "Initial science status check failed",
+                )
                 initial_loaded = False
         self.update_science_status(initial_loaded)
         if self.controller and hasattr(self.controller, "is_modules_data_available"):
             try:
                 self.update_modules_status(bool(self.controller.is_modules_data_available()))
             except Exception:
+                log_event_throttled(
+                    "settings.modules_status.initial.dup",
+                    5000,
+                    "SETTINGS",
+                    "Initial modules status check failed",
+                )
                 self.update_modules_status(False)
         else:
             self.update_modules_status(False)
@@ -1329,6 +1360,12 @@ class SettingsTab(ttk.Frame):
                 self._jackpot_dialog = None
                 return
         except Exception:
+            log_event_throttled(
+                "settings.jackpot_dialog.reopen",
+                3000,
+                "SETTINGS",
+                "Jackpot dialog reopen/destroy failed",
+            )
             self._jackpot_dialog = None
 
         dialog = tk.Toplevel(self)
@@ -1339,13 +1376,23 @@ class SettingsTab(ttk.Frame):
         try:
             apply_renata_orange_window_chrome(dialog)
         except Exception:
-            pass
+            log_event_throttled(
+                "settings.jackpot_dialog.chrome",
+                3000,
+                "SETTINGS",
+                "Jackpot dialog chrome apply failed",
+            )
         restore_window_geometry(dialog, "jackpot_dialog", include_size=False)
         bind_window_geometry(dialog, "jackpot_dialog", include_size=False)
         try:
             dialog.attributes("-topmost", True)
         except Exception:
-            pass
+            log_event_throttled(
+                "settings.jackpot_dialog.topmost",
+                3000,
+                "SETTINGS",
+                "Jackpot dialog topmost attribute failed",
+            )
         dialog.grab_set()
 
         entries: Dict[str, tk.Entry] = {}
@@ -1363,7 +1410,12 @@ class SettingsTab(ttk.Frame):
             try:
                 dialog.grab_release()
             except Exception:
-                pass
+                log_event_throttled(
+                    "settings.jackpot_dialog.grab_release",
+                    3000,
+                    "SETTINGS",
+                    "Jackpot dialog grab release failed",
+                )
             try:
                 dialog.destroy()
             finally:
@@ -1424,6 +1476,12 @@ class SettingsTab(ttk.Frame):
                 self._tables_columns_dialog = None
                 return
         except Exception:
+            log_event_throttled(
+                "settings.tables_columns_dialog.reopen",
+                3000,
+                "SETTINGS",
+                "Tables columns dialog reopen/destroy failed",
+            )
             self._tables_columns_dialog = None
 
         dialog = tk.Toplevel(self)
@@ -1433,7 +1491,12 @@ class SettingsTab(ttk.Frame):
         try:
             apply_renata_orange_window_chrome(dialog)
         except Exception:
-            pass
+            log_event_throttled(
+                "settings.tables_columns_dialog.chrome",
+                3000,
+                "SETTINGS",
+                "Tables columns dialog chrome apply failed",
+            )
         restore_window_geometry(dialog, "tables_columns_dialog", include_size=True)
         bind_window_geometry(dialog, "tables_columns_dialog", include_size=True)
         dialog.protocol("WM_DELETE_WINDOW", lambda: self._close_tables_columns_dialog())
@@ -2496,7 +2559,12 @@ class SettingsTab(ttk.Frame):
         try:
             config.config.save(payload)
         except Exception:
-            pass
+            log_event_throttled(
+                "settings.cashin_paths.persist",
+                3000,
+                "SETTINGS",
+                "Cash-in paths silent persist failed",
+            )
 
     def _resolve_existing_cash_in_path(self, path: str) -> str:
         normalized = self._normalize_path(path)
@@ -2695,7 +2763,13 @@ class SettingsTab(ttk.Frame):
                     if os.path.exists(temp_path):
                         os.remove(temp_path)
                 except Exception:
-                    pass
+                    log_event_throttled(
+                        "settings.cashin_dump.cleanup_part",
+                        3000,
+                        "SETTINGS",
+                        "Cash-in dump temporary file cleanup failed",
+                        path=temp_path,
+                    )
                 err_msg = f"Pobieranie nieudane: {exc}"
                 self.after(
                     0,
@@ -2820,7 +2894,12 @@ class SettingsTab(ttk.Frame):
             handler()
         except Exception:
             # UI nie panikuje – logika może zalogować błąd gdzie indziej.
-            pass
+            log_event_throttled(
+                "settings.generate_science.handler",
+                3000,
+                "SETTINGS",
+                "Generate science handler failed",
+            )
 
     def _on_generate_modules_data(self) -> None:
         """
@@ -2836,7 +2915,12 @@ class SettingsTab(ttk.Frame):
         try:
             handler()
         except Exception:
-            pass
+            log_event_throttled(
+                "settings.generate_modules.handler",
+                3000,
+                "SETTINGS",
+                "Generate modules handler failed",
+            )
 
     def _on_reset(self) -> None:
         """Przywrócenie domyślnych wartości UI."""
