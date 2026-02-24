@@ -9,6 +9,7 @@ from app.state import app_state
 import config
 
 from app.status_watchers import StatusWatcher, MarketWatcher, CargoWatcher, NavRouteWatcher
+from logic.utils.renata_log import log_event_throttled
 
 
 class MainLoop:
@@ -41,7 +42,13 @@ class MainLoop:
             if hasattr(handler, "log_dir"):
                 handler.log_dir = log_dir
         except Exception:
-            pass
+            log_event_throttled(
+                "WARN",
+                "MAINLOOP_HANDLER_LOGDIR_SET_FAILED",
+                "MainLoop: failed to set handler.log_dir",
+                cooldown_sec=120.0,
+                context="main_loop.handler.log_dir",
+            )
 
     def _emit_runtime_critical(self, raw_text: str, *, component: str) -> None:
         text = str(raw_text or "").strip()
@@ -65,6 +72,13 @@ class MainLoop:
                 cooldown_seconds=120.0,
             )
         except Exception:
+            log_event_throttled(
+                "WARN",
+                "MAINLOOP_RUNTIME_CRITICAL_EMIT_FAILED",
+                "MainLoop: runtime critical insight emit failed",
+                cooldown_sec=120.0,
+                context=f"main_loop.runtime_critical.emit:{component}",
+            )
             return
 
     # ------------------------------------------------------------------ #
