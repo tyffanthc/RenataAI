@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterable, List
 
 from logic import player_local_db
 from logic.spansh_client import client as spansh_client
+from logic.utils.renata_log import log_event_throttled
 from logic.utils.http_edsm import (
     edsm_nearby_systems,
     edsm_provider_resilience_snapshot,
@@ -330,12 +331,24 @@ def station_candidates_for_system_from_providers(
         try:
             rows.extend(edsm_station_details_for_system(system) or [])
         except Exception:
-            pass
+            log_event_throttled(
+                "cashin.providers.edsm_station_details",
+                5000,
+                "CASHIN",
+                "EDSM station details provider failed",
+                system=system,
+            )
     if include_spansh:
         try:
             rows.extend(spansh_client.stations_for_system_details(system) or [])
         except Exception:
-            pass
+            log_event_throttled(
+                "cashin.providers.spansh_station_details",
+                5000,
+                "CASHIN",
+                "Spansh station details provider failed",
+                system=system,
+            )
     return build_station_candidates(
         rows,
         default_system=system,
@@ -405,6 +418,15 @@ def station_candidates_cross_system_from_providers(
             elif nearby_effective_radius_ly >= 100.0 and nearby_provider_response_count == 0:
                 nearby_reason = "provider_empty"
         except Exception:
+            log_event_throttled(
+                "cashin.providers.edsm_nearby",
+                5000,
+                "CASHIN",
+                "EDSM nearby systems provider failed",
+                origin=origin,
+                radius_ly=radius_ly,
+                max_systems=max_systems,
+            )
             nearby_rows = []
 
     systems: list[dict[str, Any]] = []
@@ -522,6 +544,16 @@ def station_candidates_from_playerdb(
             limit=max_rows,
         )
     except Exception as exc:
+        log_event_throttled(
+            "cashin.playerdb.query_nearest",
+            5000,
+            "CASHIN",
+            "PlayerDB nearest station query failed",
+            system=system,
+            service=svc,
+            db_path=resolved_db_path,
+            error=f"{type(exc).__name__}: {exc}",
+        )
         return [], {
             "lookup_status": "playerdb_error",
             "db_path": resolved_db_path,
