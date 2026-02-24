@@ -58,7 +58,14 @@ def _emit_playerdb_updated(
                 },
             )
         )
-    except Exception:
+    except Exception as exc:
+        _log_router_fallback(
+            "playerdb_updated.emit",
+            "failed to enqueue playerdb_updated notification",
+            exc,
+            source=source,
+            event=event_name,
+        )
         return
 
 
