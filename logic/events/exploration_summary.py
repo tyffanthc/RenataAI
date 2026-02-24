@@ -8,6 +8,7 @@ import config
 from app.state import app_state
 from logic.exit_summary import ExitSummaryData, format_credits
 from logic.insight_dispatcher import emit_insight
+from logic.utils.renata_log import log_event_throttled
 
 
 @dataclass
@@ -264,6 +265,14 @@ def trigger_exploration_summary(
             summary_payload=asdict(payload),
             suppress_tts=(mode_norm == "auto"),
         )
-    except Exception:
-        pass
+    except Exception as e:
+        log_event_throttled(
+            "EXP_SUMMARY:CASHIN_TRIGGER_FAILED",
+            10000,
+            "WARN",
+            "exploration summary cash-in trigger failed",
+            error=f"{type(e).__name__}: {e}",
+            mode=mode_norm,
+            system=payload.system,
+        )
     return True

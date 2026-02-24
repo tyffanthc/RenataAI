@@ -7,6 +7,7 @@ from typing import Iterable, Optional
 import config
 from logic.event_insight_mapping import resolve_emit_contract
 from logic.utils import notify as _notify
+from logic.utils.renata_log import log_event_throttled
 
 
 _PRIORITY_ORDER = {
@@ -459,8 +460,14 @@ def _is_combat_silence_active(context: dict | None) -> bool:
         overlay = str(snapshot.get("mode_overlay") or "").strip().upper()
         if source == "MANUAL" and overlay == "COMBAT":
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        log_event_throttled(
+            "DISPATCHER:COMBAT_SILENCE_SNAPSHOT_FAILED",
+            10000,
+            "WARN",
+            "combat silence snapshot read failed",
+            error=f"{type(e).__name__}: {e}",
+        )
 
     return False
 

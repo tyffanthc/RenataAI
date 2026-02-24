@@ -1891,15 +1891,25 @@ class RenataApp:
     def _open_spansh_neutron_tab(self) -> None:
         try:
             self.main_nb.select(self.tab_spansh)
-        except Exception:
-            pass
+        except Exception as e:
+            _log_app_fallback(
+                "OPEN_SPANSH_MAIN_TAB",
+                "failed to select main Spansh tab",
+                e,
+                interval_ms=10000,
+            )
         try:
             spansh_nb = getattr(self.tab_spansh, "nb", None)
             neutron_tab = getattr(self.tab_spansh, "tab_neutron", None)
             if spansh_nb is not None and neutron_tab is not None:
                 spansh_nb.select(neutron_tab)
-        except Exception:
-            pass
+        except Exception as e:
+            _log_app_fallback(
+                "OPEN_SPANSH_NEUTRON_TAB",
+                "failed to select Neutron tab",
+                e,
+                interval_ms=10000,
+            )
 
     def _trigger_cash_in_neutron_route(self, target_system: str) -> dict:
         target = str(target_system or "").strip()
