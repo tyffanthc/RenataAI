@@ -9,6 +9,7 @@ from .exomastery import ExomasteryTab
 from .trade import TradeTab
 from gui import strings as ui
 import config
+from logic.utils.renata_log import log_event_throttled
 
 
 class SpanshTab(ttk.Frame):
@@ -101,7 +102,12 @@ class SpanshTab(ttk.Frame):
         try:
             config.update_ui_state({"spansh": {"active_tab_key": tab_key}})
         except Exception:
-            pass
+            log_event_throttled(
+                "spansh.ui_state.persist_tab",
+                3000,
+                "WARN",
+                "Spansh: failed to persist active tab UI state",
+            )
 
     def _restore_tab_from_ui_state(self) -> None:
         try:
@@ -112,7 +118,12 @@ class SpanshTab(ttk.Frame):
             if tab is not None:
                 self.nb.select(tab)
         except Exception:
-            pass
+            log_event_throttled(
+                "spansh.ui_state.restore_tab",
+                3000,
+                "WARN",
+                "Spansh: failed to restore active tab from UI state",
+            )
 
     def _add_placeholder(self, title):
         fr = ttk.Frame(self.nb)
@@ -159,7 +170,12 @@ class SpanshTab(ttk.Frame):
                 try:
                     t.apply_jump_range_from_ship(value)
                 except Exception:
-                    pass
+                    log_event_throttled(
+                        f"spansh.jump_range.apply.{type(t).__name__}",
+                        2000,
+                        "WARN",
+                        "Spansh: failed to apply ship jump range to tab",
+                    )
 
     def _on_tab_changed(self, _event):
         self.hide_suggestions()
