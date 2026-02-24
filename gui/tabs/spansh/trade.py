@@ -42,7 +42,7 @@ class TradeTab(ttk.Frame):
 
     """
 
-    ZakĹ‚adka: Trade Planner (Spansh)
+    Zakladka: Trade Planner (Spansh)
 
     """
 
@@ -84,9 +84,9 @@ class TradeTab(ttk.Frame):
 
 
 
-        # System / stacja startowa â€“ inicjalnie puste,
+        # System / stacja startowa - inicjalnie puste,
 
-        # uzupeĹ‚niane z app_state w refresh_from_app_state().
+        # uzupelniane z app_state w refresh_from_app_state().
 
         self.var_start_system = tk.StringVar()
 
@@ -225,7 +225,7 @@ class TradeTab(ttk.Frame):
 
 
 
-        # D3c â€“ pierwsze uzupeĹ‚nienie pĂłl z app_state
+        # D3c - pierwsze uzupelnienie pol z app_state
 
         self.refresh_from_app_state()
         self._update_station_hint()
@@ -1747,11 +1747,11 @@ class TradeTab(ttk.Frame):
 
     def refresh_from_app_state(self):
 
-        """D3c: uzupeĹ‚nia pola System/Stacja na podstawie AppState.
+        """D3c: uzupelnia pola System/Stacja na podstawie AppState.
 
 
 
-        UĹĽywamy TEGO SAMEGO app_state, co navigation_events.
+        Uzywamy TEGO SAMEGO app_state, co navigation_events.
 
         """
 
@@ -1819,7 +1819,7 @@ class TradeTab(ttk.Frame):
 
         Bazuje najpierw na aktualnym systemie z pola,
 
-        a je‘>li jest puste f?" na app_state.current_system.
+        a jesli jest puste - na app_state.current_system.
 
         """
 
@@ -1832,9 +1832,9 @@ class TradeTab(ttk.Frame):
 
 
 
-        # Je‘>li kto‘> ma w polu systemu format "System / Stacja" / "System, Stacja",
+        # Jesli ktos ma w polu systemu format "System / Stacja" / "System, Stacja",
 
-        # to do zapytania o stacje bierzemy tylko nazwŽt systemu (czŽt‘>ŽA przed separatorem).
+        # to do zapytania o stacje bierzemy tylko nazwe systemu (czesc przed separatorem).
 
         raw = system
 
@@ -2117,7 +2117,7 @@ class TradeTab(ttk.Frame):
 
     def _suggest_system(self, tekst: str):
 
-        """Funkcja podpowiedzi systemĂłw dla AutocompleteController."""
+        """Funkcja podpowiedzi systemow dla AutocompleteController."""
 
         q = (tekst or "").strip()
 
@@ -2797,7 +2797,7 @@ class TradeTab(ttk.Frame):
 
 
 
-        # Fallback do aktualnej lokalizacji z app_state, jeĹ›li pola sÄ… puste
+        # Fallback do aktualnej lokalizacji z app_state, jesli pola sa puste
 
         if not start_system:
 
@@ -2815,7 +2815,7 @@ class TradeTab(ttk.Frame):
 
 
 
-        # Ostateczny fallback do config.STATE (zgodnoĹ›Ä‡ wsteczna)
+        # Ostateczny fallback do config.STATE (zgodnosc wsteczna)
 
 
 
@@ -2837,7 +2837,7 @@ class TradeTab(ttk.Frame):
 
 
 
-        # D3b: dwa tryby wejĹ›cia:
+        # D3b: dwa tryby wejscia:
 
         # 1) klasyczny: osobne System + Stacja,
 
