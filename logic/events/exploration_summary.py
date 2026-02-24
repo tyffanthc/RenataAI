@@ -142,7 +142,14 @@ def _build_payload(
 ) -> ExplorationSummaryPayload:
     try:
         totals = app_state.system_value_engine.calculate_totals()
-    except Exception:
+    except Exception as e:
+        log_event_throttled(
+            "EXP_SUMMARY:CALCULATE_TOTALS_FAILED",
+            10000,
+            "WARN",
+            "exploration summary failed to read session totals",
+            error=f"{type(e).__name__}: {e}",
+        )
         totals = {"total": 0.0}
 
     highlights = _build_highlights(data)
@@ -206,7 +213,15 @@ def trigger_exploration_summary(
             scanned_bodies=scanned_bodies,
             total_bodies=total_bodies,
         )
-    except Exception:
+    except Exception as e:
+        log_event_throttled(
+            "EXP_SUMMARY:BUILD_DATA_FAILED",
+            10000,
+            "WARN",
+            "exploration summary build_summary_data failed",
+            error=f"{type(e).__name__}: {e}",
+            system=system,
+        )
         data = None
 
     if data is None:
