@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 import config
 from logic.risk_rebuy_contract import build_risk_rebuy_contract
+from logic.utils.renata_log import log_event_throttled
 
 
 class PulpitTab(ttk.Frame):
@@ -391,7 +392,13 @@ class PulpitTab(ttk.Frame):
             try:
                 btn.destroy()
             except Exception:
-                pass
+                log_event_throttled(
+                    "WARN",
+                    "PULPIT_PANEL_ACTION_DESTROY_FAILED",
+                    "Pulpit: panel action button destroy failed",
+                    cooldown_sec=60.0,
+                    context="pulpit.panel.actions.clear",
+                )
         self._panel_action_buttons = []
 
     def _set_panel_lines(self, lines: list[str]) -> None:
@@ -423,7 +430,13 @@ class PulpitTab(ttk.Frame):
         try:
             self.after_cancel(self._panel_auto_close_job)
         except Exception:
-            pass
+            log_event_throttled(
+                "WARN",
+                "PULPIT_PANEL_AUTOCLOSE_CANCEL_FAILED",
+                "Pulpit: panel auto-close cancel failed",
+                cooldown_sec=60.0,
+                context="pulpit.panel.autoclose.cancel",
+            )
         self._panel_auto_close_job = None
 
     def _open_panel(
@@ -943,7 +956,13 @@ class PulpitTab(ttk.Frame):
                 system = getattr(self._app_state, "current_system", None) or "-"
                 live_ready = bool(getattr(self._app_state, "has_live_system_event", False))
             except Exception:
-                pass
+                log_event_throttled(
+                    "WARN",
+                    "PULPIT_STATUS_APPSTATE_READ_FAILED",
+                    "Pulpit: failed to read app_state system snapshot",
+                    cooldown_sec=120.0,
+                    context="pulpit.status.app_state.read",
+                )
         self.set_system_runtime_state(system, live_ready=live_ready)
 
         self.lbl_status_bodies.config(text="Ciala: -/-")
@@ -976,6 +995,13 @@ class PulpitTab(ttk.Frame):
             except Exception:
                 route_text = "-"
                 route_widget = "ROUTE: -"
+                log_event_throttled(
+                    "WARN",
+                    "PULPIT_ROUTE_AWARENESS_SNAPSHOT_FAILED",
+                    "Pulpit: route awareness snapshot read failed",
+                    cooldown_sec=120.0,
+                    context="pulpit.status.route_awareness.snapshot",
+                )
         elif self._route_manager is not None:
             try:
                 if self._route_manager.route:
@@ -983,7 +1009,13 @@ class PulpitTab(ttk.Frame):
                     route_text = f"{count} punktow"
                     route_widget = f"ROUTE: ON | {count}"
             except Exception:
-                pass
+                log_event_throttled(
+                    "WARN",
+                    "PULPIT_ROUTE_MANAGER_READ_FAILED",
+                    "Pulpit: route_manager fallback read failed",
+                    cooldown_sec=120.0,
+                    context="pulpit.status.route_manager.read",
+                )
 
         self.lbl_status_route.config(text=f"Trasa: {route_text}")
         self._set_widget_text("route", route_widget)
@@ -1001,7 +1033,13 @@ class PulpitTab(ttk.Frame):
                 }
                 self.update_ship_state(payload)
             except Exception:
-                pass
+                log_event_throttled(
+                    "WARN",
+                    "PULPIT_SHIP_STATE_SNAPSHOT_FAILED",
+                    "Pulpit: ship_state snapshot read failed",
+                    cooldown_sec=120.0,
+                    context="pulpit.status.ship_state.read",
+                )
 
     def set_mode_state(
         self,
@@ -1022,12 +1060,24 @@ class PulpitTab(ttk.Frame):
             try:
                 self._mode_confidence = max(0.0, min(1.0, float(confidence)))
             except Exception:
-                pass
+                log_event_throttled(
+                    "WARN",
+                    "PULPIT_MODE_CONFIDENCE_PARSE_FAILED",
+                    "Pulpit: mode confidence parse failed",
+                    cooldown_sec=120.0,
+                    context="pulpit.mode.confidence.parse",
+                )
         if since is not None:
             try:
                 self._mode_since = float(since)
             except Exception:
-                pass
+                log_event_throttled(
+                    "WARN",
+                    "PULPIT_MODE_SINCE_PARSE_FAILED",
+                    "Pulpit: mode since parse failed",
+                    cooldown_sec=120.0,
+                    context="pulpit.mode.since.parse",
+                )
         if ttl is not None:
             try:
                 ttl_val = float(ttl)
@@ -1126,7 +1176,13 @@ class PulpitTab(ttk.Frame):
                 try:
                     txt += f" fuel:{float(fuel_needed):.2f}t"
                 except Exception:
-                    pass
+                    log_event_throttled(
+                        "WARN",
+                        "PULPIT_JR_FUEL_DEBUG_PARSE_FAILED",
+                        "Pulpit: JR fuel debug parse failed",
+                        cooldown_sec=120.0,
+                        context="pulpit.status.jr_fuel.parse",
+                    )
         self.lbl_status_jr.config(text=txt)
 
     def set_system_runtime_state(self, system_name: str, live_ready: bool) -> None:
