@@ -4,6 +4,7 @@ import time
 from weakref import WeakKeyDictionary
 import config
 from logic import utils
+from logic.utils.renata_log import log_event_throttled
 
 AUTOCOMPLETE_DEBUG = bool(config.get("debug_autocomplete", False))
 
@@ -250,6 +251,13 @@ class AutocompleteController:
             try:
                 fallback_value = self.fallback_lookup(t)
             except Exception:
+                log_event_throttled(
+                    "ac.fallback_lookup",
+                    5000,
+                    "AC",
+                    "fallback_lookup failed",
+                    query=query,
+                )
                 fallback_value = None
 
         def apply():
@@ -387,7 +395,12 @@ class AutocompleteController:
             try:
                 self.entry.tk_focusNext().focus_set()
             except Exception:
-                pass
+                log_event_throttled(
+                    "ac.tab_focus_next",
+                    5000,
+                    "AC",
+                    "focus_next failed after choose",
+                )
             return "break"
         return
 
@@ -571,19 +584,37 @@ class AutocompleteController:
             self.entry.insert(0, raw)
             self.entry.icursor(tk.END)
         except Exception:
-            pass
+            log_event_throttled(
+                "ac.apply_fallback_value",
+                5000,
+                "AC",
+                "failed to apply fallback value to entry",
+                value_preview=raw[:48],
+            )
         try:
             self.hide(reason="fallback")
         finally:
             try:
                 self.entry.after_idle(self._resume_programmatic_change)
             except Exception:
+                log_event_throttled(
+                    "ac.after_idle_resume",
+                    5000,
+                    "AC",
+                    "after_idle resume failed; applying synchronously",
+                )
                 self._resume_programmatic_change()
         if self.on_fallback_hit is not None:
             try:
                 self.on_fallback_hit(raw)
             except Exception:
-                pass
+                log_event_throttled(
+                    "ac.on_fallback_hit",
+                    5000,
+                    "AC",
+                    "on_fallback_hit callback failed",
+                    value_preview=raw[:48],
+                )
 
 
 def edsm_single_system_lookup(query: str) -> str | None:
@@ -595,6 +626,12 @@ def edsm_single_system_lookup(query: str) -> str | None:
     try:
         from logic.utils.edsm_provider import lookup_system, register_local_system
     except Exception:
+        log_event_throttled(
+            "ac.edsm_provider_import",
+            15000,
+            "AC",
+            "EDSM provider import failed",
+        )
         return None
 
     info = lookup_system(raw)
@@ -603,5 +640,11 @@ def edsm_single_system_lookup(query: str) -> str | None:
     try:
         register_local_system(info)
     except Exception:
-        pass
+        log_event_throttled(
+            "ac.edsm_register_local",
+            5000,
+            "AC",
+            "register_local_system failed",
+            system=getattr(info, "name", None),
+        )
     return info.name
