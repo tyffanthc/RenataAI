@@ -155,6 +155,13 @@ _GROUPED_INT_PATTERN = re.compile(
 _CREDITS_NUMBER_RE = re.compile(
     rf"(?<![\d,\.\u00A0\u202F'])\b(?P<num>{_GROUPED_INT_PATTERN.pattern})\s*(?:Cr|CR|cr)\b"
 )
+_STANDALONE_NUMBER_RE = re.compile(
+    rf"(?<![\d,\.\u00A0\u202F'])\b(?P<num>(?:\d{{1,3}}(?:[{_GROUPED_INT_SEP_CLASS}]\d{{3}})+|\d+))\b"
+    rf"(?!\s*(?:Cr|CR|cr)\b)(?!\s*%)(?!\s*(?:LY|ly)\b)(?![.,]\d)"
+)
+_NUMBER_GROUP_WORD_RE = re.compile(
+    r"\b(?:tysiąc|tysiące|tysięcy|milion|miliony|milionów|miliard|miliardy|miliardów|bilion|biliony|bilionów)\b"
+)
 
 
 def _repair_polish_text(value: Any) -> str:
@@ -273,6 +280,28 @@ def _parse_grouped_int(value_text: str) -> Optional[int]:
         return None
 
 
+def _with_tts_number_semicolon_breaks(number_words: str, *, unit: Optional[str] = None) -> str:
+    """
+    Piper-specific prosody helper: semicolons work as reliable micro-pauses/"reset"
+    for long number phrases without changing the spoken words themselves.
+    """
+    words = _repair_polish_text(number_words).strip()
+    if not words:
+        return ""
+    out = _NUMBER_GROUP_WORD_RE.sub(lambda m: f"{m.group(0)} ;", words)
+    if unit:
+        unit_txt = _repair_polish_text(unit).strip()
+        if unit_txt:
+            out = f"{out} ; {unit_txt}"
+    else:
+        out = f"{out} ;"
+    out = "; " + out.lstrip()
+    out = re.sub(r"\s*;\s*", " ; ", out)
+    out = re.sub(r"(?:\s;\s){2,}", " ; ", out)
+    out = re.sub(r"\s+", " ", out).strip()
+    return out
+
+
 def _verbalize_tts_numbers(text: str) -> str:
     if not text:
         return ""
@@ -283,7 +312,7 @@ def _verbalize_tts_numbers(text: str) -> str:
         if n is None:
             return match.group(0)
         unit = _plural_form_pl(n, "kredyt", "kredyty", "kredytów")
-        return f"{_int_to_words_pl(n)} {unit}"
+        return _with_tts_number_semicolon_breaks(_int_to_words_pl(n), unit=unit)
 
     def _percent_sub(match: re.Match[str]) -> str:
         raw_num = str(match.group("num") or "")
@@ -291,19 +320,27 @@ def _verbalize_tts_numbers(text: str) -> str:
         if not words:
             return match.group(0)
         unit = "procent" if str(raw_num).strip() in {"1", "1.0", "1,0"} else "procent"
-        return f"{words} {unit}"
+        return _with_tts_number_semicolon_breaks(words, unit=unit)
 
     def _ly_sub(match: re.Match[str]) -> str:
         raw_num = str(match.group("num") or "")
         words = _decimal_to_words_pl(raw_num)
         if not words:
             return match.group(0)
-        return f"{words} lat świetlnych"
+        return _with_tts_number_semicolon_breaks(words, unit="lat świetlnych")
+
+    def _standalone_sub(match: re.Match[str]) -> str:
+        raw_num = str(match.group("num") or "")
+        n = _parse_grouped_int(raw_num)
+        if n is None:
+            return match.group(0)
+        return _with_tts_number_semicolon_breaks(_int_to_words_pl(n))
 
     out = text
     out = _CREDITS_NUMBER_RE.sub(_credits_sub, out)
     out = re.sub(r"(?P<num>\d+(?:[.,]\d+)?)\s*%", _percent_sub, out)
     out = re.sub(r"\b(?P<num>\d+(?:[.,]\d+)?)\s*(?:LY|ly)\b", _ly_sub, out)
+    out = _STANDALONE_NUMBER_RE.sub(_standalone_sub, out)
     return out
 
 
@@ -353,6 +390,9 @@ def _finalize_tts(text: str) -> str:
     # Keep commas - they improve Polish prosody (lists, clauses, number phrasing).
     # We normalize hard sentence terminators only.
     text = text.replace("?", ".").replace("!", ".")
+    text = re.sub(r"\s*;\s*", " ; ", text)
+    text = re.sub(r"(?:\s;\s){2,}", " ; ", text)
+    text = re.sub(r"\s*;\s*\.", ".", text)
     text = re.sub(r"\.{2,}", ".", text)
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"\s*\.\s*", ". ", text).strip()
