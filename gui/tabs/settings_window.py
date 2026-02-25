@@ -6,6 +6,21 @@ from gui.tabs.settings import SettingsTab
 from config import config  # <-- nowy manager konfiguracji
 from gui.window_positions import restore_window_geometry, bind_window_geometry, save_window_geometry
 from gui.window_chrome import apply_renata_orange_window_chrome
+from logic.utils.renata_log import log_event_throttled
+
+
+def _log_settings_window_soft_failure(key: str, msg: str, **fields: Any) -> None:
+    try:
+        log_event_throttled(
+            f"settings_window:{key}",
+            5000,
+            "GUI",
+            msg,
+            **fields,
+        )
+    except Exception:
+        return
+
 
 
 class SettingsWindow(tk.Toplevel):
@@ -57,8 +72,12 @@ class SettingsWindow(tk.Toplevel):
         self.settings_tab.pack(fill="both", expand=True)
         try:
             apply_renata_orange_window_chrome(self)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_settings_window_soft_failure(
+                "window_chrome",
+                "apply settings window chrome failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
         restore_window_geometry(self, "settings_window", include_size=True)
         bind_window_geometry(self, "settings_window", include_size=True)
 
@@ -75,8 +94,12 @@ class SettingsWindow(tk.Toplevel):
         if self._external_get_config is not None:
             try:
                 return self._external_get_config()
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_settings_window_soft_failure(
+                    "external_get_config",
+                    "external get_config callback failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
         return config.as_dict()
 
     def _save_config_wrapper(self, data: Dict[str, Any]) -> None:
@@ -100,9 +123,12 @@ class SettingsWindow(tk.Toplevel):
         if self._external_save_config is not None:
             try:
                 self._external_save_config(data)
-            except Exception:
-                # nie blokujemy usera, jeśli callback się wywali
-                pass
+            except Exception as exc:
+                _log_settings_window_soft_failure(
+                    "external_save_config",
+                    "external save_config callback failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
 
         # 3. Potwierdzenie dla użytkownika
         messagebox.showinfo(
@@ -117,13 +143,21 @@ class SettingsWindow(tk.Toplevel):
         save_window_geometry(self, "settings_window", include_size=True)
         try:
             self.grab_release()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_settings_window_soft_failure(
+                "grab_release",
+                "settings window grab_release failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
         if self.on_close is not None:
             try:
                 self.on_close()
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_settings_window_soft_failure(
+                    "on_close_callback",
+                    "settings window on_close callback failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
 
         self.destroy()
