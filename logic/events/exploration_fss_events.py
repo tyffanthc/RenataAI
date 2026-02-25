@@ -94,11 +94,12 @@ def _wire_exit_summary_to_runtime(gui_ref=None) -> None:
     global FSS_PENDING_EXIT_SUMMARY_SCANNED, FSS_PENDING_EXIT_SUMMARY_TOTAL
 
     system_name = getattr(app_state, "current_system", None)
-    # BUGS_FIX 16.5 (runtime follow-up):
-    # `FSSDiscoveryScan` alone can appear in transit-style gameplay and is too weak as
-    # a proxy for "player really did FSS work in this system". Arm summary only after
-    # at least one non-AutoScan body progress event was counted.
-    if not bool(FSS_HAD_MANUAL_PROGRESS_SCAN):
+    # BUGS_FIX 16.5:
+    # Arm summary only when BOTH conditions are met:
+    # 1) player explicitly triggered FSS discovery scan (honk/FSS entry path)
+    # 2) at least one non-AutoScan body progress event was counted
+    # This prevents transit systems from arming summary from auto star scans.
+    if not (bool(FSS_HAD_DISCOVERY_SCAN) and bool(FSS_HAD_MANUAL_PROGRESS_SCAN)):
         return
 
     # BUGS_FIX 16.5:

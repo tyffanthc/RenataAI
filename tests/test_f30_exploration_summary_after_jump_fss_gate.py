@@ -13,6 +13,7 @@ class F30ExplorationSummaryAfterJumpFssGateTests(unittest.TestCase):
         app_state.current_system = "F30_SUMMARY_GATE_SYS"
 
     def test_full_scan_arms_summary_but_does_not_emit_immediately(self) -> None:
+        fss_events.FSS_HAD_DISCOVERY_SCAN = True
         fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN = True
         fss_events.FSS_TOTAL_BODIES = 6
         fss_events.FSS_DISCOVERED = 6
@@ -27,6 +28,7 @@ class F30ExplorationSummaryAfterJumpFssGateTests(unittest.TestCase):
         self.assertEqual(fss_events.FSS_PENDING_EXIT_SUMMARY_TOTAL, 6)
 
     def test_flush_pending_summary_on_jump_emits_once(self) -> None:
+        fss_events.FSS_HAD_DISCOVERY_SCAN = True
         fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN = True
         fss_events.FSS_TOTAL_BODIES = 4
         fss_events.FSS_DISCOVERED = 4
@@ -56,6 +58,17 @@ class F30ExplorationSummaryAfterJumpFssGateTests(unittest.TestCase):
 
     def test_discovery_scan_without_manual_progress_still_does_not_arm_summary(self) -> None:
         fss_events.FSS_HAD_DISCOVERY_SCAN = True
+        fss_events.FSS_TOTAL_BODIES = 5
+        fss_events.FSS_DISCOVERED = 5
+
+        with patch("logic.events.exploration_summary.trigger_exploration_summary") as trigger_mock:
+            fss_events._wire_exit_summary_to_runtime(gui_ref=None)
+
+        self.assertFalse(trigger_mock.called)
+        self.assertFalse(bool(fss_events.FSS_PENDING_EXIT_SUMMARY))
+
+    def test_manual_progress_without_discovery_scan_still_does_not_arm_summary(self) -> None:
+        fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN = True
         fss_events.FSS_TOTAL_BODIES = 5
         fss_events.FSS_DISCOVERED = 5
 
