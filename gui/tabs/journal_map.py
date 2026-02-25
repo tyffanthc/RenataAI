@@ -146,7 +146,7 @@ class JournalMapTab(tk.Frame):
         self.view_offset_x: float = 0.0
         self.view_offset_y: float = 0.0
         self._min_scale = 0.10
-        self._max_scale = 6.0
+        self._max_scale = 40.0
 
         # Pan state
         self._pan_active = False
@@ -317,8 +317,13 @@ class JournalMapTab(tk.Frame):
         after_id = self.after(int(delay_ms), callback)
         try:
             self._pending_after_ids.append(str(after_id))
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "schedule_after_track",
+                "track pending after id failed",
+                delay_ms=int(delay_ms),
+                error=f"{type(exc).__name__}: {exc}",
+            )
         return str(after_id)
 
     def _cancel_pending_after_jobs(self) -> None:
@@ -327,19 +332,32 @@ class JournalMapTab(tk.Frame):
         for after_id in pending:
             try:
                 self.after_cancel(after_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "cancel_pending_after",
+                    "cancel pending after job failed",
+                    after_id=str(after_id),
+                    error=f"{type(exc).__name__}: {exc}",
+                )
 
     def destroy(self) -> None:
         try:
             self._cancel_auto_refresh_debounce()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "destroy_cancel_auto_refresh",
+                "cancel auto refresh on destroy failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
         self._cancel_pending_after_jobs()
         try:
             self._trade_picker_close()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "destroy_close_trade_picker",
+                "close trade picker on destroy failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
         super().destroy()
 
     def _build_ui(self) -> None:
@@ -860,8 +878,12 @@ class JournalMapTab(tk.Frame):
         finally:
             try:
                 self._map_context_menu.grab_release()
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "ppm_grab_release",
+                    "map context menu grab_release failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
         return "break"
 
     def _map_ppm_action_focus_panel(self) -> dict[str, Any]:
@@ -915,8 +937,13 @@ class JournalMapTab(tk.Frame):
         if self.app is not None and hasattr(self.app, "show_status"):
             try:
                 self.app.show_status(f"Mapa: ustawiono cel trasy -> {target}.")
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "ppm_set_route_show_status",
+                    "show_status after map route intent failed",
+                    target=target,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
         return {"ok": True, "target": target, "route": "normal", "copied": copied}
 
     def _map_ppm_action_set_neutron_route(self, target: str) -> dict[str, Any]:
@@ -978,8 +1005,13 @@ class JournalMapTab(tk.Frame):
     def _set_map_cursor(self, cursor_name: str) -> None:
         try:
             self.map_canvas.configure(cursor=str(cursor_name))
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "set_cursor",
+                "map canvas cursor configure failed",
+                cursor=str(cursor_name),
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     def _tooltip_active_badges_for_node(self, node_key: str) -> list[str]:
         flags = dict((self._node_layer_flags or {}).get(str(node_key)) or {})
@@ -1061,8 +1093,12 @@ class JournalMapTab(tk.Frame):
     def _hide_map_tooltip(self) -> None:
         try:
             self.map_canvas.delete("map_tooltip")
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "tooltip_hide_delete",
+                "delete map tooltip canvas tags failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
         self._tooltip_visible = False
         self._tooltip_node_key = None
         self._tooltip_text_cache = ""
@@ -1109,8 +1145,13 @@ class JournalMapTab(tk.Frame):
             else:
                 self.legend_body_frame.grid()
                 self.legend_toggle_text_var.set("Ukryj")
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "toggle_legend",
+                "toggle legend widgets failed",
+                collapsed=bool(collapsed),
+                error=f"{type(exc).__name__}: {exc}",
+            )
         self._refresh_legend()
         self._notify_owner_ui_state_changed()
 
@@ -1174,8 +1215,12 @@ class JournalMapTab(tk.Frame):
         if callable(callback):
             try:
                 callback()
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "notify_owner_ui_state",
+                    "owner ui state persist callback failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
 
     def _is_map_subtab_active(self) -> bool:
         owner = getattr(self, "logbook_owner", None)
@@ -1200,8 +1245,13 @@ class JournalMapTab(tk.Frame):
             return
         try:
             self.after_cancel(after_id)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "cancel_auto_refresh_debounce",
+                "cancel auto refresh debounce failed",
+                after_id=str(after_id),
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     def _schedule_auto_refresh_debounce(self, *, delay_ms: int | None = None) -> None:
         self._cancel_auto_refresh_debounce()
@@ -1242,7 +1292,13 @@ class JournalMapTab(tk.Frame):
             try:
                 sel_result = self.select_system_node(selected_key)
                 reselected = bool(isinstance(sel_result, dict) and sel_result.get("ok"))
-            except Exception:
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "auto_refresh_reselect",
+                    "reselect node after auto refresh failed",
+                    node_key=str(selected_key),
+                    error=f"{type(exc).__name__}: {exc}",
+                )
                 reselected = False
 
         info = dict(self._auto_refresh_last_update or {})
@@ -1256,8 +1312,12 @@ class JournalMapTab(tk.Frame):
                 parts.append("zachowano selekcje")
             try:
                 self.map_status_var.set(" | ".join(parts))
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "auto_refresh_status",
+                    "set auto refresh map status failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
 
     def set_graph_data(self, *, nodes: list[dict[str, Any]] | None = None, edges: list[dict[str, Any]] | None = None) -> None:
         self._nodes.clear()
@@ -1770,8 +1830,12 @@ class JournalMapTab(tk.Frame):
                 )
                 self._trade_picker_refresh_rows()
                 return
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "trade_picker_reopen",
+                "reopen existing trade picker failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
         win = tk.Toplevel(parent)
         self._trade_picker_window = win
@@ -1780,8 +1844,12 @@ class JournalMapTab(tk.Frame):
         win.transient(parent)
         try:
             win.grab_set()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "trade_picker_grab_set",
+                "trade picker grab_set failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
         win.geometry("620x540")
         win.minsize(520, 420)
         win.columnconfigure(0, weight=1)
@@ -1898,8 +1966,12 @@ class JournalMapTab(tk.Frame):
         self._trade_picker_refresh_rows()
         try:
             search_entry.focus_set()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "trade_picker_focus_search",
+                "trade picker search focus failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     def _trade_picker_filtered_commodities(self) -> list[str]:
         query = _as_text(getattr(self._trade_picker_search_var, "get", lambda: "")()).casefold()
