@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import config
+from logic.utils.renata_log import log_event_throttled
 
 _RUNTIME_FILES = (
     "piper_phonemize.dll",
@@ -115,6 +116,13 @@ def _resolve_appdata_voicepack() -> Optional[PiperPaths]:
                         source="appdata",
                     )
         except Exception:
+            log_event_throttled(
+                "piper_appdata_models_scan",
+                60.0,
+                "WARN",
+                "piper: appdata models scan failed",
+                base=base,
+            )
             return None
     return None
 
@@ -158,13 +166,25 @@ def speak(text: str, *, paths: Optional[PiperPaths] = None) -> bool:
         if length_scale > 0:
             cmd.extend(["--length_scale", str(length_scale)])
     except Exception:
-        pass
+        log_event_throttled(
+            "piper_length_scale_config",
+            60.0,
+            "WARN",
+            "piper: invalid tts.piper_length_scale; using default",
+            value=config.get("tts.piper_length_scale", None),
+        )
     try:
         sentence_silence = float(config.get("tts.piper_sentence_silence", 0.2))
         if sentence_silence >= 0:
             cmd.extend(["--sentence_silence", str(sentence_silence)])
     except Exception:
-        pass
+        log_event_throttled(
+            "piper_sentence_silence_config",
+            60.0,
+            "WARN",
+            "piper: invalid tts.piper_sentence_silence; using default",
+            value=config.get("tts.piper_sentence_silence", None),
+        )
 
     try:
         startupinfo = None
@@ -193,10 +213,24 @@ def speak(text: str, *, paths: Optional[PiperPaths] = None) -> bool:
 
         winsound.PlaySound(wav_path, winsound.SND_FILENAME)
         return True
-    except Exception:
+    except Exception as exc:
+        log_event_throttled(
+            "piper_speak_exception",
+            15.0,
+            "WARN",
+            "piper: speak pipeline failed",
+            error=f"{type(exc).__name__}: {exc}",
+            source=str(getattr(selected, "source", "") or ""),
+        )
         return False
     finally:
         try:
             os.remove(wav_path)
         except Exception:
-            pass
+            log_event_throttled(
+                "piper_wav_cleanup",
+                60.0,
+                "WARN",
+                "piper: temporary wav cleanup failed",
+                path=wav_path,
+            )
