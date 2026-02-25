@@ -2040,46 +2040,83 @@ class JournalMapTab(tk.Frame):
         if not isinstance(row, dict):
             try:
                 status_var.set("Filtr stacji: brak wybranej stacji")
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "trade_picker_station_status_none",
+                    "set trade picker station filter status (no station) failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
             if chk_var is not None:
                 try:
                     chk_var.set(False)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log_map_soft_failure(
+                        "trade_picker_station_only_var_none",
+                        "reset station-only checkbox variable (no station) failed",
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
             if chk is not None:
                 try:
                     chk.configure(state="disabled")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log_map_soft_failure(
+                        "trade_picker_station_only_chk_disable_none",
+                        "disable station-only checkbox (no station) failed",
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
             return
         station_name = _as_text(row.get("station_name")) or "-"
         market_id = row.get("market_id")
         if market_id is None:
             try:
                 status_var.set(f"Filtr stacji: {station_name} (brak MarketID)")
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "trade_picker_station_status_no_marketid",
+                    "set trade picker station filter status (missing market id) failed",
+                    station_name=station_name,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
             if chk_var is not None:
                 try:
                     chk_var.set(False)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log_map_soft_failure(
+                        "trade_picker_station_only_var_no_marketid",
+                        "reset station-only checkbox variable (missing market id) failed",
+                        station_name=station_name,
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
             if chk is not None:
                 try:
                     chk.configure(state="disabled")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log_map_soft_failure(
+                        "trade_picker_station_only_chk_disable_no_marketid",
+                        "disable station-only checkbox (missing market id) failed",
+                        station_name=station_name,
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
             return
         if chk is not None:
             try:
                 chk.configure(state="normal")
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "trade_picker_station_only_chk_enable",
+                    "enable station-only checkbox failed",
+                    station_name=station_name,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
         try:
             status_var.set(f"Stacja: {station_name}")
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "trade_picker_station_status_ok",
+                "set trade picker station filter status failed",
+                station_name=station_name,
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     def _trade_picker_refresh_rows(self) -> None:
         tree = getattr(self, "_trade_picker_tree", None)
@@ -2118,8 +2155,13 @@ class JournalMapTab(tk.Frame):
         try:
             tree.selection_set(iid)
             tree.focus(iid)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "trade_picker_toggle_reselect",
+                "reselect trade picker row after toggle failed",
+                iid=str(iid),
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     def _trade_picker_select_all(self) -> None:
         self._trade_picker_selected = set(self._trade_picker_filtered_commodities())
@@ -2143,11 +2185,19 @@ class JournalMapTab(tk.Frame):
             if win is not None and bool(win.winfo_exists()):
                 try:
                     win.grab_release()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log_map_soft_failure(
+                        "trade_picker_close_grab_release",
+                        "trade picker grab_release on close failed",
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
                 win.destroy()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_map_soft_failure(
+                "trade_picker_close_destroy",
+                "trade picker close/destroy failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     def _trade_picker_accept(self) -> None:
         selected_sorted = sorted(set(self._trade_picker_selected or set()), key=lambda v: str(v).casefold())
@@ -2304,8 +2354,12 @@ class JournalMapTab(tk.Frame):
                 try:
                     self.trade_compare_tree.selection_set(rows[0])
                     self.trade_compare_tree.focus(rows[0])
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log_map_soft_failure(
+                        "trade_compare_single_autoselect",
+                        "auto-select first trade compare row (single) failed",
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
         self._reflow_trade_compare_tree_columns()
         if rows_inserted <= 0:
             self._redraw_scene()
@@ -2411,8 +2465,12 @@ class JournalMapTab(tk.Frame):
             try:
                 self.trade_compare_tree.selection_set(rows[0])
                 self.trade_compare_tree.focus(rows[0])
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "trade_compare_multi_autoselect",
+                    "auto-select first trade compare row (multi) failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
             row = self._trade_compare_rows_by_iid.get(str(rows[0])) or {}
             active_commodity = _as_text(row.get("commodity")) or selected[0]
             self._highlight_trade_compare_for_commodity(active_commodity)
@@ -2515,8 +2573,13 @@ class JournalMapTab(tk.Frame):
             try:
                 self.system_stations_tree.selection_set(first_iid)
                 self.system_stations_tree.focus(first_iid)
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "system_stations_autoselect_first",
+                    "auto-select first station row failed",
+                    iid=first_iid,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
             self._select_station_by_iid(first_iid)
         else:
             self.station_market_tree.delete(*self.station_market_tree.get_children())
@@ -2676,8 +2739,13 @@ class JournalMapTab(tk.Frame):
                 self._redraw_scene()
                 self.map_status_var.set("Mapa: wycentrowano na fallback current StarPos (shell).")
                 return
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "center_on_current_starpos_fallback",
+                    "center on fallback current StarPos failed",
+                    current_star_pos=str(current_star_pos),
+                    error=f"{type(exc).__name__}: {exc}",
+                )
 
         self._redraw_scene()
         self.map_status_var.set("Mapa: brak danych do wycentrowania aktualnego systemu.")
