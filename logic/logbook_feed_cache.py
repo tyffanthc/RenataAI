@@ -4,6 +4,8 @@ import json
 import os
 from typing import Any
 
+from logic.utils.renata_log import log_event_throttled
+
 _DEFAULT_LIMIT = 250
 
 
@@ -57,10 +59,24 @@ def _read_all_items(path: str) -> list[dict[str, Any]]:
                     payload = json.loads(line)
                 except Exception:
                     # Tolerate a partially written/truncated line after crash.
+                    log_event_throttled(
+                        "logbook_feed_cache_jsonl_line",
+                        30.0,
+                        "WARN",
+                        "logbook feed cache: invalid/truncated jsonl line skipped",
+                        path=path,
+                    )
                     continue
                 if _is_valid_feed_item(payload):
                     rows.append(dict(payload))
     except Exception:
+        log_event_throttled(
+            "logbook_feed_cache_read_all",
+            30.0,
+            "WARN",
+            "logbook feed cache: read failed; using empty cache",
+            path=path,
+        )
         return []
     return rows
 
@@ -113,6 +129,13 @@ def append_logbook_feed_cache_item(
         _write_all_items(cache_path, rows)
         return True
     except Exception:
+        log_event_throttled(
+            "logbook_feed_cache_append",
+            30.0,
+            "WARN",
+            "logbook feed cache: append/write failed",
+            path=cache_path,
+        )
         return False
 
 
@@ -122,4 +145,11 @@ def clear_logbook_feed_cache(*, path: str | None = None) -> None:
         if os.path.isfile(cache_path):
             os.remove(cache_path)
     except Exception:
+        log_event_throttled(
+            "logbook_feed_cache_clear",
+            30.0,
+            "WARN",
+            "logbook feed cache: clear failed",
+            path=cache_path,
+        )
         return
