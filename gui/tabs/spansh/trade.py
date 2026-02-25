@@ -2275,7 +2275,12 @@ class TradeTab(ttk.Frame):
             if hasattr(self, "ac_station"):
                 self.ac_station.hide()
         except Exception:
-            pass
+            log_event_throttled(
+                "spansh_trade:station_autocomplete_hide_on_system_change",
+                5000,
+                "GUI",
+                "trade station autocomplete hide on system change failed",
+            )
 
         self._clear_station_hint()
         self._update_station_hint()
@@ -2686,7 +2691,12 @@ class TradeTab(ttk.Frame):
             try:
                 config.STATE["last_commodity"] = payload
             except Exception:
-                pass
+                log_event_throttled(
+                    "spansh_trade:last_commodity_state_fallback",
+                    5000,
+                    "GUI",
+                    "trade persist last commodity state fallback failed",
+                )
 
     def _iter_leg_commodities(self, row: dict) -> list[dict]:
         commodities = row.get("commodities_raw")
