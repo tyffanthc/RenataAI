@@ -369,7 +369,11 @@ class NeutronTab(ttk.Frame):
             self._range_updating = True
             self.var_range.set(float(value))
         except Exception:
-            pass
+            _log_neutron_soft_failure(
+                "set_range_value",
+                "neutron set range value failed",
+                value=value,
+            )
         finally:
             self._range_updating = False
 
@@ -880,7 +884,10 @@ class NeutronTab(ttk.Frame):
             if rendered:
                 return str(rendered[0]).strip()
         except Exception:
-            pass
+            _log_neutron_soft_failure(
+                "format_result_line",
+                "neutron format result line failed",
+            )
         return str(row_text or "").strip()
 
     def _selected_internal_indices(self) -> list[int]:
