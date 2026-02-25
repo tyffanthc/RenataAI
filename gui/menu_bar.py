@@ -2,6 +2,8 @@
 
 import tkinter as tk
 
+from logic.utils.renata_log import log_event_throttled
+
 
 class RenataMenuBar(tk.Menu):
     """
@@ -119,8 +121,14 @@ class RenataMenuBar(tk.Menu):
             try:
                 self.on_toggle_always_on_top(value)
             except Exception:
-                # tutaj nie panikujemy – log może ogarnąć backend
-                pass
+                # tutaj nie panikujemy - backend moze odmowic topmost/focus.
+                log_event_throttled(
+                    "menu_always_on_top_toggle",
+                    10.0,
+                    "WARN",
+                    "menu always_on_top toggle callback failed",
+                    value=value,
+                )
 
     # ------------------------------------------------------------------ #
     #   Helper: bezpieczne owijanie callbacków
