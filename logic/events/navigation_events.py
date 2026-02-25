@@ -10,7 +10,10 @@ from logic.insight_dispatcher import emit_insight
 from logic.utils.renata_log import log_event, log_event_throttled
 from app.state import app_state
 from app.route_manager import route_manager
-from logic.events.exploration_fss_events import reset_fss_progress
+from logic.events.exploration_fss_events import (
+    flush_pending_exit_summary_on_jump,
+    reset_fss_progress,
+)
 
 
 def _exc_text(exc: Exception) -> str:
@@ -157,6 +160,15 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
         star_pos = ev.get("StarPos")
         if isinstance(star_pos, (list, tuple)) and len(star_pos) >= 3:
             app_state.set_star_pos(star_pos)
+        if typ in ("FSDJump", "CarrierJump") and not is_bootstrap_replay:
+            try:
+                flush_pending_exit_summary_on_jump(gui_ref=gui_ref)
+            except Exception as exc:
+                _log_nav_fallback(
+                    "exploration_summary.flush_on_jump",
+                    "failed to flush armed exploration summary on jump",
+                    exc,
+                )
         # reset FSS + discovery/footfall przy wej+Ťciu do nowego systemu
         reset_fss_progress()
         app_state.set_system(sysname)

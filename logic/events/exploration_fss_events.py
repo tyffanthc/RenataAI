@@ -31,6 +31,11 @@ FSS_50_WARNED = False
 FSS_75_WARNED = False
 FSS_LAST_WARNED = False
 FSS_FULL_WARNED = False
+FSS_HAD_DISCOVERY_SCAN = False
+FSS_PENDING_EXIT_SUMMARY = False
+FSS_PENDING_EXIT_SUMMARY_SYSTEM = None
+FSS_PENDING_EXIT_SUMMARY_SCANNED = None
+FSS_PENDING_EXIT_SUMMARY_TOTAL = None
 
 # --- FIRST DISCOVERY (S2-LOGIC-05) ---
 FIRST_SYS_DISC_WARNED = False           # komunikat o dziewiczym systemie
@@ -84,27 +89,61 @@ def _wire_exit_summary_to_runtime(gui_ref=None) -> None:
     Build and publish F4 exploration summary when FSS scan is complete.
     Emission goes through dispatcher via logic.events.exploration_summary.
     """
+    global FSS_PENDING_EXIT_SUMMARY, FSS_PENDING_EXIT_SUMMARY_SYSTEM
+    global FSS_PENDING_EXIT_SUMMARY_SCANNED, FSS_PENDING_EXIT_SUMMARY_TOTAL
+
+    system_name = getattr(app_state, "current_system", None)
+    if not bool(FSS_HAD_DISCOVERY_SCAN):
+        return
+
+    # BUGS_FIX 16.5:
+    # Arm summary on FSS full and emit it on next jump (FSDJump/CarrierJump) so fast
+    # transit systems do not spam summary/cash-in while the commander is still busy.
+    FSS_PENDING_EXIT_SUMMARY = True
+    FSS_PENDING_EXIT_SUMMARY_SYSTEM = str(system_name or "").strip() or None
+    FSS_PENDING_EXIT_SUMMARY_SCANNED = int(FSS_DISCOVERED) if int(FSS_DISCOVERED or 0) > 0 else None
+    FSS_PENDING_EXIT_SUMMARY_TOTAL = int(FSS_TOTAL_BODIES) if int(FSS_TOTAL_BODIES or 0) > 0 else None
+
+
+def flush_pending_exit_summary_on_jump(gui_ref=None) -> bool:
+    """Emit armed FSS exit summary on the next system jump (before FSS reset)."""
+    global FSS_PENDING_EXIT_SUMMARY, FSS_PENDING_EXIT_SUMMARY_SYSTEM
+    global FSS_PENDING_EXIT_SUMMARY_SCANNED, FSS_PENDING_EXIT_SUMMARY_TOTAL
+    if not bool(FSS_PENDING_EXIT_SUMMARY):
+        return False
+
+    system_name = str(FSS_PENDING_EXIT_SUMMARY_SYSTEM or "").strip() or None
+    scanned_bodies = FSS_PENDING_EXIT_SUMMARY_SCANNED
+    total_bodies = FSS_PENDING_EXIT_SUMMARY_TOTAL
+
+    # Clear first to avoid sticky repeat on exceptions.
+    FSS_PENDING_EXIT_SUMMARY = False
+    FSS_PENDING_EXIT_SUMMARY_SYSTEM = None
+    FSS_PENDING_EXIT_SUMMARY_SCANNED = None
+    FSS_PENDING_EXIT_SUMMARY_TOTAL = None
+
     try:
         from logic.events.exploration_summary import trigger_exploration_summary
 
         trigger_exploration_summary(
             gui_ref=gui_ref,
             mode="auto",
-            system_name=getattr(app_state, "current_system", None),
-            scanned_bodies=FSS_DISCOVERED if FSS_DISCOVERED > 0 else None,
-            total_bodies=FSS_TOTAL_BODIES if FSS_TOTAL_BODIES > 0 else None,
+            system_name=system_name,
+            scanned_bodies=scanned_bodies,
+            total_bodies=total_bodies,
         )
+        return True
     except Exception:
         log_event_throttled(
             "exploration.fss.exit_summary_wire",
             5000,
             "FSS",
             "failed to trigger exploration summary after full scan",
-            system=getattr(app_state, "current_system", None),
-            scanned_bodies=int(FSS_DISCOVERED or 0),
-            total_bodies=int(FSS_TOTAL_BODIES or 0),
+            system=system_name,
+            scanned_bodies=int(scanned_bodies or 0),
+            total_bodies=int(total_bodies or 0),
         )
-        return
+        return False
 
 
 def reset_fss_progress() -> None:
@@ -118,6 +157,9 @@ def reset_fss_progress() -> None:
     """
     global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES
     global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED, FSS_FULL_WARNED
+    global FSS_HAD_DISCOVERY_SCAN
+    global FSS_PENDING_EXIT_SUMMARY, FSS_PENDING_EXIT_SUMMARY_SYSTEM
+    global FSS_PENDING_EXIT_SUMMARY_SCANNED, FSS_PENDING_EXIT_SUMMARY_TOTAL
     global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES, FIRST_SYS_OPPORTUNITY_WARNED
 
     previous_system = str(getattr(app_state, "current_system", "") or "").strip()
@@ -131,6 +173,11 @@ def reset_fss_progress() -> None:
     FSS_75_WARNED = False
     FSS_LAST_WARNED = False
     FSS_FULL_WARNED = False
+    FSS_HAD_DISCOVERY_SCAN = False
+    FSS_PENDING_EXIT_SUMMARY = False
+    FSS_PENDING_EXIT_SUMMARY_SYSTEM = None
+    FSS_PENDING_EXIT_SUMMARY_SCANNED = None
+    FSS_PENDING_EXIT_SUMMARY_TOTAL = None
 
     # First discovery (system + ciala)
     FIRST_SYS_DISC_WARNED = False
@@ -374,7 +421,7 @@ def handle_fss_discovery_scan(ev: Dict[str, Any], gui_ref=None):
     """
     Obsluga eventu FSSDiscoveryScan - ustawienie liczby cial w systemie.
     """
-    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES
+    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES, FSS_HAD_DISCOVERY_SCAN
     body_count = ev.get("BodyCount") or 0
     try:
         count = int(body_count)
@@ -390,6 +437,7 @@ def handle_fss_discovery_scan(ev: Dict[str, Any], gui_ref=None):
 
     if count <= 0:
         return
+    FSS_HAD_DISCOVERY_SCAN = True
 
     # Navigation events (Location/FSDJump/CarrierJump) already reset FSS state on
     # system entry. Repeating FSSDiscoveryScan in the same system should NOT wipe

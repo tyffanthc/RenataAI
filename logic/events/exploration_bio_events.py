@@ -11,7 +11,7 @@ import config
 from app.state import app_state
 from logic.events.exploration_awareness import emit_callout_or_summary
 from logic.insight_dispatcher import emit_insight
-from logic.utils.renata_log import log_event_throttled
+from logic.utils.renata_log import log_event, log_event_throttled
 
 
 # --- DSS BIO ASSISTANT ---
@@ -183,7 +183,11 @@ def _serialize_exobio_trackers() -> Dict[str, Dict[str, Any]]:
 def _snapshot_exobio_state_payload() -> Dict[str, Any]:
     status_payload: Dict[str, Any] = {}
     last_pos = EXOBIO_LAST_STATUS_POS if isinstance(EXOBIO_LAST_STATUS_POS, dict) else {}
-    for numeric_key in ("lat", "lon", "radius_m", "ts"):
+    # ts is intentionally NOT persisted: it is a runtime timestamp and would be stale
+    # after any restart. Omitting ts causes _apply_exobio_state_payload to restore the
+    # position without a timestamp (ts defaults to 0.0), which _canonical_body_for_key
+    # treats as "no freshness constraint for key matching" -- see fix there.
+    for numeric_key in ("lat", "lon", "radius_m"):
         numeric_value = _as_float(last_pos.get(numeric_key))
         if numeric_value is not None:
             status_payload[numeric_key] = numeric_value
@@ -218,6 +222,15 @@ def _persist_exobio_state(*, force: bool = False) -> bool:
     try:
         config.update_anti_spam_state({"exobio": payload})
         _EXOBIO_LAST_PERSIST_TS = now
+        log_event(
+            "EXOBIO",
+            "save_state: persisted exobio state",
+            sample_keys=len(EXOBIO_SAMPLE_COUNT),
+            complete_keys=len(EXOBIO_SAMPLE_COMPLETE),
+            tracker_keys=len(EXOBIO_RANGE_TRACKERS),
+            uncertain_keys=len(EXOBIO_RECOVERY_UNCERTAIN_KEYS),
+            has_status_body=bool(_as_text((EXOBIO_LAST_STATUS_POS or {}).get("body"))),
+        )
         return True
     except Exception as exc:
         _log_exobio_fallback(
@@ -305,7 +318,12 @@ def _apply_exobio_state_payload(payload: Dict[str, Any]) -> Dict[str, int]:
     status_payload: Dict[str, Any] = {}
     raw_last_status = payload.get("last_status_pos", {})
     if isinstance(raw_last_status, dict):
-        for numeric_key in ("lat", "lon", "radius_m", "ts"):
+        # ts is intentionally NOT restored: a persisted timestamp is always stale after
+        # restart. Leaving ts absent (defaults to 0.0) lets _canonical_body_for_key
+        # treat the restored body name as usable for key matching without a freshness
+        # constraint, while _arm_range_tracker still requires a fresh (<=30 s) position
+        # before arming distance tracking.
+        for numeric_key in ("lat", "lon", "radius_m"):
             numeric_value = _as_float(raw_last_status.get(numeric_key))
             if numeric_value is not None:
                 status_payload[numeric_key] = numeric_value
@@ -374,10 +392,21 @@ def load_exobio_state_from_contract(*, force: bool = False) -> Dict[str, Any]:
             payload = {}
 
     if not payload:
+        log_event("EXOBIO", "load_state: no persisted payload found", source="load_exobio_state_from_contract")
         return {"loaded": False, "reason": "no_persisted_payload"}
 
     stats = _apply_exobio_state_payload(payload)
     loaded = bool(stats.get("sample_keys", 0) or stats.get("tracker_keys", 0))
+    log_event(
+        "EXOBIO",
+        "load_state: applied persisted exobio state",
+        loaded=loaded,
+        sample_keys=stats.get("sample_keys", 0),
+        complete_keys=stats.get("complete_keys", 0),
+        tracker_keys=stats.get("tracker_keys", 0),
+        ready_warned_keys=stats.get("ready_warned_keys", 0),
+        has_status_body=bool(_as_text((EXOBIO_LAST_STATUS_POS or {}).get("body"))),
+    )
     return {"loaded": loaded, "reason": "ok", **stats}
 
 
@@ -496,6 +525,13 @@ def _canonical_body_for_key(ev: Dict[str, Any], system_name: str) -> str:
     Build a stable body key for exobio tracking.
     Prefer body name; when ScanOrganic provides only numeric Body/BodyID,
     reuse last Status body from the same system.
+
+    ts == 0.0 is the sentinel for a position restored from persisted state (no live
+    timestamp). In that case the body name is still used for key stability -- the player
+    cannot have moved to a different body without a fresh Status.json update, which would
+    have replaced ts with the current time.  Distance tracking (_arm_range_tracker) uses
+    a separate, stricter recency window (<=30 s) and correctly enters "pending" mode when
+    ts is absent, so restoring body-name without ts is safe.
     """
     body_raw = _current_body(ev).lower()
     if body_raw and (not _is_numeric_token(body_raw)):
@@ -505,12 +541,14 @@ def _canonical_body_for_key(ev: Dict[str, Any], system_name: str) -> str:
     pos_body = _as_text(pos.get("body")).lower()
     pos_system = _as_text(pos.get("system")).lower()
     pos_ts = float(pos.get("ts", 0.0) or 0.0)
-    # Accept recent status body from the same system.
+    # ts == 0.0  ->  restored from persisted state, no freshness constraint for key matching.
+    # ts > 0     ->  live position; accept within a 120 s window.
+    body_ts_ok = pos_ts == 0.0 or (time.time() - pos_ts) <= 120.0
     if (
         pos_body
         and pos_system
         and system_name.lower() == pos_system
-        and (time.time() - pos_ts) <= 120.0
+        and body_ts_ok
     ):
         return pos_body
 
