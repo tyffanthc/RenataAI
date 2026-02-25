@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from typing import Callable, Iterable, Optional, Any
 
-from logic.utils.renata_log import log_event
+from logic.utils.renata_log import log_event, log_event_throttled
 
 
 class RouteManager:
@@ -100,7 +100,16 @@ class RouteManager:
                     idx = self.route.index(current_system) + 1
                 except ValueError:
                     # current_system nie ma na trasie – zostajemy przy current_index
-                    pass
+                    log_event_throttled(
+                        "route_manager_current_system_not_in_route",
+                        15.0,
+                        "INFO",
+                        "route_manager current_system not found on route; using current_index",
+                        current_system=current_system,
+                        current_index=self.current_index,
+                        route_len=len(self.route),
+                        route_type=self.route_type or "",
+                    )
 
             if idx < len(self.route):
                 return self.route[idx]
