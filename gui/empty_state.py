@@ -344,8 +344,12 @@ def hide_state(target) -> None:
         if overlay is not None:
             try:
                 overlay.place_forget()
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_empty_state_soft_failure(
+                    "overlay_place_forget",
+                    "empty-state overlay place_forget failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
         target._renata_state_visible = False  # type: ignore[attr-defined]
         return
 
@@ -355,8 +359,12 @@ def hide_state(target) -> None:
     if frame is not None:
         try:
             frame.pack_forget()
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_empty_state_soft_failure(
+                "frame_pack_forget",
+                "empty-state frame pack_forget failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
     try:
         if pack_info:
             container.pack(**pack_info)
