@@ -3,6 +3,7 @@ import time
 import config
 from logic.utils import DEBOUNCER
 from logic.insight_dispatcher import emit_insight
+from logic.utils.renata_log import log_event_throttled
 
 
 # --- GLOBAL FLAGS / STATE (paliwo) ---
@@ -40,7 +41,13 @@ def handle_status_update(status: dict, gui_ref=None):
             flags = int(status.get("Flags", 0))
             low_fuel_flag = bool(flags & (1 << 4))
         except (TypeError, ValueError):
-            pass
+            log_event_throttled(
+                "fuel_flags_parse",
+                10.0,
+                "WARN",
+                "fuel warning flags parse fallback",
+                raw_flags=status.get("Flags"),
+            )
 
     # Proba wyliczenia procentu paliwa.
     fuel_percent = None
