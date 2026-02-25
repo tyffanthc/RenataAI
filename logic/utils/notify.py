@@ -7,6 +7,7 @@ import config
 from logic.tts.text_preprocessor import prepare_tts
 from logic.capabilities import CAP_TTS_ADVANCED_POLICY, CAP_VOICE_STT, has_capability
 from logic.event_insight_mapping import get_tts_policy_spec
+from logic.utils.renata_log import log_event_throttled
 
 
 # Globalna kolejka komunikatów dla GUI (Thread-Safe)
@@ -203,7 +204,15 @@ def _log_notify_soft_failure(key: str, text: str, *, cooldown_sec: float = 5.0) 
                 if not debouncer.can_send(f"NOTIFY_SOFT_{key}", float(cooldown_sec)):
                     return
             except Exception:
-                pass
+                try:
+                    log_event_throttled(
+                        "notify:soft_failure_debouncer",
+                        5.0,
+                        "notify soft-failure debouncer check failed",
+                        key=key,
+                    )
+                except Exception:
+                    return
         _queue_log_line(text)
     except Exception:
         try:
@@ -262,7 +271,10 @@ def _speak_pyttsx3(tekst: str) -> None:
         try:
             eng.setProperty("voice", eng.getProperty("voices")[0].id)
         except Exception:
-            pass
+            _log_notify_soft_failure(
+                "pyttsx3_voice",
+                "TTS: nie udalo sie ustawic glosu pyttsx3 (fallback domyslny).",
+            )
         try:
             rate = int(config.get("tts.pyttsx3_rate", 155))
         except Exception:
