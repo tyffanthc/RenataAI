@@ -817,8 +817,12 @@ class JournalMapTab(tk.Frame):
                 rows = [str(v).strip() for v in list(getter() or []) if str(v).strip()]
                 if rows:
                     return rows
-            except Exception:
-                pass
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "ppm_available_categories",
+                    "load map PPM available entry categories failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
         return []
 
     def _map_ppm_rebuild_add_entry_menu(self) -> None:
