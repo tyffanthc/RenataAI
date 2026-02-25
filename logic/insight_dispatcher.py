@@ -525,6 +525,20 @@ def _evaluate_should_speak(insight: Insight) -> tuple[bool, str]:
     if priority == "P0_CRITICAL":
         return True, "priority_critical"
 
+    # Hard semantic suppress from caller (e.g. auto summary -> cash-in sequence).
+    # Must return a distinct reason so _apply_cross_module_voice_priority and
+    # _apply_priority_matrix cannot override it via the "notify_policy" path.
+    if bool((insight.context or {}).get("suppress_tts")):
+        log_event_throttled(
+            "dispatcher:suppress_tts_explicit",
+            5000,
+            "VOICE",
+            "voice blocked: suppress_tts_explicit (cross-module override disabled)",
+            message_id=message_id,
+            voice_sequence_reason=str((insight.context or {}).get("voice_sequence_reason", "")),
+        )
+        return False, "suppress_tts_explicit"
+
     if bool(_notify._should_speak_tts(message_id, insight.context)):
         return True, "notify_policy_allow"
     return False, "notify_policy"

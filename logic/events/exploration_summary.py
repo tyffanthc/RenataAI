@@ -271,6 +271,17 @@ def trigger_exploration_summary(
         cooldown_scope="entity",
         cooldown_seconds=cooldown_seconds,
     )
+    _suppress = mode_norm == "auto"
+    log_event_throttled(
+        "EXP_SUMMARY:CASHIN_ENTRY",
+        5000,
+        "VOICE",
+        "summary->cash-in: entry",
+        mode=mode_norm,
+        system=payload.system,
+        suppress_tts=_suppress,
+        voice_enabled=bool(__import__("config").get("voice_enabled", True)),
+    )
     try:
         from logic.events.cash_in_assistant import trigger_cash_in_assistant
 
@@ -278,7 +289,16 @@ def trigger_exploration_summary(
             gui_ref=gui_ref,
             mode=mode_norm,
             summary_payload=asdict(payload),
-            suppress_tts=(mode_norm == "auto"),
+            suppress_tts=_suppress,
+        )
+        log_event_throttled(
+            "EXP_SUMMARY:CASHIN_EXIT",
+            5000,
+            "VOICE",
+            "summary->cash-in: exit OK",
+            mode=mode_norm,
+            system=payload.system,
+            suppress_tts=_suppress,
         )
     except Exception as e:
         log_event_throttled(

@@ -162,6 +162,7 @@ class JournalMapTab(tk.Frame):
         self._trade_highlight_node_keys: set[str] = set()
         self._trade_compare_rows: list[dict[str, Any]] = []
         self._trade_compare_rows_by_iid: dict[str, dict[str, Any]] = {}
+        self._trade_compare_tree_last_reflow_width: int = 0
         self._trade_selected_commodities: list[str] = []
         self._travel_nodes_meta: dict[str, Any] = {}
         self._travel_edges_meta: dict[str, Any] = {}
@@ -703,21 +704,25 @@ class JournalMapTab(tk.Frame):
 
         self.trade_compare_tree = ttk.Treeview(
             self.right_frame,
-            columns=("mode", "commodity", "system", "station", "price", "age"),
+            columns=("mode", "commodity", "station", "price", "age"),
             show="headings",
             style="Treeview",
             height=6,
         )
         for col, title, width, anchor in (
-            ("mode", "Tryb", 50, "w"),
-            ("commodity", "Towar", 95, "w"),
-            ("system", "System", 95, "w"),
-            ("station", "Stacja", 90, "w"),
-            ("price", "Cena", 60, "e"),
-            ("age", "Age", 50, "w"),
+            ("mode", "Tryb", 58, "w"),
+            ("commodity", "Towar", 140, "w"),
+            ("station", "Stacja", 210, "w"),
+            ("price", "Cena", 76, "e"),
+            ("age", "Age", 82, "w"),
         ):
             self.trade_compare_tree.heading(col, text=title)
-            self.trade_compare_tree.column(col, width=width, anchor=anchor)
+            self.trade_compare_tree.column(
+                col,
+                width=width,
+                anchor=anchor,
+                stretch=(col in {"commodity", "station"}),
+            )
         self.trade_compare_tree.grid(row=10, column=0, sticky="nsew")
         self.trade_compare_tree.bind("<<TreeviewSelect>>", self._on_trade_compare_row_selected)
         self.trade_compare_tree.bind("<Configure>", self._on_trade_compare_tree_configure, add="+")
@@ -1612,7 +1617,6 @@ class JournalMapTab(tk.Frame):
                 "-",
                 "-",
                 "-",
-                "-",
                 (
                     f"warstwy: T={int(bool(self.layer_travel_var.get()))}"
                     f"/S={int(bool(self.layer_stations_var.get()))}"
@@ -2315,6 +2319,18 @@ class JournalMapTab(tk.Frame):
             self.map_status_var.set(f"Mapa: Trade compare aktywny towar '{commodity}'.")
 
     def _on_trade_compare_tree_configure(self, _event=None) -> None:
+        tree = getattr(self, "trade_compare_tree", None)
+        if not isinstance(tree, ttk.Treeview):
+            return
+        try:
+            tree_width = int(tree.winfo_width() or 0)
+        except Exception:
+            return
+        if tree_width <= 0:
+            return
+        if tree_width == int(getattr(self, "_trade_compare_tree_last_reflow_width", 0) or 0):
+            return
+        self._trade_compare_tree_last_reflow_width = tree_width
         self._reflow_trade_compare_tree_columns()
 
     def _reflow_trade_compare_tree_columns(self) -> None:
@@ -2333,25 +2349,28 @@ class JournalMapTab(tk.Frame):
             return
         if tree_width <= 0:
             return
+        # Deterministic reflow for widget width changes only. This avoids fighting
+        # manual column resizing and keeps numeric columns visible.
+        fixed_widths = {"mode": 58, "price": 76, "age": 82}
+        min_elastic = {"commodity": 140, "station": 210}
+        padding = 18
         try:
-            total = sum(int(tree.column(col, "width") or 0) for col in columns)
+            available = max(220, tree_width - padding)
+            elastic_cols = [col for col in ("commodity", "station") if col in columns]
+            fixed_total = sum(fixed_widths.get(col, 0) for col in columns)
+            min_total = sum(min_elastic.get(col, 100) for col in elastic_cols)
+            extra = max(0, available - fixed_total - min_total)
+            station_bonus = int(extra * 0.6) if "station" in elastic_cols else 0
+            commodity_bonus = extra - station_bonus
+            for col in columns:
+                if col in fixed_widths:
+                    tree.column(col, width=fixed_widths[col], stretch=False)
+                elif col == "commodity":
+                    tree.column(col, width=min_elastic["commodity"] + commodity_bonus, stretch=True)
+                elif col == "station":
+                    tree.column(col, width=min_elastic["station"] + station_bonus, stretch=True)
         except Exception:
             return
-        extra = tree_width - total - 20
-        if extra <= 0:
-            return
-        elastic_cols = [col for col in ("system", "station", "commodity", "age") if col in columns]
-        if not elastic_cols:
-            return
-        share = max(1, extra // len(elastic_cols))
-        remainder = max(0, extra - (share * len(elastic_cols)))
-        for idx, col in enumerate(elastic_cols):
-            try:
-                current = int(tree.column(col, "width") or 0)
-                bonus = share + (1 if idx < remainder else 0)
-                tree.column(col, width=max(60, current + bonus), stretch=True)
-            except Exception:
-                continue
 
     def _run_trade_compare(self, commodity: str) -> dict[str, Any]:
         commodity_name = _as_text(commodity)
@@ -2361,7 +2380,7 @@ class JournalMapTab(tk.Frame):
         self._trade_compare_rows_by_iid.clear()
         self._sync_trade_highlight_button_state()
         if not commodity_name:
-            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "-", "wybierz towar"))
+            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "wybierz towar"))
             self._redraw_scene()
             return {"ok": False, "reason": "missing_commodity"}
 
@@ -2383,7 +2402,7 @@ class JournalMapTab(tk.Frame):
                 limit=5,
             )
         except Exception as exc:
-            self.trade_compare_tree.insert("", "end", values=("ERR", "-", "-", "-", "-", type(exc).__name__))
+            self.trade_compare_tree.insert("", "end", values=("ERR", "-", "-", "-", type(exc).__name__))
             self._redraw_scene()
             return {"ok": False, "reason": "provider_error"}
 
@@ -2404,7 +2423,7 @@ class JournalMapTab(tk.Frame):
                     "",
                     "end",
                     iid=iid,
-                    values=(mode_label, commodity_name, system_name, station_name, f"{price}", f"{age} | {conf}"),
+                    values=(mode_label, commodity_name, station_name, f"{price}", f"{age} | {conf}"),
                 )
                 for key in self._node_keys_for_system_name(system_name):
                     self._trade_highlight_node_keys.add(key)
@@ -2414,7 +2433,7 @@ class JournalMapTab(tk.Frame):
             self.trade_compare_tree.insert(
                 "",
                 "end",
-                values=("INFO", commodity_name, "-", "-", "-", "brak danych po filtrach"),
+                values=("INFO", commodity_name, "-", "-", "brak danych po filtrach"),
             )
         else:
             # Default active commodity highlight (single commodity mode = all rows same commodity).
@@ -2471,7 +2490,7 @@ class JournalMapTab(tk.Frame):
         self._trade_highlight_node_keys.clear()
         self._sync_trade_highlight_button_state()
         if not selected:
-            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "-", "wybierz towary"))
+            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "wybierz towary"))
             self._redraw_scene()
             return {"ok": False, "reason": "missing_commodities"}
 
@@ -2518,12 +2537,12 @@ class JournalMapTab(tk.Frame):
                         "",
                         "end",
                         iid=iid,
-                        values=(mode_label, commodity_name, system_name, station_name, f"{price}", f"{age} | {conf}"),
+                        values=(mode_label, commodity_name, station_name, f"{price}", f"{age} | {conf}"),
                     )
                     rows_inserted += 1
 
         if rows_inserted <= 0:
-            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "-", "brak danych po filtrach"))
+            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "brak danych po filtrach"))
             self._redraw_scene()
             self.map_status_var.set("Mapa: Trade compare (multi) - brak danych dla wybranych towarow.")
             self._reflow_trade_compare_tree_columns()
