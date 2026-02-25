@@ -192,8 +192,15 @@ class CacheStore:
         if created_at is not None:
             try:
                 meta["data_age_seconds"] = max(0.0, time.time() - float(created_at))
-            except Exception:
-                pass
+            except Exception as exc:
+                log_event_throttled(
+                    "cache.get.created_at_parse",
+                    5000,
+                    "WARN",
+                    "Cache: failed to parse created_at for data_age_seconds",
+                    created_at=created_at,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
 
         if expires_at is not None and time.time() > float(expires_at):
             meta.update(file_meta)
