@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from logic import player_local_db
+from logic.utils.renata_log import log_event_throttled
 
 
 def _as_text(value: Any) -> str:
@@ -22,6 +23,12 @@ def _parse_iso_ts(value: Any) -> datetime | None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
     except Exception:
+        log_event_throttled(
+            "map_data_provider:parse_iso_ts",
+            30.0,
+            "map provider timestamp parse failed",
+            value=text[:120],
+        )
         return None
 
 
