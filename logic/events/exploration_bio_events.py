@@ -1121,5 +1121,9 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
 
 try:
     load_exobio_state_from_contract(force=True)
-except Exception:
-    pass
+except Exception as exc:
+    _log_exobio_fallback(
+        "load_state_on_import",
+        "load exobio state on module import failed",
+        exc,
+    )
