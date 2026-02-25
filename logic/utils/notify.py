@@ -7,7 +7,7 @@ import config
 from logic.tts.text_preprocessor import prepare_tts
 from logic.capabilities import CAP_TTS_ADVANCED_POLICY, CAP_VOICE_STT, has_capability
 from logic.event_insight_mapping import get_tts_policy_spec
-from logic.utils.renata_log import log_event_throttled
+from logic.utils.renata_log import log_event_throttled, log_event
 
 
 # Globalna kolejka komunikatów dla GUI (Thread-Safe)
@@ -266,6 +266,15 @@ def _speak_tts(tekst: str) -> None:
 
 
 def _speak_pyttsx3(tekst: str) -> None:
+    # Trace: pyttsx3/SAPI5 creates a COM window internally on Windows which can
+    # steal focus from fullscreen games (bug 16.8). Log every pyttsx3 invocation
+    # so we can confirm if this path is active during FSS/selling.
+    # If this log appears during FSS/selling focus-steal incidents, switch to piper.
+    log_event(
+        "TTS",
+        "pyttsx3_invoke",
+        note="SAPI5 COM may steal focus on Windows — check if this correlates with 16.8",
+    )
     try:
         eng = pyttsx3.init()
         try:

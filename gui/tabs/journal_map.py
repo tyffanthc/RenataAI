@@ -146,7 +146,7 @@ class JournalMapTab(tk.Frame):
         self.view_offset_x: float = 0.0
         self.view_offset_y: float = 0.0
         self._min_scale = 0.10
-        self._max_scale = 40.0
+        self._max_scale = 100.0
 
         # Pan state
         self._pan_active = False
@@ -1900,7 +1900,7 @@ class JournalMapTab(tk.Frame):
             selectcolor=COLOR_ACCENT,
             activebackground=COLOR_BG,
             activeforeground=COLOR_FG,
-            command=self._trade_picker_refresh_rows,
+            command=self._trade_picker_on_station_only_toggled,
         )
         station_only_chk.grid(row=0, column=2, sticky="w", padx=(14, 0))
         self._trade_picker_station_only_chk = station_only_chk
@@ -1938,6 +1938,7 @@ class JournalMapTab(tk.Frame):
         hsb = ttk.Scrollbar(tree_wrap, orient="horizontal", command=tree.xview)
         hsb.grid(row=1, column=0, sticky="ew")
         tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        tree.bind("<Button-1>", self._trade_picker_on_tree_click)
         tree.bind("<Double-Button-1>", lambda _e: self._trade_picker_toggle_selected_row())
         tree.bind("<Return>", lambda _e: self._trade_picker_toggle_selected_row())
         self._trade_picker_tree = tree
@@ -1995,6 +1996,14 @@ class JournalMapTab(tk.Frame):
             sel = self.system_stations_tree.selection() or ()
         except Exception:
             return None
+        if not sel:
+            try:
+                children = self.system_stations_tree.get_children() or ()
+            except Exception:
+                children = ()
+            if children:
+                # Selection may be lost after focus changes; fall back to first visible station row.
+                sel = (children[0],)
         if not sel:
             return None
         row = self._station_rows_by_iid.get(str(sel[0]))
@@ -2122,15 +2131,22 @@ class JournalMapTab(tk.Frame):
                 error=f"{type(exc).__name__}: {exc}",
             )
 
+    def _trade_picker_on_station_only_toggled(self) -> None:
+        self._trade_picker_refresh_station_filter_status()
+        self._trade_picker_refresh_rows()
+
     def _trade_picker_refresh_rows(self) -> None:
         tree = getattr(self, "_trade_picker_tree", None)
         if tree is None:
             return
+        station_only = bool(getattr(self._trade_picker_station_only_var, "get", lambda: False)())
+        total_values = list(self._trade_picker_available or [])
+        filtered_values = list(self._trade_picker_filtered_commodities())
         try:
             tree.delete(*tree.get_children())
         except Exception:
             return
-        for idx, commodity in enumerate(self._trade_picker_filtered_commodities()):
+        for idx, commodity in enumerate(filtered_values):
             selected = str(commodity) in (self._trade_picker_selected or set())
             tree.insert(
                 "",
@@ -2138,6 +2154,19 @@ class JournalMapTab(tk.Frame):
                 iid=f"c:{idx}",
                 values=("[x]" if selected else "[ ]", commodity),
             )
+        if station_only:
+            status_var = getattr(self, "_trade_picker_station_filter_status_var", None)
+            if status_var is not None:
+                base_status = _as_text(getattr(status_var, "get", lambda: "")())
+                if base_status and "towary:" not in base_status.casefold():
+                    try:
+                        status_var.set(f"{base_status} | towary: {len(filtered_values)}/{len(total_values)}")
+                    except Exception as exc:
+                        _log_map_soft_failure(
+                            "trade_picker_station_status_counts",
+                            "set trade picker station filter counts failed",
+                            error=f"{type(exc).__name__}: {exc}",
+                        )
 
     def _trade_picker_toggle_selected_row(self) -> None:
         tree = getattr(self, "_trade_picker_tree", None)
@@ -2146,7 +2175,13 @@ class JournalMapTab(tk.Frame):
         sel = tree.selection() or ()
         if not sel:
             return
-        iid = str(sel[0])
+        self._trade_picker_toggle_row_iid(str(sel[0]))
+
+    def _trade_picker_toggle_row_iid(self, iid: str) -> None:
+        tree = getattr(self, "_trade_picker_tree", None)
+        if tree is None:
+            return
+        iid = str(iid)
         values = tree.item(iid, "values") or ()
         commodity = _as_text(values[1] if len(values) > 1 else "")
         if not commodity:
@@ -2161,11 +2196,42 @@ class JournalMapTab(tk.Frame):
             tree.focus(iid)
         except Exception as exc:
             _log_map_soft_failure(
-                "trade_picker_toggle_reselect",
-                "reselect trade picker row after toggle failed",
-                iid=str(iid),
+                    "trade_picker_toggle_reselect",
+                    "reselect trade picker row after toggle failed",
+                    iid=str(iid),
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+
+    def _trade_picker_on_tree_click(self, event=None):
+        tree = getattr(self, "_trade_picker_tree", None)
+        if tree is None or event is None:
+            return None
+        try:
+            region = str(tree.identify("region", int(event.x), int(event.y)) or "")
+            column = str(tree.identify_column(int(event.x)) or "")
+            row_iid = str(tree.identify_row(int(event.y)) or "")
+        except Exception as exc:
+            _log_map_soft_failure(
+                "trade_picker_tree_click_identify",
+                "identify trade picker tree click target failed",
                 error=f"{type(exc).__name__}: {exc}",
             )
+            return None
+        # Single-click toggles only when user clicks the pseudo-checkbox column.
+        if region in {"cell", "tree"} and column == "#1" and row_iid:
+            try:
+                tree.selection_set(row_iid)
+                tree.focus(row_iid)
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "trade_picker_tree_click_reselect",
+                    "select trade picker row on single-click toggle failed",
+                    iid=row_iid,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            self._trade_picker_toggle_row_iid(row_iid)
+            return "break"
+        return None
 
     def _trade_picker_select_all(self) -> None:
         self._trade_picker_selected = set(self._trade_picker_filtered_commodities())

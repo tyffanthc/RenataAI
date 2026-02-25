@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any, Iterable
 import hashlib
 import json
@@ -178,20 +179,46 @@ def try_copy_to_clipboard(text: str, *, context: str | None = None) -> dict[str,
         except Exception as exc:
             errors.append(f"pyperclip: {exc}")
 
-    try:
-        import tkinter as tk
+    # Fallback: ctypes win32clipboard (Windows only, focus-safe — no window created).
+    # IMPORTANT: do NOT use tk.Tk() as a clipboard fallback — creating a secondary
+    # Tk root from a background thread can register a new OS window and cause
+    # fullscreen games (e.g. Elite Dangerous) to minimize. Bug: 16.8.
+    if os.name == "nt":
+        try:
+            import ctypes
+            import ctypes.wintypes
 
-        root = tk.Tk()
-        root.withdraw()
-        root.clipboard_clear()
-        root.clipboard_append(data)
-        root.update_idletasks()
-        root.update()
-        root.destroy()
-        log_event("CLIPBOARD", "copy", ok=True, context=context, preview=preview)
-        return {"ok": True}
-    except Exception as exc:
-        errors.append(f"tkinter: {exc}")
+            log_event(
+                "CLIPBOARD",
+                "copy_fallback",
+                method="ctypes_win32",
+                context=context,
+                reason="pyperclip_unavailable_or_failed",
+            )
+            CF_UNICODETEXT = 13
+            GMEM_MOVEABLE = 0x0002
+            kernel32 = ctypes.windll.kernel32
+            user32 = ctypes.windll.user32
+            encoded = (data + "\0").encode("utf-16-le")
+            hmem = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(encoded))
+            if not hmem:
+                raise RuntimeError("GlobalAlloc failed")
+            ptr = kernel32.GlobalLock(hmem)
+            if not ptr:
+                kernel32.GlobalFree(hmem)
+                raise RuntimeError("GlobalLock failed")
+            ctypes.memmove(ptr, encoded, len(encoded))
+            kernel32.GlobalUnlock(hmem)
+            if not user32.OpenClipboard(None):
+                kernel32.GlobalFree(hmem)
+                raise RuntimeError("OpenClipboard failed")
+            user32.EmptyClipboard()
+            user32.SetClipboardData(CF_UNICODETEXT, hmem)
+            user32.CloseClipboard()
+            log_event("CLIPBOARD", "copy", ok=True, context=context, preview=preview, method="ctypes_win32")
+            return {"ok": True}
+        except Exception as exc:
+            errors.append(f"ctypes.win32clipboard: {exc}")
 
     if errors:
         log_event(

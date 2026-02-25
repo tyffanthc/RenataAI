@@ -149,7 +149,10 @@ class F22MapTradeCompareModalScrollbarAndStationAvailableFilterContractTests(uni
                 # Enable station filter -> only commodities from selected station A (Gold/Silver).
                 self.assertIsNotNone(frame._trade_picker_station_only_var)
                 frame._trade_picker_station_only_var.set(True)
-                frame._trade_picker_refresh_rows()
+                # Simulate transient loss of station row selection (focus/UI refresh) and ensure picker
+                # falls back to the first visible station row for filtering.
+                frame.system_stations_tree.selection_remove(*frame.system_stations_tree.selection())
+                frame._trade_picker_on_station_only_toggled()
                 root.update_idletasks()
 
                 filtered_rows = frame._trade_picker_tree.get_children()
@@ -160,6 +163,7 @@ class F22MapTradeCompareModalScrollbarAndStationAvailableFilterContractTests(uni
 
                 status = str(frame._trade_picker_station_filter_status_var.get() or "")
                 self.assertIn("A Market", status)
+                self.assertIn("towary:", status)
             finally:
                 try:
                     if frame is not None:
