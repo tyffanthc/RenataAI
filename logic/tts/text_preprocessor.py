@@ -148,6 +148,13 @@ _GROUPS = [
     ("miliard", "miliardy", "miliardów"),
     ("bilion", "biliony", "bilionów"),
 ]
+_GROUPED_INT_SEP_CLASS = r" \u00A0\u202F,.'"
+_GROUPED_INT_PATTERN = re.compile(
+    rf"(?:\d+|\d{{1,3}}(?:[{_GROUPED_INT_SEP_CLASS}]\d{{3}})+)"
+)
+_CREDITS_NUMBER_RE = re.compile(
+    rf"(?<![\d,\.\u00A0\u202F'])\b(?P<num>{_GROUPED_INT_PATTERN.pattern})\s*(?:Cr|CR|cr)\b"
+)
 
 
 def _repair_polish_text(value: Any) -> str:
@@ -253,16 +260,27 @@ def _decimal_to_words_pl(value_text: str) -> str:
     return f"{'minus ' if negative else ''}{int_words} przecinek {frac_words}".strip()
 
 
+def _parse_grouped_int(value_text: str) -> Optional[int]:
+    text = _repair_polish_text(value_text).strip()
+    if not text:
+        return None
+    if not _GROUPED_INT_PATTERN.fullmatch(text):
+        return None
+    digits = re.sub(rf"[{_GROUPED_INT_SEP_CLASS}]", "", text)
+    try:
+        return int(digits)
+    except Exception:
+        return None
+
+
 def _verbalize_tts_numbers(text: str) -> str:
     if not text:
         return ""
 
     def _credits_sub(match: re.Match[str]) -> str:
         raw_num = str(match.group("num") or "")
-        digits = re.sub(r"\s+", "", raw_num)
-        try:
-            n = int(digits)
-        except Exception:
+        n = _parse_grouped_int(raw_num)
+        if n is None:
             return match.group(0)
         unit = _plural_form_pl(n, "kredyt", "kredyty", "kredytów")
         return f"{_int_to_words_pl(n)} {unit}"
@@ -283,7 +301,7 @@ def _verbalize_tts_numbers(text: str) -> str:
         return f"{words} lat świetlnych"
 
     out = text
-    out = re.sub(r"\b(?P<num>\d[\d ]*)\s*(?:Cr|CR|cr)\b", _credits_sub, out)
+    out = _CREDITS_NUMBER_RE.sub(_credits_sub, out)
     out = re.sub(r"(?P<num>\d+(?:[.,]\d+)?)\s*%", _percent_sub, out)
     out = re.sub(r"\b(?P<num>\d+(?:[.,]\d+)?)\s*(?:LY|ly)\b", _ly_sub, out)
     return out

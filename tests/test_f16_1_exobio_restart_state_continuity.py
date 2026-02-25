@@ -32,6 +32,7 @@ import config
 from app.state import app_state
 from logic.context_state_contract import default_state_contract
 from logic.events import exploration_bio_events as bio_events
+from logic.events import navigation_events
 
 
 def _fresh_contract(path: str) -> None:
@@ -348,6 +349,63 @@ class F161ExobioRestartContinuityTests(unittest.TestCase):
                 self.assertIn("source", result)
                 self.assertEqual(len(bio_events.EXOBIO_SAMPLE_COUNT), 0)
             finally:
+                bio_events.reset_bio_flags()
+                config.STATE_FILE = old_state_file
+                config.save_state_contract(old_contract)
+
+    def test_d_bootstrap_location_reset_does_not_wipe_recovered_exobio_state(self) -> None:
+        """
+        Regression (BUGS_FIX 16.1):
+        Bootstrap recovers exobio state first, then replays Location/FSDJump which calls
+        reset_fss_progress(). That reset used to wipe exobio state via reset_bio_flags().
+        """
+        old_state_file = config.STATE_FILE
+        old_contract = config.get_state_contract()
+        old_bootstrap = bool(getattr(app_state, "bootstrap_replay", False))
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = os.path.join(tmp_dir, "f161_bootstrap_location_preserve.json")
+            try:
+                _fresh_contract(tmp_path)
+                app_state.current_system = "F161D System"
+
+                # Build persisted exobio state: one sample already taken.
+                with patch(
+                    "logic.events.exploration_bio_events._estimate_collected_species_value",
+                    return_value=(None, False),
+                ):
+                    bio_events.handle_exobio_progress(
+                        {
+                            "event": "ScanOrganic",
+                            "StarSystem": "F161D System",
+                            "BodyName": "F161D System 1 A",
+                            "Species_Localised": "Aleoida Arcus",
+                        },
+                        gui_ref=None,
+                    )
+                expected_key = ("f161d system", "f161d system 1 a", "aleoida arcus")
+                self.assertEqual(bio_events.EXOBIO_SAMPLE_COUNT.get(expected_key, 0), 1)
+
+                # Simulate restart runtime memory wipe, then bootstrap recovery from contract.
+                bio_events.reset_bio_flags()
+                load_stats = bio_events.load_exobio_state_from_contract(force=True)
+                self.assertTrue(load_stats.get("loaded"))
+                self.assertEqual(bio_events.EXOBIO_SAMPLE_COUNT.get(expected_key, 0), 1)
+
+                # Bootstrap replay of Location must NOT wipe recovered exobio state.
+                app_state.bootstrap_replay = True
+                navigation_events.handle_location_fsdjump_carrier(
+                    {"event": "Location", "StarSystem": "F161D System"},
+                    gui_ref=None,
+                )
+                self.assertEqual(
+                    bio_events.EXOBIO_SAMPLE_COUNT.get(expected_key, 0),
+                    1,
+                    "bootstrap Location reset must preserve recovered exobio sample count",
+                )
+
+            finally:
+                app_state.bootstrap_replay = old_bootstrap
                 bio_events.reset_bio_flags()
                 config.STATE_FILE = old_state_file
                 config.save_state_contract(old_contract)

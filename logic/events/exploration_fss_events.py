@@ -152,7 +152,7 @@ def flush_pending_exit_summary_on_jump(gui_ref=None) -> bool:
         return False
 
 
-def reset_fss_progress() -> None:
+def reset_fss_progress(*, preserve_exobio: bool = False) -> None:
     """Reset licznikow FSS oraz powiazanych flag discovery.
 
     To jest orkiestrator resetow eksploracyjnych:
@@ -193,7 +193,8 @@ def reset_fss_progress() -> None:
 
     # Resety w innych modulach eksploracyjnych
     reset_high_value_flags()
-    reset_bio_flags()
+    if not preserve_exobio:
+        reset_bio_flags()
     reset_dss_helper_state()
     reset_footfall_flags()
     reset_system_awareness(previous_system)

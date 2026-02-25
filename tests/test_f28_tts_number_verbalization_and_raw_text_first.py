@@ -36,6 +36,21 @@ class F28TtsNumberVerbalizationAndRawTextFirstTests(unittest.TestCase):
         self.assertIn(",", text)
 
 
+    def test_credits_grouped_with_comma_or_nbsp_do_not_degrade_to_tail_zero(self) -> None:
+        cases = [
+            "Dane warte 132,555,000 Cr.",
+            "Dane warte 132\u00A0555\u00A0000 Cr.",
+        ]
+        for raw_text in cases:
+            with self.subTest(raw_text=raw_text):
+                text = prepare_tts("MSG.CASH_IN_ASSISTANT", {"raw_text": raw_text}) or ""
+                lowered = text.lower()
+                self.assertIn("milion", lowered)
+                self.assertIn("kredyt", lowered)
+                self.assertNotIn("132,555,zero", lowered)
+                self.assertNotIn("132 555 zero", lowered)
+
+
 if __name__ == "__main__":
     unittest.main()
 
