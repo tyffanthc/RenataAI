@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 import config
 from logic.utils import MSG_QUEUE, DEBOUNCER
+from logic.utils.renata_log import log_event_throttled
 
 
 @dataclass
@@ -341,7 +342,13 @@ class ShipState:
             except Exception:
                 if config.get("fit_resolver_fail_on_missing", False):
                     raise
-                pass
+                log_event_throttled(
+                    "ship_state_fit_resolver",
+                    30.0,
+                    "WARN",
+                    "ship_state: fit_resolver failed; keeping previous fit fields",
+                    source=source,
+                )
 
         if changed:
             self._mark_updated(source)
