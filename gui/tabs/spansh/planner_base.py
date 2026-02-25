@@ -78,7 +78,11 @@ class SpanshPlannerBase(ttk.Frame):
             try:
                 controller.hide()
             except Exception:
-                pass
+                _log_planner_soft_failure(
+                    "hide_suggestions",
+                    "planner autocomplete hide failed",
+                    controller_type=type(controller).__name__,
+                )
 
     def _clear_list_widget(self, list_widget: Any) -> None:
         if isinstance(list_widget, ttk.Treeview):
@@ -164,7 +168,11 @@ class SpanshPlannerBase(ttk.Frame):
             if rendered:
                 return str(rendered[0]).strip()
         except Exception:
-            pass
+            _log_planner_soft_failure(
+                "format_result_line",
+                "planner format result line failed",
+                schema_id=self._schema_id,
+            )
         return str(row_text or "").strip()
 
     def _selected_internal_indices(self) -> list[int]:
@@ -588,7 +596,11 @@ class SpanshPlannerBase(ttk.Frame):
             self._range_updating = True
             self.var_range.set(float(value))
         except Exception:
-            pass
+            _log_planner_soft_failure(
+                "set_range_value",
+                "planner set range value failed",
+                value=value,
+            )
         finally:
             self._range_updating = False
 
