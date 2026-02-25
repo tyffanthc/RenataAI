@@ -252,7 +252,17 @@ def _merge_candidate_pair(current: Dict[str, Any], incoming: Dict[str, Any]) -> 
             try:
                 out[key] = min(float(out.get(key)), float(base.get(key)))
             except Exception:
-                pass
+                log_event_throttled(
+                    "cash_in_candidates_merge_distance_parse",
+                    30.0,
+                    "WARN",
+                    "cash-in candidates: distance merge parse fallback",
+                    field=key,
+                    out_value=out.get(key),
+                    base_value=base.get(key),
+                    out_name=_as_text(out.get("name")),
+                    out_system=_as_text(out.get("system_name")),
+                )
 
     if not _as_text(out.get("freshness_ts")) and _as_text(base.get("freshness_ts")):
         out["freshness_ts"] = _as_text(base.get("freshness_ts"))
