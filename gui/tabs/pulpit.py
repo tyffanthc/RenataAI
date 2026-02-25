@@ -523,8 +523,14 @@ class PulpitTab(ttk.Frame):
         self._clear_panel_actions()
         try:
             self.panel_wrap.pack_forget()
-        except Exception:
-            pass
+        except Exception as exc:
+            log_event_throttled(
+                "pulpit:panel_close_pack_forget",
+                5000,
+                "GUI",
+                "pulpit panel pack_forget failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     # ------------------------------------------------------------
     # Render panel by domain
