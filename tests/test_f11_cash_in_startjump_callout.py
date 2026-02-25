@@ -90,7 +90,8 @@ class F11CashInStartJumpCalloutTests(unittest.TestCase):
         ctx = dict(kwargs.get("context") or {})
         self.assertEqual(ctx.get("confidence"), "mid")
         raw_text = str(ctx.get("raw_text") or "")
-        self.assertIn("orientacyjnie", raw_text)
+        self.assertIn("orientacyjnie", raw_text.lower())
+        self.assertNotIn("Cash-in", raw_text)
         self.assertIn("8 000 000 Cr", raw_text)
 
     def test_startjump_low_confidence_uses_var_tier_without_amount(self) -> None:

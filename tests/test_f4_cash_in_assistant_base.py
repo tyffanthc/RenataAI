@@ -60,7 +60,9 @@ class F4CashInAssistantBaseTests(unittest.TestCase):
         self.assertGreaterEqual(len(options), 2)
         self.assertLessEqual(len(options), 3)
         self.assertEqual((payload.get("skip_action") or {}).get("label"), "Pomijam")
-        self.assertTrue(str(ctx.get("raw_text") or "").strip())
+        raw_text = str(ctx.get("raw_text") or "").strip()
+        self.assertTrue(raw_text)
+        self.assertFalse(raw_text.lower().startswith("cash-in"))
 
     def test_auto_trigger_is_guarded_by_signature_and_skip(self) -> None:
         payload = self._summary_payload()

@@ -2423,6 +2423,22 @@ def _signature(payload: CashInAssistantPayload) -> str:
     )
 
 
+def _strip_cashin_voice_prefix(text: Any) -> str:
+    value = _as_text(text)
+    if not value:
+        return ""
+    lowered = value.lower()
+    if lowered.startswith("cash-in orientacyjnie:"):
+        return "Orientacyjnie: " + value[len("Cash-in orientacyjnie:") :].lstrip()
+    if lowered.startswith("cash-in:"):
+        return value[len("Cash-in:") :].lstrip()
+    if lowered.startswith("cash-in."):
+        return value[len("Cash-in.") :].lstrip()
+    if lowered.startswith("cash-in "):
+        return value[len("Cash-in ") :].lstrip()
+    return value
+
+
 def _build_tts_line(payload: CashInAssistantPayload) -> str:
     edge_meta = dict(payload.edge_case_meta or {})
     edge_reasons = {
@@ -2632,11 +2648,13 @@ def trigger_startjump_cash_in_callout(
     ):
         return False
 
-    raw_text = _build_startjump_tts_line(
+    raw_text = _strip_cashin_voice_prefix(
+        _build_startjump_tts_line(
         confidence=confidence,
         system_value=system_value,
         session_value=session_value,
         signal=signal,
+        )
     )
     risk_status = "RISK_MEDIUM" if signal == "wysoki" else "RISK_LOW"
     var_status = (
@@ -2829,7 +2847,7 @@ def trigger_cash_in_assistant(
 
     context = {
         "system": payload.system,
-        "raw_text": _build_tts_line(payload),
+        "raw_text": _strip_cashin_voice_prefix(_build_tts_line(payload)),
         "risk_status": risk_status,
         "var_status": var_status,
         "trust_status": payload.trust_status,
