@@ -49,7 +49,35 @@ class F30FssMilestoneCatchupAndBodyDedupeTests(unittest.TestCase):
 
         self.assertEqual(int(fss_events.FSS_DISCOVERED or 0), 1)
 
+    def test_late_bodycount_syncs_milestone_flags_without_retro_callouts(self) -> None:
+        # Simulate partial scan progress collected before FSSDiscoveryScan delivered BodyCount.
+        fss_events.FSS_TOTAL_BODIES = 0
+        fss_events.FSS_DISCOVERED = 4
+        fss_events.FSS_SCANNED_BODIES = {"body:1", "body:2", "body:3", "body:4"}
+        fss_events.FSS_25_WARNED = False
+        fss_events.FSS_50_WARNED = False
+        fss_events.FSS_75_WARNED = False
+
+        with patch("logic.events.exploration_fss_events.utils.MSG_QUEUE.put"):
+            fss_events.handle_fss_discovery_scan({"event": "FSSDiscoveryScan", "BodyCount": 7}, gui_ref=None)
+
+        self.assertEqual(int(fss_events.FSS_TOTAL_BODIES or 0), 7)
+        # 4/7 ~= 57%, so 25 and 50 should be marked as already crossed.
+        self.assertTrue(fss_events.FSS_25_WARNED)
+        self.assertTrue(fss_events.FSS_50_WARNED)
+        self.assertFalse(fss_events.FSS_75_WARNED)
+
+        # Next threshold check at the same progress should not emit retro 25/50 callouts.
+        with (
+            patch("logic.events.exploration_fss_events.DEBOUNCER.can_send", return_value=True),
+            patch("logic.events.exploration_fss_events.emit_insight") as emit_mock,
+        ):
+            fss_events._check_fss_thresholds(gui_ref=None)
+
+        emit_ids = [str(c.kwargs.get("message_id") or "") for c in emit_mock.call_args_list]
+        self.assertNotIn("MSG.FSS_PROGRESS_25", emit_ids)
+        self.assertNotIn("MSG.FSS_PROGRESS_50", emit_ids)
+
 
 if __name__ == "__main__":
     unittest.main()
-

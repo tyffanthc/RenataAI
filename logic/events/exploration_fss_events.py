@@ -32,6 +32,7 @@ FSS_75_WARNED = False
 FSS_LAST_WARNED = False
 FSS_FULL_WARNED = False
 FSS_HAD_DISCOVERY_SCAN = False
+FSS_HAD_MANUAL_PROGRESS_SCAN = False
 FSS_PENDING_EXIT_SUMMARY = False
 FSS_PENDING_EXIT_SUMMARY_SYSTEM = None
 FSS_PENDING_EXIT_SUMMARY_SCANNED = None
@@ -93,7 +94,11 @@ def _wire_exit_summary_to_runtime(gui_ref=None) -> None:
     global FSS_PENDING_EXIT_SUMMARY_SCANNED, FSS_PENDING_EXIT_SUMMARY_TOTAL
 
     system_name = getattr(app_state, "current_system", None)
-    if not bool(FSS_HAD_DISCOVERY_SCAN):
+    # BUGS_FIX 16.5 (runtime follow-up):
+    # `FSSDiscoveryScan` alone can appear in transit-style gameplay and is too weak as
+    # a proxy for "player really did FSS work in this system". Arm summary only after
+    # at least one non-AutoScan body progress event was counted.
+    if not bool(FSS_HAD_MANUAL_PROGRESS_SCAN):
         return
 
     # BUGS_FIX 16.5:
@@ -157,7 +162,7 @@ def reset_fss_progress() -> None:
     """
     global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES
     global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED, FSS_FULL_WARNED
-    global FSS_HAD_DISCOVERY_SCAN
+    global FSS_HAD_DISCOVERY_SCAN, FSS_HAD_MANUAL_PROGRESS_SCAN
     global FSS_PENDING_EXIT_SUMMARY, FSS_PENDING_EXIT_SUMMARY_SYSTEM
     global FSS_PENDING_EXIT_SUMMARY_SCANNED, FSS_PENDING_EXIT_SUMMARY_TOTAL
     global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES, FIRST_SYS_OPPORTUNITY_WARNED
@@ -174,6 +179,7 @@ def reset_fss_progress() -> None:
     FSS_LAST_WARNED = False
     FSS_FULL_WARNED = False
     FSS_HAD_DISCOVERY_SCAN = False
+    FSS_HAD_MANUAL_PROGRESS_SCAN = False
     FSS_PENDING_EXIT_SUMMARY = False
     FSS_PENDING_EXIT_SUMMARY_SYSTEM = None
     FSS_PENDING_EXIT_SUMMARY_SCANNED = None
@@ -218,6 +224,27 @@ def _scan_body_keys(ev: Dict[str, Any]) -> set[str]:
         if text:
             keys.add(f"name:{text.casefold()}")
     return keys
+
+
+def _sync_milestone_flags_after_late_body_count() -> None:
+    """
+    BUGS_FIX 16.2 follow-up:
+    If BodyCount arrives late (after some bodies were already scanned), sync milestone
+    flags to current progress without emitting retro catch-up TTS on the next scan.
+    """
+    global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED
+    if FSS_TOTAL_BODIES <= 0:
+        return
+    try:
+        progress = float(FSS_DISCOVERED or 0) / float(FSS_TOTAL_BODIES or 1)
+    except Exception:
+        return
+    if progress >= 0.25:
+        FSS_25_WARNED = True
+    if progress >= 0.5:
+        FSS_50_WARNED = True
+    if progress >= 0.75:
+        FSS_75_WARNED = True
 
 
 def _check_fss_thresholds(gui_ref=None):
@@ -332,7 +359,7 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
     body_name = _scan_body_label(ev)
     body_keys = _scan_body_keys(ev)
 
-    global FSS_SCANNED_BODIES, FSS_DISCOVERED
+    global FSS_SCANNED_BODIES, FSS_DISCOVERED, FSS_HAD_MANUAL_PROGRESS_SCAN
     global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES, FIRST_SYS_OPPORTUNITY_WARNED
 
     if not body_name:
@@ -356,6 +383,9 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
         else:
             FSS_SCANNED_BODIES.add(body_name)
         FSS_DISCOVERED += 1
+        scan_type = str(ev.get("ScanType") or "").strip().casefold()
+        if scan_type != "autoscan":
+            FSS_HAD_MANUAL_PROGRESS_SCAN = True
 
         # --- S2-LOGIC-05: First Discovery detection ---
         was_discovered = ev.get("WasDiscovered")
@@ -448,6 +478,8 @@ def handle_fss_discovery_scan(ev: Dict[str, Any], gui_ref=None):
         previous_total = int(FSS_TOTAL_BODIES or 0)
         # Keep progress and only refresh total body count metadata.
         FSS_TOTAL_BODIES = max(count, int(FSS_DISCOVERED or 0))
+        if previous_total <= 0 and int(FSS_DISCOVERED or 0) > 0:
+            _sync_milestone_flags_after_late_body_count()
         if FSS_TOTAL_BODIES != previous_total:
             utils.MSG_QUEUE.put(
                 ("log", f"[FSS] Zaktualizowano BodyCount (bez resetu progresu): {previous_total} -> {FSS_TOTAL_BODIES}.")
