@@ -152,6 +152,27 @@ def _set_fss_total_bodies(count: int):
     FSS_SCANNED_BODIES = set()
 
 
+def _scan_body_label(ev: Dict[str, Any]) -> Any:
+    return ev.get("BodyName") or ev.get("BodyID") or ev.get("Body") or None
+
+
+def _scan_body_keys(ev: Dict[str, Any]) -> set[str]:
+    """
+    Build a small alias set for one body scan so mixed payloads (`BodyName` vs `BodyID`)
+    do not double-count the same body.
+    """
+    keys: set[str] = set()
+    body_id = ev.get("BodyID")
+    if body_id is not None and str(body_id).strip() != "":
+        keys.add(f"id:{body_id}")
+    body_name = ev.get("BodyName") or ev.get("Body")
+    if body_name is not None:
+        text = str(body_name).strip()
+        if text:
+            keys.add(f"name:{text.casefold()}")
+    return keys
+
+
 def _check_fss_thresholds(gui_ref=None):
     """
     Sprawdza progi 25/50/75% i moment 'ostatnia planeta'.
@@ -167,54 +188,40 @@ def _check_fss_thresholds(gui_ref=None):
     progress = FSS_DISCOVERED / FSS_TOTAL_BODIES
     system_name = app_state.current_system or None
 
-    # 25%
-    if not FSS_25_WARNED and progress >= 0.25:
-        # zachowujemy stara logike flag (jedno odpalenie na prog)
-        FSS_25_WARNED = True
-        if DEBOUNCER.can_send("FSS_25", 120, context=system_name):
+    # Milestone catch-up rule: when progress jumps over multiple thresholds in one step
+    # (e.g. startup/recovery/system with many stars scanned quickly), emit only the
+    # highest newly reached threshold to avoid 25% -> 50% -> 75% spam in sequence.
+    threshold_specs: list[tuple[float, str, str, str]] = [
+        (0.25, "FSS_25", "MSG.FSS_PROGRESS_25", "Dwadzieścia pięć procent systemu przeskanowane."),
+        (0.5, "FSS_50", "MSG.FSS_PROGRESS_50", "Połowa systemu przeskanowana."),
+        (0.75, "FSS_75", "MSG.FSS_PROGRESS_75", "Siedemdziesiąt pięć procent systemu przeskanowane."),
+    ]
+    warned_map = {
+        "FSS_25": bool(FSS_25_WARNED),
+        "FSS_50": bool(FSS_50_WARNED),
+        "FSS_75": bool(FSS_75_WARNED),
+    }
+    newly_reached = [spec for spec in threshold_specs if progress >= spec[0] and not warned_map.get(spec[1], False)]
+    if newly_reached:
+        # Mark all crossed thresholds as warned so catch-up doesn't replay them later.
+        if any(spec[1] == "FSS_25" for spec in newly_reached):
+            FSS_25_WARNED = True
+        if any(spec[1] == "FSS_50" for spec in newly_reached):
+            FSS_50_WARNED = True
+        if any(spec[1] == "FSS_75" for spec in newly_reached):
+            FSS_75_WARNED = True
+        _, deb_key, msg_id, text = newly_reached[-1]
+        if DEBOUNCER.can_send(deb_key, 120, context=system_name):
+            dedup_suffix = "25" if deb_key.endswith("25") else ("50" if deb_key.endswith("50") else "75")
             emit_insight(
-                "Dwadzieścia pięć procent systemu przeskanowane.",
+                text,
                 gui_ref=gui_ref,
-                message_id="MSG.FSS_PROGRESS_25",
+                message_id=msg_id,
                 source="exploration_fss_events",
                 event_type="SYSTEM_SCANNED",
                 context=_fss_gate_context(system_name),
                 priority="P2_NORMAL",
-                dedup_key=f"fss25:{system_name or 'unknown'}",
-                cooldown_scope="entity",
-                cooldown_seconds=120.0,
-            )
-
-    # 50%
-    if not FSS_50_WARNED and progress >= 0.5:
-        FSS_50_WARNED = True
-        if DEBOUNCER.can_send("FSS_50", 120, context=system_name):
-            emit_insight(
-                "Połowa systemu przeskanowana.",
-                gui_ref=gui_ref,
-                message_id="MSG.FSS_PROGRESS_50",
-                source="exploration_fss_events",
-                event_type="SYSTEM_SCANNED",
-                context=_fss_gate_context(system_name),
-                priority="P2_NORMAL",
-                dedup_key=f"fss50:{system_name or 'unknown'}",
-                cooldown_scope="entity",
-                cooldown_seconds=120.0,
-            )
-
-    # 75%
-    if not FSS_75_WARNED and progress >= 0.75:
-        FSS_75_WARNED = True
-        if DEBOUNCER.can_send("FSS_75", 120, context=system_name):
-            emit_insight(
-                "Siedemdziesiąt pięć procent systemu przeskanowane.",
-                gui_ref=gui_ref,
-                message_id="MSG.FSS_PROGRESS_75",
-                source="exploration_fss_events",
-                event_type="SYSTEM_SCANNED",
-                context=_fss_gate_context(system_name),
-                priority="P2_NORMAL",
-                dedup_key=f"fss75:{system_name or 'unknown'}",
+                dedup_key=f"fss{dedup_suffix}:{system_name or 'unknown'}",
                 cooldown_scope="entity",
                 cooldown_seconds=120.0,
             )
@@ -275,12 +282,8 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
     Obsluga eventu Scan - FSS progress, Discovery, High Value.
     To jest 1:1 przeniesiony EventHandler._handle_scan.
     """
-    body_name = (
-        ev.get("BodyName")
-        or ev.get("BodyID")
-        or ev.get("Body")
-        or None
-    )
+    body_name = _scan_body_label(ev)
+    body_keys = _scan_body_keys(ev)
 
     global FSS_SCANNED_BODIES, FSS_DISCOVERED
     global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES, FIRST_SYS_OPPORTUNITY_WARNED
@@ -294,8 +297,17 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
     first_scan_in_system = len(FSS_SCANNED_BODIES) == 0
 
     # Jesli to nowe cialo - aktualizujemy licznik FSS
-    if body_name not in FSS_SCANNED_BODIES:
-        FSS_SCANNED_BODIES.add(body_name)
+    already_counted = False
+    if body_keys:
+        already_counted = any(key in FSS_SCANNED_BODIES for key in body_keys)
+    else:
+        already_counted = body_name in FSS_SCANNED_BODIES
+
+    if not already_counted:
+        if body_keys:
+            FSS_SCANNED_BODIES.update(body_keys)
+        else:
+            FSS_SCANNED_BODIES.add(body_name)
         FSS_DISCOVERED += 1
 
         # --- S2-LOGIC-05: First Discovery detection ---
