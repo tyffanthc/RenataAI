@@ -1223,7 +1223,12 @@ def _open_columns_picker(listbox) -> None:
     try:
         apply_renata_orange_window_chrome(dialog)
     except Exception:
-        pass
+        log_event_throttled(
+            "common_tables_column_picker_chrome",
+            30.0,
+            "WARN",
+            "common_tables: column picker chrome apply failed",
+        )
     restore_window_geometry(dialog, "column_picker", include_size=False)
     bind_window_geometry(dialog, "column_picker", include_size=False)
 
@@ -1420,7 +1425,12 @@ def attach_results_context_menu(
                 if row_id not in current_selection:
                     widget.selection_set(row_id)
             except Exception:
-                pass
+                log_event_throttled(
+                    "common_tables_ctx_tree_selection",
+                    30.0,
+                    "WARN",
+                    "common_tables: tree context-menu selection sync failed",
+                )
             try:
                 row_text = " ".join(str(v) for v in widget.item(row_id, "values") or [])
             except Exception:
@@ -1447,7 +1457,12 @@ def attach_results_context_menu(
                     widget.selection_set(row_id)
                 widget.activate(row_id)
             except Exception:
-                pass
+                log_event_throttled(
+                    "common_tables_ctx_listbox_selection",
+                    30.0,
+                    "WARN",
+                    "common_tables: listbox context-menu selection sync failed",
+                )
             try:
                 row_text = widget.get(row_id)
             except Exception:
@@ -1509,6 +1524,11 @@ def attach_results_context_menu(
             try:
                 menu.grab_release()
             except Exception:
-                pass
+                log_event_throttled(
+                    "common_tables_ctx_menu_grab_release",
+                    30.0,
+                    "WARN",
+                    "common_tables: context menu grab_release failed",
+                )
 
     widget.bind("<Button-3>", _on_context_menu)
