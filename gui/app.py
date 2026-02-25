@@ -756,8 +756,13 @@ class RenataApp:
         try:
             if bool(self.root.attributes("-fullscreen")):
                 return False
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_app_fallback(
+                "resize.fullscreen_attr",
+                "failed to read fullscreen attribute during resize guard",
+                exc,
+                interval_ms=3000,
+            )
         return True
 
     def _is_pointer_over_main_window(self, x_root: int, y_root: int) -> bool:
@@ -810,8 +815,15 @@ class RenataApp:
         cursor = self._cursor_for_resize_zone(zone)
         try:
             self.root.configure(cursor=cursor)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log_app_fallback(
+                "resize.set_cursor",
+                "failed to set resize cursor",
+                exc,
+                interval_ms=3000,
+                zone=str(zone or ""),
+                cursor=cursor,
+            )
 
     def _on_resize_motion(self, event):
         if getattr(self, "_resize_drag_mode", None):
