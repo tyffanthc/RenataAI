@@ -14,6 +14,7 @@ class F19LogbookCaptainEventCoverageTests(unittest.TestCase):
             "HullDamage",
             "UnderAttack",
             "SellOrganicData",
+            "JetConeBoost",
         ):
             with self.subTest(event_name=event_name):
                 self.assertTrue(is_captain_journal_event(event_name))
@@ -101,7 +102,22 @@ class F19LogbookCaptainEventCoverageTests(unittest.TestCase):
         vista_chip_kinds = {chip.get("kind") for chip in (vista or {}).get("chips") or []}
         self.assertIn("CR", vista_chip_kinds)
 
+    def test_jet_cone_boost_is_classified_and_has_readable_summary(self) -> None:
+        item = build_logbook_feed_item(
+            {
+                "event": "JetConeBoost",
+                "timestamp": "2026-02-22T18:30:00Z",
+                "StarSystem": "NSV 1056",
+                "Body": "NSV 1056 A",
+                "BoostValue": 4.0,
+            }
+        )
+        self.assertIsNotNone(item)
+        self.assertEqual(str((item or {}).get("event_class") or ""), "Nawigacja")
+        self.assertIn("Boost neutronowy", str((item or {}).get("summary") or ""))
+        chip_kinds = {chip.get("kind") for chip in (item or {}).get("chips") or []}
+        self.assertIn("BOOST", chip_kinds)
+
 
 if __name__ == "__main__":
     unittest.main()
-

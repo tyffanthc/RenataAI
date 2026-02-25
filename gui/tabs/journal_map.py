@@ -2291,6 +2291,47 @@ class JournalMapTab(tk.Frame):
             return []
         return [key for key, node in (self._nodes or {}).items() if _as_text(node.system_name).casefold() == target]
 
+    def focus_system_by_name_external(self, system_name: Any, *, center: bool = True) -> dict[str, Any]:
+        target_name = _as_text(system_name)
+        if not target_name:
+            self.map_status_var.set("Mapa: brak nazwy systemu do pokazania.")
+            return {"ok": False, "reason": "system_name_missing"}
+
+        keys = self._node_keys_for_system_name(target_name)
+        if not keys:
+            try:
+                self.reload_from_playerdb()
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "focus_system_external_reload",
+                    "reload map before external focus failed",
+                    system_name=target_name,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            keys = self._node_keys_for_system_name(target_name)
+        if not keys:
+            self.map_status_var.set(f"Mapa: system {target_name} nie jest widoczny (filtry/warstwy/playerdb).")
+            return {"ok": False, "reason": "system_not_found", "system_name": target_name}
+
+        node_key = str(keys[0])
+        result = self.select_system_node(node_key)
+        if not bool((result or {}).get("ok")):
+            return dict(result or {"ok": False, "reason": "select_failed", "system_name": target_name})
+        node = self._nodes.get(node_key)
+        if center and node is not None:
+            self._center_world_point(node.x, node.y)
+            self._redraw_scene()
+            try:
+                self.map_status_var.set(f"Mapa: wybrano i wycentrowano system {node.system_name}.")
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "focus_system_external_status",
+                    "set map status after external focus failed",
+                    system_name=target_name,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+        return {"ok": True, "system_name": target_name, "node_key": node_key, "centered": bool(center)}
+
     def _highlight_trade_compare_for_commodity(self, commodity: str) -> None:
         commodity_cf = _as_text(commodity).casefold()
         self._trade_highlight_node_keys.clear()

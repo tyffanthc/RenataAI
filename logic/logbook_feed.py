@@ -13,6 +13,7 @@ _CAPTAIN_EVENT_WHITELIST = {
     "Location",
     "FSDJump",
     "CarrierJump",
+    "JetConeBoost",
     "SupercruiseEntry",
     "SupercruiseExit",
     "ApproachBody",
@@ -108,7 +109,7 @@ def classify_logbook_event(event_name: Any) -> str:
     if not name:
         return "TECH"
 
-    if name in {"Location", "FSDJump", "CarrierJump", "SupercruiseEntry", "SupercruiseExit", "ApproachBody", "Touchdown", "Liftoff"}:
+    if name in {"Location", "FSDJump", "CarrierJump", "JetConeBoost", "SupercruiseEntry", "SupercruiseExit", "ApproachBody", "Touchdown", "Liftoff"}:
         return "Nawigacja"
     if name in {"Docked", "Undocked"}:
         return "Stacja"
@@ -151,6 +152,16 @@ def _format_summary(event_name: str, ev: dict[str, Any]) -> str:
         if jump_dist is not None:
             return f"Skok do {target} ({jump_dist:.1f} ly)"
         return f"Skok do {target}"
+
+    if event_name == "JetConeBoost":
+        body = _as_text(ev.get("Body") or ev.get("BodyName"))
+        boost = _as_float(ev.get("BoostValue"))
+        parts = ["Boost neutronowy"]
+        if body:
+            parts.append(body)
+        if boost is not None:
+            parts.append(f"x{boost:.2f}")
+        return " | ".join(parts)
 
     if event_name == "SupercruiseEntry":
         return "Wejscie do nadswietlnej"
@@ -356,6 +367,11 @@ def _build_chips(event_name: str, ev: dict[str, Any]) -> list[dict[str, str]]:
     if hull_percent:
         chips.append({"kind": "HULL", "value": hull_percent})
 
+    if event_name == "JetConeBoost":
+        boost_val = _as_float(ev.get("BoostValue"))
+        if boost_val is not None:
+            chips.append({"kind": "BOOST", "value": f"x{boost_val:.2f}"})
+
     return chips
 
 
@@ -470,6 +486,11 @@ def build_logbook_info_rows(feed_item: dict[str, Any] | None) -> list[dict[str, 
             if hull:
                 add("Kadlub", hull)
 
+        if event_name == "JetConeBoost":
+            boost = _as_float(raw.get("BoostValue"))
+            if boost is not None:
+                add("Boost neutronowy", f"x{boost:.2f}")
+
         if event_name == "ShieldState":
             if isinstance(raw.get("ShieldsUp"), bool):
                 add("Tarcze", "Aktywne" if raw.get("ShieldsUp") else "Offline")
@@ -495,6 +516,7 @@ def build_logbook_summary_snapshot(feed_items: list[dict[str, Any]]) -> dict[str
         "jump_count": 0,
         "landing_count": 0,
         "dock_count": 0,
+        "neutron_boosts": 0,
         "hull_incidents": 0,
         "interdictions": 0,
         "interdiction_escapes": 0,
@@ -517,6 +539,8 @@ def build_logbook_summary_snapshot(feed_items: list[dict[str, Any]]) -> dict[str
             summary["landing_count"] += 1
         elif event_name == "Docked":
             summary["dock_count"] += 1
+        elif event_name == "JetConeBoost":
+            summary["neutron_boosts"] += 1
         elif event_name == "HullDamage":
             summary["hull_incidents"] += 1
         elif event_name == "Interdicted":

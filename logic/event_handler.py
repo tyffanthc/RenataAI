@@ -18,7 +18,7 @@ from logic import cargo_value_estimator
 from logic import player_local_db
 from logic.logbook_feed import build_logbook_feed_item
 from logic.utils import MSG_QUEUE
-from logic.utils.renata_log import log_event_throttled
+from logic.utils.renata_log import log_event, log_event_throttled
 
 
 def _exc_text(exc: Exception) -> str:
@@ -67,6 +67,77 @@ def _emit_playerdb_updated(
             event=event_name,
         )
         return
+
+
+def _safe_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _log_sell_value_snapshot(ev: dict) -> None:
+    event_name = str(ev.get("event") or "").strip()
+    if event_name not in {"SellExplorationData", "SellOrganicData"}:
+        return
+    try:
+        from app.state import app_state
+
+        totals = {}
+        try:
+            totals = dict(app_state.system_value_engine.calculate_totals() or {})
+        except Exception as exc:
+            _log_router_fallback(
+                "sell.value_snapshot.totals",
+                "sell event: value snapshot totals failed",
+                exc,
+                event=event_name,
+            )
+            totals = {}
+
+        current_system = str(getattr(app_state, "current_system", "") or "").strip() or "-"
+        system_est = 0.0
+        try:
+            stats = app_state.system_value_engine.get_system_stats(current_system)
+            if stats is not None:
+                system_est = (
+                    float(getattr(stats, "c_cartography", 0.0) or 0.0)
+                    + float(getattr(stats, "c_exobiology", 0.0) or 0.0)
+                    + float(getattr(stats, "bonus_discovery", 0.0) or 0.0)
+                )
+        except Exception as exc:
+            _log_router_fallback(
+                "sell.value_snapshot.system",
+                "sell event: current-system estimate snapshot failed",
+                exc,
+                event=event_name,
+                system=current_system,
+            )
+
+        earnings = _safe_float(ev.get("TotalEarnings"))
+        if earnings <= 0.0:
+            earnings = _safe_float(ev.get("Earnings"))
+
+        log_event(
+            "VALUE",
+            "cashin_sell_snapshot",
+            event=event_name,
+            sale_earnings=round(float(earnings), 2),
+            balance=_safe_float(ev.get("Balance")),
+            current_system=current_system,
+            estimate_system=round(float(system_est), 2),
+            estimate_session_total=round(_safe_float(totals.get("total")), 2),
+            estimate_carto=round(_safe_float(totals.get("c_cartography")), 2),
+            estimate_exobio=round(_safe_float(totals.get("c_exobiology")), 2),
+            estimate_bonus=round(_safe_float(totals.get("bonus_discovery")), 2),
+        )
+    except Exception as exc:
+        _log_router_fallback(
+            "sell.value_snapshot",
+            "sell event: value snapshot diagnostic failed",
+            exc,
+            event=event_name,
+        )
 
 
 class EventHandler:
@@ -237,6 +308,9 @@ class EventHandler:
             combat_awareness.handle_journal_event(ev, gui_ref)
         except Exception as exc:
             _log_router_fallback("journal.combat_awareness", "journal event: combat awareness handler failed", exc)
+
+        if typ in {"SellExplorationData", "SellOrganicData"}:
+            _log_sell_value_snapshot(ev)
 
         if typ == "StartJump":
             try:

@@ -54,6 +54,15 @@ class F19LogbookInfoAndSummaryPanelContractTests(unittest.TestCase):
             ),
             self._item(
                 {
+                    "event": "JetConeBoost",
+                    "timestamp": "2026-02-22T21:01:30Z",
+                    "StarSystem": "A",
+                    "Body": "A",
+                    "BoostValue": 4.0,
+                }
+            ),
+            self._item(
+                {
                     "event": "HullDamage",
                     "timestamp": "2026-02-22T21:02:00Z",
                     "StarSystem": "A",
@@ -78,9 +87,10 @@ class F19LogbookInfoAndSummaryPanelContractTests(unittest.TestCase):
             ),
         ]
         snapshot = build_logbook_summary_snapshot(feed_items)
-        self.assertEqual(int(snapshot.get("total_events") or 0), 5)
+        self.assertEqual(int(snapshot.get("total_events") or 0), 6)
         self.assertEqual(int(snapshot.get("jump_count") or 0), 1)
         self.assertEqual(int(snapshot.get("landing_count") or 0), 1)
+        self.assertEqual(int(snapshot.get("neutron_boosts") or 0), 1)
         self.assertEqual(int(snapshot.get("hull_incidents") or 0), 1)
         self.assertEqual(int(snapshot.get("uc_sold_cr") or 0), 1200000)
         self.assertEqual(int(snapshot.get("vista_sold_cr") or 0), 2500000)
@@ -99,8 +109,10 @@ class F19LogbookInfoAndSummaryPanelContractTests(unittest.TestCase):
         self.assertIn("def _refresh_logbook_summary_panel", content)
         self.assertIn("build_logbook_info_rows", content)
         self.assertIn("build_logbook_summary_snapshot", content)
+        self.assertIn("Pokaz na mapie", content)
+        self.assertIn("def _show_selected_entry_on_map", content)
+        self.assertIn("def _show_selected_logbook_event_on_map", content)
 
 
 if __name__ == "__main__":
     unittest.main()
-

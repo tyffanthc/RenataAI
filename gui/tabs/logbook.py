@@ -18,6 +18,7 @@ from logic.journal_navigation import (
     extract_navigation_chips,
     resolve_chip_nav_target,
     resolve_entry_nav_target_typed,
+    resolve_logbook_nav_target_typed,
     resolve_logbook_nav_target,
 )
 from logic.logbook_feed import (
@@ -612,6 +613,10 @@ class LogbookTab(tk.Frame):
             command=self._copy_selected_system,
         )
         self._entry_context_menu.add_command(
+            label="Pokaz na mapie",
+            command=self._show_selected_entry_on_map,
+        )
+        self._entry_context_menu.add_command(
             label="Edytuj metadane...",
             command=self._edit_selected_entry_metadata,
         )
@@ -903,6 +908,10 @@ class LogbookTab(tk.Frame):
             label="Ustaw cel (event)",
             command=self._set_target_from_selected_logbook_event,
         )
+        self._logbook_context_menu.add_command(
+            label="Pokaz na mapie",
+            command=self._show_selected_logbook_event_on_map,
+        )
 
         self._logbook_chip_context_menu = tk.Menu(self, tearoff=0)
         self._logbook_chip_context_menu.add_command(
@@ -912,6 +921,10 @@ class LogbookTab(tk.Frame):
         self._logbook_chip_context_menu.add_command(
             label="Kopiuj chip",
             command=self._copy_selected_logbook_chip,
+        )
+        self._logbook_chip_context_menu.add_command(
+            label="Pokaz na mapie",
+            command=self._show_selected_logbook_chip_on_map,
         )
 
     def append_logbook_feed_item(self, item: dict, *, persist_cache: bool = True) -> None:
@@ -1187,7 +1200,8 @@ class LogbookTab(tk.Frame):
                 [
                     (
                         f"Eventy: {total_events} | Skoki: {int(snapshot.get('jump_count') or 0)} | "
-                        f"Ladowania: {int(snapshot.get('landing_count') or 0)} | Dockowania: {int(snapshot.get('dock_count') or 0)}"
+                        f"Ladowania: {int(snapshot.get('landing_count') or 0)} | Dockowania: {int(snapshot.get('dock_count') or 0)} | "
+                        f"Neutron: {int(snapshot.get('neutron_boosts') or 0)}"
                     ),
                     (
                         f"Incydenty hull: {int(snapshot.get('hull_incidents') or 0)} | "
@@ -1233,18 +1247,83 @@ class LogbookTab(tk.Frame):
             self.logbook_feed_tree.selection_set(row_id)
             self.logbook_feed_tree.focus(row_id)
             self._selected_logbook_item_id = row_id
-        if not self._selected_logbook_item():
+        feed_item = self._selected_logbook_item()
+        if not feed_item:
             return
+        self._sync_logbook_feed_context_menu_state(feed_item)
         try:
             self._logbook_context_menu.tk_popup(event.x_root, event.y_root)
         finally:
             self._logbook_context_menu.grab_release()
+
+    def _sync_logbook_feed_context_menu_state(self, feed_item: dict | None = None) -> None:
+        item = dict(feed_item or self._selected_logbook_item() or {})
+        raw_event = item.get("raw_event")
+        has_entry_mapping = False
+        if isinstance(raw_event, dict):
+            try:
+                has_entry_mapping = isinstance(build_mvp_entry_draft(raw_event), dict)
+            except Exception:
+                has_entry_mapping = False
+        try:
+            state_entry = "normal" if has_entry_mapping else "disabled"
+            # 0: save, 1: save+edit, 3: append existing (after separator)
+            self._logbook_context_menu.entryconfigure(0, state=state_entry)
+            self._logbook_context_menu.entryconfigure(1, state=state_entry)
+            self._logbook_context_menu.entryconfigure(3, state=state_entry)
+        except Exception:
+            log_event_throttled(
+                "logbook.feed_context_menu.state_sync",
+                2000,
+                "WARN",
+                "Logbook: failed to sync feed context menu enabled states",
+            )
 
     def _selected_logbook_item(self) -> dict | None:
         if not self._selected_logbook_item_id:
             return None
         item = self._logbook_item_to_payload.get(self._selected_logbook_item_id)
         return dict(item) if isinstance(item, dict) else None
+
+    def _show_system_on_map(self, system_name: Any, *, status_var: tk.StringVar, source: str) -> bool:
+        target = str(system_name or "").strip()
+        if not target:
+            status_var.set("Brak systemu do pokazania na mapie.")
+            return False
+        try:
+            self.sub_notebook.select(self.tab_map)
+        except Exception:
+            log_event_throttled(
+                "logbook.show_on_map.select_subtab",
+                2000,
+                "WARN",
+                "Logbook: failed to switch to map subtab",
+            )
+            status_var.set("Nie udalo sie otworzyc zakladki Mapa.")
+            return False
+        try:
+            callback = getattr(self.tab_map, "focus_system_by_name_external", None)
+            if not callable(callback):
+                status_var.set("Mapa nie obsluguje akcji 'Pokaz na mapie'.")
+                return False
+            result = callback(target, center=True)
+        except Exception:
+            log_event_throttled(
+                "logbook.show_on_map.focus_system",
+                2000,
+                "WARN",
+                "Logbook: map focus callback failed",
+            )
+            status_var.set("Nie udalo sie pokazac systemu na mapie.")
+            return False
+        if bool(isinstance(result, dict) and result.get("ok")):
+            status_var.set(f"Pokazano na mapie: {target}")
+            return True
+        reason = str((result or {}).get("reason") or "").strip()
+        status_var.set(
+            f"Nie znaleziono systemu na mapie: {target}" + (f" ({reason})" if reason else "")
+        )
+        return False
 
     def _entry_patch_from_dialog_data(self, data: dict) -> dict:
         return {
@@ -3011,6 +3090,18 @@ class LogbookTab(tk.Frame):
             context={"target": target},
         )
 
+    def _show_selected_entry_on_map(self) -> None:
+        entry = self._selected_entry()
+        if not entry:
+            self.status_var.set("Wybierz wpis.")
+            return
+        location = entry.get("location") or {}
+        system_name = str((location or {}).get("system_name") or "").strip()
+        if not system_name:
+            self.status_var.set("Brak systemu w metadanych wpisu.")
+            return
+        self._show_system_on_map(system_name, status_var=self.status_var, source="entry")
+
     def _set_target_from_selected_logbook_event(self) -> None:
         feed_item = self._selected_logbook_item()
         if not feed_item:
@@ -3032,6 +3123,22 @@ class LogbookTab(tk.Frame):
             self.logbook_status_var.set("Nie udalo sie ustawic celu z eventu.")
             return
         self.logbook_status_var.set(f"Ustawiono cel z eventu: {target}")
+
+    def _show_selected_logbook_event_on_map(self) -> None:
+        feed_item = self._selected_logbook_item()
+        if not feed_item:
+            self.logbook_status_var.set("Wybierz event z feedu Logbook.")
+            return
+        resolved = resolve_logbook_nav_target_typed(feed_item)
+        system_name = str(feed_item.get("system_name") or "").strip()
+        if not system_name and resolved:
+            kind, target = resolved
+            if str(kind).upper() == "SYSTEM":
+                system_name = str(target or "").strip()
+        if not system_name:
+            self.logbook_status_var.set("Brak systemu w wybranym evencie.")
+            return
+        self._show_system_on_map(system_name, status_var=self.logbook_status_var, source="feed_event")
 
     def _set_target_from_selected_logbook_chip(self) -> None:
         chip = self._selected_logbook_chip()
@@ -3075,6 +3182,23 @@ class LogbookTab(tk.Frame):
                     "Logbook: failed to copy chip target to clipboard",
                 )
         self.logbook_status_var.set(f"Skopiowano chip: {target}")
+
+    def _show_selected_logbook_chip_on_map(self) -> None:
+        chip = self._selected_logbook_chip()
+        if not chip:
+            self.logbook_status_var.set("Wybierz chip SYSTEM/STATION.")
+            return
+        kind = str((chip or {}).get("kind") or "").strip().upper()
+        system_name = ""
+        if kind == "SYSTEM":
+            system_name = str((chip or {}).get("value") or "").strip()
+        else:
+            feed_item = self._selected_logbook_item()
+            system_name = str((feed_item or {}).get("system_name") or "").strip()
+        if not system_name:
+            self.logbook_status_var.set("Ten chip nie wskazuje systemu na mapie.")
+            return
+        self._show_system_on_map(system_name, status_var=self.logbook_status_var, source="chip")
 
     def _toggle_pin_selected_entry(self) -> None:
         entry = self._selected_entry()
