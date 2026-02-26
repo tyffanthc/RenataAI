@@ -556,4 +556,9 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
             return _finalize_tts(f"Renata. {version}. Startuję wszystkie systemy.")
         return _finalize_tts(_render_template(message_id))
 
+    # Generic fallback for message IDs that have a template but do not need
+    # custom field normalization/branching in prepare_tts().
+    fallback = _render_template(message_id)
+    if fallback:
+        return _finalize_tts(fallback)
     return None
