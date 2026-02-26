@@ -261,6 +261,22 @@ class AppState:
             self.current_star_pos = payload
             config.STATE["star_pos"] = list(payload)
 
+    def set_bootstrap_replay(self, active: bool) -> None:
+        with self.lock:
+            self.bootstrap_replay = bool(active)
+
+    def is_bootstrap_replay(self) -> bool:
+        with self.lock:
+            return bool(self.bootstrap_replay)
+
+    def has_live_system_event_flag(self) -> bool:
+        with self.lock:
+            return bool(self.has_live_system_event)
+
+    def get_current_system_name(self) -> str:
+        with self.lock:
+            return str(self.current_system or "")
+
     def mark_live_system_event(self) -> None:
         with self.lock:
             self.has_live_system_event = True

@@ -1193,7 +1193,7 @@ class RenataApp:
                         )
 
                 elif msg_type == "start_label":
-                    live_ready = bool(getattr(app_state, "has_live_system_event", False))
+                    live_ready = bool(app_state.has_live_system_event_flag())
                     # Prefill "Start" should also work after bootstrap replay.
                     # Live gating remains in places where true live-state is required.
                     self.tab_spansh.update_start_label(content)
@@ -1386,7 +1386,7 @@ class RenataApp:
 
     def _build_debug_snapshot(self) -> dict:
         try:
-            system = getattr(app_state, "current_system", None)
+            system = app_state.get_current_system_name() or None
             docked = getattr(app_state, "is_docked", False)
             station = getattr(app_state, "current_station", None)
         except Exception as exc:
@@ -1852,7 +1852,7 @@ class RenataApp:
         try:
             from logic.insight_dispatcher import emit_insight
 
-            system = str(getattr(app_state, "current_system", "") or "").strip() or "unknown"
+            system = str(app_state.get_current_system_name() or "").strip() or "unknown"
             emit_insight(
                 text,
                 gui_ref=self,
@@ -1949,7 +1949,7 @@ class RenataApp:
         if busy_before and mode_before and mode_before != "neutron":
             return {"ok": False, "reason": "planner_busy_other_mode"}
 
-        current_system = str(getattr(app_state, "current_system", "") or "").strip()
+        current_system = str(app_state.get_current_system_name() or "").strip()
 
         try:
             if current_system and hasattr(neutron_tab, "var_start"):
@@ -2092,7 +2092,7 @@ class RenataApp:
                         )
 
                     if target_system and target_station:
-                        current_system = str(getattr(app_state, "current_system", "") or "").strip()
+                        current_system = str(app_state.get_current_system_name() or "").strip()
                         same_system = bool(
                             current_system
                             and current_system.casefold() == target_system.casefold()

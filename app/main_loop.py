@@ -64,7 +64,7 @@ class MainLoop:
                 event_type="RUNTIME_FAILURE",
                 context={
                     "raw_text": text,
-                    "system": str(getattr(app_state, "current_system", "") or "").strip() or "unknown",
+                    "system": str(app_state.get_current_system_name() or "").strip() or "unknown",
                     "component": str(component or "").strip() or "runtime",
                 },
                 priority="P0_CRITICAL",
@@ -150,7 +150,7 @@ class MainLoop:
         except Exception as e:
             self._log_error(f"Bootstrap value recovery error: {e}")
 
-        app_state.bootstrap_replay = True
+        app_state.set_bootstrap_replay(True)
 
         for line in reversed(lines):
             if '"event":"Loadout"' in line:
@@ -172,11 +172,11 @@ class MainLoop:
                     powiedz("Bootstrap: ustawiono aktualny system z logu.", self.gui_ref)
                 except Exception as e:
                     self._log_error(f"Bootstrap handler error: {e}")
-                app_state.bootstrap_replay = False
+                app_state.set_bootstrap_replay(False)
                 return
 
         self._announce_waiting_for_system()
-        app_state.bootstrap_replay = False
+        app_state.set_bootstrap_replay(False)
 
     # ------------------------------------------------------------------ #
     def _tail_file(self, path) -> None:

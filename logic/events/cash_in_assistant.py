@@ -981,7 +981,7 @@ def _build_profiled_options(
 
     docked = bool(getattr(app_state, "is_docked", False))
     current_station = _as_text(getattr(app_state, "current_station", ""))
-    current_system = _as_text(getattr(app_state, "current_system", ""))
+    current_system = _as_text(app_state.get_current_system_name())
     secure_candidate: dict[str, Any] | None = None
     secure_fallback = False
 
@@ -1612,13 +1612,13 @@ def _detect_offline_or_interrupted(raw_payload: dict[str, Any]) -> bool:
         if _is_truthy(payload.get(key)):
             return True
 
-    if bool(getattr(app_state, "bootstrap_replay", False)):
+    if bool(app_state.is_bootstrap_replay()):
         return True
 
-    has_live_system_event = bool(getattr(app_state, "has_live_system_event", False))
+    has_live_system_event = bool(app_state.has_live_system_event_flag())
     if has_live_system_event:
         return False
-    current_system = _as_text(getattr(app_state, "current_system", ""))
+    current_system = _as_text(app_state.get_current_system_name())
     if current_system.lower() in {"", "-", "unknown", "nieznany"}:
         return True
     return False
@@ -2593,11 +2593,11 @@ def trigger_startjump_cash_in_callout(
     if jump_type and jump_type != "hyperspace":
         return False
 
-    if bool(getattr(app_state, "bootstrap_replay", False)):
+    if bool(app_state.is_bootstrap_replay()):
         return False
 
     system_name = (
-        _as_text(getattr(app_state, "current_system", ""))
+        _as_text(app_state.get_current_system_name())
         or _as_text(ev.get("StarSystem"))
         or "unknown"
     )
@@ -2719,7 +2719,7 @@ def trigger_cash_in_assistant(
     is_manual_mode = mode_norm in {"manual", "manual_hotkey"}
     raw = dict(summary_payload or {})
 
-    system = _as_text(raw.get("system")) or _as_text(getattr(app_state, "current_system", "")) or "unknown"
+    system = _as_text(raw.get("system")) or _as_text(app_state.get_current_system_name()) or "unknown"
     scanned = _safe_int(raw.get("scanned_bodies"))
     total = _safe_int(raw.get("total_bodies"))
     system_value = _safe_float(raw.get("cash_in_system_estimated"))

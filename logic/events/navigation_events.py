@@ -140,7 +140,7 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
     NAV-NEXT-HOP-DUPLICATE-01: pojedyncza obsluga komunikatu skoku na event.
     """
     typ = ev.get("event")
-    is_bootstrap_replay = bool(getattr(app_state, "bootstrap_replay", False))
+    is_bootstrap_replay = bool(app_state.is_bootstrap_replay())
 
     # D3c: inicjalizacja docked/station z eventu Location (je+Ťli dost¦Öpne)
     if typ == "Location":
@@ -409,7 +409,7 @@ def handle_navroute_update(navroute_data: Dict[str, object], gui_ref=None) -> No
         if has_spansh_route or has_spansh_milestones:
             return
 
-        current_norm = " ".join(str(getattr(app_state, "current_system", "") or "").strip().split()).casefold()
+        current_norm = " ".join(str(app_state.get_current_system_name() or "").strip().split()).casefold()
         ordered_norm = [" ".join(str(value).strip().split()).casefold() for value in systems]
         next_system = systems[0] if systems else ""
         progress = 0
