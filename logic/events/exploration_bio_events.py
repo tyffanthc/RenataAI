@@ -222,15 +222,18 @@ def _persist_exobio_state(*, force: bool = False) -> bool:
     try:
         config.update_anti_spam_state({"exobio": payload})
         _EXOBIO_LAST_PERSIST_TS = now
-        log_event(
-            "EXOBIO",
-            "save_state: persisted exobio state",
-            sample_keys=len(EXOBIO_SAMPLE_COUNT),
-            complete_keys=len(EXOBIO_SAMPLE_COMPLETE),
-            tracker_keys=len(EXOBIO_RANGE_TRACKERS),
-            uncertain_keys=len(EXOBIO_RECOVERY_UNCERTAIN_KEYS),
-            has_status_body=bool(_as_text((EXOBIO_LAST_STATUS_POS or {}).get("body"))),
-        )
+        # Success persists can happen often during active sampling; keep this visible
+        # only in debug sessions to avoid gameplay log spam while preserving diagnostics.
+        if bool(config.get("debug_logging", False)):
+            log_event(
+                "EXOBIO",
+                "save_state: persisted exobio state",
+                sample_keys=len(EXOBIO_SAMPLE_COUNT),
+                complete_keys=len(EXOBIO_SAMPLE_COMPLETE),
+                tracker_keys=len(EXOBIO_RANGE_TRACKERS),
+                uncertain_keys=len(EXOBIO_RECOVERY_UNCERTAIN_KEYS),
+                has_status_body=bool(_as_text((EXOBIO_LAST_STATUS_POS or {}).get("body"))),
+            )
         return True
     except Exception as exc:
         _log_exobio_fallback(
