@@ -29,6 +29,7 @@ DEFAULT_FIXTURE_PREFIXES: tuple[str, ...] = (
     "QG_",
     "TEST_",
 )
+MAX_REASONABLE_MARKET_PRICE = 9_999_999
 
 
 def _utc_now_iso() -> str:
@@ -220,6 +221,15 @@ def _commodity_name(item: dict[str, Any]) -> str:
     return _as_text(item.get("Name_Localised") or item.get("Name") or item.get("name"))
 
 
+def _sanitize_market_price(value: Any) -> int | None:
+    price = _as_optional_int(value)
+    if price is None:
+        return None
+    if price < 1 or price > int(MAX_REASONABLE_MARKET_PRICE):
+        return None
+    return int(price)
+
+
 def _normalized_market_items_hash(items: list[dict[str, Any]]) -> tuple[str, int]:
     normalized: list[dict[str, Any]] = []
     for row in items:
@@ -229,12 +239,12 @@ def _normalized_market_items_hash(items: list[dict[str, Any]]) -> tuple[str, int
         normalized.append(
             {
                 "commodity": commodity.casefold(),
-                "buy_price": _as_optional_int(row.get("BuyPrice") or row.get("buyPrice")),
-                "sell_price": _as_optional_int(row.get("SellPrice") or row.get("sellPrice")),
+                "buy_price": _sanitize_market_price(row.get("BuyPrice") or row.get("buyPrice")),
+                "sell_price": _sanitize_market_price(row.get("SellPrice") or row.get("sellPrice")),
                 "stock": _as_optional_int(row.get("Stock") or row.get("stock")),
                 "supply": _as_optional_int(row.get("Supply") or row.get("supply")),
                 "demand": _as_optional_int(row.get("Demand") or row.get("demand")),
-                "mean_price": _as_optional_int(row.get("MeanPrice") or row.get("meanPrice")),
+                "mean_price": _sanitize_market_price(row.get("MeanPrice") or row.get("meanPrice")),
                 "stock_bracket": _as_optional_int(row.get("StockBracket") or row.get("stockBracket")),
                 "supply_bracket": _as_optional_int(row.get("SupplyBracket") or row.get("supplyBracket")),
                 "demand_bracket": _as_optional_int(row.get("DemandBracket") or row.get("demandBracket")),
@@ -1069,12 +1079,12 @@ def ingest_market_json(
                         (
                             snapshot_id,
                             commodity,
-                            _as_optional_int(item.get("BuyPrice") or item.get("buyPrice")),
-                            _as_optional_int(item.get("SellPrice") or item.get("sellPrice")),
+                            _sanitize_market_price(item.get("BuyPrice") or item.get("buyPrice")),
+                            _sanitize_market_price(item.get("SellPrice") or item.get("sellPrice")),
                             _as_optional_int(item.get("Stock") or item.get("stock")),
                             _as_optional_int(item.get("Supply") or item.get("supply")),
                             _as_optional_int(item.get("Demand") or item.get("demand")),
-                            _as_optional_int(item.get("MeanPrice") or item.get("meanPrice")),
+                            _sanitize_market_price(item.get("MeanPrice") or item.get("meanPrice")),
                             _as_optional_int(item.get("StockBracket") or item.get("stockBracket")),
                             _as_optional_int(item.get("SupplyBracket") or item.get("supplyBracket")),
                             _as_optional_int(item.get("DemandBracket") or item.get("demandBracket")),

@@ -190,6 +190,59 @@ class F16PlayerDbIngestMarketDockedJumpsTests(unittest.TestCase):
             finally:
                 conn.close()
 
+    def test_ingest_market_json_sanitizes_invalid_price_ranges_to_null(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "db", "player_local.db")
+            player_local_db.ingest_journal_event(
+                {
+                    "event": "Docked",
+                    "timestamp": "2026-02-22T20:10:00Z",
+                    "StarSystem": "Diagaundri",
+                    "StationName": "Ray Gateway",
+                    "MarketID": 515152,
+                    "StationType": "Orbis Starport",
+                },
+                path=db_path,
+            )
+
+            out = player_local_db.ingest_market_json(
+                {
+                    "StationName": "Ray Gateway",
+                    "MarketID": 515152,
+                    "Items": [
+                        {
+                            "Name_Localised": "Gold",
+                            "BuyPrice": -5000,       # invalid negative
+                            "SellPrice": 99_999_999, # invalid huge
+                            "MeanPrice": 0,          # invalid zero
+                            "Stock": 120,
+                            "Demand": 0,
+                        }
+                    ],
+                },
+                path=db_path,
+                fallback_system_name="Diagaundri",
+            )
+
+            self.assertTrue(bool(out.get("ok")))
+
+            conn = sqlite3.connect(db_path)
+            try:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    """
+                    SELECT buy_price, sell_price, mean_price
+                    FROM market_snapshot_items
+                    LIMIT 1;
+                    """
+                ).fetchone()
+                self.assertIsNotNone(row)
+                self.assertIsNone(row["buy_price"])
+                self.assertIsNone(row["sell_price"])
+                self.assertIsNone(row["mean_price"])
+            finally:
+                conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()
