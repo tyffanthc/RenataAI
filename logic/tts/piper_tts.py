@@ -17,6 +17,7 @@ _RUNTIME_FILES = (
     "onnxruntime_providers_shared.dll",
 )
 _RUNTIME_DIRS = ("espeak-ng-data",)
+_PIPER_SUBPROCESS_TIMEOUT_SEC = 15.0
 
 
 @dataclass(frozen=True)
@@ -203,6 +204,7 @@ def speak(text: str, *, paths: Optional[PiperPaths] = None) -> bool:
             encoding="utf-8",
             capture_output=True,
             check=False,
+            timeout=_PIPER_SUBPROCESS_TIMEOUT_SEC,
             startupinfo=startupinfo,
             creationflags=creationflags,
         )
