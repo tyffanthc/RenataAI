@@ -324,7 +324,15 @@ class EventHandler:
 
         # AUTO-SCHOWEK
         if typ == "FSDJump":
-            navigation_events.handle_fsd_jump_autoschowek(ev, gui_ref)
+            try:
+                navigation_events.handle_fsd_jump_autoschowek(ev, gui_ref)
+            except Exception as exc:
+                _log_router_fallback(
+                    "journal.fsd_jump_autoschowek",
+                    "journal event: autoschowek handler failed",
+                    exc,
+                    event=str(typ),
+                )
 
         # SHIP STATE (Loadout)
         if typ == "Loadout":
@@ -343,9 +351,25 @@ class EventHandler:
 
         # FSS
         if typ == "FSSDiscoveryScan":
-            exploration_fss_events.handle_fss_discovery_scan(ev, gui_ref)
+            try:
+                exploration_fss_events.handle_fss_discovery_scan(ev, gui_ref)
+            except Exception as exc:
+                _log_router_fallback(
+                    "journal.fss_discovery_scan",
+                    "journal event: FSSDiscoveryScan handler failed",
+                    exc,
+                    event=str(typ),
+                )
         if typ == "FSSAllBodiesFound":
-            exploration_fss_events.handle_fss_all_bodies_found(ev, gui_ref)
+            try:
+                exploration_fss_events.handle_fss_all_bodies_found(ev, gui_ref)
+            except Exception as exc:
+                _log_router_fallback(
+                    "journal.fss_all_bodies_found",
+                    "journal event: FSSAllBodiesFound handler failed",
+                    exc,
+                    event=str(typ),
+                )
             return
 
         if typ == "Scan":
@@ -355,12 +379,24 @@ class EventHandler:
                 app_state.system_value_engine.analyze_scan_event(ev)
             except Exception as exc:
                 _log_router_fallback("scan.value_engine", "scan event value analysis failed", exc)
-            exploration_fss_events.handle_scan(ev, gui_ref)
-            exploration_dss_events.handle_dss_target_hint(ev, gui_ref)
+            try:
+                exploration_fss_events.handle_scan(ev, gui_ref)
+            except Exception as exc:
+                _log_router_fallback("scan.fss", "scan event: FSS scan handler failed", exc)
+            try:
+                exploration_dss_events.handle_dss_target_hint(ev, gui_ref)
+            except Exception as exc:
+                _log_router_fallback("scan.dss_target_hint", "scan event: DSS target hint failed", exc)
         if typ == "SAASignalsFound":
-            exploration_bio_events.handle_dss_bio_signals(ev, gui_ref)
+            try:
+                exploration_bio_events.handle_dss_bio_signals(ev, gui_ref)
+            except Exception as exc:
+                _log_router_fallback("saa.bio_signals", "SAASignalsFound bio-signal handler failed", exc)
         if typ == "SAAScanComplete":
-            exploration_dss_events.handle_dss_scan_complete(ev, gui_ref)
+            try:
+                exploration_dss_events.handle_dss_scan_complete(ev, gui_ref)
+            except Exception as exc:
+                _log_router_fallback("saa.dss_scan_complete", "SAAScanComplete DSS handler failed", exc)
             try:
                 from app.state import app_state
                 app_state.system_value_engine.analyze_dss_scan_complete_event(ev)
@@ -380,7 +416,10 @@ class EventHandler:
                     exc,
                 )
         if typ in ("ScanOrganic", "CodexEntry"):
-            exploration_bio_events.handle_exobio_progress(ev, gui_ref)
+            try:
+                exploration_bio_events.handle_exobio_progress(ev, gui_ref)
+            except Exception as exc:
+                _log_router_fallback("journal.exobio_progress", "journal event: exobio progress handler failed", exc)
 
         # CARGO
         if typ == "Cargo":
