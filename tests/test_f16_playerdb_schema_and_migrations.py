@@ -18,19 +18,19 @@ class F16PlayerDbSchemaAndMigrationsTests(unittest.TestCase):
             os.path.normcase(r"C:\Users\Test\AppData\Roaming\RenataAI\db\player_local.db"),
         )
 
-    def test_ensure_schema_creates_v1_tables_and_sets_user_version(self) -> None:
+    def test_ensure_schema_creates_tables_and_sets_user_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = os.path.join(tmp, "db", "player_local.db")
             result = player_local_db.ensure_playerdb_schema(path=db_path)
 
             self.assertTrue(os.path.isfile(db_path))
-            self.assertEqual(int(result.get("schema_version") or 0), 1)
-            self.assertEqual(int(result.get("migrations_count") or 0), 1)
+            self.assertEqual(int(result.get("schema_version") or 0), 2)
+            self.assertEqual(int(result.get("migrations_count") or 0), 2)
 
             conn = sqlite3.connect(db_path)
             try:
                 user_version = int(conn.execute("PRAGMA user_version;").fetchone()[0])
-                self.assertEqual(user_version, 1)
+                self.assertEqual(user_version, 2)
 
                 tables = {
                     str(row[0])
@@ -110,6 +110,13 @@ class F16PlayerDbSchemaAndMigrationsTests(unittest.TestCase):
                     for row in conn.execute("PRAGMA index_list(stations);").fetchall()
                 }
                 self.assertIn("idx_stations_market_id_unique", station_indexes)
+
+                market_snapshot_indexes = {
+                    str(row[1])
+                    for row in conn.execute("PRAGMA index_list(market_snapshots);").fetchall()
+                }
+                self.assertIn("idx_market_snapshots_market_id_hash_unique", market_snapshot_indexes)
+                self.assertIn("idx_market_snapshots_station_hash_unique_no_marketid", market_snapshot_indexes)
             finally:
                 conn.close()
 
@@ -119,14 +126,14 @@ class F16PlayerDbSchemaAndMigrationsTests(unittest.TestCase):
             first = player_local_db.ensure_playerdb_schema(path=db_path)
             second = player_local_db.ensure_playerdb_schema(path=db_path)
 
-            self.assertEqual(int(first.get("schema_version") or 0), 1)
-            self.assertEqual(int(second.get("schema_version") or 0), 1)
-            self.assertEqual(int(second.get("migrations_count") or 0), 1)
+            self.assertEqual(int(first.get("schema_version") or 0), 2)
+            self.assertEqual(int(second.get("schema_version") or 0), 2)
+            self.assertEqual(int(second.get("migrations_count") or 0), 2)
 
             conn = sqlite3.connect(db_path)
             try:
                 row = conn.execute("SELECT COUNT(*) FROM schema_migrations;").fetchone()
-                self.assertEqual(int(row[0]), 1)
+                self.assertEqual(int(row[0]), 2)
             finally:
                 conn.close()
 

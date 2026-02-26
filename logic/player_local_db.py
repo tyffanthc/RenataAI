@@ -10,8 +10,9 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterator
 
-PLAYERDB_SCHEMA_VERSION = 1
+PLAYERDB_SCHEMA_VERSION = 2
 PLAYERDB_SCHEMA_NAME_V1 = "player_local_db_v1"
+PLAYERDB_SCHEMA_NAME_V2 = "player_local_db_v2_market_snapshot_unique"
 DEFAULT_FIXTURE_PREFIXES: tuple[str, ...] = (
     "F19_",
     "F20_",
@@ -456,6 +457,58 @@ def _migrate_to_v1(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_to_v2(conn: sqlite3.Connection) -> None:
+    # Deduplicate old snapshots before creating UNIQUE indexes (fix for concurrent
+    # market poll race where two identical snapshots could pass pre-insert SELECT).
+    conn.execute(
+        """
+        DELETE FROM market_snapshots
+        WHERE station_market_id IS NOT NULL
+          AND hash_sig IS NOT NULL
+          AND id NOT IN (
+              SELECT keep_id FROM (
+                  SELECT MAX(id) AS keep_id
+                  FROM market_snapshots
+                  WHERE station_market_id IS NOT NULL
+                    AND hash_sig IS NOT NULL
+                  GROUP BY station_market_id, hash_sig
+              )
+          );
+        """
+    )
+    conn.execute(
+        """
+        DELETE FROM market_snapshots
+        WHERE station_market_id IS NULL
+          AND hash_sig IS NOT NULL
+          AND id NOT IN (
+              SELECT keep_id FROM (
+                  SELECT MAX(id) AS keep_id
+                  FROM market_snapshots
+                  WHERE station_market_id IS NULL
+                    AND hash_sig IS NOT NULL
+                  GROUP BY system_name, station_name, hash_sig
+              )
+          );
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_market_snapshots_market_id_hash_unique
+        ON market_snapshots(station_market_id, hash_sig)
+        WHERE station_market_id IS NOT NULL AND hash_sig IS NOT NULL;
+        """
+    )
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_market_snapshots_station_hash_unique_no_marketid
+        ON market_snapshots(system_name, station_name, hash_sig)
+        WHERE station_market_id IS NULL AND hash_sig IS NOT NULL;
+        """
+    )
+
+
 def ensure_playerdb_schema(*, path: str | None = None) -> dict[str, Any]:
     db_path = str(path or default_playerdb_path())
     created_new_file = not os.path.isfile(db_path)
@@ -470,7 +523,11 @@ def ensure_playerdb_schema(*, path: str | None = None) -> dict[str, Any]:
                 _record_migration(conn, version=1, name=PLAYERDB_SCHEMA_NAME_V1)
                 _write_user_version(conn, 1)
                 version = 1
-            # Placeholder for future migrations.
+            if version < 2:
+                _migrate_to_v2(conn)
+                _record_migration(conn, version=2, name=PLAYERDB_SCHEMA_NAME_V2)
+                _write_user_version(conn, 2)
+                version = 2
             conn.commit()
         except Exception:
             conn.rollback()
@@ -911,10 +968,11 @@ def ingest_market_json(
                 confidence="observed",
             )
 
-            dedupe_row = None
-            if hash_sig:
+            def _find_dedupe_row() -> sqlite3.Row | None:
+                if not hash_sig:
+                    return None
                 if market_id is not None:
-                    dedupe_row = conn.execute(
+                    return conn.execute(
                         """
                         SELECT id FROM market_snapshots
                         WHERE station_market_id = ? AND hash_sig = ?
@@ -922,17 +980,18 @@ def ingest_market_json(
                         """,
                         (market_id, hash_sig),
                     ).fetchone()
-                else:
-                    dedupe_row = conn.execute(
-                        """
-                        SELECT id FROM market_snapshots
-                        WHERE system_name = ? COLLATE NOCASE
-                          AND station_name = ? COLLATE NOCASE
-                          AND hash_sig = ?
-                        ORDER BY id DESC LIMIT 1;
-                        """,
-                        (system_name, station_name, hash_sig),
-                    ).fetchone()
+                return conn.execute(
+                    """
+                    SELECT id FROM market_snapshots
+                    WHERE system_name = ? COLLATE NOCASE
+                      AND station_name = ? COLLATE NOCASE
+                      AND hash_sig = ?
+                    ORDER BY id DESC LIMIT 1;
+                    """,
+                    (system_name, station_name, hash_sig),
+                ).fetchone()
+
+            dedupe_row = _find_dedupe_row()
 
             if dedupe_row is not None:
                 conn.execute(
@@ -955,7 +1014,7 @@ def ingest_market_json(
 
             cursor = conn.execute(
                 """
-                INSERT INTO market_snapshots(
+                INSERT OR IGNORE INTO market_snapshots(
                     system_name, station_name, station_market_id,
                     snapshot_ts, freshness_ts, source, confidence, hash_sig, commodities_count
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
@@ -972,7 +1031,29 @@ def ingest_market_json(
                     commodities_count,
                 ),
             )
-            snapshot_id = int(cursor.lastrowid or 0)
+            inserted = int(getattr(cursor, "rowcount", 0) or 0) > 0
+            snapshot_id = int(cursor.lastrowid or 0) if inserted else 0
+            if snapshot_id <= 0:
+                dedupe_row = _find_dedupe_row()
+                if dedupe_row is not None:
+                    conn.execute(
+                        """
+                        UPDATE market_snapshots
+                        SET freshness_ts = ?, commodities_count = ?, source = ?, confidence = ?
+                        WHERE id = ?;
+                        """,
+                        (ts, commodities_count, "market_json", "observed", int(dedupe_row["id"])),
+                    )
+                    conn.commit()
+                    return {
+                        "ok": True,
+                        "deduped": True,
+                        "snapshot_id": int(dedupe_row["id"]),
+                        "commodities_count": commodities_count,
+                        "hash_sig": hash_sig,
+                        "path": db_path,
+                    }
+                raise RuntimeError("market_snapshot_insert_ignored_without_dedupe_row")
             if snapshot_id and items:
                 for item in items:
                     commodity = _commodity_name(item)
