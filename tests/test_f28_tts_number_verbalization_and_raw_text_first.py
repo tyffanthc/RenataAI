@@ -67,6 +67,14 @@ class F28TtsNumberVerbalizationAndRawTextFirstTests(unittest.TestCase):
         self.assertIn("dwadziescia", normalized)
         self.assertIn(";", text)
 
+    def test_large_system_number_is_intentionally_verbalized_with_prosody_breaks(self) -> None:
+        text = prepare_tts("MSG.JUMPED_SYSTEM", {"system": "HIP 63523"}) or ""
+        normalized = _norm_ascii(text)
+        self.assertIn("hip", normalized)
+        self.assertNotIn("63523", normalized)
+        self.assertIn("tysiac", normalized)
+        self.assertIn(";", text)
+
 
 if __name__ == "__main__":
     unittest.main()
