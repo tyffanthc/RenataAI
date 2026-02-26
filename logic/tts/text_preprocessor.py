@@ -388,6 +388,8 @@ def _finalize_tts(text: str) -> str:
     text = _verbalize_tts_numbers(text)
     # Keep commas - they improve Polish prosody (lists, clauses, number phrasing).
     # We normalize hard sentence terminators only.
+    # Protect decimal dots so "100.5" is not split into "100. 5" by sentence normalization.
+    text = re.sub(r"(?<=\d)\.(?=\d)", "__RENATA_DECIMAL_DOT__", text)
     text = text.replace("?", ".").replace("!", ".")
     text = re.sub(r"\s*;\s*", " ; ", text)
     text = re.sub(r"(?:\s;\s){2,}", " ; ", text)
@@ -395,6 +397,7 @@ def _finalize_tts(text: str) -> str:
     text = re.sub(r"\.{2,}", ".", text)
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"\s*\.\s*", ". ", text).strip()
+    text = text.replace("__RENATA_DECIMAL_DOT__", ".")
     if not text.endswith("."):
         text += "."
     return text

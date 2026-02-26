@@ -75,6 +75,13 @@ class F28TtsNumberVerbalizationAndRawTextFirstTests(unittest.TestCase):
         self.assertIn("tysiac", normalized)
         self.assertIn(";", text)
 
+    def test_decimal_dots_are_not_split_by_sentence_normalization(self) -> None:
+        dot_case = prepare_tts("MSG.RUNTIME_CRITICAL", {"raw_text": "Cena 100.5, test"}) or ""
+        comma_case = prepare_tts("MSG.RUNTIME_CRITICAL", {"raw_text": "Cena 100,5. test"}) or ""
+        self.assertIn("100.5, test", dot_case)
+        self.assertNotIn("100. 5", dot_case)
+        self.assertIn("100,5. test", comma_case)
+
 
 if __name__ == "__main__":
     unittest.main()
