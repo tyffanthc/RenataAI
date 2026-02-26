@@ -302,6 +302,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "tts.piper_sentence_silence": 0.05,
     "tts.pyttsx3_rate": 190,
     "tts.pyttsx3_volume": 1.0,
+    # Focus-safe default: do not auto-fallback to SAPI5/pyttsx3 in auto mode.
+    # pyttsx3 can be enabled explicitly via `tts.engine=pyttsx3` if desired.
+    "tts.auto_allow_pyttsx3_fallback": False,
     "tts.cooldown_global_sec": 8,
     "tts.cooldown_nav_sec": 20,
     "tts.cooldown_explore_sec": 30,

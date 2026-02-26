@@ -259,6 +259,19 @@ def _speak_tts(tekst: str) -> None:
             _log_tts_engine("TTS engine selected=pyttsx3 reason=piper_not_found")
             return
 
+    # BUGS_FIX 16.8 mitigation (focus-safe): in auto mode, pyttsx3 fallback may
+    # steal focus on Windows (SAPI5/COM hidden window). Keep explicit
+    # `tts.engine=pyttsx3` working, but disable auto-fallback by default.
+    if engine == "auto" and not bool(config.get("tts.auto_allow_pyttsx3_fallback", False)):
+        log_event_throttled(
+            "tts:auto_pyttsx3_fallback_blocked",
+            5000,
+            "TTS",
+            "auto fallback to pyttsx3 blocked (focus-safe)",
+            reason="tts.auto_allow_pyttsx3_fallback=false",
+        )
+        return
+
     if engine == "pyttsx3":
         _log_tts_engine("TTS engine selected=pyttsx3 source=settings")
 
