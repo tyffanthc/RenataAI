@@ -25,6 +25,10 @@ from logic.modules_data import load_modules_data
 from logic.utils.renata_log import log_event, log_event_throttled
 from logic.capabilities import CAP_UI_EXTENDED_TABS, has_capability
 
+_QUEUE_TICK_MAX_ITEMS = 20
+_QUEUE_TICK_IDLE_DELAY_MS = 100
+_QUEUE_TICK_BACKLOG_DELAY_MS = 0
+
 
 def _exc_text(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"
@@ -986,9 +990,12 @@ class RenataApp:
         self.root.after_idle(self.tab_spansh.hide_suggestions)
 
     def check_queue(self):
+        processed = 0
+        hit_tick_limit = False
         try:
-            while True:
+            while processed < _QUEUE_TICK_MAX_ITEMS:
                 msg_type, content = utils.MSG_QUEUE.get_nowait()
+                processed += 1
 
                 if msg_type == "log":
                     self.tab_pulpit.log(content)
@@ -1205,11 +1212,16 @@ class RenataApp:
         except Exception as exc:
             _log_app_fallback("queue.loop", "queue processing failed", exc, interval_ms=2000)
         finally:
+            if processed >= _QUEUE_TICK_MAX_ITEMS and (not utils.MSG_QUEUE.empty()):
+                hit_tick_limit = True
             try:
                 app_state.refresh_mode_state(source="queue.tick")
             except Exception as exc:
                 _log_app_fallback("queue.tick.mode", "mode detector tick failed", exc, interval_ms=5000)
-            self.root.after(100, self.check_queue)
+            self.root.after(
+                _QUEUE_TICK_BACKLOG_DELAY_MS if hit_tick_limit else _QUEUE_TICK_IDLE_DELAY_MS,
+                self.check_queue,
+            )
 
     def update_start_label(self, txt):
         utils.MSG_QUEUE.put(("start_label", txt))
