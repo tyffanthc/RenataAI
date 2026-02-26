@@ -1,6 +1,7 @@
 ﻿import time
 import os
 import glob
+from collections import deque
 
 from logic.event_handler import handler
 from logic.utils import powiedz, MSG_QUEUE
@@ -109,7 +110,8 @@ class MainLoop:
     def _bootstrap_state(self, path, max_lines: int = 8000) -> None:
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                lines = f.readlines()[-max_lines:]
+                # Keep only the tail needed for bootstrap to avoid loading the whole Journal into RAM.
+                lines = list(deque(f, maxlen=max_lines))
         except FileNotFoundError:
             self._log_error("Bootstrap: Journal zniknął przed odczytem - spróbuję ponownie.")
             return
