@@ -468,6 +468,8 @@ def _is_combat_silence_active(context: dict | None) -> bool:
             "combat silence snapshot read failed",
             error=f"{type(e).__name__}: {e}",
         )
+        # Failsafe: if we cannot read combat-mode snapshot reliably, stay quiet.
+        return True
 
     return False
 
