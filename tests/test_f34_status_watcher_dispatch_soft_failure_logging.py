@@ -17,6 +17,27 @@ class _DummyConfig:
 
 
 class F34StatusWatcherDispatchSoftFailureLoggingTests(unittest.TestCase):
+    def test_dispatch_soft_failure_helper_logs_with_valid_signature(self) -> None:
+        watcher = StatusWatcher(
+            handler=_DummyHandler(),
+            gui_ref=None,
+            app_state=None,
+            config=_DummyConfig(),
+        )
+
+        with patch("app.status_watchers.log_event_throttled") as log_mock:
+            watcher._log_dispatch_soft_failure("status_update")
+
+        log_mock.assert_called_once()
+        args = log_mock.call_args.args
+        kwargs = log_mock.call_args.kwargs
+        self.assertGreaterEqual(len(args), 4)
+        self.assertEqual(str(args[0]), "WATCHER_DISPATCH_STATUS_STATUS_UPDATE")
+        self.assertEqual(int(args[1]), 120000)
+        self.assertEqual(str(args[2]), "WARN")
+        self.assertIn("dispatch status_update failed", str(args[3]))
+        self.assertEqual(str(kwargs.get("context") or ""), "watcher.status.dispatch:status_update")
+
     def test_status_watcher_poll_logs_soft_failure_without_typeerror(self) -> None:
         watcher = StatusWatcher(
             handler=_DummyHandler(),
@@ -46,4 +67,3 @@ class F34StatusWatcherDispatchSoftFailureLoggingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
