@@ -43,10 +43,10 @@ class MainLoop:
                 handler.log_dir = log_dir
         except Exception:
             log_event_throttled(
-                "WARN",
                 "MAINLOOP_HANDLER_LOGDIR_SET_FAILED",
+                120_000,
+                "WARN",
                 "MainLoop: failed to set handler.log_dir",
-                cooldown_sec=120.0,
                 context="main_loop.handler.log_dir",
             )
 
@@ -73,10 +73,10 @@ class MainLoop:
             )
         except Exception:
             log_event_throttled(
-                "WARN",
                 "MAINLOOP_RUNTIME_CRITICAL_EMIT_FAILED",
+                120_000,
+                "WARN",
                 "MainLoop: runtime critical insight emit failed",
-                cooldown_sec=120.0,
                 context=f"main_loop.runtime_critical.emit:{component}",
             )
             return
