@@ -881,6 +881,21 @@ def handle_exobio_status_position(status: Dict[str, Any], gui_ref=None) -> None:
         t_radius = _as_float(tracker.get("radius_m"))
         t_threshold = _as_float(tracker.get("threshold_m"))
         if t_lat is None or t_lon is None or t_radius is None or t_threshold is None:
+            EXOBIO_RANGE_TRACKERS.pop(key, None)
+            EXOBIO_RANGE_READY_WARNED.discard(key)
+            state_changed = True
+            log_event_throttled(
+                f"EXOBIO:RANGE_TRACKER_INVALID:{key_system}:{key_body}",
+                10_000,
+                "EXOBIO",
+                "Dropped invalid exobio range tracker (missing GPS baseline/threshold)",
+                system=key_system,
+                body=key_body,
+                has_lat=(t_lat is not None),
+                has_lon=(t_lon is not None),
+                has_radius=(t_radius is not None),
+                has_threshold=(t_threshold is not None),
+            )
             continue
 
         distance_m = _spherical_distance_m(
