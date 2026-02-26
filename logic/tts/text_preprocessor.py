@@ -319,8 +319,7 @@ def _verbalize_tts_numbers(text: str) -> str:
         words = _decimal_to_words_pl(raw_num)
         if not words:
             return match.group(0)
-        unit = "procent" if str(raw_num).strip() in {"1", "1.0", "1,0"} else "procent"
-        return _with_tts_number_semicolon_breaks(words, unit=unit)
+        return _with_tts_number_semicolon_breaks(words, unit="procent")
 
     def _ly_sub(match: re.Match[str]) -> str:
         raw_num = str(match.group("num") or "")
