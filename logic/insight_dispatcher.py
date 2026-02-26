@@ -717,7 +717,7 @@ def emit_insight(
     effective_priority, escalation_reason = _try_escalate_priority(insight, initial_gate)
     effective_insight = insight if effective_priority == insight.priority else _with_priority(insight, effective_priority)
 
-    gate = evaluate_risk_trust_gate(effective_insight)
+    gate = initial_gate if effective_insight is insight else evaluate_risk_trust_gate(effective_insight)
     allow_tts, allow_reason = _evaluate_should_speak(effective_insight)
     allow_tts, allow_reason, forced_by_cross_module = _apply_cross_module_voice_priority(
         effective_insight,
