@@ -12,6 +12,8 @@ from logic.utils.renata_log import log_event_throttled, log_event
 
 # Globalna kolejka komunikatów dla GUI (Thread-Safe)
 MSG_QUEUE = queue.Queue()
+_TTS_THREAD_GUARD_LOCK = threading.Lock()
+_TTS_THREAD_ACTIVE = False
 
 _TTS_DEFAULT_COOLDOWNS = {
     "nav": 20.0,
@@ -180,10 +182,37 @@ def powiedz(tekst, gui_ref=None, *, message_id=None, context=None, force: bool =
         if force or _should_speak_tts(str(message_id), context):
             tts_text = prepare_tts(str(message_id), context=context)
             if tts_text:
-                threading.Thread(target=_watek_mowy, args=(tts_text,)).start()
+                _start_tts_thread(tts_text)
+
+
+def _start_tts_thread(tekst: str) -> bool:
+    global _TTS_THREAD_ACTIVE
+    with _TTS_THREAD_GUARD_LOCK:
+        if _TTS_THREAD_ACTIVE:
+            log_event_throttled(
+                "tts:thread_busy_drop",
+                5000,
+                "TTS",
+                "skip starting new TTS thread while previous speech is active",
+            )
+            return False
+        _TTS_THREAD_ACTIVE = True
+
+    try:
+        threading.Thread(target=_watek_mowy, args=(tekst,), daemon=True).start()
+        return True
+    except Exception:
+        with _TTS_THREAD_GUARD_LOCK:
+            _TTS_THREAD_ACTIVE = False
+        _log_notify_soft_failure(
+            "tts_thread_start",
+            "TTS: nie udalo sie uruchomic watku syntezy mowy.",
+        )
+        return False
 
 
 def _watek_mowy(tekst):
+    global _TTS_THREAD_ACTIVE
     try:
         _speak_tts(tekst)
     except Exception as exc:
@@ -191,6 +220,9 @@ def _watek_mowy(tekst):
             "tts_thread",
             f"TTS: blad syntezy mowy ({type(exc).__name__}).",
         )
+    finally:
+        with _TTS_THREAD_GUARD_LOCK:
+            _TTS_THREAD_ACTIVE = False
 
 
 _TTS_ENGINE_LOGGED = False
