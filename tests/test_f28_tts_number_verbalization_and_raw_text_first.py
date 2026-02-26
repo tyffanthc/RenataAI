@@ -101,6 +101,16 @@ class F28TtsNumberVerbalizationAndRawTextFirstTests(unittest.TestCase):
         self.assertEqual(normalized.count("procent"), 1)
         self.assertIn(";", text)
 
+    def test_alphanumeric_system_suffix_digits_are_verbalized_consistently(self) -> None:
+        text = prepare_tts("MSG.JUMPED_SYSTEM", {"system": "Eol Prou RS-T d3-94"}) or ""
+        normalized = _norm_ascii(text)
+        self.assertIn("eol prou rs t", normalized)
+        self.assertIn(" d ; trzy ; ", normalized)
+        self.assertIn("dziewiecdziesiat cztery", normalized)
+        self.assertIn(";", text)
+        self.assertNotIn("d3", normalized)
+        self.assertNotIn("94", normalized)
+
 
 if __name__ == "__main__":
     unittest.main()
