@@ -432,6 +432,10 @@ class NotificationDebouncer:
         self._persist_timer = None
         self._persist_change_seq = 0
         self._persist_flushed_seq = 0
+        self._persist_epoch = 0
+        self._persist_timer_seq = 0
+        self._persist_timer_active_seq = 0
+        self._persist_timer_active_epoch = 0
 
     @staticmethod
     def _retention_ttl_sec() -> float:
@@ -626,12 +630,22 @@ class NotificationDebouncer:
 
     def _ensure_persist_timer(self, delay_sec: float) -> None:
         timer_to_start = None
+        timer_seq = 0
+        timer_epoch = 0
         with self._lock:
             if self._persist_change_seq <= self._persist_flushed_seq:
                 return
             if self._timer_alive_unlocked():
                 return
-            timer = threading.Timer(max(0.0, float(delay_sec)), self._persist_timer_callback)
+            self._persist_timer_seq += 1
+            timer_seq = int(self._persist_timer_seq)
+            self._persist_timer_active_seq = timer_seq
+            timer_epoch = int(self._persist_epoch)
+            self._persist_timer_active_epoch = timer_epoch
+            timer = threading.Timer(
+                max(0.0, float(delay_sec)),
+                lambda: self._persist_timer_callback(timer_seq=timer_seq, timer_epoch=timer_epoch),
+            )
             timer.daemon = True
             self._persist_timer = timer
             timer_to_start = timer
@@ -643,15 +657,33 @@ class NotificationDebouncer:
             with self._lock:
                 if self._persist_timer is timer_to_start:
                     self._persist_timer = None
+                    if (
+                        self._persist_timer_active_seq == timer_seq
+                        and self._persist_timer_active_epoch == timer_epoch
+                    ):
+                        self._persist_timer_active_seq = 0
+                        self._persist_timer_active_epoch = 0
             self.persist_to_contract()
 
-    def _persist_timer_callback(self) -> None:
+    def _persist_timer_callback(self, *, timer_seq: int, timer_epoch: int) -> None:
+        should_continue = True
+        with self._lock:
+            if int(timer_epoch) != int(self._persist_epoch):
+                should_continue = False
         try:
-            self.persist_to_contract()
+            if should_continue:
+                self.persist_to_contract()
         finally:
             with self._lock:
-                self._persist_timer = None
-            self._request_persist_after_change()
+                if (
+                    self._persist_timer_active_seq == int(timer_seq)
+                    and self._persist_timer_active_epoch == int(timer_epoch)
+                ):
+                    self._persist_timer_active_seq = 0
+                    self._persist_timer_active_epoch = 0
+                    self._persist_timer = None
+            if should_continue:
+                self._request_persist_after_change()
 
     def _request_persist_after_change(self) -> None:
         import time
@@ -683,6 +715,10 @@ class NotificationDebouncer:
             self._last_persist_ts = 0.0
             self._persist_change_seq = 0
             self._persist_flushed_seq = 0
+            self._persist_epoch += 1
+            self._persist_timer_seq = 0
+            self._persist_timer_active_seq = 0
+            self._persist_timer_active_epoch = 0
             timer_to_cancel = self._persist_timer
             self._persist_timer = None
         if timer_to_cancel is not None:
