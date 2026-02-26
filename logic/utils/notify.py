@@ -278,6 +278,49 @@ def _speak_tts(tekst: str) -> None:
     _speak_pyttsx3(tekst)
 
 
+def _select_pyttsx3_voice_id(voices: Any) -> str | None:
+    try:
+        voice_list = list(voices or [])
+    except Exception:
+        return None
+    if not voice_list:
+        return None
+
+    def _probe_texts(voice_obj: Any) -> list[str]:
+        items: list[Any] = [getattr(voice_obj, "name", None), getattr(voice_obj, "id", None)]
+        languages = getattr(voice_obj, "languages", None)
+        if isinstance(languages, (list, tuple, set)):
+            items.extend(list(languages))
+        elif languages is not None:
+            items.append(languages)
+
+        out: list[str] = []
+        for item in items:
+            if item is None:
+                continue
+            if isinstance(item, (bytes, bytearray)):
+                raw = bytes(item)
+                text = raw.decode("utf-8", errors="ignore") or raw.decode("latin-1", errors="ignore")
+            else:
+                text = str(item)
+            norm = text.strip().lower().replace("_", "-")
+            if norm:
+                out.append(norm)
+        return out
+
+    for voice in voice_list:
+        probes = _probe_texts(voice)
+        if any(("polish" in p) or ("polski" in p) or ("pl-pl" in p) or (p == "pl") for p in probes):
+            voice_id = getattr(voice, "id", None)
+            if voice_id:
+                return str(voice_id)
+
+    first_id = getattr(voice_list[0], "id", None)
+    if first_id:
+        return str(first_id)
+    return None
+
+
 def _speak_pyttsx3(tekst: str) -> None:
     # Trace: pyttsx3/SAPI5 creates a COM window internally on Windows which can
     # steal focus from fullscreen games (bug 16.8). Log every pyttsx3 invocation
@@ -291,7 +334,9 @@ def _speak_pyttsx3(tekst: str) -> None:
     try:
         eng = pyttsx3.init()
         try:
-            eng.setProperty("voice", eng.getProperty("voices")[0].id)
+            selected_voice_id = _select_pyttsx3_voice_id(eng.getProperty("voices"))
+            if selected_voice_id:
+                eng.setProperty("voice", selected_voice_id)
         except Exception:
             _log_notify_soft_failure(
                 "pyttsx3_voice",
