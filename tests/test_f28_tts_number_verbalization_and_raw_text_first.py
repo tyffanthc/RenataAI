@@ -93,6 +93,14 @@ class F28TtsNumberVerbalizationAndRawTextFirstTests(unittest.TestCase):
         self.assertEqual(normalized.count("sto tysiecy"), 1)
         self.assertEqual(normalized.count("dwiescie"), 1)
 
+    def test_milestone_progress_percent_is_not_double_processed(self) -> None:
+        text = prepare_tts("MSG.MILESTONE_PROGRESS", {"percent": 25}) or ""
+        normalized = _norm_ascii(text)
+        self.assertIn("dwadziescia piec", normalized)
+        self.assertIn("procent drogi", normalized)
+        self.assertEqual(normalized.count("procent"), 1)
+        self.assertIn(";", text)
+
 
 if __name__ == "__main__":
     unittest.main()
