@@ -156,7 +156,40 @@ class F16PlayerDbIngestMarketDockedJumpsTests(unittest.TestCase):
             finally:
                 conn.close()
 
+    def test_docked_without_system_name_is_rejected_instead_of_unknown_system_insert(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "db", "player_local.db")
+            out = player_local_db.ingest_journal_event(
+                {
+                    "event": "Docked",
+                    "timestamp": "2026-02-22T20:00:00Z",
+                    "StationName": "Ghost Station",
+                    "MarketID": 999001,
+                    "StationType": "Outpost",
+                },
+                path=db_path,
+            )
+
+            self.assertFalse(bool(out.get("ok")))
+            self.assertEqual(str(out.get("reason") or ""), "missing_system_name")
+            self.assertEqual(str(out.get("station_name") or ""), "Ghost Station")
+
+            if not os.path.exists(db_path):
+                return
+
+            conn = sqlite3.connect(db_path)
+            try:
+                station_count = int(conn.execute("SELECT COUNT(*) FROM stations;").fetchone()[0])
+                self.assertEqual(station_count, 0)
+                unknown_count = int(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM systems WHERE system_name='UNKNOWN_SYSTEM';"
+                    ).fetchone()[0]
+                )
+                self.assertEqual(unknown_count, 0)
+            finally:
+                conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()
-

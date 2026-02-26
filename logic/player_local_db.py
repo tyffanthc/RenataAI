@@ -722,6 +722,19 @@ def ingest_journal_event(
     system_id64 = _journal_system_id64(ev, fallback_address=system_address)
     station_name_fallback = _journal_station_name(ev) or _as_text(fallback_station_name)
 
+    # Guard against creating "ghost" station rows under a synthetic UNKNOWN_SYSTEM
+    # when we start reading journal mid-session and Docked lacks StarSystem.
+    if event_name in {"Location", "Docked"} and bool(ev.get("Docked") or event_name == "Docked"):
+        station_name_guard = _as_text(ev.get("StationName"))
+        if station_name_guard and not system_name:
+            return {
+                "ok": False,
+                "reason": "missing_system_name",
+                "event": event_name,
+                "station_name": station_name_guard,
+                "system_name": system_name,
+            }
+
     db_path = str(path or default_playerdb_path())
     with playerdb_connection(path=db_path, ensure_schema=True) as conn:
         conn.execute("BEGIN;")
