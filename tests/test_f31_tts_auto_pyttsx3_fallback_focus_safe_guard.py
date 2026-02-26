@@ -34,6 +34,7 @@ class F31TtsAutoPyttsx3FallbackFocusSafeGuardTests(unittest.TestCase):
             patch("logic.tts.piper_tts.select_piper_paths", return_value=None),
             patch("logic.utils.notify._speak_pyttsx3") as pyttsx3_speak,
             patch("logic.utils.notify._log_notify_soft_failure") as soft_log,
+            patch("logic.utils.notify.log_event_throttled") as throttled_log,
         ):
             cfg_get.side_effect = lambda key, default=None: (
                 "auto" if key == "tts.engine"
@@ -47,6 +48,24 @@ class F31TtsAutoPyttsx3FallbackFocusSafeGuardTests(unittest.TestCase):
         self.assertTrue(
             any("fallback pyttsx3 jest zablokowany" in str(call.args[1]) for call in soft_log.call_args_list),
             "Expected user-facing diagnostic when auto fallback is blocked.",
+        )
+        throttled_log.assert_called()
+        self.assertTrue(
+            any(
+                call.args[:4]
+                == (
+                    "tts:auto_pyttsx3_fallback_blocked",
+                    5000,
+                    "TTS",
+                    "auto fallback to pyttsx3 blocked (focus-safe)",
+                )
+                for call in throttled_log.call_args_list
+            ),
+            "Expected throttled TTS diagnostic log entry for blocked auto fallback.",
+        )
+        self.assertTrue(
+            any(str(call.kwargs.get("reason", "")) == "tts.auto_allow_pyttsx3_fallback=false" for call in throttled_log.call_args_list),
+            "Expected explicit reason in throttled diagnostic log entry.",
         )
 
     def test_auto_mode_can_allow_pyttsx3_fallback_when_opted_in(self) -> None:
