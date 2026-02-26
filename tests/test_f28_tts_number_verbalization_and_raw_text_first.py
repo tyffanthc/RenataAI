@@ -82,6 +82,17 @@ class F28TtsNumberVerbalizationAndRawTextFirstTests(unittest.TestCase):
         self.assertNotIn("100. 5", dot_case)
         self.assertIn("100,5. test", comma_case)
 
+    def test_semicolon_and_standalone_number_interaction_does_not_double_process(self) -> None:
+        text = prepare_tts("MSG.CASH_IN_ASSISTANT", {"raw_text": "Dane warte 100,000 Cr ; 200."}) or ""
+        normalized = _norm_ascii(text)
+        self.assertIn("sto tysiecy", normalized)
+        self.assertIn("kredytow", normalized)
+        self.assertIn("dwiescie", normalized)
+        self.assertNotIn("100,000", text)
+        self.assertNotIn(" 200", text)
+        self.assertEqual(normalized.count("sto tysiecy"), 1)
+        self.assertEqual(normalized.count("dwiescie"), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
