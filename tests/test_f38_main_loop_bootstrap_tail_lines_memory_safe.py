@@ -88,6 +88,32 @@ class F38MainLoopBootstrapTailLinesMemorySafeTests(unittest.TestCase):
         self.assertEqual(list(value_bootstrap.call_args.args[0]), expected_tail)
         self.assertEqual(int(value_bootstrap.call_args.kwargs.get("max_lines") or 0), 3)
 
+    def test_bootstrap_resets_bootstrap_replay_even_when_handler_raises_on_location(self) -> None:
+        lines = [
+            '{"event":"Fileheader"}\n',
+            '{"event":"Location"}\n',
+        ]
+        fake_file = _IterableFileNoReadlines(lines)
+        handler_obj = _DummyHandler()
+        handler_obj.handle_event.side_effect = RuntimeError("boom")
+
+        with (
+            patch("builtins.open", return_value=fake_file),
+            patch("app.main_loop.powiedz"),
+            patch("app.main_loop.handler", handler_obj),
+            patch("logic.events.exploration_bio_events.bootstrap_exobio_state_from_journal_lines"),
+            patch(
+                "logic.events.exploration_value_recovery.bootstrap_system_value_from_journal_lines",
+                return_value={},
+            ),
+        ):
+            loop = self._build_mainloop(handler_obj=handler_obj)
+            app_state.bootstrap_replay = False
+            loop._bootstrap_state("C:/dummy/Journal.01.log", max_lines=10)
+
+        handler_obj.handle_event.assert_called_once()
+        self.assertFalse(bool(app_state.bootstrap_replay))
+
 
 if __name__ == "__main__":
     unittest.main()
