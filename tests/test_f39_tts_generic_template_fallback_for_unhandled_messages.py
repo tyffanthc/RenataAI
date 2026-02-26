@@ -6,6 +6,15 @@ from logic.tts.text_preprocessor import prepare_tts
 
 
 class F39TtsGenericTemplateFallbackForUnhandledMessagesTests(unittest.TestCase):
+    def test_prepare_tts_raw_text_first_message_falls_back_to_template_when_raw_text_missing(self) -> None:
+        # raw_text_first=True messages should still speak via template fallback
+        # when emitters don't provide raw_text in context.
+        text = prepare_tts("MSG.ELW_DETECTED", {})
+        self.assertIsInstance(text, str)
+        self.assertTrue(text)
+        self.assertIn("planet", text.lower())
+        self.assertTrue(text.endswith("."))
+
     def test_prepare_tts_returns_text_for_template_only_message_ids(self) -> None:
         # These message IDs are present in templates and allowed list, but do not
         # have dedicated branches in prepare_tts().
