@@ -143,7 +143,30 @@ class F16PlayerDbCashInHistoryAndQueryTests(unittest.TestCase):
             self.assertEqual(candidates_vista[0]["name"], "B Vista")
             self.assertTrue(bool(candidates_vista[0]["services"]["has_vista"]))
 
+    def test_cashin_event_without_earnings_value_is_rejected_and_not_saved_as_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "db", "player_local.db")
+            out = player_local_db.ingest_journal_event(
+                {
+                    "event": "SellExplorationData",
+                    "timestamp": "2026-02-22T23:00:00Z",
+                    # Intentionally missing TotalEarnings/Earnings/Value/Total
+                    "StationName": "Ray Gateway",
+                    "StarSystem": "Diagaundri",
+                },
+                path=db_path,
+            )
+
+            self.assertFalse(bool(out.get("ok")))
+            self.assertEqual(str(out.get("reason") or ""), "missing_earnings_value")
+            self.assertEqual(str(out.get("service") or ""), "UC")
+
+            if not os.path.exists(db_path):
+                return
+
+            history = player_local_db.query_cashin_history(path=db_path, limit=10)
+            self.assertEqual(history, [])
+
 
 if __name__ == "__main__":
     unittest.main()
-

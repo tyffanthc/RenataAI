@@ -798,7 +798,14 @@ def ingest_journal_event(
                     or ev.get("Total")
                 )
                 if total_earnings is None:
-                    total_earnings = 0
+                    return {
+                        "ok": False,
+                        "reason": "missing_earnings_value",
+                        "event": event_name,
+                        "system_name": system_name,
+                        "station_name": station_name,
+                        "service": service_name,
+                    }
                 conn.execute(
                     """
                     INSERT INTO cashin_history(
