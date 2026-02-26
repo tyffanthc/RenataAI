@@ -429,6 +429,9 @@ class NotificationDebouncer:
         self._lock = threading.Lock()
         self._loaded_from_contract = False
         self._last_persist_ts = 0.0
+        self._persist_timer = None
+        self._persist_change_seq = 0
+        self._persist_flushed_seq = 0
 
     @staticmethod
     def _retention_ttl_sec() -> float:
@@ -600,19 +603,93 @@ class NotificationDebouncer:
                 if (now - self._last_persist_ts) < self._persist_min_interval_sec():
                     return False
             payload = self._snapshot_unlocked(now)
+            persist_seq = int(self._persist_change_seq)
             self._last_persist_ts = now
 
         try:
             config.update_anti_spam_state({self._STATE_SECTION: payload})
+            with self._lock:
+                if persist_seq > self._persist_flushed_seq:
+                    self._persist_flushed_seq = persist_seq
             return True
         except Exception:
             return False
 
+    def _timer_alive_unlocked(self) -> bool:
+        timer = self._persist_timer
+        if timer is None:
+            return False
+        try:
+            return bool(timer.is_alive())
+        except Exception:
+            return True
+
+    def _ensure_persist_timer(self, delay_sec: float) -> None:
+        timer_to_start = None
+        with self._lock:
+            if self._persist_change_seq <= self._persist_flushed_seq:
+                return
+            if self._timer_alive_unlocked():
+                return
+            timer = threading.Timer(max(0.0, float(delay_sec)), self._persist_timer_callback)
+            timer.daemon = True
+            self._persist_timer = timer
+            timer_to_start = timer
+        if timer_to_start is None:
+            return
+        try:
+            timer_to_start.start()
+        except Exception:
+            with self._lock:
+                if self._persist_timer is timer_to_start:
+                    self._persist_timer = None
+            self.persist_to_contract()
+
+    def _persist_timer_callback(self) -> None:
+        try:
+            self.persist_to_contract()
+        finally:
+            with self._lock:
+                self._persist_timer = None
+            self._request_persist_after_change()
+
+    def _request_persist_after_change(self) -> None:
+        import time
+
+        delay_sec = 0.0
+        persist_sync_now = False
+        with self._lock:
+            if self._persist_change_seq <= self._persist_flushed_seq:
+                return
+            if self._last_persist_ts <= 0.0:
+                # Keep first write synchronous for durability and existing restart semantics.
+                persist_sync_now = True
+            else:
+                elapsed = max(0.0, time.time() - self._last_persist_ts)
+                delay_sec = max(0.0, self._persist_min_interval_sec() - elapsed)
+
+        if persist_sync_now:
+            if not self.persist_to_contract():
+                self._ensure_persist_timer(self._persist_min_interval_sec())
+            return
+
+        self._ensure_persist_timer(delay_sec)
+
     def reset(self, *, persist: bool = False) -> None:
+        timer_to_cancel = None
         with self._lock:
             self._last = {}
             self._loaded_from_contract = False
             self._last_persist_ts = 0.0
+            self._persist_change_seq = 0
+            self._persist_flushed_seq = 0
+            timer_to_cancel = self._persist_timer
+            self._persist_timer = None
+        if timer_to_cancel is not None:
+            try:
+                timer_to_cancel.cancel()
+            except Exception:
+                pass
         if persist:
             self.persist_to_contract(force=True)
 
@@ -636,9 +713,11 @@ class NotificationDebouncer:
                 return False
             self._last[full_key] = now
             changed = True
+            if changed:
+                self._persist_change_seq += 1
 
         if changed:
-            self.persist_to_contract()
+            self._request_persist_after_change()
         return True
 
     def is_allowed(self, key: str, cooldown_sec: float, context: str | None = None) -> bool:
