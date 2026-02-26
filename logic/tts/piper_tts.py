@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from dataclasses import dataclass
 from typing import Optional
 
@@ -18,6 +19,7 @@ _RUNTIME_FILES = (
 )
 _RUNTIME_DIRS = ("espeak-ng-data",)
 _PIPER_SUBPROCESS_TIMEOUT_SEC = 15.0
+_PIPER_WINSOUND_PLAYBACK_TIMEOUT_SEC = 45.0
 
 
 @dataclass(frozen=True)
@@ -141,6 +143,49 @@ def select_piper_paths(*, use_appdata: bool) -> Optional[PiperPaths]:
     return None
 
 
+def _play_wav_with_timeout(wav_path: str, *, timeout_sec: float) -> bool:
+    import winsound
+
+    try:
+        timeout = float(timeout_sec)
+    except Exception:
+        timeout = _PIPER_WINSOUND_PLAYBACK_TIMEOUT_SEC
+
+    if timeout <= 0:
+        winsound.PlaySound(wav_path, winsound.SND_FILENAME)
+        return True
+
+    playback_error: list[Exception] = []
+
+    def _runner() -> None:
+        try:
+            winsound.PlaySound(wav_path, winsound.SND_FILENAME)
+        except Exception as exc:
+            playback_error.append(exc)
+
+    worker = threading.Thread(target=_runner, name="RenataPiperPlaySound", daemon=True)
+    worker.start()
+    worker.join(timeout=timeout)
+
+    if worker.is_alive():
+        try:
+            winsound.PlaySound(None, getattr(winsound, "SND_PURGE", 0))
+        except Exception:
+            pass
+        log_event_throttled(
+            "piper_winsound_playback_timeout",
+            15.0,
+            "WARN",
+            "piper: winsound playback timeout",
+            timeout_sec=timeout,
+        )
+        return False
+
+    if playback_error:
+        raise playback_error[0]
+    return True
+
+
 def speak(text: str, *, paths: Optional[PiperPaths] = None) -> bool:
     if os.name != "nt":
         return False
@@ -211,9 +256,8 @@ def speak(text: str, *, paths: Optional[PiperPaths] = None) -> bool:
         if result.returncode != 0 or not os.path.isfile(wav_path):
             return False
 
-        import winsound
-
-        winsound.PlaySound(wav_path, winsound.SND_FILENAME)
+        if not _play_wav_with_timeout(wav_path, timeout_sec=_PIPER_WINSOUND_PLAYBACK_TIMEOUT_SEC):
+            return False
         return True
     except Exception as exc:
         log_event_throttled(
