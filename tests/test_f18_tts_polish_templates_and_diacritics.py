@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 
 from logic.tts.message_templates import allowed_message_ids, template_for_message
-from logic.tts.text_preprocessor import ALLOWED_MESSAGES, prepare_tts
+from logic.tts.text_preprocessor import ALLOWED_MESSAGES, _repair_polish_text, prepare_tts
 
 
 class F18TtsPolishTemplatesAndDiacriticsTests(unittest.TestCase):
@@ -65,6 +65,19 @@ class F18TtsPolishTemplatesAndDiacriticsTests(unittest.TestCase):
             normalized = unicodedata.normalize("NFKD", line.lower()).encode("ascii", "ignore").decode("ascii")
             for snippet in forbidden:
                 self.assertNotIn(snippet, normalized)
+
+    def test_repair_polish_text_is_idempotent_for_already_correct_diacritics(self) -> None:
+        samples = [
+            "ł",
+            "Zażółć gęślą jaźń",
+            "Błąd krytyczny runtime.",
+        ]
+        for sample in samples:
+            with self.subTest(sample=sample):
+                once = _repair_polish_text(sample)
+                twice = _repair_polish_text(once)
+                self.assertEqual(once, sample)
+                self.assertEqual(twice, sample)
 
 
 if __name__ == "__main__":
