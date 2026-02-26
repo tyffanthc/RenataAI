@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -59,6 +60,54 @@ class F49AppStateRuntimeLockAccessorsAndHotspotsTests(unittest.TestCase):
         self.assertFalse(ok)
         bootstrap_mock.assert_called_once()
         system_mock.assert_not_called()
+
+    def test_app_state_accessors_thread_stress_smoke(self) -> None:
+        errors: list[BaseException] = []
+        bootstrap_reads: list[bool] = []
+        system_reads: list[str] = []
+        live_reads: list[bool] = []
+        start_barrier = threading.Barrier(3)
+
+        def writer() -> None:
+            try:
+                start_barrier.wait(timeout=2.0)
+                for i in range(3000):
+                    app_state.set_bootstrap_replay(bool(i % 2))
+                    with app_state.lock:
+                        app_state.current_system = f"F49_SYS_{i % 17}"
+                        app_state.has_live_system_event = bool((i // 3) % 2)
+                    if i % 17 == 0:
+                        threading.Event().wait(0.0)
+            except BaseException as exc:  # pragma: no cover - captured for assertion
+                errors.append(exc)
+
+        def reader() -> None:
+            try:
+                start_barrier.wait(timeout=2.0)
+                for _ in range(3000):
+                    bootstrap_reads.append(app_state.is_bootstrap_replay())
+                    system_reads.append(app_state.get_current_system_name())
+                    live_reads.append(app_state.has_live_system_event_flag())
+            except BaseException as exc:  # pragma: no cover - captured for assertion
+                errors.append(exc)
+
+        t_writer = threading.Thread(target=writer, daemon=True)
+        t_reader = threading.Thread(target=reader, daemon=True)
+        t_writer.start()
+        t_reader.start()
+        start_barrier.wait(timeout=2.0)
+        t_writer.join(timeout=5.0)
+        t_reader.join(timeout=5.0)
+
+        self.assertFalse(t_writer.is_alive(), "Writer thread should finish in stress smoke test.")
+        self.assertFalse(t_reader.is_alive(), "Reader thread should finish in stress smoke test.")
+        self.assertEqual(errors, [])
+        self.assertEqual(len(bootstrap_reads), 3000)
+        self.assertEqual(len(system_reads), 3000)
+        self.assertEqual(len(live_reads), 3000)
+        self.assertTrue(all(isinstance(v, bool) for v in bootstrap_reads))
+        self.assertTrue(all(isinstance(v, str) for v in system_reads))
+        self.assertTrue(all(isinstance(v, bool) for v in live_reads))
 
 
 if __name__ == "__main__":
