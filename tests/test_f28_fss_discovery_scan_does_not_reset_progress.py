@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from app.state import app_state
 from logic.events import exploration_fss_events as fss_events
@@ -42,7 +43,23 @@ class F28FssDiscoveryScanDoesNotResetProgressTests(unittest.TestCase):
         self.assertEqual(fss_events.FSS_DISCOVERED, 6)
         self.assertEqual(len(fss_events.FSS_SCANNED_BODIES), 6)
 
+    def test_rejects_inconsistent_bodycount_lower_than_discovered_progress(self) -> None:
+        fss_events.FSS_TOTAL_BODIES = 0
+        fss_events.FSS_DISCOVERED = 5
+        fss_events.FSS_SCANNED_BODIES = {f"Body-{i}" for i in range(5)}
+        fss_events.FSS_25_WARNED = False
+        fss_events.FSS_50_WARNED = False
+        fss_events.FSS_75_WARNED = False
+
+        with patch("logic.events.exploration_fss_events.log_event_throttled") as log_mock:
+            fss_events.handle_fss_discovery_scan({"event": "FSSDiscoveryScan", "BodyCount": 2}, gui_ref=None)
+
+        self.assertEqual(fss_events.FSS_TOTAL_BODIES, 0)
+        self.assertEqual(fss_events.FSS_DISCOVERED, 5)
+        self.assertEqual(len(fss_events.FSS_SCANNED_BODIES), 5)
+        log_mock.assert_called_once()
+        self.assertIn("body_count_inconsistent", str(log_mock.call_args.args[0]))
+
 
 if __name__ == "__main__":
     unittest.main()
-

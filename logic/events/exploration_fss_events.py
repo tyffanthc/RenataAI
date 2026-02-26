@@ -477,10 +477,22 @@ def handle_fss_discovery_scan(ev: Dict[str, Any], gui_ref=None):
     # player hears stale percentages after partial scans.
     has_progress = bool(FSS_SCANNED_BODIES) or int(FSS_DISCOVERED or 0) > 0
     if has_progress:
+        discovered_now = int(FSS_DISCOVERED or 0)
+        if count < discovered_now:
+            log_event_throttled(
+                "exploration.fss.body_count_inconsistent",
+                5000,
+                "FSS",
+                "FSSDiscoveryScan BodyCount lower than current discovered progress; ignoring event",
+                body_count=count,
+                discovered=discovered_now,
+                total_before=int(FSS_TOTAL_BODIES or 0),
+            )
+            return
         previous_total = int(FSS_TOTAL_BODIES or 0)
         # Keep progress and only refresh total body count metadata.
-        FSS_TOTAL_BODIES = max(count, int(FSS_DISCOVERED or 0))
-        if previous_total <= 0 and int(FSS_DISCOVERED or 0) > 0:
+        FSS_TOTAL_BODIES = max(count, discovered_now)
+        if previous_total <= 0 and discovered_now > 0:
             _sync_milestone_flags_after_late_body_count()
         if FSS_TOTAL_BODIES != previous_total:
             utils.MSG_QUEUE.put(
