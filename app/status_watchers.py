@@ -84,10 +84,10 @@ class BaseWatcher:
         kind = str(event_kind or "update").strip().lower() or "update"
         label = str(self._label or "WATCHER").strip().upper() or "WATCHER"
         log_event_throttled(
+            f"WATCHER_DISPATCH_{label}_{kind.upper()}",
+            120_000,
             "WARN",
-            f"{label}_{kind.upper()}_DISPATCH_FAILED",
             f"{label} watcher: dispatch {kind} failed",
-            cooldown_sec=120.0,
             context=f"watcher.{label.lower()}.dispatch:{kind}",
         )
 
