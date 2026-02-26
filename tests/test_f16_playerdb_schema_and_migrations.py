@@ -137,6 +137,50 @@ class F16PlayerDbSchemaAndMigrationsTests(unittest.TestCase):
             finally:
                 conn.close()
 
+    def test_playerdb_connection_caches_schema_ensure_per_db_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path_a = os.path.join(tmp, "a.db")
+            db_path_b = os.path.join(tmp, "b.db")
+            open(db_path_a, "a", encoding="utf-8").close()
+            open(db_path_b, "a", encoding="utf-8").close()
+
+            with player_local_db._PLAYERDB_SCHEMA_ENSURED_LOCK:
+                saved_cache = set(player_local_db._PLAYERDB_SCHEMA_ENSURED_PATHS)
+                player_local_db._PLAYERDB_SCHEMA_ENSURED_PATHS.clear()
+
+            try:
+                def _fake_ensure_schema(*, path: str | None = None):
+                    with player_local_db._PLAYERDB_SCHEMA_ENSURED_LOCK:
+                        player_local_db._PLAYERDB_SCHEMA_ENSURED_PATHS.add(
+                            player_local_db._playerdb_schema_cache_key(str(path or ""))
+                        )
+                    return {"schema_version": 2, "migrations_count": 2}
+
+                with (
+                    patch(
+                        "logic.player_local_db.ensure_playerdb_schema",
+                        side_effect=_fake_ensure_schema,
+                    ) as ensure_mock,
+                    patch(
+                        "logic.player_local_db._connect",
+                        side_effect=lambda _path: sqlite3.connect(":memory:"),
+                    ),
+                ):
+                    with player_local_db.playerdb_connection(path=db_path_a, ensure_schema=True):
+                        pass
+                    with player_local_db.playerdb_connection(path=db_path_a, ensure_schema=True):
+                        pass
+                    with player_local_db.playerdb_connection(path=db_path_b, ensure_schema=True):
+                        pass
+
+                self.assertEqual(ensure_mock.call_count, 2, "ensure_schema should run once per DB path per session")
+                called_paths = [str(call.kwargs.get("path") or "") for call in ensure_mock.call_args_list]
+                self.assertEqual(called_paths, [db_path_a, db_path_b])
+            finally:
+                with player_local_db._PLAYERDB_SCHEMA_ENSURED_LOCK:
+                    player_local_db._PLAYERDB_SCHEMA_ENSURED_PATHS.clear()
+                    player_local_db._PLAYERDB_SCHEMA_ENSURED_PATHS.update(saved_cache)
+
 
 if __name__ == "__main__":
     unittest.main()

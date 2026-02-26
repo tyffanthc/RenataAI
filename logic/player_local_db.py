@@ -6,6 +6,7 @@ import json
 import hashlib
 import math
 import argparse
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterator
@@ -30,6 +31,8 @@ DEFAULT_FIXTURE_PREFIXES: tuple[str, ...] = (
     "TEST_",
 )
 MAX_REASONABLE_MARKET_PRICE = 9_999_999
+_PLAYERDB_SCHEMA_ENSURED_PATHS: set[str] = set()
+_PLAYERDB_SCHEMA_ENSURED_LOCK = threading.Lock()
 
 
 def _utc_now_iso() -> str:
@@ -41,6 +44,13 @@ def default_playerdb_path() -> str:
     if appdata:
         return os.path.join(appdata, "RenataAI", "db", "player_local.db")
     return os.path.join(os.path.expanduser("~"), "RenataAI", "db", "player_local.db")
+
+
+def _playerdb_schema_cache_key(path: str) -> str:
+    try:
+        return os.path.normcase(os.path.abspath(str(path or "")))
+    except Exception:
+        return str(path or "")
 
 
 def _ensure_parent_dir(path: str) -> None:
@@ -549,6 +559,9 @@ def ensure_playerdb_schema(*, path: str | None = None) -> dict[str, Any]:
         final_version = _read_user_version(conn)
     finally:
         conn.close()
+
+    with _PLAYERDB_SCHEMA_ENSURED_LOCK:
+        _PLAYERDB_SCHEMA_ENSURED_PATHS.add(_playerdb_schema_cache_key(db_path))
 
     return {
         "path": db_path,
@@ -1467,7 +1480,13 @@ def _fixture_cleanup_cli(argv: list[str] | None = None) -> int:
 def playerdb_connection(*, path: str | None = None, ensure_schema: bool = True) -> Iterator[sqlite3.Connection]:
     db_path = str(path or default_playerdb_path())
     if ensure_schema:
-        ensure_playerdb_schema(path=db_path)
+        cache_key = _playerdb_schema_cache_key(db_path)
+        with _PLAYERDB_SCHEMA_ENSURED_LOCK:
+            cache_hit = cache_key in _PLAYERDB_SCHEMA_ENSURED_PATHS and os.path.isfile(db_path)
+            if (cache_key in _PLAYERDB_SCHEMA_ENSURED_PATHS) and (not os.path.isfile(db_path)):
+                _PLAYERDB_SCHEMA_ENSURED_PATHS.discard(cache_key)
+        if not cache_hit:
+            ensure_playerdb_schema(path=db_path)
     conn = _connect(db_path)
     try:
         yield conn
