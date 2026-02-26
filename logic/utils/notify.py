@@ -270,6 +270,11 @@ def _speak_tts(tekst: str) -> None:
             "auto fallback to pyttsx3 blocked (focus-safe)",
             reason="tts.auto_allow_pyttsx3_fallback=false",
         )
+        _log_notify_soft_failure(
+            "tts_auto_fallback_blocked",
+            "TTS niedostepne: Piper niedostepny lub blad, a fallback pyttsx3 jest zablokowany (focus-safe).",
+            cooldown_sec=15.0,
+        )
         return
 
     if engine == "pyttsx3":
