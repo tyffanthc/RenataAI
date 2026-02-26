@@ -87,24 +87,32 @@ class MainLoop:
         powiedz(f"Podpinam się pod logi ED: {self.log_dir}", self.gui_ref)
 
         while True:
-            path = self._find_latest_file()
+            try:
+                path = self._find_latest_file()
 
-            if not path:
-                powiedz(
-                    "Nie widzę Journal.*.log w LOG_DIR. Czekam na nowy log...",
-                    self.gui_ref,
-                )
+                if not path:
+                    powiedz(
+                        "Nie widzę Journal.*.log w LOG_DIR. Czekam na nowy log...",
+                        self.gui_ref,
+                    )
+                    self._emit_runtime_critical(
+                        "Brak aktywnego pliku journala. Czekam na dane z gry.",
+                        component="journal_stream",
+                    )
+                    time.sleep(2)
+                    continue
+
+                powiedz(f"Używam logu: {os.path.basename(path)}", self.gui_ref)
+
+                self._bootstrap_state(path)
+                self._tail_file(path)
+            except Exception as e:
+                self._log_error(f"[BŁĄD MainLoop/run] {e}")
                 self._emit_runtime_critical(
-                    "Brak aktywnego pliku journala. Czekam na dane z gry.",
+                    "Czytnik journala napotkal blad. Restartuje petle.",
                     component="journal_stream",
                 )
-                time.sleep(2)
-                continue
-
-            powiedz(f"Używam logu: {os.path.basename(path)}", self.gui_ref)
-
-            self._bootstrap_state(path)
-            self._tail_file(path)
+                time.sleep(1)
 
     # ------------------------------------------------------------------ #
     def _bootstrap_state(self, path, max_lines: int = 8000) -> None:
