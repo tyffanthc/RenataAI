@@ -58,11 +58,14 @@ class BaseWatcher:
         if self._last_mtime == mtime:
             return None  # brak zmian
 
-        self._last_mtime = mtime
-
         try:
             with open(self._path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+            # Update mtime only after successful parse. Otherwise a transient
+            # JSONDecodeError (file being rewritten) would mark this version as
+            # "already seen" and the next poll would skip a valid retry.
+            self._last_mtime = mtime
+            return data
         except json.JSONDecodeError as e:
             # Typical transient case: file is currently being rewritten by ED.
             if getattr(e, "pos", None) == 0:
