@@ -410,6 +410,96 @@ class F161ExobioRestartContinuityTests(unittest.TestCase):
                 config.STATE_FILE = old_state_file
                 config.save_state_contract(old_contract)
 
+    def test_e_uncertain_sequence_key_survives_bootstrap_and_does_not_block_callouts(self) -> None:
+        """
+        Regression coverage for BUGS_FINDE suspicion:
+        EXOBIO_RECOVERY_UNCERTAIN_KEYS restored from persisted state must not block
+        2/3 or 3/3 exobio callouts after restart.
+        """
+        old_state_file = config.STATE_FILE
+        old_contract = config.get_state_contract()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = os.path.join(tmp_dir, "f161_uncertain_restart.json")
+            try:
+                _fresh_contract(tmp_path)
+                app_state.current_system = "F161E System"
+
+                # First sample without StarSystem -> event_uncertain=True by design.
+                event_numeric_uncertain = {
+                    "event": "ScanOrganic",
+                    "BodyID": 7,
+                    "Species_Localised": "Aleoida Arcus",
+                }
+                key = ("f161e system", "7", "aleoida arcus")
+
+                with (
+                    patch("logic.events.exploration_bio_events.emit_insight"),
+                    patch(
+                        "logic.events.exploration_bio_events._estimate_collected_species_value",
+                        return_value=(None, False),
+                    ),
+                ):
+                    bio_events.handle_exobio_progress(event_numeric_uncertain, gui_ref=None)
+
+                self.assertEqual(int(bio_events.EXOBIO_SAMPLE_COUNT.get(key, 0)), 1)
+                self.assertIn(
+                    key,
+                    bio_events.EXOBIO_RECOVERY_UNCERTAIN_KEYS,
+                    "Uncertain sequence key should be tracked before restart",
+                )
+
+                # Simulate restart and bootstrap from persisted state.
+                bio_events.reset_bio_flags()
+                stats = bio_events.bootstrap_exobio_state_from_journal_lines([], max_lines=100)
+                self.assertEqual(str(stats.get("source", "")), "state")
+                self.assertEqual(int(bio_events.EXOBIO_SAMPLE_COUNT.get(key, 0)), 1)
+                self.assertIn(
+                    key,
+                    bio_events.EXOBIO_RECOVERY_UNCERTAIN_KEYS,
+                    "Uncertain sequence key should be restored from persisted state",
+                )
+
+                # Second sample after restart: callout must still fire (neutral wording is expected).
+                with (
+                    patch("logic.events.exploration_bio_events.emit_insight") as emit_mock,
+                    patch(
+                        "logic.events.exploration_bio_events._estimate_collected_species_value",
+                        return_value=(None, False),
+                    ),
+                ):
+                    bio_events.handle_exobio_progress(event_numeric_uncertain, gui_ref=None)
+                    msgs = _collect_sample_messages(emit_mock)
+                    self.assertEqual(len(msgs), 1, "2/3 callout must not be blocked after restart")
+                    self.assertIn("Kolejna próbka", msgs[0])
+
+                self.assertEqual(int(bio_events.EXOBIO_SAMPLE_COUNT.get(key, 0)), 2)
+
+                # Third sample after restart: completion callout must also fire.
+                with (
+                    patch("logic.events.exploration_bio_events.emit_insight") as emit_mock,
+                    patch(
+                        "logic.events.exploration_bio_events._estimate_collected_species_value",
+                        return_value=(12345.0, False),
+                    ),
+                ):
+                    bio_events.handle_exobio_progress(event_numeric_uncertain, gui_ref=None)
+                    msgs = _collect_sample_messages(emit_mock)
+                    self.assertEqual(len(msgs), 1, "3/3 completion callout must not be blocked")
+                    self.assertIn("Mamy wszystko", msgs[0])
+
+                self.assertIn(key, bio_events.EXOBIO_SAMPLE_COMPLETE)
+                self.assertNotIn(
+                    key,
+                    bio_events.EXOBIO_RECOVERY_UNCERTAIN_KEYS,
+                    "Completion should clear uncertainty tracking for the key",
+                )
+
+            finally:
+                bio_events.reset_bio_flags()
+                config.STATE_FILE = old_state_file
+                config.save_state_contract(old_contract)
+
 
 if __name__ == "__main__":
     unittest.unittest.main()
