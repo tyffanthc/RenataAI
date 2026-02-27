@@ -352,6 +352,100 @@ class F20MapFiltersLayersFreshnessSourceContractTests(unittest.TestCase):
             except Exception:
                 pass
 
+    def test_reload_skips_non_renderable_nodes_before_flags_compute(self) -> None:
+        try:
+            import tkinter as tk
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"tkinter unavailable: {exc}")
+
+        try:
+            from gui.tabs.journal_map import JournalMapTab
+            root = tk.Tk()
+            root.withdraw()
+        except tk.TclError as exc:  # pragma: no cover
+            self.skipTest(f"tk unavailable in test environment: {exc}")
+
+        class _FakeProvider:
+            def get_system_nodes(self, **_kwargs):
+                return [
+                    {
+                        "key": "NODE_OK",
+                        "system_name": "F20_RENDER_OK",
+                        "system_address": 1101,
+                        "x": 0.0,
+                        "y": 0.0,
+                        "z": 0.0,
+                        "freshness_ts": "2026-02-27T12:00:00Z",
+                        "first_seen_ts": "2026-02-27T12:00:00Z",
+                        "last_seen_ts": "2026-02-27T12:00:00Z",
+                    }
+                ], {"count": 1}
+
+            def get_edges(self, **_kwargs):
+                return [], {"count": 0}
+
+            def get_known_commodities(self, **_kwargs):
+                return [], {"count": 0}
+
+        frame = None
+        try:
+            frame = JournalMapTab(root, data_provider=_FakeProvider())
+            frame.pack(fill="both", expand=True)
+            root.update_idletasks()
+
+            frame.render_mode_var.set("Mapa")
+            frame._coords_layout_from_system_rows = lambda _rows: [  # type: ignore[assignment]
+                {
+                    "key": "NODE_OK",
+                    "system_name": "F20_RENDER_OK",
+                    "system_address": 1101,
+                    "x": 10.0,
+                    "y": 25.0,
+                    "z": 0.0,
+                    "freshness_ts": "2026-02-27T12:00:00Z",
+                    "first_seen_ts": "2026-02-27T12:00:00Z",
+                    "last_seen_ts": "2026-02-27T12:00:00Z",
+                },
+                {
+                    "key": "NODE_BAD",
+                    "system_name": "F20_RENDER_BAD",
+                    "system_address": 1102,
+                    "x": None,
+                    "y": None,
+                    "z": None,
+                    "freshness_ts": "2026-02-27T12:00:00Z",
+                    "first_seen_ts": "2026-02-27T12:00:00Z",
+                    "last_seen_ts": "2026-02-27T12:00:00Z",
+                },
+            ]
+
+            captured_rows: list[dict[str, object]] = []
+
+            def _capture_flags(rows: list[dict[str, object]]) -> dict[str, dict[str, object]]:
+                captured_rows[:] = [dict(r) for r in rows]
+                return {}
+
+            frame._compute_layer_flags_for_nodes = _capture_flags  # type: ignore[assignment]
+            result = frame.reload_from_playerdb()
+            root.update_idletasks()
+
+            self.assertTrue(bool(result.get("ok")))
+            self.assertEqual(int(result.get("nodes") or 0), 1)
+            self.assertEqual(int(result.get("dropped_nodes") or 0), 1)
+            self.assertEqual([str(r.get("key") or "") for r in captured_rows], ["NODE_OK"])
+            self.assertEqual(set(frame._nodes.keys()), {"NODE_OK"})
+            self.assertIn("pominieto 1", str(frame.map_status_var.get()).lower())
+        finally:
+            try:
+                if frame is not None:
+                    frame.destroy()
+            except Exception:
+                pass
+            try:
+                root.destroy()
+            except Exception:
+                pass
+
 
 if __name__ == "__main__":
     unittest.main()

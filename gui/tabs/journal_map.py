@@ -1410,19 +1410,19 @@ class JournalMapTab(tk.Frame):
         self._edges.clear()
         self._selected_node_key = None
         for row in nodes or []:
-            key = str(row.get("key") or row.get("system_address") or row.get("system_name") or "").strip()
+            key = self._node_key_from_row(row)
             if not key:
                 continue
-            x = row.get("x")
-            y = row.get("y")
+            x = self._safe_float(row.get("x"))
+            y = self._safe_float(row.get("y"))
             if x is None or y is None:
                 continue
             try:
                 node = _MapNode(
                     key=key,
                     system_name=str(row.get("system_name") or key),
-                    x=float(x),
-                    y=float(y),
+                    x=x,
+                    y=y,
                     z=self._safe_float(row.get("z")),
                     system_address=int(row["system_address"]) if row.get("system_address") is not None else None,
                     system_id64=int(row["system_id64"]) if row.get("system_id64") is not None else None,
@@ -1490,6 +1490,26 @@ class JournalMapTab(tk.Frame):
 
     def _node_key_from_row(self, row: dict[str, Any]) -> str:
         return _as_text(row.get("key") or row.get("system_address") or row.get("system_name"))
+
+    def _prepare_renderable_nodes(self, rows: list[dict[str, Any]] | None) -> tuple[list[dict[str, Any]], int]:
+        out: list[dict[str, Any]] = []
+        dropped = 0
+        for row in rows or []:
+            if not isinstance(row, dict):
+                dropped += 1
+                continue
+            key = self._node_key_from_row(row)
+            x = self._safe_float(row.get("x"))
+            y = self._safe_float(row.get("y"))
+            if not key or x is None or y is None:
+                dropped += 1
+                continue
+            item = dict(row)
+            item["key"] = key
+            item["x"] = x
+            item["y"] = y
+            out.append(item)
+        return out, dropped
 
     def _clear_prefetched_system_stations(self) -> None:
         self._prefetched_system_stations = {}
@@ -1820,20 +1840,21 @@ class JournalMapTab(tk.Frame):
             laid_out_nodes = self._coords_layout_from_system_rows(nodes_rows)
         else:
             laid_out_nodes = self._travel_layout_from_system_rows(nodes_rows)
+        render_nodes, dropped_nodes = self._prepare_renderable_nodes(laid_out_nodes)
         if edges_rows:
             edges_final = edges_rows
             edges_mode = "provider"
         else:
-            edges_final = self._build_fallback_sequential_edges(laid_out_nodes)
+            edges_final = self._build_fallback_sequential_edges(render_nodes)
             edges_mode = "sequential_fallback"
 
         self._travel_nodes_meta = dict(nodes_meta or {})
         self._travel_edges_meta = dict(edges_meta or {})
         self._travel_edges_meta["render_mode"] = edges_mode
-        self._node_layer_flags = self._compute_layer_flags_for_nodes(laid_out_nodes)
-        self._prime_prefetched_system_stations(laid_out_nodes)
+        self._node_layer_flags = self._compute_layer_flags_for_nodes(render_nodes)
+        self._prime_prefetched_system_stations(render_nodes)
 
-        self.set_graph_data(nodes=laid_out_nodes, edges=edges_final)
+        self.set_graph_data(nodes=render_nodes, edges=edges_final)
         self._refresh_system_panel_stub()
         self._refresh_trade_commodity_values()
         self._refresh_trade_compare_if_needed()
@@ -1843,6 +1864,8 @@ class JournalMapTab(tk.Frame):
         status_reason = ""
         if edges_mode == "sequential_fallback":
             status_reason = " | krawedzie: fallback sekwencyjny (brak ingestu jumps)"
+        if dropped_nodes > 0:
+            status_reason += f" | pominieto {int(dropped_nodes)} nodow bez poprawnych koordynatow"
         layer_state = (
             f" | layers T={int(bool(self.layer_travel_var.get()))}"
             f"/S={int(bool(self.layer_stations_var.get()))}"
@@ -1865,6 +1888,7 @@ class JournalMapTab(tk.Frame):
             "travel_enabled": True,
             "nodes": count_nodes,
             "edges": count_edges,
+            "dropped_nodes": int(dropped_nodes),
             "edges_mode": edges_mode,
             "nodes_meta": dict(nodes_meta or {}),
             "edges_meta": dict(edges_meta or {}),
