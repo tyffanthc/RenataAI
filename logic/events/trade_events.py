@@ -272,7 +272,7 @@ def handle_market_data(data: dict, gui_ref=None):
         or "UNKNOWN_STATION"
     )
 
-    system_name = app_state.current_system or data.get("StarSystem") or "UNKNOWN_SYSTEM"
+    system_name = app_state.get_current_system_name() or data.get("StarSystem") or "UNKNOWN_SYSTEM"
 
     global JACKPOT_WARNED_STATIONS, JACKPOT_DEFAULT, JACKPOT_CACHE
 

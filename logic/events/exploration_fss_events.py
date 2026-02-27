@@ -262,7 +262,7 @@ def _check_fss_thresholds(gui_ref=None):
         return
 
     progress = FSS_DISCOVERED / FSS_TOTAL_BODIES
-    system_name = app_state.current_system or None
+    system_name = app_state.get_current_system_name() or None
 
     # Milestone catch-up rule: when progress jumps over multiple thresholds in one step
     # (e.g. startup/recovery/system with many stars scanned quickly), emit only the
@@ -328,7 +328,7 @@ def _maybe_speak_fss_full(gui_ref=None) -> bool:
     if FSS_TOTAL_BODIES <= 0 or FSS_DISCOVERED < FSS_TOTAL_BODIES:
         return False
 
-    system_name = app_state.current_system or None
+    system_name = app_state.get_current_system_name() or None
 
     if FSS_FULL_WARNED:
         return True
@@ -401,9 +401,9 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
                     message_id="MSG.FIRST_DISCOVERY",
                     source="exploration_fss_events",
                     event_type="BODY_DISCOVERED",
-                    context=_first_status_context(app_state.current_system, status_kind="confirmed"),
+                    context=_first_status_context(app_state.get_current_system_name(), status_kind="confirmed"),
                     priority="P2_NORMAL",
-                    dedup_key=f"first_discovery_system:{app_state.current_system or 'unknown'}",
+                    dedup_key=f"first_discovery_system:{app_state.get_current_system_name() or 'unknown'}",
                     cooldown_scope="entity",
                     cooldown_seconds=120.0,
                 )
@@ -418,7 +418,7 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
                     source="exploration_fss_events",
                     event_type="BODY_DISCOVERED",
                     context=_first_status_context(
-                        app_state.current_system,
+                        app_state.get_current_system_name(),
                         body_name=str(body_name),
                         status_kind="confirmed",
                     ),
@@ -435,9 +435,9 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
                 message_id="MSG.FIRST_DISCOVERY_OPPORTUNITY",
                 source="exploration_fss_events",
                 event_type="BODY_DISCOVERED",
-                context=_first_status_context(app_state.current_system, status_kind="opportunity"),
+                context=_first_status_context(app_state.get_current_system_name(), status_kind="opportunity"),
                 priority="P3_LOW",
-                dedup_key=f"first_opportunity_system:{app_state.current_system or 'unknown'}",
+                dedup_key=f"first_opportunity_system:{app_state.get_current_system_name() or 'unknown'}",
                 cooldown_scope="entity",
                 cooldown_seconds=120.0,
             )

@@ -1888,9 +1888,15 @@ class TradeTab(ttk.Frame):
         system = (self.var_start_system.get() or "").strip()
 
         if not system:
-            live_ready = bool(getattr(self.app_state, "has_live_system_event", False))
+            if hasattr(self.app_state, "has_live_system_event_flag"):
+                live_ready = bool(self.app_state.has_live_system_event_flag())
+            else:
+                live_ready = bool(getattr(self.app_state, "has_live_system_event", False))
             if live_ready:
-                system = (getattr(self.app_state, "current_system", "") or "").strip()
+                if hasattr(self.app_state, "get_current_system_name"):
+                    system = (self.app_state.get_current_system_name() or "").strip()
+                else:
+                    system = (getattr(self.app_state, "current_system", "") or "").strip()
 
 
 
