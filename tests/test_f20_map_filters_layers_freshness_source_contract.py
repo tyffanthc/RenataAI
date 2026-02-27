@@ -254,6 +254,58 @@ class F20MapFiltersLayersFreshnessSourceContractTests(unittest.TestCase):
             except Exception:
                 pass
 
+    def test_filter_change_hides_tooltip_to_avoid_stale_layer_badges(self) -> None:
+        try:
+            import tkinter as tk
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"tkinter unavailable: {exc}")
+
+        try:
+            from gui.tabs.journal_map import JournalMapTab
+            root = tk.Tk()
+            root.withdraw()
+        except tk.TclError as exc:  # pragma: no cover
+            self.skipTest(f"tk unavailable in test environment: {exc}")
+
+        frame = None
+        try:
+            frame = JournalMapTab(root)
+            frame.pack(fill="both", expand=True)
+            root.update_idletasks()
+
+            frame.set_graph_data(
+                nodes=[{"key": "N1", "system_name": "F20_TOOLTIP", "x": 0.0, "y": 0.0}],
+                edges=[],
+            )
+            frame._node_layer_flags = {"N1": {"has_station": True, "stations_count": 1}}
+            node = frame._nodes.get("N1")
+            self.assertIsNotNone(node)
+
+            frame.layer_stations_var.set(True)
+            frame._show_map_tooltip(node, sx=24, sy=24)  # type: ignore[arg-type]
+            self.assertTrue(bool(frame._tooltip_visible))
+            self.assertIn("Stations", str(frame._tooltip_text_cache or ""))
+            self.assertGreater(len(frame.map_canvas.find_withtag("map_tooltip")), 0)
+
+            # Simulate filter/layer change with no-op reload path.
+            frame.reload_from_playerdb = lambda: {"ok": True}  # type: ignore[assignment]
+            frame.layer_stations_var.set(False)
+            frame._on_filter_changed()
+
+            self.assertFalse(bool(frame._tooltip_visible))
+            self.assertEqual(str(frame._tooltip_text_cache or ""), "")
+            self.assertEqual(len(frame.map_canvas.find_withtag("map_tooltip")), 0)
+        finally:
+            try:
+                if frame is not None:
+                    frame.destroy()
+            except Exception:
+                pass
+            try:
+                root.destroy()
+            except Exception:
+                pass
+
 
 if __name__ == "__main__":
     unittest.main()

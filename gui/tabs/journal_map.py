@@ -1213,6 +1213,9 @@ class JournalMapTab(tk.Frame):
         self.legend_text_var.set("\n".join(lines))
 
     def _on_filter_changed(self) -> None:
+        # Invalidate tooltip immediately so stale badges/text are not shown
+        # while filter/layer reload is pending or fails early.
+        self._hide_map_tooltip()
         self._notify_owner_ui_state_changed()
         self.reload_from_playerdb()
 
