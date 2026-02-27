@@ -122,6 +122,7 @@ class RenataApp:
         self._ui_thread_id = threading.get_ident()
         self._exploration_summary_trigger_active = False
         self._cash_in_manual_trigger_active = False
+        self._queue_check_after_id = None
 
         # ==========================================================
         # 🎨 RENATA "BLACKOUT" PROTOCOL - STYLIZACJA TOTALNA
@@ -421,7 +422,7 @@ class RenataApp:
         self.root.bind("<Configure>", self.on_window_move)
         self._init_window_resize_hitbox()
         self._bind_cash_in_hotkey()
-        self.root.after(100, self.check_queue)
+        self._schedule_queue_check(100)
 
     # ------------------------------------------------------------------ #
     #   Helpery do obsługi menu / nawigacji
@@ -611,6 +612,14 @@ class RenataApp:
 
     def _on_main_close(self) -> None:
         save_window_geometry(self.root, "main_window", include_size=True)
+        try:
+            self._cancel_debug_panel_update()
+        except Exception:
+            pass
+        try:
+            self._cancel_queue_check()
+        except Exception:
+            pass
         try:
             self.root.quit()
         except Exception as quit_exc:
@@ -1002,7 +1011,26 @@ class RenataApp:
                 pass
         self.root.after_idle(self.tab_spansh.hide_suggestions)
 
+    def _cancel_queue_check(self):
+        timer_id = getattr(self, "_queue_check_after_id", None)
+        if timer_id is None:
+            return
+        try:
+            self.root.after_cancel(timer_id)
+        except Exception:
+            pass
+        self._queue_check_after_id = None
+
+    def _schedule_queue_check(self, delay_ms):
+        self._cancel_queue_check()
+        try:
+            self._queue_check_after_id = self.root.after(int(delay_ms), self.check_queue)
+        except Exception as exc:
+            self._queue_check_after_id = None
+            _log_app_fallback("queue.schedule", "failed to schedule queue tick", exc, interval_ms=3000)
+
     def check_queue(self):
+        self._queue_check_after_id = None
         processed = 0
         hit_tick_limit = False
         try:
@@ -1231,10 +1259,12 @@ class RenataApp:
                 app_state.refresh_mode_state(source="queue.tick")
             except Exception as exc:
                 _log_app_fallback("queue.tick.mode", "mode detector tick failed", exc, interval_ms=5000)
-            self.root.after(
-                _QUEUE_TICK_BACKLOG_DELAY_MS if hit_tick_limit else _QUEUE_TICK_IDLE_DELAY_MS,
-                self.check_queue,
-            )
+            delay_ms = _QUEUE_TICK_BACKLOG_DELAY_MS if hit_tick_limit else _QUEUE_TICK_IDLE_DELAY_MS
+            schedule_queue_check = getattr(self, "_schedule_queue_check", None)
+            if callable(schedule_queue_check):
+                schedule_queue_check(delay_ms)
+            else:
+                self.root.after(delay_ms, self.check_queue)
 
     def update_start_label(self, txt):
         utils.MSG_QUEUE.put(("start_label", txt))
@@ -1359,6 +1389,7 @@ class RenataApp:
         self._debug_panel_visible = False
         self._debug_panel_refresh_ms = 400
         self._debug_panel_last_text = None
+        self._debug_panel_after_id = None
         if not self._debug_panel_enabled:
             self.debug_frame = None
             self.debug_label = None
@@ -1392,10 +1423,22 @@ class RenataApp:
     def _schedule_debug_panel_update(self):
         if not self._debug_panel_enabled:
             return
+        self._cancel_debug_panel_update()
         try:
-            self.root.after(self._debug_panel_refresh_ms, self._update_debug_panel)
+            self._debug_panel_after_id = self.root.after(self._debug_panel_refresh_ms, self._update_debug_panel)
         except Exception as exc:
+            self._debug_panel_after_id = None
             _log_app_fallback("debug.schedule", "failed to schedule debug panel refresh", exc)
+
+    def _cancel_debug_panel_update(self):
+        timer_id = getattr(self, "_debug_panel_after_id", None)
+        if timer_id is None:
+            return
+        try:
+            self.root.after_cancel(timer_id)
+        except Exception:
+            pass
+        self._debug_panel_after_id = None
 
     def _build_debug_snapshot(self) -> dict:
         try:
@@ -1451,6 +1494,7 @@ class RenataApp:
         )
 
     def _update_debug_panel(self):
+        self._debug_panel_after_id = None
         if threading.get_ident() != self._ui_thread_id:
             self._run_on_ui(self._update_debug_panel)
             return
@@ -1461,6 +1505,7 @@ class RenataApp:
                 self.debug_frame.place_forget()
                 self._debug_panel_visible = False
             self._debug_panel_enabled = False
+            self._cancel_debug_panel_update()
             return
 
         if not self._debug_panel_visible:
