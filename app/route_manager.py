@@ -34,7 +34,7 @@ class RouteManager:
     #  Konstruktor
     # ---------------------------------------------------------
 
-    def __init__(self) -> None:
+    def __init__(self, *, route_job_timeout_s: float = 120.0) -> None:
         # Nawigacja po trasie
         self.lock = threading.Lock()
         self.route: list[str] = []
@@ -45,6 +45,8 @@ class RouteManager:
         self._busy: bool = False
         self._current_mode: Optional[str] = None
         self._worker_thread: Optional[threading.Thread] = None
+        self._active_job_token: int = 0
+        self._route_job_timeout_s: float = max(0.0, float(route_job_timeout_s or 0.0))
 
     # ---------------------------------------------------------
     #  API: zarządzanie trasą (nawigacja)
@@ -177,7 +179,7 @@ class RouteManager:
         *,
         args: tuple = (),
         gui_ref: Any | None = None,
-    ) -> None:
+    ) -> bool:
         """Uruchamia job trasy w osobnym wątku.
 
         - *nie* zna szczegółów SPANSH,
@@ -192,27 +194,97 @@ class RouteManager:
         - wrzucić odpowiednie komunikaty do MSG_QUEUE / zaktualizować GUI.
         """
 
-        def _runner() -> None:
-            try:
-                target(*args)
-            finally:
-                # Koniec joba – reset stanu busy
-                with self.lock:
-                    self._busy = False
-                    self._current_mode = None
-                log_event("PLANNER", "route_job_done", mode=mode)
+        _ = gui_ref
+        mode_text = str(mode or "").strip() or "unknown"
 
         with self.lock:
+            if self._busy:
+                log_event_throttled(
+                    "route_job_start_rejected_busy",
+                    5000,
+                    "PLANNER",
+                    "route job start rejected because another job is busy",
+                    requested_mode=mode_text,
+                    busy_mode=str(self._current_mode or ""),
+                )
+                return False
             self._busy = True
-            self._current_mode = mode
+            self._current_mode = mode_text
+            self._active_job_token += 1
+            job_token = int(self._active_job_token)
+
+        def _runner(token: int, mode_name: str) -> None:
+            try:
+                target(*args)
+            except Exception as exc:
+                log_event_throttled(
+                    "route_job_worker_exception",
+                    2000,
+                    "PLANNER",
+                    "route job worker raised exception",
+                    mode=mode_name,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            finally:
+                # Koniec joba – reset stanu busy
+                should_emit_done = False
+                with self.lock:
+                    if self._active_job_token == token:
+                        self._busy = False
+                        self._current_mode = None
+                        self._worker_thread = None
+                        should_emit_done = True
+                if should_emit_done:
+                    log_event("PLANNER", "route_job_done", mode=mode_name)
+
 
         # Prosty log dla diagnostyki (nie zmienia UX zakładek)
-        log_event("PLANNER", "route_job_start", mode=mode)
-        t = threading.Thread(target=_runner, daemon=True)
+        log_event("PLANNER", "route_job_start", mode=mode_text)
+        t = threading.Thread(
+            target=_runner,
+            args=(job_token, mode_text),
+            daemon=True,
+            name=f"route_job:{mode_text}:{job_token}",
+        )
         t.start()
 
         with self.lock:
             self._worker_thread = t
+        self._start_route_job_watchdog(mode=mode_text, token=job_token, worker=t)
+        return True
+
+    def _start_route_job_watchdog(self, *, mode: str, token: int, worker: threading.Thread) -> None:
+        timeout_s = float(self._route_job_timeout_s or 0.0)
+        if timeout_s <= 0.0:
+            return
+
+        def _watchdog() -> None:
+            try:
+                worker.join(timeout=timeout_s)
+            except Exception:
+                return
+            if not worker.is_alive():
+                return
+            with self.lock:
+                if self._active_job_token != token:
+                    return
+                self._busy = False
+                self._current_mode = None
+                self._worker_thread = None
+            log_event_throttled(
+                "route_job_timeout",
+                2000,
+                "PLANNER",
+                "route job exceeded timeout and was detached from busy state",
+                mode=mode,
+                timeout_s=timeout_s,
+            )
+
+        threading.Thread(
+            target=_watchdog,
+            daemon=True,
+            name=f"route_watchdog:{mode}:{token}",
+        ).start()
 
     def cancel_route(self) -> None:
         """Placeholder pod ewentualne anulowanie trasy w przyszłości.
