@@ -333,6 +333,24 @@ def _speak_tts(tekst: str) -> None:
     if engine == "pyttsx3":
         _log_tts_engine("TTS engine selected=pyttsx3 source=settings")
 
+    # Focus-safe hard guard (bug 16.8): pyttsx3/SAPI5 may steal focus on Windows.
+    # Keep this path opt-in even for explicit engine setting.
+    if not bool(config.get("tts.pyttsx3_allow_focus_risk", False)):
+        log_event_throttled(
+            "tts:pyttsx3_focus_risk_blocked",
+            5000,
+            "TTS",
+            "pyttsx3 blocked (focus-safe)",
+            engine=engine,
+            reason="tts.pyttsx3_allow_focus_risk=false",
+        )
+        _log_notify_soft_failure(
+            "tts_pyttsx3_focus_blocked",
+            "TTS pyttsx3 zablokowane (focus-safe). Uzyj Piper lub wlacz tts.pyttsx3_allow_focus_risk.",
+            cooldown_sec=15.0,
+        )
+        return
+
     _speak_pyttsx3(tekst)
 
 

@@ -77,12 +77,69 @@ class F31TtsAutoPyttsx3FallbackFocusSafeGuardTests(unittest.TestCase):
             cfg_get.side_effect = lambda key, default=None: (
                 "auto" if key == "tts.engine"
                 else True if key == "tts.auto_allow_pyttsx3_fallback"
+                else True if key == "tts.pyttsx3_allow_focus_risk"
                 else default
             )
             notify_module._speak_tts("test")
             pyttsx3_speak.assert_called_once()
 
-    def test_explicit_pyttsx3_engine_still_works_even_when_auto_fallback_blocked(self) -> None:
+    def test_auto_mode_with_fallback_opt_in_still_blocks_when_focus_risk_opt_in_missing(self) -> None:
+        with (
+            patch("logic.utils.notify.config.get") as cfg_get,
+            patch("logic.tts.piper_tts.select_piper_paths", return_value=None),
+            patch("logic.utils.notify._speak_pyttsx3") as pyttsx3_speak,
+            patch("logic.utils.notify.log_event_throttled") as throttled_log,
+        ):
+            cfg_get.side_effect = lambda key, default=None: (
+                "auto" if key == "tts.engine"
+                else True if key == "tts.auto_allow_pyttsx3_fallback"
+                else False if key == "tts.pyttsx3_allow_focus_risk"
+                else default
+            )
+            notify_module._speak_tts("test")
+
+        pyttsx3_speak.assert_not_called()
+        self.assertTrue(
+            any(
+                call.args[:4]
+                == (
+                    "tts:pyttsx3_focus_risk_blocked",
+                    5000,
+                    "TTS",
+                    "pyttsx3 blocked (focus-safe)",
+                )
+                for call in throttled_log.call_args_list
+            )
+        )
+
+    def test_explicit_pyttsx3_engine_is_blocked_by_default_for_focus_safety(self) -> None:
+        with (
+            patch("logic.utils.notify.config.get") as cfg_get,
+            patch("logic.utils.notify._speak_pyttsx3") as pyttsx3_speak,
+            patch("logic.utils.notify.log_event_throttled") as throttled_log,
+        ):
+            cfg_get.side_effect = lambda key, default=None: (
+                "pyttsx3" if key == "tts.engine"
+                else False if key == "tts.auto_allow_pyttsx3_fallback"
+                else False if key == "tts.pyttsx3_allow_focus_risk"
+                else default
+            )
+            notify_module._speak_tts("test")
+            pyttsx3_speak.assert_not_called()
+            self.assertTrue(
+                any(
+                    call.args[:4]
+                    == (
+                        "tts:pyttsx3_focus_risk_blocked",
+                        5000,
+                        "TTS",
+                        "pyttsx3 blocked (focus-safe)",
+                    )
+                    for call in throttled_log.call_args_list
+                )
+            )
+
+    def test_explicit_pyttsx3_engine_can_run_when_focus_risk_opt_in_enabled(self) -> None:
         with (
             patch("logic.utils.notify.config.get") as cfg_get,
             patch("logic.utils.notify._speak_pyttsx3") as pyttsx3_speak,
@@ -90,6 +147,7 @@ class F31TtsAutoPyttsx3FallbackFocusSafeGuardTests(unittest.TestCase):
             cfg_get.side_effect = lambda key, default=None: (
                 "pyttsx3" if key == "tts.engine"
                 else False if key == "tts.auto_allow_pyttsx3_fallback"
+                else True if key == "tts.pyttsx3_allow_focus_risk"
                 else default
             )
             notify_module._speak_tts("test")

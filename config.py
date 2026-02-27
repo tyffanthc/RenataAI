@@ -303,8 +303,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "tts.pyttsx3_rate": 190,
     "tts.pyttsx3_volume": 1.0,
     # Focus-safe default: do not auto-fallback to SAPI5/pyttsx3 in auto mode.
-    # pyttsx3 can be enabled explicitly via `tts.engine=pyttsx3` if desired.
+    # Explicit pyttsx3 path is also blocked by default; require explicit opt-in
+    # to accept focus-steal risk on Windows (SAPI5/COM window internals).
     "tts.auto_allow_pyttsx3_fallback": False,
+    "tts.pyttsx3_allow_focus_risk": False,
     "tts.cooldown_global_sec": 8,
     "tts.cooldown_nav_sec": 20,
     "tts.cooldown_explore_sec": 30,
