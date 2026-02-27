@@ -1292,19 +1292,29 @@ class JournalMapTab(tk.Frame):
             return
 
         selected_key = str(self._selected_node_key or "").strip() or None
+        selected_system_name = ""
+        if selected_key:
+            prev_node = self._nodes.get(selected_key)
+            if prev_node is not None:
+                selected_system_name = _as_text(getattr(prev_node, "system_name", ""))
         self._auto_refresh_dirty = False
         result = self.reload_from_playerdb()
 
         reselected = False
+        reselect_key: str | None = None
         if selected_key and selected_key in self._nodes:
+            reselect_key = selected_key
+        elif selected_system_name:
+            reselect_key = self._find_node_key_by_system_name(selected_system_name)
+        if reselect_key:
             try:
-                sel_result = self.select_system_node(selected_key)
+                sel_result = self.select_system_node(reselect_key)
                 reselected = bool(isinstance(sel_result, dict) and sel_result.get("ok"))
             except Exception as exc:
                 _log_map_soft_failure(
                     "auto_refresh_reselect",
                     "reselect node after auto refresh failed",
-                    node_key=str(selected_key),
+                    node_key=str(reselect_key),
                     error=f"{type(exc).__name__}: {exc}",
                 )
                 reselected = False
@@ -1318,6 +1328,9 @@ class JournalMapTab(tk.Frame):
                 parts.append(f"{event_name}/{source}")
             if reselected:
                 parts.append("zachowano selekcje")
+            elif selected_key:
+                self._selected_node_key = None
+                parts.append("utracono selekcje (system poza filtrami)")
             try:
                 self.map_status_var.set(" | ".join(parts))
             except Exception as exc:
@@ -1326,6 +1339,17 @@ class JournalMapTab(tk.Frame):
                     "set auto refresh map status failed",
                     error=f"{type(exc).__name__}: {exc}",
                 )
+
+    def _find_node_key_by_system_name(self, system_name: str) -> str | None:
+        target = _as_text(system_name)
+        if not target:
+            return None
+        target_cf = target.casefold()
+        for key, node in (self._nodes or {}).items():
+            node_name = _as_text(getattr(node, "system_name", ""))
+            if node_name and node_name.casefold() == target_cf:
+                return str(key)
+        return None
 
     def set_graph_data(self, *, nodes: list[dict[str, Any]] | None = None, edges: list[dict[str, Any]] | None = None) -> None:
         self._nodes.clear()
