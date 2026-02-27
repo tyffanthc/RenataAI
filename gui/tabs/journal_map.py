@@ -146,7 +146,7 @@ class JournalMapTab(tk.Frame):
         self.view_offset_x: float = 0.0
         self.view_offset_y: float = 0.0
         self._min_scale = 0.10
-        self._max_scale = 100.0
+        self._max_scale = 200.0
 
         # Pan state
         self._pan_active = False
