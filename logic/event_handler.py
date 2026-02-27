@@ -76,6 +76,71 @@ def _safe_float(value, default: float = 0.0) -> float:
         return float(default)
 
 
+def _sell_value_domain_for_event(event_name: str) -> str | None:
+    norm = str(event_name or "").strip()
+    if norm in {"SellExplorationData", "MultiSellExplorationData"}:
+        return "cartography"
+    if norm == "SellOrganicData":
+        return "exobiology"
+    return None
+
+
+def _safe_engine_totals_snapshot() -> dict[str, float]:
+    try:
+        from app.state import app_state
+
+        totals = dict(app_state.system_value_engine.calculate_totals() or {})
+    except Exception:
+        totals = {}
+    return {
+        "c_cartography": _safe_float(totals.get("c_cartography")),
+        "c_exobiology": _safe_float(totals.get("c_exobiology")),
+        "bonus_discovery": _safe_float(totals.get("bonus_discovery")),
+        "total": _safe_float(totals.get("total")),
+    }
+
+
+def _apply_sell_value_domain_reset(ev: dict) -> None:
+    event_name = str(ev.get("event") or "").strip()
+    domain = _sell_value_domain_for_event(event_name)
+    if not domain:
+        return
+    try:
+        from app.state import app_state
+
+        engine = getattr(app_state, "system_value_engine", None)
+        if engine is None or not hasattr(engine, "clear_value_domain"):
+            return
+
+        before = _safe_engine_totals_snapshot()
+        result = engine.clear_value_domain(domain=domain)
+        after = _safe_engine_totals_snapshot()
+
+        log_event(
+            "VALUE",
+            "cashin_sell_reset",
+            event=event_name,
+            domain=domain,
+            systems_touched=int((result or {}).get("systems_touched") or 0),
+            before_total=round(_safe_float(before.get("total")), 2),
+            after_total=round(_safe_float(after.get("total")), 2),
+            before_carto=round(_safe_float(before.get("c_cartography")), 2),
+            after_carto=round(_safe_float(after.get("c_cartography")), 2),
+            before_exobio=round(_safe_float(before.get("c_exobiology")), 2),
+            after_exobio=round(_safe_float(after.get("c_exobiology")), 2),
+            before_bonus=round(_safe_float(before.get("bonus_discovery")), 2),
+            after_bonus=round(_safe_float(after.get("bonus_discovery")), 2),
+        )
+    except Exception as exc:
+        _log_router_fallback(
+            "sell.value_reset",
+            "sell event: value domain reset failed",
+            exc,
+            event=event_name,
+            domain=domain,
+        )
+
+
 def _log_sell_value_snapshot(ev: dict) -> None:
     event_name = str(ev.get("event") or "").strip()
     if event_name not in {"SellExplorationData", "SellOrganicData"}:
@@ -311,6 +376,7 @@ class EventHandler:
 
         if typ in {"SellExplorationData", "SellOrganicData"}:
             _log_sell_value_snapshot(ev)
+            _apply_sell_value_domain_reset(ev)
 
         if typ == "StartJump":
             try:
