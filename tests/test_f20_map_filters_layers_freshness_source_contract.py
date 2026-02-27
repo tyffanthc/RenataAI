@@ -180,7 +180,80 @@ class F20MapFiltersLayersFreshnessSourceContractTests(unittest.TestCase):
         self.assertIn("layer_trade", content)
         self.assertIn("layer_cashin", content)
 
+    def test_layer_flags_use_batched_station_lookup_when_available(self) -> None:
+        try:
+            import tkinter as tk
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"tkinter unavailable: {exc}")
+
+        try:
+            from gui.tabs.journal_map import JournalMapTab
+            root = tk.Tk()
+            root.withdraw()
+        except tk.TclError as exc:  # pragma: no cover
+            self.skipTest(f"tk unavailable in test environment: {exc}")
+
+        class _FakeProvider:
+            def __init__(self) -> None:
+                self.batch_calls = 0
+                self.single_calls = 0
+
+            def get_system_action_flags(self, **_kwargs):
+                return {
+                    "f20_batch_a": {"has_exobio": True, "has_exploration": False, "last_action_ts": "2026-02-27T10:00:00Z"},
+                }, {"ok": True}
+
+            def get_station_layer_flags_for_systems(self, **_kwargs):
+                self.batch_calls += 1
+                return {
+                    "addr:101": {
+                        "stations_count": 2,
+                        "has_market": True,
+                        "has_cashin": True,
+                    },
+                    "name:f20_batch_b": {
+                        "stations_count": 1,
+                        "has_market": False,
+                        "has_cashin": True,
+                    },
+                }, {"ok": True}
+
+            def get_stations_for_system(self, **_kwargs):
+                self.single_calls += 1
+                return [], {"ok": True}
+
+        provider = _FakeProvider()
+        frame = None
+        try:
+            frame = JournalMapTab(root, data_provider=provider)
+            rows = [
+                {"key": "NODE_A", "system_name": "F20_BATCH_A", "system_address": 101},
+                {"key": "NODE_B", "system_name": "F20_BATCH_B"},
+            ]
+            flags = frame._compute_layer_flags_for_nodes(rows)
+
+            self.assertEqual(provider.batch_calls, 1)
+            self.assertEqual(provider.single_calls, 0)
+            self.assertTrue(bool(flags["NODE_A"]["has_station"]))
+            self.assertTrue(bool(flags["NODE_A"]["has_market"]))
+            self.assertTrue(bool(flags["NODE_A"]["has_cashin"]))
+            self.assertTrue(bool(flags["NODE_A"]["has_exobio"]))
+            self.assertEqual(int(flags["NODE_A"]["stations_count"]), 2)
+            self.assertTrue(bool(flags["NODE_B"]["has_station"]))
+            self.assertFalse(bool(flags["NODE_B"]["has_market"]))
+            self.assertTrue(bool(flags["NODE_B"]["has_cashin"]))
+            self.assertEqual(int(flags["NODE_B"]["stations_count"]), 1)
+        finally:
+            try:
+                if frame is not None:
+                    frame.destroy()
+            except Exception:
+                pass
+            try:
+                root.destroy()
+            except Exception:
+                pass
+
 
 if __name__ == "__main__":
     unittest.main()
-

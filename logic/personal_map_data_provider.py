@@ -240,6 +240,139 @@ class MapDataProvider:
             "db_path": self.db_path,
         }
 
+    def get_station_layer_flags_for_systems(
+        self,
+        *,
+        systems: list[dict[str, Any]] | None = None,
+        freshness_filter: str = "any",
+        limit_per_system: int = 200,
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+        """
+        Batch-owe flagi stacji dla warstw mapy (minimalizacja N+1 dla reloadu mapy).
+
+        Zwraca slownik indeksowany po:
+        - `addr:<system_address>` gdy address istnieje,
+        - `name:<system_name.casefold()>` jako fallback.
+        """
+        max_rows_per_system = max(1, int(limit_per_system or 200))
+        system_addresses: set[int] = set()
+        system_names_cf: set[str] = set()
+        for item in systems or []:
+            if not isinstance(item, dict):
+                continue
+            raw_addr = item.get("system_address")
+            if raw_addr is not None:
+                try:
+                    system_addresses.add(int(raw_addr))
+                    continue
+                except Exception:
+                    pass
+            system_name = _as_text(item.get("system_name"))
+            if system_name:
+                system_names_cf.add(system_name.casefold())
+        if not system_addresses and not system_names_cf:
+            return {}, {
+                "count": 0,
+                "systems_count": 0,
+                "freshness_filter": _as_text(freshness_filter) or "any",
+                "db_path": self.db_path,
+            }
+
+        where_clauses: list[str] = []
+        where_params: list[Any] = []
+        if system_addresses:
+            placeholders = ",".join("?" for _ in system_addresses)
+            where_clauses.append(f"system_address IN ({placeholders})")
+            where_params.extend(sorted(system_addresses))
+        if system_names_cf:
+            placeholders = ",".join("?" for _ in system_names_cf)
+            where_clauses.append(f"lower(system_name) IN ({placeholders})")
+            where_params.extend(sorted(system_names_cf))
+        where_sql = " OR ".join(where_clauses) if where_clauses else "1=0"
+
+        max_age = _max_age_for_freshness_filter(freshness_filter)
+        freshness_sql = "1=1"
+        freshness_params: list[Any] = []
+        if max_age is not None:
+            cutoff = datetime.now(timezone.utc) - max_age
+            cutoff_iso = cutoff.isoformat().replace("+00:00", "Z")
+            freshness_sql = "COALESCE(services_freshness_ts, last_seen_ts, first_seen_ts) >= ?"
+            # expression is repeated in SELECT (count + two boolean aggregates)
+            freshness_params.extend([cutoff_iso, cutoff_iso, cutoff_iso])
+
+        sql = f"""
+            WITH scoped AS (
+                SELECT
+                    system_address,
+                    system_name,
+                    has_uc,
+                    has_vista,
+                    has_market,
+                    first_seen_ts,
+                    last_seen_ts,
+                    services_freshness_ts,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY COALESCE(CAST(system_address AS TEXT), lower(system_name))
+                        ORDER BY
+                            COALESCE(distance_ls, 1e18),
+                            COALESCE(services_freshness_ts, last_seen_ts) DESC,
+                            station_name COLLATE NOCASE
+                    ) AS rn
+                FROM stations
+                WHERE ({where_sql})
+            )
+            SELECT
+                system_address,
+                MIN(system_name) AS system_name,
+                SUM(CASE WHEN {freshness_sql} THEN 1 ELSE 0 END) AS stations_count,
+                MAX(CASE WHEN {freshness_sql} AND COALESCE(has_market, 0) != 0 THEN 1 ELSE 0 END) AS has_market,
+                MAX(
+                    CASE
+                        WHEN {freshness_sql} AND (COALESCE(has_uc, 0) != 0 OR COALESCE(has_vista, 0) != 0)
+                        THEN 1
+                        ELSE 0
+                    END
+                ) AS has_cashin
+            FROM scoped
+            WHERE rn <= ?
+            GROUP BY COALESCE(CAST(system_address AS TEXT), lower(system_name))
+        """
+        params: list[Any] = list(where_params)
+        params.extend(freshness_params)
+        params.append(max_rows_per_system)
+
+        out: dict[str, dict[str, Any]] = {}
+        with player_local_db.playerdb_connection(path=self.db_path, ensure_schema=True) as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        for row in rows:
+            system_name = _as_text(row["system_name"])
+            addr_raw = row["system_address"]
+            system_address = None
+            if addr_raw is not None:
+                try:
+                    system_address = int(addr_raw)
+                except Exception:
+                    system_address = None
+            payload = {
+                "system_name": system_name,
+                "system_address": system_address,
+                "stations_count": int(row["stations_count"] or 0),
+                "has_market": bool(int(row["has_market"] or 0)),
+                "has_cashin": bool(int(row["has_cashin"] or 0)),
+            }
+            if system_address is not None:
+                out[f"addr:{system_address}"] = dict(payload)
+            if system_name:
+                out[f"name:{system_name.casefold()}"] = dict(payload)
+
+        return out, {
+            "count": len(out),
+            "systems_count": len(system_addresses) + len(system_names_cf),
+            "freshness_filter": _as_text(freshness_filter) or "any",
+            "limit_per_system": max_rows_per_system,
+            "db_path": self.db_path,
+        }
+
     def get_market_last_seen(
         self,
         market_id: int,

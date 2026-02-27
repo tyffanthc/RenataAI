@@ -1440,7 +1440,23 @@ class JournalMapTab(tk.Frame):
             except Exception:
                 action_flags_by_system_cf = {}
                 self._action_layers_meta = {"error": True}
-        # MVP / F20-5: N+1 queries are acceptable for map prototype. We cache results per reload.
+
+        station_flags_batch: dict[str, dict[str, Any]] = {}
+        station_flags_batch_error = False
+        batch_getter = getattr(self.data_provider, "get_station_layer_flags_for_systems", None)
+        if callable(batch_getter):
+            try:
+                station_flags_batch, _batch_meta = batch_getter(
+                    systems=nodes_rows,
+                    freshness_filter=str(self.freshness_var.get() or "any"),
+                    limit_per_system=200,
+                )
+                if not isinstance(station_flags_batch, dict):
+                    station_flags_batch = {}
+            except Exception:
+                station_flags_batch = {}
+                station_flags_batch_error = True
+
         for row in nodes_rows:
             if not isinstance(row, dict):
                 continue
@@ -1449,32 +1465,57 @@ class JournalMapTab(tk.Frame):
                 continue
             system_address = row.get("system_address")
             system_name = _as_text(row.get("system_name"))
-            try:
-                station_rows, _meta = self.data_provider.get_stations_for_system(
-                    system_address=int(system_address) if system_address is not None else None,
-                    system_name=system_name or None,
-                    limit=200,
+            lookup_keys: list[str] = []
+            if system_address is not None:
+                try:
+                    lookup_keys.append(f"addr:{int(system_address)}")
+                except Exception:
+                    pass
+            if system_name:
+                lookup_keys.append(f"name:{system_name.casefold()}")
+
+            station_flags = None
+            for lookup_key in lookup_keys:
+                candidate = station_flags_batch.get(lookup_key)
+                if isinstance(candidate, dict):
+                    station_flags = candidate
+                    break
+
+            if station_flags is not None:
+                stations_count = int(station_flags.get("stations_count") or 0)
+                has_station = stations_count > 0
+                has_market = bool(station_flags.get("has_market"))
+                has_cashin = bool(station_flags.get("has_cashin"))
+                station_error = bool(station_flags_batch_error)
+            else:
+                try:
+                    station_rows, _meta = self.data_provider.get_stations_for_system(
+                        system_address=int(system_address) if system_address is not None else None,
+                        system_name=system_name or None,
+                        limit=200,
+                    )
+                except Exception:
+                    flags_by_key[key] = {
+                        "has_station": False,
+                        "has_market": False,
+                        "has_cashin": False,
+                        "stations_count": 0,
+                        "error": True,
+                    }
+                    continue
+                filtered = self._filter_rows_by_freshness(
+                    station_rows,
+                    ts_keys=("freshness_ts", "services_freshness_ts", "last_seen_ts"),
                 )
-            except Exception:
-                flags_by_key[key] = {
-                    "has_station": False,
-                    "has_market": False,
-                    "has_cashin": False,
-                    "stations_count": 0,
-                    "error": True,
-                }
-                continue
-            filtered = self._filter_rows_by_freshness(
-                station_rows,
-                ts_keys=("freshness_ts", "services_freshness_ts", "last_seen_ts"),
-            )
-            has_station = len(filtered) > 0
-            has_market = any(bool((dict(r).get("services") or {}).get("has_market")) for r in filtered)
-            has_cashin = any(
-                bool((dict(r).get("services") or {}).get("has_uc"))
-                or bool((dict(r).get("services") or {}).get("has_vista"))
-                for r in filtered
-            )
+                stations_count = len(filtered)
+                has_station = stations_count > 0
+                has_market = any(bool((dict(r).get("services") or {}).get("has_market")) for r in filtered)
+                has_cashin = any(
+                    bool((dict(r).get("services") or {}).get("has_uc"))
+                    or bool((dict(r).get("services") or {}).get("has_vista"))
+                    for r in filtered
+                )
+                station_error = False
             activity = dict(action_flags_by_system_cf.get(system_name.casefold()) or {})
             flags_by_key[key] = {
                 "has_station": bool(has_station),
@@ -1484,9 +1525,9 @@ class JournalMapTab(tk.Frame):
                 "has_exploration": bool(activity.get("has_exploration")),
                 "has_incident": bool(activity.get("has_incident")),
                 "has_combat": bool(activity.get("has_combat")),
-                "stations_count": len(filtered),
+                "stations_count": int(stations_count),
                 "action_freshness_ts": _as_text(activity.get("last_action_ts")),
-                "error": False,
+                "error": bool(station_error),
             }
         return flags_by_key
 
