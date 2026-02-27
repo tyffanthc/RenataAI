@@ -31,6 +31,7 @@ class F23MapAutoRefreshOnPlayerdbUpdatesContractTests(unittest.TestCase):
         self.assertIn("notify_playerdb_updated", app_content)
         self.assertIn('"playerdb_updated"', router_content)
         self.assertIn("_emit_playerdb_updated(", router_content)
+        self.assertIn("on_parent_main_tab_activated", app_content)
 
     def test_journal_map_deferred_then_debounced_refresh(self) -> None:
         try:
@@ -229,6 +230,56 @@ class F23MapAutoRefreshOnPlayerdbUpdatesContractTests(unittest.TestCase):
                 root.destroy()
             except Exception:
                 pass
+
+    def test_app_tab_changed_notifies_journal_when_main_tab_is_journal(self) -> None:
+        from gui.app import RenataApp
+
+        calls: list[str] = []
+
+        class _DummySpansh:
+            def hide_suggestions(self):
+                calls.append("hide")
+
+        class _DummyJournal:
+            def on_parent_main_tab_activated(self):
+                calls.append("journal_activate")
+
+        app = type("DummyApp", (), {})()
+        app.tab_spansh = _DummySpansh()
+        app.tab_journal = _DummyJournal()
+        app._resolve_active_main_tab_key = lambda: "journal"
+        app._persist_main_tab_ui_state = lambda: calls.append("persist")
+
+        RenataApp._on_tab_changed(app, None)
+
+        self.assertIn("hide", calls)
+        self.assertIn("journal_activate", calls)
+        self.assertIn("persist", calls)
+
+    def test_app_tab_changed_skips_journal_activation_for_other_tabs(self) -> None:
+        from gui.app import RenataApp
+
+        calls: list[str] = []
+
+        class _DummySpansh:
+            def hide_suggestions(self):
+                calls.append("hide")
+
+        class _DummyJournal:
+            def on_parent_main_tab_activated(self):
+                calls.append("journal_activate")
+
+        app = type("DummyApp", (), {})()
+        app.tab_spansh = _DummySpansh()
+        app.tab_journal = _DummyJournal()
+        app._resolve_active_main_tab_key = lambda: "spansh"
+        app._persist_main_tab_ui_state = lambda: calls.append("persist")
+
+        RenataApp._on_tab_changed(app, None)
+
+        self.assertIn("hide", calls)
+        self.assertNotIn("journal_activate", calls)
+        self.assertIn("persist", calls)
 
 
 if __name__ == "__main__":

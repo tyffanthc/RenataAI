@@ -485,6 +485,19 @@ class RenataApp:
     def _on_tab_changed(self, _event):
         if hasattr(self.tab_spansh, "hide_suggestions"):
             self.tab_spansh.hide_suggestions()
+        active_tab_key = self._resolve_active_main_tab_key()
+        if str(active_tab_key or "") == "journal":
+            callback = getattr(self.tab_journal, "on_parent_main_tab_activated", None)
+            if callable(callback):
+                try:
+                    callback()
+                except Exception as exc:
+                    _log_app_fallback(
+                        "journal.main_tab_activated",
+                        "journal main-tab activation callback failed",
+                        exc,
+                        interval_ms=2000,
+                    )
         self._persist_main_tab_ui_state()
 
     def _resolve_active_main_tab_key(self) -> str | None:

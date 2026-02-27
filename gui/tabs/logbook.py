@@ -1698,6 +1698,10 @@ class LogbookTab(tk.Frame):
             )
 
     def _on_subtab_changed(self, _event=None) -> None:
+        self._notify_map_parent_activation()
+        self._persist_ui_state()
+
+    def _notify_map_parent_activation(self) -> None:
         try:
             if self._resolve_active_subtab_key() == "map":
                 callback = getattr(self.tab_map, "on_parent_map_subtab_activated", None)
@@ -1710,7 +1714,11 @@ class LogbookTab(tk.Frame):
                 "WARN",
                 "Logbook: map subtab activation callback failed",
             )
-        self._persist_ui_state()
+
+    def on_parent_main_tab_activated(self) -> None:
+        # Called by RenataApp when top-level main tab switches back to Journal.
+        # If map subtab is active and refresh is deferred, this re-triggers map activation flow.
+        self._notify_map_parent_activation()
 
     def _on_filters_changed(self) -> None:
         self._sync_pinboard_button_label()
