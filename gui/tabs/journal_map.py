@@ -1923,6 +1923,11 @@ class JournalMapTab(tk.Frame):
         return None
 
     def _refresh_trade_compare_if_needed(self) -> None:
+        if not bool(self.layer_trade_var.get()):
+            if self._trade_highlight_node_keys:
+                self._trade_highlight_node_keys.clear()
+                self._redraw_scene()
+            return
         if self._trade_selected_commodities:
             self._run_trade_compare_multi(self._trade_selected_commodities)
             return

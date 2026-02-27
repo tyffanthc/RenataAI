@@ -171,6 +171,60 @@ class F20MapTradeCompareOneCommodityHighlightContractTests(unittest.TestCase):
                 except Exception:
                     pass
 
+    def test_trade_highlight_is_cleared_on_reload_when_trade_layer_disabled(self) -> None:
+        try:
+            import tkinter as tk
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"tkinter unavailable: {exc}")
+
+        try:
+            from gui.tabs.journal_map import JournalMapTab
+            root = tk.Tk()
+            root.withdraw()
+        except tk.TclError as exc:  # pragma: no cover
+            self.skipTest(f"tk unavailable in test environment: {exc}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "db", "player_local.db")
+            self._seed_playerdb(db_path)
+            provider = MapDataProvider(db_path=db_path)
+            frame = None
+            try:
+                frame = JournalMapTab(root, data_provider=provider)
+                frame.pack(fill="both", expand=True)
+                root.update_idletasks()
+                root.geometry("1200x720")
+                root.update()
+
+                frame.layer_trade_var.set(True)
+                frame.reload_from_playerdb()
+                frame.trade_compare_commodity_var.set("Gold")
+                trade_result = frame._run_trade_compare("Gold")
+                root.update_idletasks()
+                self.assertTrue(bool(trade_result.get("ok")))
+                self.assertGreater(len(frame._trade_highlight_node_keys), 0)
+
+                frame.layer_trade_var.set(False)
+                frame.reload_from_playerdb()
+                root.update_idletasks()
+                self.assertEqual(len(frame._trade_highlight_node_keys), 0)
+                self.assertEqual(len(frame.map_canvas.find_withtag("layer_trade_highlight")), 0)
+
+                frame.layer_trade_var.set(True)
+                frame.reload_from_playerdb()
+                root.update_idletasks()
+                self.assertGreater(len(frame._trade_highlight_node_keys), 0)
+            finally:
+                try:
+                    if frame is not None:
+                        frame.destroy()
+                except Exception:
+                    pass
+                try:
+                    root.destroy()
+                except Exception:
+                    pass
+
     def test_contract_strings_present_in_journal_map_impl(self) -> None:
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         path = os.path.join(project_root, "gui", "tabs", "journal_map.py")
@@ -184,4 +238,3 @@ class F20MapTradeCompareOneCommodityHighlightContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
