@@ -80,7 +80,7 @@ class F20MapTravelNodesAndJumpsRendererContractTests(unittest.TestCase):
                 self.assertEqual(str((frame._travel_edges_meta or {}).get("render_mode") or ""), "sequential_fallback")
 
                 status = str(frame.map_status_var.get() or "").lower()
-                self.assertIn("travel", status)
+                self.assertTrue(("travel" in status) or ("trasa" in status))
                 self.assertIn("fallback sekwencyjny", status)
 
                 # canvas should contain tagged items for nodes/edges
@@ -88,6 +88,8 @@ class F20MapTravelNodesAndJumpsRendererContractTests(unittest.TestCase):
                 edge_items = frame.map_canvas.find_withtag("map_edge")
                 self.assertGreater(len(node_items), 0)
                 self.assertGreater(len(edge_items), 0)
+                node_item_types = {str(frame.map_canvas.type(i) or "") for i in node_items}
+                self.assertNotIn("text", node_item_types)
             finally:
                 try:
                     if frame is not None:

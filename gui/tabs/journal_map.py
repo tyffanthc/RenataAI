@@ -3303,7 +3303,9 @@ class JournalMapTab(tk.Frame):
         for node in self._nodes.values():
             sx, sy = self.world_to_screen(node.x, node.y)
             r = 4 if self.view_scale < 1.2 else 5
-            node_tags = ("map_node", f"node:{node.key}")
+            # Keep click hitbox tight: only the star glyph should carry map_node events.
+            node_hit_tags = ("map_node", f"node:{node.key}")
+            node_label_tags = ("map_node_label", f"node:{node.key}")
             self.map_canvas.create_oval(
                 sx - r,
                 sy - r,
@@ -3311,7 +3313,7 @@ class JournalMapTab(tk.Frame):
                 sy + r,
                 outline=COLOR_NODE,
                 fill=COLOR_NODE,
-                tags=node_tags,
+                tags=node_hit_tags,
             )
             self._draw_node_layer_badges(node, sx, sy, r)
             self._draw_trade_compare_highlight(node, sx, sy, r)
@@ -3324,7 +3326,7 @@ class JournalMapTab(tk.Frame):
                     anchor="sw",
                     fill=COLOR_SEC,
                     font=("Segoe UI", 8),
-                    tags=node_tags,
+                    tags=node_label_tags,
                 )
 
     def _is_current_system_node(self, node: _MapNode) -> bool:
