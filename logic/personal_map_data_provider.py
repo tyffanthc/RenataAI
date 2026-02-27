@@ -240,6 +240,199 @@ class MapDataProvider:
             "db_path": self.db_path,
         }
 
+    def get_stations_for_systems(
+        self,
+        *,
+        systems: list[dict[str, Any]] | None = None,
+        limit_per_system: int = 200,
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+        """
+        Batch drilldown payload dla mapy: stacje per system bez N zapytan per klik.
+
+        Zwraca slownik indeksowany po:
+        - `addr:<system_address>` gdy address istnieje,
+        - `name:<system_name.casefold()>` jako fallback.
+        """
+        max_rows_per_system = max(1, int(limit_per_system or 200))
+        system_addresses: set[int] = set()
+        system_names_cf: set[str] = set()
+        for item in systems or []:
+            if not isinstance(item, dict):
+                continue
+            raw_addr = item.get("system_address")
+            if raw_addr is not None:
+                try:
+                    system_addresses.add(int(raw_addr))
+                    continue
+                except Exception:
+                    pass
+            name = _as_text(item.get("system_name"))
+            if name:
+                system_names_cf.add(name.casefold())
+
+        if not system_addresses and not system_names_cf:
+            return {}, {
+                "count": 0,
+                "systems_count": 0,
+                "limit_per_system": max_rows_per_system,
+                "db_path": self.db_path,
+            }
+
+        where_clauses: list[str] = []
+        where_params: list[Any] = []
+        if system_addresses:
+            placeholders = ",".join("?" for _ in system_addresses)
+            where_clauses.append(f"system_address IN ({placeholders})")
+            where_params.extend(sorted(system_addresses))
+        if system_names_cf:
+            placeholders = ",".join("?" for _ in system_names_cf)
+            where_clauses.append(f"lower(system_name) IN ({placeholders})")
+            where_params.extend(sorted(system_names_cf))
+        where_sql = " OR ".join(where_clauses) if where_clauses else "1=0"
+
+        sql = f"""
+            WITH scoped AS (
+                SELECT
+                    station_name,
+                    market_id,
+                    station_type,
+                    is_fleet_carrier,
+                    distance_ls,
+                    distance_ls_confidence,
+                    has_uc,
+                    has_vista,
+                    has_market,
+                    source,
+                    confidence,
+                    first_seen_ts,
+                    last_seen_ts,
+                    services_freshness_ts,
+                    system_name,
+                    system_address,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY COALESCE(CAST(system_address AS TEXT), lower(system_name))
+                        ORDER BY
+                            COALESCE(distance_ls, 1e18),
+                            COALESCE(services_freshness_ts, last_seen_ts) DESC,
+                            station_name COLLATE NOCASE
+                    ) AS rn
+                FROM stations
+                WHERE ({where_sql})
+            )
+            SELECT
+                station_name,
+                market_id,
+                station_type,
+                is_fleet_carrier,
+                distance_ls,
+                distance_ls_confidence,
+                has_uc,
+                has_vista,
+                has_market,
+                source,
+                confidence,
+                first_seen_ts,
+                last_seen_ts,
+                services_freshness_ts,
+                system_name,
+                system_address
+            FROM scoped
+            WHERE rn <= ?
+            ORDER BY
+                COALESCE(CAST(system_address AS TEXT), lower(system_name)),
+                rn
+        """
+        params: list[Any] = list(where_params)
+        params.append(max_rows_per_system)
+
+        grouped: dict[str, dict[str, Any]] = {}
+        with player_local_db.playerdb_connection(path=self.db_path, ensure_schema=True) as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        for row in rows:
+            system_name = _as_text(row["system_name"])
+            addr_raw = row["system_address"]
+            system_address = None
+            if addr_raw is not None:
+                try:
+                    system_address = int(addr_raw)
+                except Exception:
+                    system_address = None
+            primary_key = (
+                f"addr:{system_address}"
+                if system_address is not None
+                else f"name:{system_name.casefold()}"
+            )
+            bucket = grouped.setdefault(
+                primary_key,
+                {
+                    "rows": [],
+                    "meta": {
+                        "count": 0,
+                        "system_address": system_address,
+                        "system_name": system_name,
+                        "db_path": self.db_path,
+                        "source": "batch",
+                    },
+                },
+            )
+            freshness_ts = _as_text(row["services_freshness_ts"] or row["last_seen_ts"] or row["first_seen_ts"])
+            bucket["rows"].append(
+                {
+                    "system_name": system_name,
+                    "system_address": system_address,
+                    "station_name": _as_text(row["station_name"]),
+                    "market_id": row["market_id"],
+                    "station_type": _as_text(row["station_type"]) or "station",
+                    "is_fleet_carrier": bool(int(row["is_fleet_carrier"] or 0)),
+                    "distance_ls": float(row["distance_ls"]) if row["distance_ls"] is not None else None,
+                    "distance_ls_confidence": _as_text(row["distance_ls_confidence"]) or "unknown",
+                    "services": {
+                        "has_uc": bool(int(row["has_uc"] or 0)),
+                        "has_vista": bool(int(row["has_vista"] or 0)),
+                        "has_market": bool(int(row["has_market"] or 0)),
+                    },
+                    "first_seen_ts": _as_text(row["first_seen_ts"]),
+                    "last_seen_ts": _as_text(row["last_seen_ts"]),
+                    "services_freshness_ts": _as_text(row["services_freshness_ts"]),
+                    "source": _as_text(row["source"]) or "playerdb",
+                    "confidence": _as_text(row["confidence"]) or "observed",
+                    "freshness_ts": freshness_ts,
+                }
+            )
+
+        out: dict[str, dict[str, Any]] = {}
+        for payload in grouped.values():
+            rows_list = [dict(item) for item in list(payload.get("rows") or []) if isinstance(item, dict)]
+            meta = dict(payload.get("meta") or {})
+            meta["count"] = len(rows_list)
+            item_payload = {"rows": rows_list, "meta": meta}
+            system_name = _as_text(meta.get("system_name"))
+            system_address = meta.get("system_address")
+            if system_address is not None:
+                try:
+                    out[f"addr:{int(system_address)}"] = {
+                        "rows": [dict(r) for r in rows_list],
+                        "meta": dict(meta),
+                    }
+                except Exception:
+                    pass
+            if system_name:
+                out[f"name:{system_name.casefold()}"] = {
+                    "rows": [dict(r) for r in rows_list],
+                    "meta": dict(meta),
+                }
+            # Fallback key in edge cases with missing addr+name.
+            if system_address is None and not system_name:
+                out_key = f"group:{len(out)}"
+                out[out_key] = item_payload
+
+        return out, {
+            "count": len(out),
+            "systems_count": len(system_addresses) + len(system_names_cf),
+            "limit_per_system": max_rows_per_system,
+            "db_path": self.db_path,
+        }
+
     def get_station_layer_flags_for_systems(
         self,
         *,

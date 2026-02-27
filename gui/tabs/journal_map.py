@@ -186,6 +186,7 @@ class JournalMapTab(tk.Frame):
         self._auto_refresh_debounce_ms = 650
         self._auto_refresh_after_id: str | None = None
         self._auto_refresh_last_update: dict[str, Any] = {}
+        self._prefetched_system_stations: dict[str, dict[str, Any]] = {}
 
         # Filters (UI shell)
         self.layer_travel_var = tk.BooleanVar(value=True)
@@ -1437,6 +1438,54 @@ class JournalMapTab(tk.Frame):
     def _node_key_from_row(self, row: dict[str, Any]) -> str:
         return _as_text(row.get("key") or row.get("system_address") or row.get("system_name"))
 
+    def _clear_prefetched_system_stations(self) -> None:
+        self._prefetched_system_stations = {}
+
+    def _prime_prefetched_system_stations(self, nodes_rows: list[dict[str, Any]]) -> None:
+        self._clear_prefetched_system_stations()
+        if not nodes_rows:
+            return
+        getter = getattr(self.data_provider, "get_stations_for_systems", None)
+        if not callable(getter):
+            return
+        try:
+            cached, _meta = getter(
+                systems=nodes_rows,
+                limit_per_system=200,
+            )
+        except Exception as exc:
+            _log_map_soft_failure(
+                "prime_prefetched_system_stations",
+                "batch stations prefetch for map drilldown failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return
+        if isinstance(cached, dict):
+            self._prefetched_system_stations = dict(cached)
+
+    def _prefetched_stations_for_node(self, node: _MapNode) -> tuple[list[dict[str, Any]], dict[str, Any]] | None:
+        cache = dict(getattr(self, "_prefetched_system_stations", {}) or {})
+        if not cache:
+            return None
+        lookup_keys: list[str] = []
+        if getattr(node, "system_address", None) is not None:
+            try:
+                lookup_keys.append(f"addr:{int(node.system_address)}")
+            except Exception:
+                pass
+        system_name = _as_text(getattr(node, "system_name", ""))
+        if system_name:
+            lookup_keys.append(f"name:{system_name.casefold()}")
+        for lookup_key in lookup_keys:
+            item = cache.get(lookup_key)
+            if not isinstance(item, dict):
+                continue
+            rows = [dict(r) for r in list(item.get("rows") or []) if isinstance(r, dict)]
+            meta = dict(item.get("meta") or {})
+            if rows or meta:
+                return rows, meta
+        return None
+
     def _compute_layer_flags_for_nodes(self, nodes_rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         flags_by_key: dict[str, dict[str, Any]] = {}
         if not nodes_rows:
@@ -1698,6 +1747,7 @@ class JournalMapTab(tk.Frame):
         if not bool(self.layer_travel_var.get()):
             self.set_graph_data(nodes=[], edges=[])
             self._node_layer_flags = {}
+            self._clear_prefetched_system_stations()
             self._travel_nodes_meta = {"count": 0, "disabled": True}
             self._travel_edges_meta = {"count": 0, "disabled": True}
             self._action_layers_meta = {}
@@ -1728,6 +1778,7 @@ class JournalMapTab(tk.Frame):
         self._travel_edges_meta = dict(edges_meta or {})
         self._travel_edges_meta["render_mode"] = edges_mode
         self._node_layer_flags = self._compute_layer_flags_for_nodes(laid_out_nodes)
+        self._prime_prefetched_system_stations(laid_out_nodes)
 
         self.set_graph_data(nodes=laid_out_nodes, edges=edges_final)
         self._refresh_system_panel_stub()
@@ -2741,10 +2792,14 @@ class JournalMapTab(tk.Frame):
         self._selected_node_key = key
         self._redraw_scene()
 
-        stations_rows, stations_meta = self.data_provider.get_stations_for_system(
-            system_address=node.system_address,
-            system_name=node.system_name,
-        )
+        prefetched = self._prefetched_stations_for_node(node)
+        if prefetched is not None:
+            stations_rows, stations_meta = prefetched
+        else:
+            stations_rows, stations_meta = self.data_provider.get_stations_for_system(
+                system_address=node.system_address,
+                system_name=node.system_name,
+            )
         stations_rows = self._filter_rows_by_freshness(
             stations_rows,
             ts_keys=("freshness_ts", "services_freshness_ts", "last_seen_ts"),
