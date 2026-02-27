@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import unittest
 from unittest.mock import patch
 
@@ -117,6 +118,44 @@ class F50NotifyDebouncerDeferredPersistTests(unittest.TestCase):
                 debouncer._loaded_from_contract = True
             self.assertTrue(debouncer.can_send("F50_RESET_C", 10.0))
             self.assertEqual(update_mock.call_count, 2)
+
+        debouncer.reset()
+
+    def test_burst_can_send_after_first_write_stays_fast_under_slow_persist_io(self) -> None:
+        debouncer = notify_module.NotificationDebouncer()
+        with debouncer._lock:
+            debouncer._loaded_from_contract = True
+
+        def _slow_update(_patch):
+            time.sleep(0.03)
+            return {}
+
+        with (
+            patch("logic.utils.notify.config.update_anti_spam_state", side_effect=_slow_update) as update_mock,
+            patch.object(notify_module.NotificationDebouncer, "_persist_min_interval_sec", return_value=2.0),
+            patch("logic.utils.notify.threading.Timer", side_effect=lambda d, f: _FakeTimer(d, f)),
+        ):
+            t_first_start = time.perf_counter()
+            self.assertTrue(debouncer.can_send("F50_LATENCY_0", 10.0))
+            t_first_elapsed = time.perf_counter() - t_first_start
+
+            t_burst_start = time.perf_counter()
+            for i in range(1, 50):
+                self.assertTrue(debouncer.can_send(f"F50_LATENCY_{i}", 10.0))
+            t_burst_elapsed = time.perf_counter() - t_burst_start
+
+            self.assertGreaterEqual(t_first_elapsed, 0.025, "First write should include simulated slow persist I/O.")
+            self.assertLess(
+                t_burst_elapsed,
+                0.35,
+                "Burst caller-path should stay responsive (deferred persist instead of per-call sync I/O).",
+            )
+            self.assertEqual(
+                update_mock.call_count,
+                1,
+                "After first write, burst should not trigger additional synchronous contract writes.",
+            )
+            self.assertEqual(len(_FakeTimer.created), 1, "Burst should keep a single deferred timer pending.")
 
         debouncer.reset()
 
