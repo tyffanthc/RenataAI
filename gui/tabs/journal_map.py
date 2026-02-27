@@ -33,6 +33,9 @@ COLOR_EXPLORATION_LAYER = "#facc15"
 COLOR_INCIDENT_LAYER = "#ef4444"
 COLOR_COMBAT_LAYER = "#fb7185"
 
+TIME_RANGE_VALUES = ("all", "365d", "180d", "90d", "30d", "7d", "3d", "1d")
+TIME_RANGE_ALLOWED = set(TIME_RANGE_VALUES) | {"forever"}
+
 
 def _log_map_soft_failure(key: str, msg: str, **fields: Any) -> None:
     try:
@@ -269,8 +272,10 @@ class JournalMapTab(tk.Frame):
 
         filters = state.get("filters")
         if isinstance(filters, dict):
-            time_range = _as_text(filters.get("time_range"))
-            if time_range in {"7d", "30d", "all"}:
+            time_range = _as_text(filters.get("time_range")).lower()
+            if time_range == "forever":
+                time_range = "all"
+            if time_range in TIME_RANGE_ALLOWED:
                 self.time_range_var.set(time_range)
             freshness = _as_text(filters.get("freshness"))
             if freshness in {"<=6h", "<=24h", "<=7d", "any"}:
@@ -446,7 +451,7 @@ class JournalMapTab(tk.Frame):
         )
         time_combo = ttk.Combobox(
             filters_box,
-            values=("7d", "30d", "all"),
+            values=TIME_RANGE_VALUES,
             state="readonly",
             textvariable=self.time_range_var,
             width=10,

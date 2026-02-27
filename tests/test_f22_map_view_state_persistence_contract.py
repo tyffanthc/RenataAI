@@ -59,7 +59,7 @@ class F22MapViewStatePersistenceContractTests(unittest.TestCase):
                         "combat": False,
                     },
                     "filters": {
-                        "time_range": "7d",
+                        "time_range": "365d",
                         "freshness": "<=24h",
                         "source_include_enriched": True,
                     },
@@ -76,7 +76,7 @@ class F22MapViewStatePersistenceContractTests(unittest.TestCase):
             self.assertFalse(bool(frame.layer_exploration_var.get()))
             self.assertTrue(bool(frame.layer_incidents_var.get()))
             self.assertFalse(bool(frame.layer_combat_var.get()))
-            self.assertEqual(str(frame.time_range_var.get()), "7d")
+            self.assertEqual(str(frame.time_range_var.get()), "365d")
             self.assertEqual(str(frame.freshness_var.get()), "<=24h")
             self.assertTrue(bool(frame.source_include_enriched_var.get()))
             self.assertTrue(bool(frame.legend_collapsed_var.get()))
@@ -85,7 +85,7 @@ class F22MapViewStatePersistenceContractTests(unittest.TestCase):
             exported = frame.export_persisted_ui_state()
             self.assertIsInstance(exported, dict)
             self.assertEqual((((exported.get("layers") or {}).get("stations"))), False)
-            self.assertEqual((((exported.get("filters") or {}).get("time_range"))), "7d")
+            self.assertEqual((((exported.get("filters") or {}).get("time_range"))), "365d")
             self.assertEqual((((exported.get("filters") or {}).get("freshness"))), "<=24h")
             self.assertTrue(bool(((exported.get("filters") or {}).get("source_include_enriched"))))
             self.assertTrue(bool(((exported.get("legend") or {}).get("collapsed"))))

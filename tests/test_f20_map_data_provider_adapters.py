@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 
 from logic import player_local_db
 from logic.personal_map_data_provider import MapDataProvider
@@ -139,6 +140,52 @@ class F20MapDataProviderAdaptersTests(unittest.TestCase):
         self.assertIn("confidence", sample)
         self.assertIn("freshness_ts", sample)
 
+    def test_get_system_nodes_supports_1d_and_1y_ranges_with_forever_alias(self) -> None:
+        now = datetime.now(timezone.utc)
+        ts_old = (now - timedelta(days=2)).isoformat().replace("+00:00", "Z")
+        ts_recent = (now - timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+
+        player_local_db.ingest_journal_event(
+            {
+                "event": "FSDJump",
+                "timestamp": ts_old,
+                "StarSystem": "F20_RANGE_OLD_2D",
+                "SystemAddress": 9201,
+                "SystemId64": 9201,
+                "StarPos": [1.0, 0.0, 0.0],
+            },
+            path=self.db_path,
+        )
+        player_local_db.ingest_journal_event(
+            {
+                "event": "FSDJump",
+                "timestamp": ts_recent,
+                "StarSystem": "F20_RANGE_RECENT_2H",
+                "SystemAddress": 9202,
+                "SystemId64": 9202,
+                "StarPos": [2.0, 0.0, 0.0],
+            },
+            path=self.db_path,
+        )
+
+        rows_1d, meta_1d = self.provider.get_system_nodes(time_range="1d", source_filter="observed_only")
+        names_1d = {str(r.get("system_name")) for r in rows_1d}
+        self.assertNotIn("F20_RANGE_OLD_2D", names_1d)
+        self.assertIn("F20_RANGE_RECENT_2H", names_1d)
+        self.assertEqual(str(meta_1d.get("time_range")), "1d")
+
+        rows_1y, meta_1y = self.provider.get_system_nodes(time_range="365d", source_filter="observed_only")
+        names_1y = {str(r.get("system_name")) for r in rows_1y}
+        self.assertIn("F20_RANGE_OLD_2D", names_1y)
+        self.assertIn("F20_RANGE_RECENT_2H", names_1y)
+        self.assertEqual(str(meta_1y.get("time_range")), "365d")
+
+        rows_forever, meta_forever = self.provider.get_system_nodes(time_range="forever", source_filter="observed_only")
+        names_forever = {str(r.get("system_name")) for r in rows_forever}
+        self.assertIn("F20_RANGE_OLD_2D", names_forever)
+        self.assertIn("F20_RANGE_RECENT_2H", names_forever)
+        self.assertEqual(str(meta_forever.get("time_range")), "forever")
+
     def test_get_edges_returns_contract_meta_even_without_jump_ingest(self) -> None:
         rows, meta = self.provider.get_edges(time_range="all")
         self.assertEqual(rows, [])
@@ -181,4 +228,3 @@ class F20MapDataProviderAdaptersTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

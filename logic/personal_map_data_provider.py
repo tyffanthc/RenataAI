@@ -6,6 +6,28 @@ from typing import Any
 from logic import player_local_db
 from logic.utils.renata_log import log_event_throttled
 
+_TIME_RANGE_DAYS: dict[str, int] = {
+    "1d": 1,
+    "3d": 3,
+    "7d": 7,
+    "7": 7,
+    "week": 7,
+    "1w": 7,
+    "14d": 14,
+    "2w": 14,
+    "30d": 30,
+    "30": 30,
+    "month": 30,
+    "1m": 30,
+    "90d": 90,
+    "3m": 90,
+    "180d": 180,
+    "6m": 180,
+    "365d": 365,
+    "1y": 365,
+    "year": 365,
+}
+
 
 def _as_text(value: Any) -> str:
     return str(value or "").strip()
@@ -34,13 +56,22 @@ def _parse_iso_ts(value: Any) -> datetime | None:
 
 def _cutoff_for_time_range(value: Any) -> datetime | None:
     text = _as_text(value).lower()
-    if not text or text in {"all", "any", "*"}:
+    if not text or text in {"all", "any", "*", "forever"}:
         return None
     now = datetime.now(timezone.utc)
-    if text in {"7d", "7", "week", "1w"}:
-        return now - timedelta(days=7)
-    if text in {"30d", "30", "month", "1m"}:
-        return now - timedelta(days=30)
+    if text.endswith("h"):
+        try:
+            return now - timedelta(hours=max(1, int(text[:-1])))
+        except Exception:
+            return None
+    days = _TIME_RANGE_DAYS.get(text)
+    if days is None and text.endswith("d"):
+        try:
+            days = max(1, int(text[:-1]))
+        except Exception:
+            days = None
+    if days is not None:
+        return now - timedelta(days=days)
     return None
 
 
