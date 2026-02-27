@@ -1254,11 +1254,24 @@ class JournalMapTab(tk.Frame):
                 return True
         return True
 
+    def _is_journal_main_tab_active(self) -> bool:
+        app_obj = getattr(self, "app", None)
+        resolver = getattr(app_obj, "_resolve_active_main_tab_key", None)
+        if callable(resolver):
+            try:
+                key = str(resolver() or "").strip().lower()
+                if key:
+                    return key == "journal"
+            except Exception:
+                return True
+        return True
+
     def _is_map_runtime_visible_for_auto_refresh(self) -> bool:
-        # "Visible enough" for refresh means the Journal subtab "Mapa" is selected.
-        # We intentionally do not require the top-level main tab to be active to avoid
-        # deferred refresh getting stuck until the user toggles a map filter manually.
-        return bool(self._is_map_subtab_active())
+        # Runtime-visible means both:
+        # - Logbook subtab "Mapa" is selected,
+        # - top-level main tab is "Dziennik" (when resolver is available).
+        # Main-tab bridge (RenataApp -> LogbookTab -> map activation callback) handles deferred resume.
+        return bool(self._is_map_subtab_active()) and bool(self._is_journal_main_tab_active())
 
     def _cancel_auto_refresh_debounce(self) -> None:
         after_id = getattr(self, "_auto_refresh_after_id", None)

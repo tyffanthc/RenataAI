@@ -16,6 +16,14 @@ class _DummyOwner:
         return None
 
 
+class _DummyAppMainTabs:
+    def __init__(self) -> None:
+        self.active_main_tab_key = "journal"
+
+    def _resolve_active_main_tab_key(self) -> str:
+        return str(self.active_main_tab_key)
+
+
 class F23MapAutoRefreshOnPlayerdbUpdatesContractTests(unittest.TestCase):
     def test_queue_and_router_contract_strings_present(self) -> None:
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -91,6 +99,62 @@ class F23MapAutoRefreshOnPlayerdbUpdatesContractTests(unittest.TestCase):
             time.sleep(0.05)
             root.update()
             self.assertEqual(calls, ["reload", "reload"])
+        finally:
+            try:
+                if frame is not None:
+                    frame.destroy()
+            except Exception:
+                pass
+            try:
+                root.destroy()
+            except Exception:
+                pass
+
+    def test_journal_map_auto_refresh_is_deferred_when_main_tab_not_journal(self) -> None:
+        try:
+            import tkinter as tk
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"tkinter unavailable: {exc}")
+
+        try:
+            from gui.tabs.journal_map import JournalMapTab
+
+            root = tk.Tk()
+            root.withdraw()
+        except tk.TclError as exc:  # pragma: no cover
+            self.skipTest(f"tk unavailable in test environment: {exc}")
+
+        owner = _DummyOwner()
+        owner.active_subtab_key = "map"
+        app = _DummyAppMainTabs()
+        app.active_main_tab_key = "spansh"
+        frame = None
+        try:
+            frame = JournalMapTab(root, app=app, logbook_owner=owner)
+            frame.pack(fill="both", expand=True)
+            root.update_idletasks()
+            frame._cancel_pending_after_jobs()
+            frame._cancel_auto_refresh_debounce()
+            frame._auto_refresh_debounce_ms = 10
+
+            calls: list[str] = []
+            frame.reload_from_playerdb = lambda: (calls.append("reload") or {"ok": True})  # type: ignore[assignment]
+
+            result = frame.notify_playerdb_updated({"source": "journal", "event_name": "FSDJump"})
+            self.assertTrue(bool(result.get("ok")))
+            self.assertTrue(bool(result.get("deferred")))
+            self.assertFalse(bool(result.get("scheduled")))
+            self.assertTrue(bool(frame._auto_refresh_dirty))
+            self.assertEqual(calls, [])
+
+            app.active_main_tab_key = "journal"
+            frame.on_parent_map_subtab_activated()
+            root.update()
+            time.sleep(0.16)
+            root.update()
+
+            self.assertEqual(calls, ["reload"])
+            self.assertFalse(bool(frame._auto_refresh_dirty))
         finally:
             try:
                 if frame is not None:
