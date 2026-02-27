@@ -190,6 +190,37 @@ class SystemValueEngineTests(unittest.TestCase):
         self.assertAlmostEqual(stats.c_cartography, 1500.0, places=3)
         self.assertAlmostEqual(stats.bonus_discovery, 1500.0, places=3)
 
+    def test_scan_wasmapped_true_for_previously_discovered_body_waits_for_saa_upgrade(self) -> None:
+        scan_event = {
+            "event": "Scan",
+            "StarSystem": "TEST_SYS_MAPPED_PREV",
+            "BodyName": "TEST_SYS_MAPPED_PREV 1",
+            "PlanetClass": "Water world",
+            "TerraformState": "Terraformable",
+            "WasDiscovered": True,
+            "WasMapped": True,
+        }
+        saa_done = {
+            "event": "SAAScanComplete",
+            "StarSystem": "TEST_SYS_MAPPED_PREV",
+            "BodyName": "TEST_SYS_MAPPED_PREV 1",
+        }
+
+        self.engine.analyze_scan_event(scan_event)
+        stats = self.engine.get_system_stats("TEST_SYS_MAPPED_PREV")
+        self.assertIsNotNone(stats)
+        # On Scan only, mapped value for previously discovered body is not trusted.
+        self.assertAlmostEqual(float(stats.c_cartography or 0.0), 1000.0, places=3)
+        self.assertAlmostEqual(float(stats.bonus_discovery or 0.0), 0.0, places=3)
+        body_state = dict((stats.cartography_bodies or {}).get("TEST_SYS_MAPPED_PREV 1") or {})
+        self.assertFalse(bool(body_state.get("mapped_accounted")))
+
+        self.engine.analyze_dss_scan_complete_event(saa_done)
+        stats = self.engine.get_system_stats("TEST_SYS_MAPPED_PREV")
+        self.assertIsNotNone(stats)
+        self.assertAlmostEqual(float(stats.c_cartography or 0.0), 1500.0, places=3)
+        self.assertAlmostEqual(float(stats.bonus_discovery or 0.0), 0.0, places=3)
+
     def test_scan_event_maps_high_metal_content_body_alias(self) -> None:
         event = {
             "event": "Scan",

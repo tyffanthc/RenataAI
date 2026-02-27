@@ -8,7 +8,15 @@ from logic.utils.renata_log import log_event_throttled
 
 
 _SYSTEM_EVENTS = {"Location", "FSDJump", "CarrierJump"}
-_VALUE_EVENTS = {"Scan", "ScanOrganic", "CodexEntry", "SAAScanComplete"}
+_VALUE_EVENTS = {
+    "Scan",
+    "ScanOrganic",
+    "CodexEntry",
+    "SAAScanComplete",
+    "SellExplorationData",
+    "MultiSellExplorationData",
+    "SellOrganicData",
+}
 
 
 def _as_text(value: Any) -> str:
@@ -61,6 +69,8 @@ def recover_system_value_from_journal_lines(
     scan_counted = 0
     dss_upgrade_applied = 0
     dss_skipped_missing_prior_scan = 0
+    sale_reset_cartography = 0
+    sale_reset_exobiology = 0
 
     for raw_line in list(lines)[-max_lines:]:
         try:
@@ -150,6 +160,22 @@ def recover_system_value_from_journal_lines(
                     dss_skipped_missing_prior_scan += 1
                 recovered_events += 1
                 meta_events += 1
+                continue
+
+            if event_name in {"SellExplorationData", "MultiSellExplorationData"}:
+                if hasattr(engine, "clear_value_domain"):
+                    engine.clear_value_domain(domain="cartography")
+                    sale_reset_cartography += 1
+                recovered_events += 1
+                meta_events += 1
+                continue
+
+            if event_name == "SellOrganicData":
+                if hasattr(engine, "clear_value_domain"):
+                    engine.clear_value_domain(domain="exobiology")
+                    sale_reset_exobiology += 1
+                recovered_events += 1
+                meta_events += 1
         except Exception:
             log_event_throttled(
                 "exploration.value_recovery.process_event",
@@ -164,6 +190,8 @@ def recover_system_value_from_journal_lines(
         f"Scan counted: {int(scan_counted)}",
         f"DSS upgrade applied: {int(dss_upgrade_applied)}",
         f"DSS skipped (missing prior Scan): {int(dss_skipped_missing_prior_scan)}",
+        f"Sell reset cartography: {int(sale_reset_cartography)}",
+        f"Sell reset exobiology: {int(sale_reset_exobiology)}",
     ]
 
     return {
@@ -176,6 +204,8 @@ def recover_system_value_from_journal_lines(
         "scan_counted": scan_counted,
         "dss_upgrade_applied": dss_upgrade_applied,
         "dss_skipped_missing_prior_scan": dss_skipped_missing_prior_scan,
+        "sale_reset_cartography": sale_reset_cartography,
+        "sale_reset_exobiology": sale_reset_exobiology,
         "diagnostics": diagnostics,
         "reason": "ok",
     }

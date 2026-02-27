@@ -263,14 +263,15 @@ class SystemValueEngine:
             self._diag_counts["scan_planet_skipped_unmapped"] = int(self._diag_counts.get("scan_planet_skipped_unmapped", 0)) + 1
             return
 
-        was_mapped = event.get("WasMapped") or event.get("Mapped")
+        was_mapped = bool(event.get("WasMapped") or event.get("Mapped"))
+        mapped_from_scan_allowed = bool(was_mapped and (was_discovered is False or was_discovered == 0))
 
         # Bazowa wartoĹ›Ä‡: FSS lub DSS
         fss_value = self._finite_row_float(row, "FSS_Base_Value")
         dss_value = self._finite_row_float(row, "DSS_Mapped_Value")
         fd_mapped = self._finite_row_float(row, "First_Discovery_Mapped_Value")
 
-        if was_mapped:
+        if mapped_from_scan_allowed:
             base_value = dss_value
         else:
             base_value = fss_value
@@ -280,7 +281,7 @@ class SystemValueEngine:
         # Bonus First Discovery (dla planet / ciaĹ‚)
         bonus = 0.0
         if was_discovered is False or was_discovered == 0:
-            if was_mapped and dss_value > 0:
+            if mapped_from_scan_allowed and dss_value > 0:
                 # RĂłĹĽnica miÄ™dzy â€žzwykĹ‚ymâ€ť DSS a â€žFirst Discovery mappedâ€ť
                 bonus = max(0.0, fd_mapped - dss_value)
             elif fss_value > 0 and dss_value > 0:
@@ -303,7 +304,7 @@ class SystemValueEngine:
             "fd_mapped": fd_mapped,
             "base_applied": base_value,
             "bonus_applied": bonus,
-            "mapped_accounted": bool(was_mapped),
+            "mapped_accounted": bool(mapped_from_scan_allowed),
         }
 
         # High-Value Targets (ELW / WW / terraformable)

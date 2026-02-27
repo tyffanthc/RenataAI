@@ -161,6 +161,45 @@ class BootstrapSystemValueRecoveryTests(unittest.TestCase):
         self.assertTrue(any("DSS upgrade applied" in x for x in diagnostics))
         self.assertTrue(any("missing prior Scan" in x for x in diagnostics))
 
+    def test_recovery_applies_sell_domain_resets_for_carto_and_exobio(self) -> None:
+        lines = [
+            json.dumps({"event": "Location", "StarSystem": "BOOTSTRAP_RECOVERY_SYS"}),
+            json.dumps(
+                {
+                    "event": "Scan",
+                    "StarSystem": "BOOTSTRAP_RECOVERY_SYS",
+                    "BodyName": "BOOTSTRAP_RECOVERY_SYS SELL 1",
+                    "PlanetClass": "Water world",
+                    "TerraformState": "Terraformable",
+                    "WasDiscovered": False,
+                    "WasMapped": True,
+                }
+            ),
+            json.dumps(
+                {
+                    "event": "ScanOrganic",
+                    "StarSystem": "BOOTSTRAP_RECOVERY_SYS",
+                    "Species_Localised": "Aleoida Arcus",
+                    "FirstDiscovery": True,
+                    "FirstFootfall": True,
+                }
+            ),
+            json.dumps({"event": "MultiSellExplorationData", "StarSystem": "BOOTSTRAP_RECOVERY_SYS"}),
+            json.dumps({"event": "SellOrganicData", "StarSystem": "BOOTSTRAP_RECOVERY_SYS"}),
+        ]
+
+        result = recover_system_value_from_journal_lines(lines, max_lines=500)
+        stats = app_state.system_value_engine.get_system_stats("BOOTSTRAP_RECOVERY_SYS")
+        self.assertIsNotNone(stats)
+        self.assertEqual(float(getattr(stats, "c_cartography", 0.0) or 0.0), 0.0)
+        self.assertEqual(float(getattr(stats, "c_exobiology", 0.0) or 0.0), 0.0)
+        self.assertEqual(float(getattr(stats, "bonus_discovery", 0.0) or 0.0), 0.0)
+        self.assertGreaterEqual(int(result.get("sale_reset_cartography") or 0), 1)
+        self.assertGreaterEqual(int(result.get("sale_reset_exobiology") or 0), 1)
+        diagnostics = [str(x) for x in list(result.get("diagnostics") or [])]
+        self.assertTrue(any("Sell reset cartography" in x for x in diagnostics))
+        self.assertTrue(any("Sell reset exobiology" in x for x in diagnostics))
+
 
 if __name__ == "__main__":
     unittest.main()
