@@ -8,8 +8,21 @@ from config import APP_VERSION, config
 from gui import RenataApp
 from logic.utils import powiedz
 
+MAIN_WINDOW_SHOW_DELAY_MS = 300
 
-if __name__ == "__main__":
+
+def _show_main_window_safe(root: tk.Tk) -> None:
+    try:
+        root.update_idletasks()
+    except Exception:
+        pass
+    try:
+        root.deiconify()
+    except Exception:
+        pass
+
+
+def run() -> None:
     root = tk.Tk()
     # Avoid startup flicker while all tabs/widgets are being built.
     root.withdraw()
@@ -33,15 +46,9 @@ if __name__ == "__main__":
     )
     th.start()
 
-    def _show_main_window():
-        try:
-            root.update_idletasks()
-        except Exception:
-            pass
-        try:
-            root.deiconify()
-        except Exception:
-            pass
-
-    root.after(0, _show_main_window)
+    root.after(MAIN_WINDOW_SHOW_DELAY_MS, lambda: _show_main_window_safe(root))
     root.mainloop()
+
+
+if __name__ == "__main__":
+    run()
