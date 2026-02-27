@@ -32,7 +32,7 @@ class F50NotifyDebouncerDeferredPersistTests(unittest.TestCase):
     def setUp(self) -> None:
         _FakeTimer.created = []
 
-    def test_can_send_defers_subsequent_persist_via_timer(self) -> None:
+    def test_can_send_defers_persist_via_timer_from_first_write(self) -> None:
         debouncer = notify_module.NotificationDebouncer()
         with debouncer._lock:
             debouncer._loaded_from_contract = True
@@ -43,24 +43,24 @@ class F50NotifyDebouncerDeferredPersistTests(unittest.TestCase):
             patch("logic.utils.notify.threading.Timer", side_effect=lambda d, f: _FakeTimer(d, f)),
         ):
             self.assertTrue(debouncer.can_send("F50_A", 10.0))
-            self.assertEqual(update_mock.call_count, 1, "First persist should remain synchronous.")
-            self.assertEqual(len(_FakeTimer.created), 0, "No timer needed for first persist.")
+            self.assertEqual(update_mock.call_count, 0, "First persist should not run on caller path.")
+            self.assertEqual(len(_FakeTimer.created), 1, "First changed key should schedule deferred persist timer.")
+            self.assertTrue(_FakeTimer.created[0]._started)
 
             self.assertTrue(debouncer.can_send("F50_B", 10.0))
             self.assertEqual(
                 update_mock.call_count,
-                1,
-                "Second changed key should not persist synchronously on caller path.",
+                0,
+                "Second changed key should still avoid caller-path sync persist.",
             )
-            self.assertEqual(len(_FakeTimer.created), 1, "Expected deferred persist timer to be scheduled.")
-            self.assertTrue(_FakeTimer.created[0]._started)
+            self.assertEqual(len(_FakeTimer.created), 1, "Changes should coalesce under a single pending timer.")
 
             _FakeTimer.created[0].fn()
-            self.assertGreaterEqual(update_mock.call_count, 2, "Timer callback should flush deferred persist.")
+            self.assertGreaterEqual(update_mock.call_count, 1, "Timer callback should flush deferred persist.")
 
         debouncer.reset()
 
-    def test_burst_can_send_batches_persist_off_caller_path_after_first_write(self) -> None:
+    def test_burst_can_send_batches_persist_fully_off_caller_path(self) -> None:
         debouncer = notify_module.NotificationDebouncer()
         with debouncer._lock:
             debouncer._loaded_from_contract = True
@@ -75,15 +75,15 @@ class F50NotifyDebouncerDeferredPersistTests(unittest.TestCase):
 
             self.assertEqual(
                 update_mock.call_count,
-                1,
-                "Burst should keep only the first persist on caller path.",
+                0,
+                "Burst should avoid all caller-path sync persists.",
             )
             self.assertEqual(len(_FakeTimer.created), 1, "Burst should coalesce into a single pending timer.")
             self.assertTrue(_FakeTimer.created[0]._started)
             self.assertGreaterEqual(_FakeTimer.created[0].delay, 0.0)
 
             _FakeTimer.created[0].fn()
-            self.assertGreaterEqual(update_mock.call_count, 2, "Deferred timer should flush burst changes.")
+            self.assertGreaterEqual(update_mock.call_count, 1, "Deferred timer should flush burst changes.")
 
         debouncer.reset()
 
@@ -99,7 +99,7 @@ class F50NotifyDebouncerDeferredPersistTests(unittest.TestCase):
         ):
             self.assertTrue(debouncer.can_send("F50_RESET_A", 10.0))
             self.assertTrue(debouncer.can_send("F50_RESET_B", 10.0))
-            self.assertEqual(update_mock.call_count, 1)
+            self.assertEqual(update_mock.call_count, 0)
             self.assertEqual(len(_FakeTimer.created), 1)
             stale_timer = _FakeTimer.created[0]
 
@@ -117,11 +117,11 @@ class F50NotifyDebouncerDeferredPersistTests(unittest.TestCase):
             with debouncer._lock:
                 debouncer._loaded_from_contract = True
             self.assertTrue(debouncer.can_send("F50_RESET_C", 10.0))
-            self.assertEqual(update_mock.call_count, 2)
+            self.assertEqual(update_mock.call_count, 1)
 
         debouncer.reset()
 
-    def test_burst_can_send_after_first_write_stays_fast_under_slow_persist_io(self) -> None:
+    def test_burst_can_send_stays_fast_under_slow_persist_io(self) -> None:
         debouncer = notify_module.NotificationDebouncer()
         with debouncer._lock:
             debouncer._loaded_from_contract = True
@@ -144,7 +144,11 @@ class F50NotifyDebouncerDeferredPersistTests(unittest.TestCase):
                 self.assertTrue(debouncer.can_send(f"F50_LATENCY_{i}", 10.0))
             t_burst_elapsed = time.perf_counter() - t_burst_start
 
-            self.assertGreaterEqual(t_first_elapsed, 0.025, "First write should include simulated slow persist I/O.")
+            self.assertLess(
+                t_first_elapsed,
+                0.02,
+                "First write should also avoid caller-path slow persist I/O.",
+            )
             self.assertLess(
                 t_burst_elapsed,
                 0.35,
@@ -152,8 +156,8 @@ class F50NotifyDebouncerDeferredPersistTests(unittest.TestCase):
             )
             self.assertEqual(
                 update_mock.call_count,
-                1,
-                "After first write, burst should not trigger additional synchronous contract writes.",
+                0,
+                "Burst should not trigger synchronous contract writes on caller path.",
             )
             self.assertEqual(len(_FakeTimer.created), 1, "Burst should keep a single deferred timer pending.")
 

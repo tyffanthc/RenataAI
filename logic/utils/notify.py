@@ -475,6 +475,7 @@ class NotificationDebouncer:
         self._persist_timer_seq = 0
         self._persist_timer_active_seq = 0
         self._persist_timer_active_epoch = 0
+        self._persist_fallback_active = False
 
     @staticmethod
     def _retention_ttl_sec() -> float:
@@ -702,7 +703,39 @@ class NotificationDebouncer:
                     ):
                         self._persist_timer_active_seq = 0
                         self._persist_timer_active_epoch = 0
-            self.persist_to_contract()
+            self._ensure_async_persist_fallback()
+
+    def _ensure_async_persist_fallback(self) -> None:
+        should_start = False
+        with self._lock:
+            if self._persist_change_seq <= self._persist_flushed_seq:
+                return
+            if self._persist_fallback_active:
+                return
+            self._persist_fallback_active = True
+            fallback_epoch = int(self._persist_epoch)
+            fallback_seq = int(self._persist_timer_seq)
+            self._persist_timer_active_seq = fallback_seq
+            self._persist_timer_active_epoch = fallback_epoch
+            self._persist_timer = None
+            should_start = True
+        if not should_start:
+            return
+
+        def _fallback_worker() -> None:
+            try:
+                self.persist_to_contract()
+            finally:
+                with self._lock:
+                    self._persist_fallback_active = False
+                self._request_persist_after_change()
+
+        try:
+            t = threading.Thread(target=_fallback_worker, daemon=True)
+            t.start()
+        except Exception:
+            with self._lock:
+                self._persist_fallback_active = False
 
     def _persist_timer_callback(self, *, timer_seq: int, timer_epoch: int) -> None:
         should_continue = True
@@ -728,25 +761,25 @@ class NotificationDebouncer:
         import time
 
         delay_sec = 0.0
-        persist_sync_now = False
         with self._lock:
             if self._persist_change_seq <= self._persist_flushed_seq:
                 return
-            if self._last_persist_ts <= 0.0:
-                # Keep first write synchronous for durability and existing restart semantics.
-                persist_sync_now = True
-            else:
+            if self._last_persist_ts > 0.0:
                 elapsed = max(0.0, time.time() - self._last_persist_ts)
                 delay_sec = max(0.0, self._persist_min_interval_sec() - elapsed)
-
-        if persist_sync_now:
-            if not self.persist_to_contract():
-                self._ensure_persist_timer(self._persist_min_interval_sec())
-            return
 
         self._ensure_persist_timer(delay_sec)
 
     def reset(self, *, persist: bool = False) -> None:
+        flush_before_clear = False
+        with self._lock:
+            flush_before_clear = self._persist_change_seq > self._persist_flushed_seq
+        if flush_before_clear:
+            try:
+                self.persist_to_contract(force=True)
+            except Exception:
+                pass
+
         timer_to_cancel = None
         with self._lock:
             self._last = {}
@@ -758,6 +791,7 @@ class NotificationDebouncer:
             self._persist_timer_seq = 0
             self._persist_timer_active_seq = 0
             self._persist_timer_active_epoch = 0
+            self._persist_fallback_active = False
             timer_to_cancel = self._persist_timer
             self._persist_timer = None
         if timer_to_cancel is not None:
