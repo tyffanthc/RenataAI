@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -295,6 +296,51 @@ class F20MapFiltersLayersFreshnessSourceContractTests(unittest.TestCase):
             self.assertFalse(bool(frame._tooltip_visible))
             self.assertEqual(str(frame._tooltip_text_cache or ""), "")
             self.assertEqual(len(frame.map_canvas.find_withtag("map_tooltip")), 0)
+        finally:
+            try:
+                if frame is not None:
+                    frame.destroy()
+            except Exception:
+                pass
+            try:
+                root.destroy()
+            except Exception:
+                pass
+
+    def test_filter_changes_are_debounced_into_single_reload(self) -> None:
+        try:
+            import tkinter as tk
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"tkinter unavailable: {exc}")
+
+        try:
+            from gui.tabs.journal_map import JournalMapTab
+            root = tk.Tk()
+            root.withdraw()
+        except tk.TclError as exc:  # pragma: no cover
+            self.skipTest(f"tk unavailable in test environment: {exc}")
+
+        frame = None
+        try:
+            frame = JournalMapTab(root)
+            frame.pack(fill="both", expand=True)
+            root.update_idletasks()
+            frame._cancel_pending_after_jobs()
+            frame._cancel_filter_reload_debounce()
+            frame._filter_reload_debounce_ms = 20
+
+            reload_calls: list[str] = []
+            frame.reload_from_playerdb = lambda: (reload_calls.append("reload") or {"ok": True})  # type: ignore[assignment]
+
+            frame._on_filter_changed()
+            frame._on_filter_changed()
+            frame._on_filter_changed()
+            root.update()
+            self.assertEqual(reload_calls, [])
+
+            time.sleep(0.06)
+            root.update()
+            self.assertEqual(reload_calls, ["reload"])
         finally:
             try:
                 if frame is not None:

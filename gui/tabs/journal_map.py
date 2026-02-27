@@ -186,6 +186,8 @@ class JournalMapTab(tk.Frame):
         self._auto_refresh_debounce_ms = 650
         self._auto_refresh_after_id: str | None = None
         self._auto_refresh_last_update: dict[str, Any] = {}
+        self._filter_reload_debounce_ms = 90
+        self._filter_reload_after_id: str | None = None
         self._prefetched_system_stations: dict[str, dict[str, Any]] = {}
 
         # Filters (UI shell)
@@ -343,6 +345,14 @@ class JournalMapTab(tk.Frame):
                 )
 
     def destroy(self) -> None:
+        try:
+            self._cancel_filter_reload_debounce()
+        except Exception as exc:
+            _log_map_soft_failure(
+                "destroy_cancel_filter_reload",
+                "cancel filter reload debounce on destroy failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
         try:
             self._cancel_auto_refresh_debounce()
         except Exception as exc:
@@ -1217,7 +1227,7 @@ class JournalMapTab(tk.Frame):
         # while filter/layer reload is pending or fails early.
         self._hide_map_tooltip()
         self._notify_owner_ui_state_changed()
-        self.reload_from_playerdb()
+        self._schedule_filter_reload_debounce()
 
     def _notify_owner_ui_state_changed(self) -> None:
         owner = getattr(self, "logbook_owner", None)
@@ -1264,6 +1274,33 @@ class JournalMapTab(tk.Frame):
                 after_id=str(after_id),
                 error=f"{type(exc).__name__}: {exc}",
             )
+
+    def _cancel_filter_reload_debounce(self) -> None:
+        after_id = getattr(self, "_filter_reload_after_id", None)
+        self._filter_reload_after_id = None
+        if not after_id:
+            return
+        try:
+            self.after_cancel(after_id)
+        except Exception as exc:
+            _log_map_soft_failure(
+                "cancel_filter_reload_debounce",
+                "cancel filter reload debounce failed",
+                after_id=str(after_id),
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
+    def _schedule_filter_reload_debounce(self, *, delay_ms: int | None = None) -> None:
+        self._cancel_filter_reload_debounce()
+        delay = int(delay_ms if delay_ms is not None else self._filter_reload_debounce_ms)
+        try:
+            self._filter_reload_after_id = str(self.after(delay, self._run_debounced_filter_reload))
+        except Exception:
+            self._filter_reload_after_id = None
+
+    def _run_debounced_filter_reload(self) -> None:
+        self._filter_reload_after_id = None
+        self.reload_from_playerdb()
 
     def _schedule_auto_refresh_debounce(self, *, delay_ms: int | None = None) -> None:
         self._cancel_auto_refresh_debounce()
