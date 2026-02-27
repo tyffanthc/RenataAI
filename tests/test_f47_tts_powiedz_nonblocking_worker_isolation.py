@@ -11,7 +11,9 @@ from logic.utils import notify as notify_module
 class F47TtsPowiedzNonBlockingWorkerIsolationTests(unittest.TestCase):
     def setUp(self) -> None:
         self._saved_active = bool(getattr(notify_module, "_TTS_THREAD_ACTIVE", False))
+        self._saved_queue = getattr(notify_module, "_TTS_SPEECH_QUEUE", None)
         notify_module._TTS_THREAD_ACTIVE = False
+        notify_module._TTS_SPEECH_QUEUE = notify_module.queue.Queue()
 
     def tearDown(self) -> None:
         # Best effort cleanup in case a test fails before releasing the worker.
@@ -19,6 +21,8 @@ class F47TtsPowiedzNonBlockingWorkerIsolationTests(unittest.TestCase):
         while bool(getattr(notify_module, "_TTS_THREAD_ACTIVE", False)) and time.monotonic() < deadline:
             time.sleep(0.01)
         notify_module._TTS_THREAD_ACTIVE = self._saved_active
+        if self._saved_queue is not None:
+            notify_module._TTS_SPEECH_QUEUE = self._saved_queue
 
     def test_powiedz_returns_while_tts_worker_is_blocked(self) -> None:
         started = threading.Event()

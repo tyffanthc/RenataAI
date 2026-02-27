@@ -14,6 +14,7 @@ from logic.utils.renata_log import log_event_throttled, log_event
 MSG_QUEUE = queue.Queue()
 _TTS_THREAD_GUARD_LOCK = threading.Lock()
 _TTS_THREAD_ACTIVE = False
+_TTS_SPEECH_QUEUE = queue.Queue()
 
 _TTS_DEFAULT_COOLDOWNS = {
     "nav": 20.0,
@@ -187,22 +188,25 @@ def powiedz(tekst, gui_ref=None, *, message_id=None, context=None, force: bool =
 
 def _start_tts_thread(tekst: str) -> bool:
     global _TTS_THREAD_ACTIVE
+    should_start_worker = False
     with _TTS_THREAD_GUARD_LOCK:
-        if _TTS_THREAD_ACTIVE:
-            log_event_throttled(
-                "tts:thread_busy_drop",
-                5000,
-                "TTS",
-                "skip starting new TTS thread while previous speech is active",
-            )
-            return False
-        _TTS_THREAD_ACTIVE = True
+        _TTS_SPEECH_QUEUE.put(str(tekst or ""))
+        if not _TTS_THREAD_ACTIVE:
+            _TTS_THREAD_ACTIVE = True
+            should_start_worker = True
+
+    if not should_start_worker:
+        return True
 
     try:
-        threading.Thread(target=_watek_mowy, args=(tekst,), daemon=True).start()
+        threading.Thread(target=_tts_worker_loop, daemon=True).start()
         return True
     except Exception:
         with _TTS_THREAD_GUARD_LOCK:
+            try:
+                _TTS_SPEECH_QUEUE.get_nowait()
+            except Exception:
+                pass
             _TTS_THREAD_ACTIVE = False
         _log_notify_soft_failure(
             "tts_thread_start",
@@ -211,7 +215,23 @@ def _start_tts_thread(tekst: str) -> bool:
         return False
 
 
-def _watek_mowy(tekst):
+def _tts_worker_loop() -> None:
+    global _TTS_THREAD_ACTIVE
+    try:
+        while True:
+            with _TTS_THREAD_GUARD_LOCK:
+                if _TTS_SPEECH_QUEUE.empty():
+                    _TTS_THREAD_ACTIVE = False
+                    return
+                tekst = _TTS_SPEECH_QUEUE.get_nowait()
+            _watek_mowy(tekst, release_slot=False)
+    finally:
+        with _TTS_THREAD_GUARD_LOCK:
+            if _TTS_SPEECH_QUEUE.empty():
+                _TTS_THREAD_ACTIVE = False
+
+
+def _watek_mowy(tekst, *, release_slot: bool = True):
     global _TTS_THREAD_ACTIVE
     try:
         _speak_tts(tekst)
@@ -221,8 +241,9 @@ def _watek_mowy(tekst):
             f"TTS: blad syntezy mowy ({type(exc).__name__}).",
         )
     finally:
-        with _TTS_THREAD_GUARD_LOCK:
-            _TTS_THREAD_ACTIVE = False
+        if release_slot:
+            with _TTS_THREAD_GUARD_LOCK:
+                _TTS_THREAD_ACTIVE = False
 
 
 _TTS_ENGINE_LOGGED = False
