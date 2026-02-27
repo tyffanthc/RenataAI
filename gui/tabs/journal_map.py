@@ -2298,6 +2298,38 @@ class JournalMapTab(tk.Frame):
         self._trade_picker_refresh_station_filter_status()
         self._trade_picker_refresh_rows()
 
+    def _trade_picker_selection_contains(self, commodity: str) -> bool:
+        target = _as_text(commodity).casefold()
+        if not target:
+            return False
+        for item in (self._trade_picker_selected or set()):
+            if _as_text(item).casefold() == target:
+                return True
+        return False
+
+    def _trade_picker_selection_add(self, commodity: str) -> None:
+        text = _as_text(commodity)
+        if not text:
+            return
+        target = text.casefold()
+        selected = {
+            str(item)
+            for item in (self._trade_picker_selected or set())
+            if _as_text(item).casefold() != target
+        }
+        selected.add(text)
+        self._trade_picker_selected = selected
+
+    def _trade_picker_selection_remove(self, commodity: str) -> None:
+        target = _as_text(commodity).casefold()
+        if not target:
+            return
+        self._trade_picker_selected = {
+            str(item)
+            for item in (self._trade_picker_selected or set())
+            if _as_text(item).casefold() != target
+        }
+
     def _trade_picker_refresh_rows(self) -> None:
         tree = getattr(self, "_trade_picker_tree", None)
         if tree is None:
@@ -2310,7 +2342,7 @@ class JournalMapTab(tk.Frame):
         except Exception:
             return
         for idx, commodity in enumerate(filtered_values):
-            selected = str(commodity) in (self._trade_picker_selected or set())
+            selected = self._trade_picker_selection_contains(str(commodity))
             tree.insert(
                 "",
                 "end",
@@ -2349,10 +2381,10 @@ class JournalMapTab(tk.Frame):
         commodity = _as_text(values[1] if len(values) > 1 else "")
         if not commodity:
             return
-        if commodity in self._trade_picker_selected:
-            self._trade_picker_selected.remove(commodity)
+        if self._trade_picker_selection_contains(commodity):
+            self._trade_picker_selection_remove(commodity)
         else:
-            self._trade_picker_selected.add(commodity)
+            self._trade_picker_selection_add(commodity)
         self._trade_picker_refresh_rows()
         try:
             tree.selection_set(iid)
@@ -2433,7 +2465,15 @@ class JournalMapTab(tk.Frame):
             )
 
     def _trade_picker_accept(self) -> None:
-        selected_sorted = sorted(set(self._trade_picker_selected or set()), key=lambda v: str(v).casefold())
+        selected_sorted: list[str] = []
+        seen_cf: set[str] = set()
+        for item in sorted(set(self._trade_picker_selected or set()), key=lambda v: str(v).casefold()):
+            text = _as_text(item)
+            key = text.casefold()
+            if not text or key in seen_cf:
+                continue
+            seen_cf.add(key)
+            selected_sorted.append(text)
         self._set_trade_selected_commodities(selected_sorted)
         self._trade_picker_close()
         if selected_sorted:
