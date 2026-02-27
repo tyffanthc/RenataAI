@@ -20,6 +20,8 @@ _RUNTIME_FILES = (
 _RUNTIME_DIRS = ("espeak-ng-data",)
 _PIPER_SUBPROCESS_TIMEOUT_SEC = 15.0
 _PIPER_WINSOUND_PLAYBACK_TIMEOUT_SEC = 45.0
+_WINSOUND_PLAYBACK_GUARD_LOCK = threading.Lock()
+_WINSOUND_HUNG_WORKER: Optional[threading.Thread] = None
 
 
 @dataclass(frozen=True)
@@ -145,6 +147,7 @@ def select_piper_paths(*, use_appdata: bool) -> Optional[PiperPaths]:
 
 def _play_wav_with_timeout(wav_path: str, *, timeout_sec: float) -> bool:
     import winsound
+    global _WINSOUND_HUNG_WORKER
 
     try:
         timeout = float(timeout_sec)
@@ -154,6 +157,18 @@ def _play_wav_with_timeout(wav_path: str, *, timeout_sec: float) -> bool:
     if timeout <= 0:
         winsound.PlaySound(wav_path, winsound.SND_FILENAME)
         return True
+
+    with _WINSOUND_PLAYBACK_GUARD_LOCK:
+        hung = _WINSOUND_HUNG_WORKER
+        if hung is not None and hung.is_alive():
+            log_event_throttled(
+                "piper_winsound_playback_still_hung",
+                15.0,
+                "WARN",
+                "piper: skipping playback while previous winsound worker is still hung",
+            )
+            return False
+        _WINSOUND_HUNG_WORKER = None
 
     playback_error: list[Exception] = []
 
@@ -168,6 +183,8 @@ def _play_wav_with_timeout(wav_path: str, *, timeout_sec: float) -> bool:
     worker.join(timeout=timeout)
 
     if worker.is_alive():
+        with _WINSOUND_PLAYBACK_GUARD_LOCK:
+            _WINSOUND_HUNG_WORKER = worker
         try:
             winsound.PlaySound(None, getattr(winsound, "SND_PURGE", 0))
         except Exception:
@@ -183,6 +200,9 @@ def _play_wav_with_timeout(wav_path: str, *, timeout_sec: float) -> bool:
 
     if playback_error:
         raise playback_error[0]
+    with _WINSOUND_PLAYBACK_GUARD_LOCK:
+        if _WINSOUND_HUNG_WORKER is worker:
+            _WINSOUND_HUNG_WORKER = None
     return True
 
 
