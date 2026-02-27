@@ -276,5 +276,96 @@ class SystemValueEngineTests(unittest.TestCase):
         diag = self.engine.get_runtime_diagnostics()
         self.assertGreaterEqual(int(diag.get("scan_star_skipped_unmapped") or 0), 1)
 
+    def test_clear_value_domain_cartography_preserves_exobiology_and_allows_recount(self) -> None:
+        scan_event = {
+            "event": "Scan",
+            "StarSystem": "TEST_SYS_CLEAR_CARTO",
+            "BodyName": "TEST_SYS_CLEAR_CARTO 1",
+            "PlanetClass": "Water world",
+            "TerraformState": "Terraformable",
+            "WasDiscovered": False,
+            "WasMapped": True,
+        }
+        bio_event = {
+            "event": "ScanOrganic",
+            "StarSystem": "TEST_SYS_CLEAR_CARTO",
+            "Species_Localised": "Aleoida Arcus",
+            "FirstDiscovery": True,
+            "FirstFootfall": True,
+        }
+
+        self.engine.analyze_scan_event(scan_event)
+        self.engine.analyze_biology_event(bio_event)
+        before = self.engine.get_system_stats("TEST_SYS_CLEAR_CARTO")
+        self.assertIsNotNone(before)
+        self.assertGreater(float(before.c_cartography or 0.0), 0.0)
+        self.assertGreater(float(before.c_exobiology or 0.0), 0.0)
+        self.assertGreater(len(before.seen_bodies), 0)
+        self.assertGreater(len(before.seen_species), 0)
+
+        out = self.engine.clear_value_domain(domain="cartography", system_name="TEST_SYS_CLEAR_CARTO")
+        self.assertTrue(bool(out.get("ok")))
+        self.assertEqual(str(out.get("domain")), "cartography")
+
+        after = self.engine.get_system_stats("TEST_SYS_CLEAR_CARTO")
+        self.assertIsNotNone(after)
+        self.assertEqual(float(after.c_cartography or 0.0), 0.0)
+        self.assertGreater(float(after.c_exobiology or 0.0), 0.0)
+        self.assertEqual(len(after.seen_bodies), 0)
+        self.assertEqual(len(after.cartography_bodies), 0)
+        self.assertEqual(len(after.high_value_targets), 0)
+        self.assertEqual(int(after.total_scanned_bodies or 0), 0)
+
+        # After cartography clear, the same body should be countable again.
+        self.engine.analyze_scan_event(scan_event)
+        recounted = self.engine.get_system_stats("TEST_SYS_CLEAR_CARTO")
+        self.assertIsNotNone(recounted)
+        self.assertGreater(float(recounted.c_cartography or 0.0), 0.0)
+        self.assertEqual(int(recounted.total_scanned_bodies or 0), 1)
+
+    def test_clear_value_domain_exobiology_preserves_cartography_and_allows_recount(self) -> None:
+        scan_event = {
+            "event": "Scan",
+            "StarSystem": "TEST_SYS_CLEAR_EXO",
+            "BodyName": "TEST_SYS_CLEAR_EXO 1",
+            "PlanetClass": "Water world",
+            "TerraformState": "Terraformable",
+            "WasDiscovered": False,
+            "WasMapped": True,
+        }
+        bio_event = {
+            "event": "ScanOrganic",
+            "StarSystem": "TEST_SYS_CLEAR_EXO",
+            "Species_Localised": "Aleoida Arcus",
+            "FirstDiscovery": True,
+            "FirstFootfall": True,
+        }
+
+        self.engine.analyze_scan_event(scan_event)
+        self.engine.analyze_biology_event(bio_event)
+        before = self.engine.get_system_stats("TEST_SYS_CLEAR_EXO")
+        self.assertIsNotNone(before)
+        self.assertGreater(float(before.c_cartography or 0.0), 0.0)
+        self.assertGreater(float(before.c_exobiology or 0.0), 0.0)
+        self.assertGreater(len(before.seen_species), 0)
+
+        out = self.engine.clear_value_domain(domain="exobiology", system_name="TEST_SYS_CLEAR_EXO")
+        self.assertTrue(bool(out.get("ok")))
+        self.assertEqual(str(out.get("domain")), "exobiology")
+
+        after = self.engine.get_system_stats("TEST_SYS_CLEAR_EXO")
+        self.assertIsNotNone(after)
+        self.assertGreater(float(after.c_cartography or 0.0), 0.0)
+        self.assertEqual(float(after.c_exobiology or 0.0), 0.0)
+        self.assertEqual(len(after.seen_species), 0)
+        self.assertGreater(len(after.seen_bodies), 0)
+
+        # After exobio clear, the same species should be countable again.
+        self.engine.analyze_biology_event(bio_event)
+        recounted = self.engine.get_system_stats("TEST_SYS_CLEAR_EXO")
+        self.assertIsNotNone(recounted)
+        self.assertGreater(float(recounted.c_exobiology or 0.0), 0.0)
+        self.assertEqual(len(recounted.seen_species), 1)
+
 if __name__ == "__main__":
     unittest.main()

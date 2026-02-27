@@ -34,6 +34,11 @@ class SystemStats:
     c_cartography: float = 0.0
     c_exobiology: float = 0.0
     bonus_discovery: float = 0.0
+    # Domain-level bonus buckets (used for sale-aware clears):
+    # - cartography: first discovery bonuses tied to Scan/DSS
+    # - exobiology: first discovery / footfall bonuses tied to biology
+    bonus_discovery_cartography: float = 0.0
+    bonus_discovery_exobiology: float = 0.0
 
     # Techniczne:
     seen_bodies: Set[str] = field(default_factory=set)   # ĹĽeby nie liczyÄ‡ skanu 2x
@@ -106,6 +111,61 @@ class SystemValueEngine:
         self.current_system = system_name
         self._get_or_create_system(system_name)
 
+    def clear_value_domain(
+        self,
+        *,
+        domain: str = "all",
+        system_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Clears runtime valuation state after sell events.
+
+        domain:
+        - "cartography" / "carto" / "uc"
+        - "exobiology" / "exo" / "vista"
+        - "all"
+
+        system_name:
+        - if provided: clear only this system
+        - else: clear all systems
+        """
+        norm = str(domain or "all").strip().lower()
+        if norm in {"carto", "cartography", "uc", "exploration"}:
+            mode = "cartography"
+        elif norm in {"exo", "exobiology", "vista", "organic"}:
+            mode = "exobiology"
+        else:
+            mode = "all"
+
+        if system_name:
+            target_names = [str(system_name)]
+        else:
+            target_names = list(self.systems.keys())
+
+        touched = 0
+        for name in target_names:
+            stats = self.systems.get(str(name))
+            if not isinstance(stats, SystemStats):
+                continue
+            self._ensure_bonus_components(stats)
+            if mode == "cartography":
+                self._clear_cartography_state(stats)
+            elif mode == "exobiology":
+                self._clear_exobiology_state(stats)
+            else:
+                self._clear_all_state(stats)
+            touched += 1
+
+        totals = self.calculate_totals()
+        return {
+            "ok": True,
+            "domain": mode,
+            "systems_touched": int(touched),
+            "scope": ("single" if system_name else "all"),
+            "system_name": (str(system_name) if system_name else None),
+            "totals": dict(totals or {}),
+        }
+
     def analyze_scan_event(self, event: Dict[str, Any]) -> None:
         """
         Analiza pojedynczego eventu Journal typu 'Scan' (FSS / DSS).
@@ -124,6 +184,7 @@ class SystemValueEngine:
             return
 
         stats = self._get_or_create_system(system_name)
+        self._ensure_bonus_components(stats)
 
         # Identyfikator ciaĹ‚a (wystarczy coĹ› unikalnego w obrÄ™bie systemu)
         body_id = (
@@ -169,7 +230,8 @@ class SystemValueEngine:
             bonus = fd_bonus if (was_discovered is False or was_discovered == 0) else 0.0
 
             stats.c_cartography += base_value
-            stats.bonus_discovery += bonus
+            stats.bonus_discovery_cartography += bonus
+            self._sync_bonus_aggregate(stats)
             if bonus > 0.0:
                 stats.any_discovery_bonuses = True
 
@@ -226,7 +288,8 @@ class SystemValueEngine:
                 ratio = fd_mapped / dss_value if dss_value else 1.0
                 bonus = max(0.0, fss_value * (ratio - 1.0))
 
-        stats.bonus_discovery += bonus
+        stats.bonus_discovery_cartography += bonus
+        self._sync_bonus_aggregate(stats)
         if bonus > 0:
             stats.any_discovery_bonuses = True
 
@@ -275,6 +338,7 @@ class SystemValueEngine:
         stats = self.systems.get(str(system_name))
         if not stats:
             return
+        self._ensure_bonus_components(stats)
 
         body_id = (
             event.get("BodyName")
@@ -307,7 +371,8 @@ class SystemValueEngine:
             target_bonus = max(0.0, fd_mapped - dss_value)
 
         stats.c_cartography += (target_base - current_base)
-        stats.bonus_discovery += (target_bonus - current_bonus)
+        stats.bonus_discovery_cartography += (target_bonus - current_bonus)
+        self._sync_bonus_aggregate(stats)
         if target_bonus > 0.0:
             stats.any_discovery_bonuses = True
 
@@ -332,6 +397,7 @@ class SystemValueEngine:
             return
 
         stats = self._get_or_create_system(system_name)
+        self._ensure_bonus_components(stats)
 
         raw_name = (
             event.get("Name_Localised")
@@ -384,7 +450,8 @@ class SystemValueEngine:
             extra_ff = max(0.0, total_ff - (base_value + fd_bonus))
             bonus += extra_ff
 
-        stats.bonus_discovery += bonus
+        stats.bonus_discovery_exobiology += bonus
+        self._sync_bonus_aggregate(stats)
         if bonus > 0:
             stats.any_discovery_bonuses = True
 
@@ -483,9 +550,14 @@ class SystemValueEngine:
             "total": ...
         }
         """
-        c_carto = sum(s.c_cartography for s in self.systems.values())
-        c_exo = sum(s.c_exobiology for s in self.systems.values())
-        bonus = sum(s.bonus_discovery for s in self.systems.values())
+        c_carto = 0.0
+        c_exo = 0.0
+        bonus = 0.0
+        for s in self.systems.values():
+            self._ensure_bonus_components(s)
+            c_carto += float(s.c_cartography or 0.0)
+            c_exo += float(s.c_exobiology or 0.0)
+            bonus += float(s.bonus_discovery or 0.0)
         total = c_carto + c_exo + bonus
 
         return {
@@ -499,7 +571,10 @@ class SystemValueEngine:
 
     def get_system_stats(self, system_name: str) -> Optional[SystemStats]:
         """Zwraca obiekt SystemStats dla konkretnego ukĹ‚adu (lub None)."""
-        return self.systems.get(system_name)
+        stats = self.systems.get(system_name)
+        if isinstance(stats, SystemStats):
+            self._ensure_bonus_components(stats)
+        return stats
 
     # ------------------------------------------------------------------
     # Implementacja pomocnicza
@@ -522,7 +597,60 @@ class SystemValueEngine:
     def _get_or_create_system(self, name: str) -> SystemStats:
         if name not in self.systems:
             self.systems[name] = SystemStats(name=name)
-        return self.systems[name]
+        stats = self.systems[name]
+        self._ensure_bonus_components(stats)
+        return stats
+
+    @staticmethod
+    def _sync_bonus_aggregate(stats: SystemStats) -> None:
+        stats.bonus_discovery = float(stats.bonus_discovery_cartography or 0.0) + float(
+            stats.bonus_discovery_exobiology or 0.0
+        )
+
+    def _ensure_bonus_components(self, stats: SystemStats) -> None:
+        # Backward compatibility for state that existed before domain-level buckets.
+        if not hasattr(stats, "bonus_discovery_cartography"):
+            setattr(stats, "bonus_discovery_cartography", float(getattr(stats, "bonus_discovery", 0.0) or 0.0))
+        if not hasattr(stats, "bonus_discovery_exobiology"):
+            setattr(stats, "bonus_discovery_exobiology", 0.0)
+        self._sync_bonus_aggregate(stats)
+
+    def _clear_cartography_state(self, stats: SystemStats) -> None:
+        stats.c_cartography = 0.0
+        stats.bonus_discovery_cartography = 0.0
+        stats.seen_bodies.clear()
+        stats.high_value_targets.clear()
+        stats.cartography_bodies.clear()
+        stats.total_scanned_bodies = 0
+        stats.bodies_first_discovery_count = 0
+        stats.bodies_previously_discovered_count = 0
+        stats.system_previously_discovered = None
+        self._sync_bonus_aggregate(stats)
+        stats.any_discovery_bonuses = bool(stats.bonus_discovery > 0.0)
+
+    def _clear_exobiology_state(self, stats: SystemStats) -> None:
+        stats.c_exobiology = 0.0
+        stats.bonus_discovery_exobiology = 0.0
+        stats.seen_species.clear()
+        self._sync_bonus_aggregate(stats)
+        if stats.total_scanned_bodies <= 0 and stats.bodies_first_discovery_count <= 0:
+            stats.any_discovery_bonuses = bool(stats.bonus_discovery > 0.0)
+
+    def _clear_all_state(self, stats: SystemStats) -> None:
+        stats.c_cartography = 0.0
+        stats.c_exobiology = 0.0
+        stats.bonus_discovery_cartography = 0.0
+        stats.bonus_discovery_exobiology = 0.0
+        stats.seen_bodies.clear()
+        stats.seen_species.clear()
+        stats.high_value_targets.clear()
+        stats.cartography_bodies.clear()
+        stats.total_scanned_bodies = 0
+        stats.bodies_first_discovery_count = 0
+        stats.bodies_previously_discovered_count = 0
+        stats.any_discovery_bonuses = False
+        stats.system_previously_discovered = None
+        self._sync_bonus_aggregate(stats)
 
     # --- Cartography helpers -------------------------------------------------
 
