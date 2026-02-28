@@ -785,6 +785,7 @@ class JournalMapTab(tk.Frame):
         )
         self.legend_body_frame.bind("<Configure>", self._on_legend_body_frame_configure)
         self.legend_body_canvas.bind("<Configure>", self._on_legend_canvas_configure)
+        self._bind_legend_mousewheel_recursive(self.legend_body_host)
 
         # Center panel (canvas)
         self.center_frame = tk.Frame(self, bg=COLOR_BG)
@@ -1563,6 +1564,48 @@ class JournalMapTab(tk.Frame):
             pass
         self._sync_legend_scrollregion()
 
+    def _on_legend_mousewheel_up(self, event=None):
+        return self._on_legend_mousewheel(_WheelShim(event, delta=120))
+
+    def _on_legend_mousewheel_down(self, event=None):
+        return self._on_legend_mousewheel(_WheelShim(event, delta=-120))
+
+    def _on_legend_mousewheel(self, event) -> str | None:
+        canvas = getattr(self, "legend_body_canvas", None)
+        if canvas is None:
+            return None
+        try:
+            top, bottom = canvas.yview()
+            # No scroll range, but consume wheel so map zoom/pan under the panel is not triggered.
+            if (bottom - top) >= 0.9999:
+                return "break"
+            delta = float(getattr(event, "delta", 0))
+            if delta == 0:
+                return "break"
+            step = max(1, int(abs(delta) / 120.0))
+            units = -step if delta > 0 else step
+            canvas.yview_scroll(units, "units")
+            return "break"
+        except Exception:
+            return None
+
+    def _bind_legend_mousewheel_recursive(self, widget: Any) -> None:
+        if widget is None:
+            return
+        try:
+            if not bool(getattr(widget, "_renata_legend_wheel_bound", False)):
+                widget.bind("<MouseWheel>", self._on_legend_mousewheel)
+                widget.bind("<Button-4>", self._on_legend_mousewheel_up)
+                widget.bind("<Button-5>", self._on_legend_mousewheel_down)
+                setattr(widget, "_renata_legend_wheel_bound", True)
+        except Exception:
+            pass
+        try:
+            for child in list(widget.winfo_children()):
+                self._bind_legend_mousewheel_recursive(child)
+        except Exception:
+            return
+
     def _sync_legend_scrollregion(self) -> None:
         try:
             self.legend_body_canvas.update_idletasks()
@@ -1643,6 +1686,7 @@ class JournalMapTab(tk.Frame):
                 lines.append(label)
         self.legend_text_var.set("\n".join(lines))
         self._sync_legend_scrollregion()
+        self._bind_legend_mousewheel_recursive(self.legend_body_frame)
 
     def _legend_clear_visual_rows(self) -> None:
         for child in list(self.legend_body_frame.winfo_children()):
