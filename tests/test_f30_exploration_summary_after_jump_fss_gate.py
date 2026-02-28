@@ -15,6 +15,7 @@ class F30ExplorationSummaryAfterJumpFssGateTests(unittest.TestCase):
     def test_full_scan_arms_summary_but_does_not_emit_immediately(self) -> None:
         fss_events.FSS_HAD_DISCOVERY_SCAN = True
         fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN = True
+        fss_events.FSS_LAST_MANUAL_SCAN_TYPE = "detailed"
         fss_events.FSS_TOTAL_BODIES = 6
         fss_events.FSS_DISCOVERED = 6
 
@@ -30,6 +31,7 @@ class F30ExplorationSummaryAfterJumpFssGateTests(unittest.TestCase):
     def test_flush_pending_summary_on_jump_emits_once(self) -> None:
         fss_events.FSS_HAD_DISCOVERY_SCAN = True
         fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN = True
+        fss_events.FSS_LAST_MANUAL_SCAN_TYPE = "detailed"
         fss_events.FSS_TOTAL_BODIES = 4
         fss_events.FSS_DISCOVERED = 4
         fss_events._wire_exit_summary_to_runtime(gui_ref=None)
@@ -69,6 +71,7 @@ class F30ExplorationSummaryAfterJumpFssGateTests(unittest.TestCase):
 
     def test_manual_progress_without_discovery_scan_still_does_not_arm_summary(self) -> None:
         fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN = True
+        fss_events.FSS_LAST_MANUAL_SCAN_TYPE = "detailed"
         fss_events.FSS_TOTAL_BODIES = 5
         fss_events.FSS_DISCOVERED = 5
 
@@ -125,6 +128,36 @@ class F30ExplorationSummaryAfterJumpFssGateTests(unittest.TestCase):
 
         self.assertTrue(bool(fss_events.FSS_HAD_DISCOVERY_SCAN))
         self.assertTrue(bool(fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN))
+
+    def test_navbeacon_full_and_all_bodies_found_does_not_arm_summary(self) -> None:
+        fss_events.handle_fss_discovery_scan({"BodyCount": 2}, gui_ref=None)
+        fss_events.handle_scan(
+            {"BodyName": "F30_SUMMARY_GATE_SYS A", "BodyID": 1, "ScanType": "NavBeaconDetail"},
+            gui_ref=None,
+        )
+        fss_events.handle_scan(
+            {"BodyName": "F30_SUMMARY_GATE_SYS B", "BodyID": 2, "ScanType": "NavBeaconDetail"},
+            gui_ref=None,
+        )
+        self.assertFalse(bool(fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN))
+        fss_events.handle_fss_all_bodies_found({"event": "FSSAllBodiesFound"}, gui_ref=None)
+        self.assertFalse(bool(fss_events.FSS_PENDING_EXIT_SUMMARY))
+
+    def test_all_bodies_found_path_arms_summary_when_detailed_gate_passes(self) -> None:
+        fss_events.FSS_HAD_DISCOVERY_SCAN = True
+        fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN = True
+        fss_events.FSS_LAST_MANUAL_SCAN_TYPE = "detailed"
+        fss_events.FSS_TOTAL_BODIES = 3
+        fss_events.FSS_DISCOVERED = 3
+        fss_events.FSS_FULL_WARNED = False
+
+        with patch("logic.events.exploration_summary.trigger_exploration_summary") as trigger_mock:
+            fss_events.handle_fss_all_bodies_found({"event": "FSSAllBodiesFound"}, gui_ref=None)
+            self.assertTrue(bool(fss_events.FSS_PENDING_EXIT_SUMMARY))
+            ok = fss_events.flush_pending_exit_summary_on_jump(gui_ref=None)
+
+        self.assertTrue(ok)
+        self.assertTrue(trigger_mock.called)
 
 
 if __name__ == "__main__":

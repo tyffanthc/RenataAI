@@ -9,7 +9,7 @@ import config
 from logic.utils import DEBOUNCER
 from logic.insight_dispatcher import emit_insight
 from logic import utils
-from logic.utils.renata_log import log_event_throttled
+from logic.utils.renata_log import log_event, log_event_throttled
 from app.state import app_state
 
 from logic.events.exploration_high_value_events import (
@@ -34,6 +34,8 @@ FSS_LAST_WARNED = False
 FSS_FULL_WARNED = False
 FSS_HAD_DISCOVERY_SCAN = False
 FSS_HAD_MANUAL_PROGRESS_SCAN = False
+FSS_LAST_SCAN_TYPE = None
+FSS_LAST_MANUAL_SCAN_TYPE = None
 FSS_PENDING_EXIT_SUMMARY = False
 FSS_PENDING_EXIT_SUMMARY_SYSTEM = None
 FSS_PENDING_EXIT_SUMMARY_SCANNED = None
@@ -88,7 +90,7 @@ def _first_status_context(
     return ctx
 
 
-def _wire_exit_summary_to_runtime(gui_ref=None) -> None:
+def _wire_exit_summary_to_runtime(gui_ref=None, *, trigger_source: str | None = None) -> None:
     """
     EXIT-SUMMARY-WIRE-01:
     Build and publish F4 exploration summary when FSS scan is complete.
@@ -96,6 +98,7 @@ def _wire_exit_summary_to_runtime(gui_ref=None) -> None:
     """
     global FSS_PENDING_EXIT_SUMMARY, FSS_PENDING_EXIT_SUMMARY_SYSTEM
     global FSS_PENDING_EXIT_SUMMARY_SCANNED, FSS_PENDING_EXIT_SUMMARY_TOTAL
+    global FSS_LAST_SCAN_TYPE, FSS_LAST_MANUAL_SCAN_TYPE
 
     system_name = getattr(app_state, "current_system", None)
     # BUGS_FIX 16.5:
@@ -103,7 +106,30 @@ def _wire_exit_summary_to_runtime(gui_ref=None) -> None:
     # 1) player explicitly triggered FSS discovery scan (honk/FSS entry path)
     # 2) at least one non-AutoScan body progress event was counted
     # This prevents transit systems from arming summary from auto star scans.
-    if not (bool(FSS_HAD_DISCOVERY_SCAN) and bool(FSS_HAD_MANUAL_PROGRESS_SCAN)):
+    has_discovery = bool(FSS_HAD_DISCOVERY_SCAN)
+    has_manual = bool(FSS_HAD_MANUAL_PROGRESS_SCAN)
+    manual_scan_type = str(FSS_LAST_MANUAL_SCAN_TYPE or "").strip().casefold()
+    has_manual_type = manual_scan_type in _MANUAL_FSS_SCAN_TYPES
+    if not (has_discovery and has_manual and has_manual_type):
+        log_event_throttled(
+            "exploration.fss.exit_summary_arm_blocked",
+            5000,
+            "FSS",
+            "exit summary arming blocked by FSS activity gate",
+            trigger_source=str(trigger_source or ""),
+            system=str(system_name or ""),
+            scan_type_last=str(FSS_LAST_SCAN_TYPE or ""),
+            manual_scan_type_last=str(FSS_LAST_MANUAL_SCAN_TYPE or ""),
+            had_discovery=has_discovery,
+            had_manual=has_manual,
+            has_manual_type=has_manual_type,
+            discovered=int(FSS_DISCOVERED or 0),
+            total=int(FSS_TOTAL_BODIES or 0),
+            full_warned=bool(FSS_FULL_WARNED),
+        )
+        return
+
+    if bool(FSS_PENDING_EXIT_SUMMARY):
         return
 
     # BUGS_FIX 16.5:
@@ -113,6 +139,18 @@ def _wire_exit_summary_to_runtime(gui_ref=None) -> None:
     FSS_PENDING_EXIT_SUMMARY_SYSTEM = str(system_name or "").strip() or None
     FSS_PENDING_EXIT_SUMMARY_SCANNED = int(FSS_DISCOVERED) if int(FSS_DISCOVERED or 0) > 0 else None
     FSS_PENDING_EXIT_SUMMARY_TOTAL = int(FSS_TOTAL_BODIES) if int(FSS_TOTAL_BODIES or 0) > 0 else None
+    log_event(
+        "FSS",
+        "exit_summary_armed",
+        trigger_source=str(trigger_source or ""),
+        system=str(FSS_PENDING_EXIT_SUMMARY_SYSTEM or ""),
+        scan_type_last=str(FSS_LAST_SCAN_TYPE or ""),
+        manual_scan_type_last=str(FSS_LAST_MANUAL_SCAN_TYPE or ""),
+        had_discovery=bool(FSS_HAD_DISCOVERY_SCAN),
+        had_manual=bool(FSS_HAD_MANUAL_PROGRESS_SCAN),
+        discovered=int(FSS_DISCOVERED or 0),
+        total=int(FSS_TOTAL_BODIES or 0),
+    )
 
 
 def flush_pending_exit_summary_on_jump(gui_ref=None) -> bool:
@@ -168,6 +206,7 @@ def reset_fss_progress(*, preserve_exobio: bool = False) -> None:
     global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES
     global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED, FSS_FULL_WARNED
     global FSS_HAD_DISCOVERY_SCAN, FSS_HAD_MANUAL_PROGRESS_SCAN
+    global FSS_LAST_SCAN_TYPE, FSS_LAST_MANUAL_SCAN_TYPE
     global FSS_PENDING_EXIT_SUMMARY, FSS_PENDING_EXIT_SUMMARY_SYSTEM
     global FSS_PENDING_EXIT_SUMMARY_SCANNED, FSS_PENDING_EXIT_SUMMARY_TOTAL
     global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES, FIRST_SYS_OPPORTUNITY_WARNED
@@ -185,6 +224,8 @@ def reset_fss_progress(*, preserve_exobio: bool = False) -> None:
     FSS_FULL_WARNED = False
     FSS_HAD_DISCOVERY_SCAN = False
     FSS_HAD_MANUAL_PROGRESS_SCAN = False
+    FSS_LAST_SCAN_TYPE = None
+    FSS_LAST_MANUAL_SCAN_TYPE = None
     FSS_PENDING_EXIT_SUMMARY = False
     FSS_PENDING_EXIT_SUMMARY_SYSTEM = None
     FSS_PENDING_EXIT_SUMMARY_SCANNED = None
@@ -351,7 +392,7 @@ def _check_fss_thresholds(gui_ref=None):
             )
 
 
-def _maybe_speak_fss_full(gui_ref=None) -> bool:
+def _maybe_speak_fss_full(gui_ref=None, *, trigger_source: str | None = None) -> bool:
     """Emit full-scan message once; never emit last-body hint at 100%."""
     global FSS_FULL_WARNED
 
@@ -377,7 +418,7 @@ def _maybe_speak_fss_full(gui_ref=None) -> bool:
             cooldown_seconds=120.0,
         )
         FSS_FULL_WARNED = True
-        _wire_exit_summary_to_runtime(gui_ref=gui_ref)
+        _wire_exit_summary_to_runtime(gui_ref=gui_ref, trigger_source=trigger_source)
         return True
 
     return False
@@ -392,10 +433,14 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
     body_keys = _scan_body_keys(ev)
 
     global FSS_SCANNED_BODIES, FSS_DISCOVERED, FSS_HAD_MANUAL_PROGRESS_SCAN
+    global FSS_LAST_SCAN_TYPE, FSS_LAST_MANUAL_SCAN_TYPE
     global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES, FIRST_SYS_OPPORTUNITY_WARNED
 
     if not body_name:
         return
+    scan_type_norm = str(ev.get("ScanType") or "").strip().casefold()
+    if scan_type_norm:
+        FSS_LAST_SCAN_TYPE = scan_type_norm
 
     # Jesli nie znamy jeszcze calkowitej liczby cial w systemie,
     # nie liczymy procentow - ale i tak mozemy policzyc discovery.
@@ -417,12 +462,13 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
         FSS_DISCOVERED += 1
         if _is_manual_progress_scan(ev.get("ScanType")):
             FSS_HAD_MANUAL_PROGRESS_SCAN = True
+            FSS_LAST_MANUAL_SCAN_TYPE = scan_type_norm or None
 
         # --- FSS progi + high-value planets ---
         # Keep progress callouts first in queue to avoid perceived lag during scanning.
         _check_fss_thresholds(gui_ref)
         check_high_value_planet(ev, gui_ref)
-        _maybe_speak_fss_full(gui_ref)
+        _maybe_speak_fss_full(gui_ref, trigger_source="Scan")
 
         # --- S2-LOGIC-05: First Discovery detection ---
         was_discovered = ev.get("WasDiscovered")
@@ -549,7 +595,7 @@ def handle_fss_all_bodies_found(ev: Dict[str, Any], gui_ref=None):
     # "System w pelni przeskanowany" before the player actually reaches N/N scans.
     if FSS_DISCOVERED >= FSS_TOTAL_BODIES:
         _check_fss_thresholds(gui_ref)
-        _maybe_speak_fss_full(gui_ref)
+        _maybe_speak_fss_full(gui_ref, trigger_source="FSSAllBodiesFound")
 
 
 def bootstrap_fss_state_from_journal_lines(
@@ -566,6 +612,7 @@ def bootstrap_fss_state_from_journal_lines(
     global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES
     global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED, FSS_FULL_WARNED
     global FSS_HAD_DISCOVERY_SCAN, FSS_HAD_MANUAL_PROGRESS_SCAN
+    global FSS_LAST_SCAN_TYPE, FSS_LAST_MANUAL_SCAN_TYPE
     global FSS_PENDING_EXIT_SUMMARY, FSS_PENDING_EXIT_SUMMARY_SYSTEM
     global FSS_PENDING_EXIT_SUMMARY_SCANNED, FSS_PENDING_EXIT_SUMMARY_TOTAL
 
@@ -610,6 +657,8 @@ def bootstrap_fss_state_from_journal_lines(
     total_bodies = 0
     had_discovery_scan = False
     had_manual_progress_scan = False
+    last_scan_type: str | None = None
+    last_manual_scan_type: str | None = None
     scanned_keys: set[str] = set()
 
     for ev in segment:
@@ -631,6 +680,9 @@ def bootstrap_fss_state_from_journal_lines(
         if typ != "Scan":
             continue
 
+        scan_type_norm = str(ev.get("ScanType") or "").strip().casefold()
+        if scan_type_norm:
+            last_scan_type = scan_type_norm
         body_name = _scan_body_label(ev)
         if not body_name:
             continue
@@ -649,6 +701,7 @@ def bootstrap_fss_state_from_journal_lines(
         discovered += 1
         if _is_manual_progress_scan(ev.get("ScanType")):
             had_manual_progress_scan = True
+            last_manual_scan_type = scan_type_norm or None
 
     if discovered <= 0 and total_bodies <= 0:
         return stats
@@ -658,6 +711,8 @@ def bootstrap_fss_state_from_journal_lines(
     FSS_TOTAL_BODIES = int(max(total_bodies, discovered)) if total_bodies > 0 else 0
     FSS_HAD_DISCOVERY_SCAN = bool(had_discovery_scan)
     FSS_HAD_MANUAL_PROGRESS_SCAN = bool(had_manual_progress_scan)
+    FSS_LAST_SCAN_TYPE = str(last_scan_type or "").strip() or None
+    FSS_LAST_MANUAL_SCAN_TYPE = str(last_manual_scan_type or "").strip() or None
 
     FSS_PENDING_EXIT_SUMMARY = False
     FSS_PENDING_EXIT_SUMMARY_SYSTEM = None
