@@ -34,21 +34,37 @@ class F16PlayerDbCashInHistoryAndQueryTests(unittest.TestCase):
                 fallback_system_name="IGNORED_SYSTEM",
                 fallback_station_name="IGNORED_STATION",
             )
+            out_multi_uc = player_local_db.ingest_journal_event(
+                {
+                    "event": "MultiSellExplorationData",
+                    "timestamp": "2026-02-22T21:10:00Z",
+                    "TotalEarnings": 9100000,
+                },
+                path=db_path,
+                fallback_system_name="Arietis Sector RJ-Q b5-1",
+                fallback_station_name="Mendoza Ring",
+            )
 
             self.assertTrue(bool(out_uc.get("ok")))
             self.assertTrue(bool(out_uc.get("ingested_cashin")))
             self.assertTrue(bool(out_vista.get("ok")))
             self.assertTrue(bool(out_vista.get("ingested_cashin")))
+            self.assertTrue(bool(out_multi_uc.get("ok")))
+            self.assertTrue(bool(out_multi_uc.get("ingested_cashin")))
 
             all_rows = player_local_db.query_cashin_history(path=db_path, limit=10)
-            self.assertEqual(len(all_rows), 2)
-            self.assertEqual(all_rows[0]["service"], "VISTA")
-            self.assertEqual(all_rows[0]["system_name"], "IC 289 Sector TJ-Q b5-0")
-            self.assertEqual(all_rows[0]["station_name"], "Fan Survey")
-            self.assertEqual(int(all_rows[0]["total_earnings"]), 132555000)
-            self.assertEqual(all_rows[1]["service"], "UC")
-            self.assertEqual(all_rows[1]["system_name"], "Diagaundri")
-            self.assertEqual(all_rows[1]["station_name"], "Ray Gateway")
+            self.assertEqual(len(all_rows), 3)
+            self.assertEqual(all_rows[0]["service"], "UC")
+            self.assertEqual(all_rows[0]["system_name"], "Arietis Sector RJ-Q b5-1")
+            self.assertEqual(all_rows[0]["station_name"], "Mendoza Ring")
+            self.assertEqual(int(all_rows[0]["total_earnings"]), 9100000)
+            self.assertEqual(all_rows[1]["service"], "VISTA")
+            self.assertEqual(all_rows[1]["system_name"], "IC 289 Sector TJ-Q b5-0")
+            self.assertEqual(all_rows[1]["station_name"], "Fan Survey")
+            self.assertEqual(int(all_rows[1]["total_earnings"]), 132555000)
+            self.assertEqual(all_rows[2]["service"], "UC")
+            self.assertEqual(all_rows[2]["system_name"], "Diagaundri")
+            self.assertEqual(all_rows[2]["station_name"], "Ray Gateway")
 
             vista_rows = player_local_db.query_cashin_history(path=db_path, service="vista", limit=10)
             self.assertEqual(len(vista_rows), 1)

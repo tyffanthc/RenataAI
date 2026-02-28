@@ -231,7 +231,7 @@ def _distance_between_coords(
 
 
 def _cashin_service_for_event(event_name: str) -> str | None:
-    if event_name == "SellExplorationData":
+    if event_name in {"SellExplorationData", "MultiSellExplorationData"}:
         return "UC"
     if event_name == "SellOrganicData":
         return "VISTA"
@@ -865,6 +865,7 @@ def ingest_journal_event(
         "Docked",
         "Scan",
         "SellExplorationData",
+        "MultiSellExplorationData",
         "SellOrganicData",
     }:
         return {"ok": False, "reason": "unsupported_event", "event": event_name}

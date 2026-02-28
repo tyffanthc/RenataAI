@@ -143,7 +143,7 @@ def _apply_sell_value_domain_reset(ev: dict) -> None:
 
 def _log_sell_value_snapshot(ev: dict) -> None:
     event_name = str(ev.get("event") or "").strip()
-    if event_name not in {"SellExplorationData", "SellOrganicData"}:
+    if event_name not in {"SellExplorationData", "MultiSellExplorationData", "SellOrganicData"}:
         return
     try:
         from app.state import app_state
@@ -321,7 +321,15 @@ class EventHandler:
         if not typ:
             return
 
-        if typ in {"Location", "FSDJump", "CarrierJump", "Docked", "SellExplorationData", "SellOrganicData"}:
+        if typ in {
+            "Location",
+            "FSDJump",
+            "CarrierJump",
+            "Docked",
+            "SellExplorationData",
+            "MultiSellExplorationData",
+            "SellOrganicData",
+        }:
             playerdb_ingest_ok = False
             try:
                 from app.state import app_state
@@ -374,7 +382,7 @@ class EventHandler:
         except Exception as exc:
             _log_router_fallback("journal.combat_awareness", "journal event: combat awareness handler failed", exc)
 
-        if typ in {"SellExplorationData", "SellOrganicData"}:
+        if typ in {"SellExplorationData", "MultiSellExplorationData", "SellOrganicData"}:
             _log_sell_value_snapshot(ev)
             _apply_sell_value_domain_reset(ev)
 

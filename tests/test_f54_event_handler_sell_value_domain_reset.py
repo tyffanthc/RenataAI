@@ -99,7 +99,34 @@ class F54EventHandlerSellValueDomainResetTests(unittest.TestCase):
         snapshot_mock.assert_called_once()
         reset_mock.assert_called_once()
 
+    def test_handle_event_multisell_triggers_snapshot_and_domain_reset(self) -> None:
+        handler = EventHandler()
+        line = json.dumps(
+            {
+                "event": "MultiSellExplorationData",
+                "timestamp": "2026-02-27T12:10:00Z",
+                "TotalEarnings": 654321,
+                "StarSystem": "F54_SYS_MULTI",
+            }
+        )
+
+        with (
+            patch("logic.event_handler.player_local_db.ingest_journal_event", return_value={"ok": True}),
+            patch("logic.event_handler._emit_playerdb_updated"),
+            patch("logic.event_handler.build_logbook_feed_item", return_value=None),
+            patch("logic.event_handler.MSG_QUEUE.put"),
+            patch("app.state.app_state.update_mode_signal_from_journal"),
+            patch("logic.event_handler.high_g_warning.handle_journal_event"),
+            patch("logic.event_handler.survival_rebuy_awareness.handle_journal_event"),
+            patch("logic.event_handler.combat_awareness.handle_journal_event"),
+            patch("logic.event_handler._log_sell_value_snapshot") as snapshot_mock,
+            patch("logic.event_handler._apply_sell_value_domain_reset") as reset_mock,
+        ):
+            handler.handle_event(line, gui_ref=None)
+
+        snapshot_mock.assert_called_once()
+        reset_mock.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
-
