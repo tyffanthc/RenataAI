@@ -139,6 +139,9 @@ class F20MapDataProviderAdaptersTests(unittest.TestCase):
         self.assertIn("source", sample)
         self.assertIn("confidence", sample)
         self.assertIn("freshness_ts", sample)
+        self.assertIn("primary_star_type", sample)
+        self.assertIn("is_neutron", sample)
+        self.assertIn("is_black_hole", sample)
 
     def test_get_system_nodes_supports_1d_and_1y_ranges_with_forever_alias(self) -> None:
         now = datetime.now(timezone.utc)
@@ -191,6 +194,46 @@ class F20MapDataProviderAdaptersTests(unittest.TestCase):
         self.assertEqual(rows, [])
         self.assertFalse(bool(meta.get("available")))
         self.assertEqual(str(meta.get("reason") or ""), "playerdb_jumps_not_ingested")
+
+    def test_get_system_nodes_exposes_star_metadata_from_jump_and_scan(self) -> None:
+        player_local_db.ingest_journal_event(
+            {
+                "event": "FSDJump",
+                "timestamp": "2026-02-28T10:00:00Z",
+                "StarSystem": "F31_STAR_JUMP_N",
+                "SystemAddress": 93101,
+                "SystemId64": 93101,
+                "StarPos": [8.0, 0.0, 0.0],
+                "StarClass": "N",
+            },
+            path=self.db_path,
+        )
+        player_local_db.ingest_journal_event(
+            {
+                "event": "Scan",
+                "timestamp": "2026-02-28T10:10:00Z",
+                "StarSystem": "F31_STAR_SCAN_H",
+                "SystemAddress": 93102,
+                "SystemId64": 93102,
+                "BodyType": "Star",
+                "BodyName": "F31_STAR_SCAN_H A",
+                "StarType": "Black Hole",
+            },
+            path=self.db_path,
+        )
+
+        rows, _meta = self.provider.get_system_nodes(time_range="all", source_filter="observed_only")
+        by_name = {str(r.get("system_name") or ""): dict(r) for r in rows}
+
+        jump_row = dict(by_name.get("F31_STAR_JUMP_N") or {})
+        self.assertEqual(str(jump_row.get("primary_star_type") or ""), "N")
+        self.assertEqual(int(jump_row.get("is_neutron") or 0), 1)
+        self.assertEqual(int(jump_row.get("is_black_hole") or 0), 0)
+
+        scan_row = dict(by_name.get("F31_STAR_SCAN_H") or {})
+        self.assertEqual(str(scan_row.get("primary_star_type") or ""), "Black Hole")
+        self.assertEqual(int(scan_row.get("is_neutron") or 0), 0)
+        self.assertEqual(int(scan_row.get("is_black_hole") or 0), 1)
 
     def test_get_stations_market_last_seen_and_top_prices_contract(self) -> None:
         self._seed_baseline()

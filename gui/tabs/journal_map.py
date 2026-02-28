@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import math
@@ -32,9 +32,14 @@ COLOR_EXOBIO_LAYER = "#2dd4bf"
 COLOR_EXPLORATION_LAYER = "#facc15"
 COLOR_INCIDENT_LAYER = "#ef4444"
 COLOR_COMBAT_LAYER = "#fb7185"
+COLOR_STAR_NEUTRON = "#7dd3fc"
+COLOR_STAR_BLACK_HOLE = "#a78bfa"
 
 TIME_RANGE_VALUES = ("all", "365d", "180d", "90d", "30d", "7d", "3d", "1d")
 TIME_RANGE_ALLOWED = set(TIME_RANGE_VALUES) | {"forever"}
+TIME_RANGE_SLIDER_VALUES = ("forever", "365d", "180d", "90d", "30d", "7d", "3d", "1d")
+FRESHNESS_VALUES = ("<=6h", "<=24h", "<=7d", "any")
+FRESHNESS_SLIDER_VALUES = ("any", "<=7d", "<=24h", "<=6h")
 
 
 def _log_map_soft_failure(key: str, msg: str, **fields: Any) -> None:
@@ -64,6 +69,9 @@ class _MapNode:
     freshness_ts: str = ""
     first_seen_ts: str = ""
     last_seen_ts: str = ""
+    primary_star_type: str = ""
+    is_neutron: int = 0
+    is_black_hole: int = 0
 
 
 @dataclass
@@ -121,6 +129,42 @@ def _max_age_for_freshness_filter(value: Any) -> timedelta | None:
     return None
 
 
+def _time_range_slider_index_for_value(value: Any) -> int:
+    text = _as_text(value).lower()
+    if text == "all":
+        text = "forever"
+    try:
+        return int(TIME_RANGE_SLIDER_VALUES.index(text))
+    except Exception:
+        return int(TIME_RANGE_SLIDER_VALUES.index("30d"))
+
+
+def _time_range_value_for_slider_index(value: Any) -> str:
+    try:
+        idx = int(round(float(value)))
+    except Exception:
+        idx = 0
+    idx = max(0, min(len(TIME_RANGE_SLIDER_VALUES) - 1, idx))
+    return str(TIME_RANGE_SLIDER_VALUES[idx])
+
+
+def _freshness_slider_index_for_value(value: Any) -> int:
+    text = _as_text(value).lower()
+    try:
+        return int(FRESHNESS_SLIDER_VALUES.index(text))
+    except Exception:
+        return int(FRESHNESS_SLIDER_VALUES.index("any"))
+
+
+def _freshness_value_for_slider_index(value: Any) -> str:
+    try:
+        idx = int(round(float(value)))
+    except Exception:
+        idx = 0
+    idx = max(0, min(len(FRESHNESS_SLIDER_VALUES) - 1, idx))
+    return str(FRESHNESS_SLIDER_VALUES[idx])
+
+
 class JournalMapTab(tk.Frame):
     """
     F20-2 shell zakladki mapy osadzonej w `Dziennik`.
@@ -175,6 +219,11 @@ class JournalMapTab(tk.Frame):
         self._tooltip_node_key: str | None = None
         self._tooltip_text_cache = ""
         self._tooltip_last_pos: tuple[int, int] | None = None
+        self._star_legend_popup = None
+        self._star_legend_hide_after_id: str | None = None
+        self._startup_autocenter_pending = True
+        self._startup_autocenter_done = False
+        self._startup_autocenter_user_blocked = False
         self._trade_picker_window = None
         self._trade_picker_search_var = None
         self._trade_picker_tree = None
@@ -204,6 +253,13 @@ class JournalMapTab(tk.Frame):
         self.layer_combat_var = tk.BooleanVar(value=False)
         self.time_range_var = tk.StringVar(value="30d")
         self.freshness_var = tk.StringVar(value="any")
+        self.time_range_slider_var = tk.IntVar(value=_time_range_slider_index_for_value("30d"))
+        self.freshness_slider_var = tk.IntVar(value=_freshness_slider_index_for_value("any"))
+        self.time_range_label_var = tk.StringVar(value="30d")
+        self.freshness_label_var = tk.StringVar(value="any")
+        self.last_session_only_var = tk.BooleanVar(value=False)
+        self._map_session_started_utc = datetime.now(timezone.utc)
+        self._time_filter_sync_suppress = False
         self.source_include_enriched_var = tk.BooleanVar(value=False)
         self.render_mode_var = tk.StringVar(value="Trasa")
         self.trade_compare_commodity_var = tk.StringVar(value="")
@@ -235,6 +291,7 @@ class JournalMapTab(tk.Frame):
             "filters": {
                 "time_range": _as_text(self.time_range_var.get()) or "30d",
                 "freshness": _as_text(self.freshness_var.get()) or "any",
+                "last_session_only": bool(self.last_session_only_var.get()),
                 "source_include_enriched": bool(self.source_include_enriched_var.get()),
                 "render_mode": _as_text(self.render_mode_var.get()) or "Trasa",
             },
@@ -280,6 +337,15 @@ class JournalMapTab(tk.Frame):
             freshness = _as_text(filters.get("freshness"))
             if freshness in {"<=6h", "<=24h", "<=7d", "any"}:
                 self.freshness_var.set(freshness)
+            if "last_session_only" in filters:
+                try:
+                    self.last_session_only_var.set(bool(filters.get("last_session_only")))
+                except Exception as exc:
+                    _log_map_soft_failure(
+                        "apply_state_last_session",
+                        "apply persisted last-session filter failed",
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
             if "source_include_enriched" in filters:
                 try:
                     self.source_include_enriched_var.set(bool(filters.get("source_include_enriched")))
@@ -300,6 +366,8 @@ class JournalMapTab(tk.Frame):
                         value=render_mode,
                         error=f"{type(exc).__name__}: {exc}",
                     )
+        self._sync_time_filter_controls_from_vars()
+        self._sync_time_filter_controls_enabled()
 
         legend = state.get("legend")
         if isinstance(legend, dict) and "collapsed" in legend:
@@ -321,6 +389,80 @@ class JournalMapTab(tk.Frame):
                 )
 
         self._refresh_legend()
+
+    def _effective_time_range_filter(self) -> str:
+        if bool(self.last_session_only_var.get()):
+            return "all"
+        value = _as_text(self.time_range_var.get()).lower()
+        if not value:
+            return "30d"
+        return "all" if value == "forever" else value
+
+    def _effective_freshness_filter(self) -> str:
+        if bool(self.last_session_only_var.get()):
+            return "any"
+        value = _as_text(self.freshness_var.get()).lower()
+        return value or "any"
+
+    def _sync_time_filter_controls_from_vars(self) -> None:
+        self._time_filter_sync_suppress = True
+        time_value = _as_text(self.time_range_var.get()).lower()
+        if time_value == "all":
+            time_value = "forever"
+        freshness_value = _as_text(self.freshness_var.get()).lower()
+        if not freshness_value:
+            freshness_value = "any"
+        try:
+            try:
+                self.time_range_slider_var.set(_time_range_slider_index_for_value(time_value))
+            except Exception:
+                pass
+            try:
+                self.freshness_slider_var.set(_freshness_slider_index_for_value(freshness_value))
+            except Exception:
+                pass
+            self.time_range_label_var.set(time_value or "30d")
+            self.freshness_label_var.set(freshness_value or "any")
+        finally:
+            self._time_filter_sync_suppress = False
+
+    def _sync_time_filter_controls_enabled(self) -> None:
+        disabled = bool(self.last_session_only_var.get())
+        state = "disabled" if disabled else "normal"
+        for widget_name in ("time_range_slider", "freshness_slider"):
+            widget = getattr(self, widget_name, None)
+            if widget is None:
+                continue
+            try:
+                widget.configure(state=state)
+            except Exception:
+                continue
+
+    def _on_time_range_slider_changed(self, _value=None) -> None:
+        if bool(self._time_filter_sync_suppress):
+            return
+        value = _time_range_value_for_slider_index(self.time_range_slider_var.get())
+        self.time_range_var.set("all" if value == "forever" else value)
+        self.time_range_label_var.set(value)
+        self._on_filter_changed()
+
+    def _on_freshness_slider_changed(self, _value=None) -> None:
+        if bool(self._time_filter_sync_suppress):
+            return
+        value = _freshness_value_for_slider_index(self.freshness_slider_var.get())
+        self.freshness_var.set(value)
+        self.freshness_label_var.set(value)
+        self._on_filter_changed()
+
+    def _on_last_session_toggled(self) -> None:
+        self._sync_time_filter_controls_enabled()
+        self._on_filter_changed()
+
+    def _passes_last_session_filter(self, value: Any) -> bool:
+        dt = _parse_iso_ts(value)
+        if dt is None:
+            return False
+        return dt >= self._map_session_started_utc
 
     def _schedule_after(self, delay_ms: int, callback) -> str:
         after_id = self.after(int(delay_ms), callback)
@@ -364,6 +506,14 @@ class JournalMapTab(tk.Frame):
             _log_map_soft_failure(
                 "destroy_cancel_auto_refresh",
                 "cancel auto refresh on destroy failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        try:
+            self._hide_star_legend_popup(force=True)
+        except Exception as exc:
+            _log_map_soft_failure(
+                "destroy_hide_star_legend_popup",
+                "hide star legend popup on destroy failed",
                 error=f"{type(exc).__name__}: {exc}",
             )
         self._cancel_pending_after_jobs()
@@ -449,28 +599,59 @@ class JournalMapTab(tk.Frame):
         tk.Label(filters_box, text="Zakres czasu:", bg=COLOR_BG, fg=COLOR_FG).grid(
             row=0, column=0, sticky="w", padx=8, pady=(6, 4)
         )
-        time_combo = ttk.Combobox(
-            filters_box,
-            values=TIME_RANGE_VALUES,
-            state="readonly",
-            textvariable=self.time_range_var,
-            width=10,
+        tk.Label(filters_box, textvariable=self.time_range_label_var, bg=COLOR_BG, fg=COLOR_SEC).grid(
+            row=0, column=1, sticky="e", padx=(4, 8), pady=(6, 4)
         )
-        time_combo.grid(row=0, column=1, sticky="ew", padx=(4, 8), pady=(6, 4))
-        time_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_filter_changed())
+        self.time_range_slider = tk.Scale(
+            filters_box,
+            from_=0,
+            to=len(TIME_RANGE_SLIDER_VALUES) - 1,
+            orient="horizontal",
+            showvalue=False,
+            variable=self.time_range_slider_var,
+            command=self._on_time_range_slider_changed,
+            bg=COLOR_BG,
+            fg=COLOR_FG,
+            troughcolor=COLOR_ACCENT,
+            highlightthickness=0,
+            activebackground=COLOR_FG,
+        )
+        self.time_range_slider.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8, pady=(0, 6))
 
         tk.Label(filters_box, text="Freshness:", bg=COLOR_BG, fg=COLOR_FG).grid(
-            row=1, column=0, sticky="w", padx=8, pady=4
+            row=2, column=0, sticky="w", padx=8, pady=(0, 4)
         )
-        freshness_combo = ttk.Combobox(
+        tk.Label(filters_box, textvariable=self.freshness_label_var, bg=COLOR_BG, fg=COLOR_SEC).grid(
+            row=2, column=1, sticky="e", padx=(4, 8), pady=(0, 4)
+        )
+        self.freshness_slider = tk.Scale(
             filters_box,
-            values=("<=6h", "<=24h", "<=7d", "any"),
-            state="readonly",
-            textvariable=self.freshness_var,
-            width=10,
+            from_=0,
+            to=len(FRESHNESS_SLIDER_VALUES) - 1,
+            orient="horizontal",
+            showvalue=False,
+            variable=self.freshness_slider_var,
+            command=self._on_freshness_slider_changed,
+            bg=COLOR_BG,
+            fg=COLOR_FG,
+            troughcolor=COLOR_ACCENT,
+            highlightthickness=0,
+            activebackground=COLOR_FG,
         )
-        freshness_combo.grid(row=1, column=1, sticky="ew", padx=(4, 8), pady=4)
-        freshness_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_filter_changed())
+        self.freshness_slider.grid(row=3, column=0, columnspan=2, sticky="ew", padx=8, pady=(0, 6))
+
+        last_session_chk = tk.Checkbutton(
+            filters_box,
+            text="Ostatnia sesja",
+            variable=self.last_session_only_var,
+            command=self._on_last_session_toggled,
+            bg=COLOR_BG,
+            fg=COLOR_FG,
+            selectcolor=COLOR_ACCENT,
+            activebackground=COLOR_BG,
+            activeforeground=COLOR_FG,
+        )
+        last_session_chk.grid(row=4, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 4))
 
         include_enriched_chk = tk.Checkbutton(
             filters_box,
@@ -483,10 +664,10 @@ class JournalMapTab(tk.Frame):
             activebackground=COLOR_BG,
             activeforeground=COLOR_FG,
         )
-        include_enriched_chk.grid(row=2, column=0, columnspan=2, sticky="w", padx=8, pady=(4, 4))
+        include_enriched_chk.grid(row=5, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 4))
 
         tk.Label(filters_box, text="Tryb renderowania:", bg=COLOR_BG, fg=COLOR_FG).grid(
-            row=3, column=0, sticky="w", padx=8, pady=(4, 6)
+            row=6, column=0, sticky="w", padx=8, pady=(4, 6)
         )
         render_mode_combo = ttk.Combobox(
             filters_box,
@@ -495,8 +676,10 @@ class JournalMapTab(tk.Frame):
             textvariable=self.render_mode_var,
             width=10,
         )
-        render_mode_combo.grid(row=3, column=1, sticky="ew", padx=(4, 8), pady=(4, 6))
+        render_mode_combo.grid(row=6, column=1, sticky="ew", padx=(4, 8), pady=(4, 6))
         render_mode_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_filter_changed())
+        self._sync_time_filter_controls_from_vars()
+        self._sync_time_filter_controls_enabled()
 
         btn_box = tk.Frame(self.left_frame, bg=COLOR_BG)
         btn_box.grid(row=3, column=0, sticky="ew", pady=(0, 6))
@@ -549,6 +732,17 @@ class JournalMapTab(tk.Frame):
         legend_head = tk.Frame(legend_box, bg=COLOR_BG)
         legend_head.grid(row=0, column=0, sticky="ew")
         legend_head.columnconfigure(0, weight=1)
+        self.legend_star_info_btn = tk.Button(
+            legend_head,
+            text="Gwiazdy",
+            bg=COLOR_ACCENT,
+            fg=COLOR_FG,
+            relief="flat",
+            width=8,
+        )
+        self.legend_star_info_btn.grid(row=0, column=1, sticky="e", padx=(6, 0), pady=(4, 2))
+        self.legend_star_info_btn.bind("<Enter>", self._on_star_legend_hover_enter)
+        self.legend_star_info_btn.bind("<Leave>", self._on_star_legend_hover_leave)
         self.legend_toggle_btn = tk.Button(
             legend_head,
             textvariable=self.legend_toggle_text_var,
@@ -558,7 +752,7 @@ class JournalMapTab(tk.Frame):
             command=self._toggle_legend,
             width=10,
         )
-        self.legend_toggle_btn.grid(row=0, column=1, sticky="e", padx=6, pady=(4, 2))
+        self.legend_toggle_btn.grid(row=0, column=2, sticky="e", padx=6, pady=(4, 2))
 
         self.legend_body_frame = tk.Frame(legend_box, bg=COLOR_BG)
         self.legend_body_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 6))
@@ -695,6 +889,16 @@ class JournalMapTab(tk.Frame):
             command=self._on_trade_highlight_clicked,
         )
         self.trade_highlight_btn.grid(row=0, column=1, sticky="e")
+        self.trade_clear_btn = tk.Button(
+            trade_ctl,
+            text="Wyczysc compare",
+            bg=COLOR_ACCENT,
+            fg=COLOR_FG,
+            relief="flat",
+            state="disabled",
+            command=self._on_trade_compare_clear_clicked,
+        )
+        self.trade_clear_btn.grid(row=0, column=2, sticky="e", padx=(6, 0))
 
         tk.Label(
             self.right_frame,
@@ -720,14 +924,16 @@ class JournalMapTab(tk.Frame):
 
         self.trade_compare_tree = ttk.Treeview(
             self.right_frame,
-            columns=("mode", "commodity", "price", "age"),
+            columns=("mode", "commodity", "system", "station", "price", "age"),
             show="headings",
             style="Treeview",
             height=6,
         )
         for col, title, width, anchor in (
             ("mode", "Tryb", 58, "w"),
-            ("commodity", "Towar", 230, "w"),
+            ("commodity", "Towar", 150, "w"),
+            ("system", "System", 120, "w"),
+            ("station", "Stacja", 120, "w"),
             ("price", "Cena", 76, "e"),
             ("age", "Age", 82, "w"),
         ):
@@ -736,7 +942,7 @@ class JournalMapTab(tk.Frame):
                 col,
                 width=width,
                 anchor=anchor,
-                stretch=(col in {"commodity"}),
+                stretch=(col in {"commodity", "system", "station"}),
             )
         self.trade_compare_tree.grid(row=10, column=0, sticky="nsew")
         self.trade_compare_tree.bind("<<TreeviewSelect>>", self._on_trade_compare_row_selected)
@@ -973,12 +1179,12 @@ class JournalMapTab(tk.Frame):
     def _map_ppm_action_set_neutron_route(self, target: str) -> dict[str, Any]:
         neutron_tab = getattr(getattr(self.app, "tab_spansh", None), "tab_neutron", None)
         if neutron_tab is None:
-            self.map_status_var.set("Mapa: planner neutronowy jest niedostępny.")
+            self.map_status_var.set("Mapa: planner neutronowy jest niedostÄ™pny.")
             return {"ok": False, "reason": "neutron_tab_unavailable"}
         if bool(route_manager.is_busy()):
             mode_now = str(route_manager.current_mode() or "").strip().lower()
             if mode_now and mode_now != "neutron":
-                self.map_status_var.set("Mapa: planner jest zajęty innym trybem. Spróbuj za chwilę.")
+                self.map_status_var.set("Mapa: planner jest zajÄ™ty innym trybem. SprĂłbuj za chwilÄ™.")
                 return {"ok": False, "reason": "planner_busy_other_mode"}
         current_system = str(getattr(app_state, "current_system", "") or "").strip()
         try:
@@ -1037,6 +1243,43 @@ class JournalMapTab(tk.Frame):
                 error=f"{type(exc).__name__}: {exc}",
             )
 
+    @staticmethod
+    def _star_type_token(value: Any) -> str:
+        raw = _as_text(value).casefold()
+        return "".join(ch for ch in raw if ch.isalnum())
+
+    def _star_color_for_node(self, node: _MapNode) -> str:
+        if int(getattr(node, "is_black_hole", 0) or 0):
+            return COLOR_STAR_BLACK_HOLE
+        if int(getattr(node, "is_neutron", 0) or 0):
+            return COLOR_STAR_NEUTRON
+        token = self._star_type_token(getattr(node, "primary_star_type", ""))
+        if not token:
+            return COLOR_NODE
+        base = token[0]
+        by_class = {
+            "o": "#8bc5ff",
+            "b": "#a4d1ff",
+            "a": "#d5e7ff",
+            "f": "#fff1b8",
+            "g": "#ffd18a",
+            "k": "#ffb56a",
+            "m": "#ff8d67",
+            "l": "#f4a261",
+            "t": "#d9b3ff",
+            "y": "#b9a1ff",
+            "d": "#bde0fe",
+        }
+        return str(by_class.get(base, COLOR_NODE))
+
+    def _star_label_for_node(self, node: _MapNode) -> str:
+        star_type = _as_text(getattr(node, "primary_star_type", ""))
+        if int(getattr(node, "is_black_hole", 0) or 0):
+            return star_type or "Black Hole"
+        if int(getattr(node, "is_neutron", 0) or 0):
+            return star_type or "Neutron Star"
+        return star_type or "-"
+
     def _tooltip_active_badges_for_node(self, node_key: str) -> list[str]:
         flags = dict((self._node_layer_flags or {}).get(str(node_key)) or {})
         out: list[str] = []
@@ -1066,6 +1309,7 @@ class JournalMapTab(tk.Frame):
         return "\n".join(
             [
                 f"System: {node.system_name}",
+                f"Gwiazda: {self._star_label_for_node(node)}",
                 f"Last seen: {age} ({last_seen or '-'})",
                 f"Stacje: {stations_count}",
                 f"Warstwy: {badges_text}",
@@ -1159,6 +1403,91 @@ class JournalMapTab(tk.Frame):
         self._hide_map_tooltip()
         return None
 
+    def _on_star_legend_hover_enter(self, _event=None) -> None:
+        hide_id = getattr(self, "_star_legend_hide_after_id", None)
+        if hide_id:
+            try:
+                self.after_cancel(hide_id)
+            except Exception:
+                pass
+            self._star_legend_hide_after_id = None
+        self._show_star_legend_popup()
+
+    def _on_star_legend_hover_leave(self, _event=None) -> None:
+        try:
+            self._star_legend_hide_after_id = str(self.after(120, self._hide_star_legend_popup))
+        except Exception:
+            self._hide_star_legend_popup()
+
+    def _show_star_legend_popup(self) -> None:
+        btn = getattr(self, "legend_star_info_btn", None)
+        if btn is None:
+            return
+        popup = getattr(self, "_star_legend_popup", None)
+        if popup is not None:
+            try:
+                popup.deiconify()
+                popup.lift()
+            except Exception:
+                pass
+            return
+        try:
+            popup = tk.Toplevel(self)
+            popup.overrideredirect(True)
+            popup.transient(self.winfo_toplevel())
+            popup.configure(bg=COLOR_BG)
+            frame = tk.Frame(popup, bg=COLOR_BG, bd=1, relief="solid")
+            frame.pack(fill="both", expand=True)
+            title = tk.Label(frame, text="Legenda gwiazd", bg=COLOR_BG, fg=COLOR_FG, font=("Segoe UI", 9, "bold"))
+            title.grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(6, 4))
+            legend_rows = [
+                (COLOR_STAR_NEUTRON, "Neutron Star"),
+                (COLOR_STAR_BLACK_HOLE, "Black Hole"),
+                ("#8bc5ff", "Klasy O/B/A"),
+                ("#fff1b8", "Klasy F/G"),
+                ("#ff8d67", "Klasy K/M/L"),
+                ("#d9b3ff", "Klasy T/Y"),
+                ("#bde0fe", "Biale karly"),
+            ]
+            for idx, (color, label) in enumerate(legend_rows, start=1):
+                swatch = tk.Canvas(frame, width=12, height=12, bg=COLOR_BG, highlightthickness=0)
+                swatch.grid(row=idx, column=0, sticky="w", padx=(8, 6), pady=2)
+                swatch.create_rectangle(1, 1, 11, 11, outline=color, fill=color)
+                tk.Label(frame, text=label, bg=COLOR_BG, fg=COLOR_SEC, anchor="w").grid(
+                    row=idx, column=1, sticky="w", padx=(0, 8), pady=2
+                )
+            popup.bind("<Leave>", self._on_star_legend_hover_leave)
+            popup.bind("<Enter>", self._on_star_legend_hover_enter)
+            x = int(btn.winfo_rootx())
+            y = int(btn.winfo_rooty() + btn.winfo_height() + 2)
+            popup.geometry(f"+{x}+{y}")
+            self._star_legend_popup = popup
+        except Exception as exc:
+            _log_map_soft_failure(
+                "legend_star_popup_show",
+                "show star legend popup failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
+    def _hide_star_legend_popup(self, *_args, force: bool = False) -> None:
+        hide_id = getattr(self, "_star_legend_hide_after_id", None)
+        if hide_id:
+            try:
+                self.after_cancel(hide_id)
+            except Exception:
+                pass
+            self._star_legend_hide_after_id = None
+        popup = getattr(self, "_star_legend_popup", None)
+        if popup is None:
+            return
+        try:
+            popup.destroy()
+        except Exception:
+            if not force:
+                raise
+        finally:
+            self._star_legend_popup = None
+
     def _toggle_legend(self) -> None:
         collapsed = not bool(self.legend_collapsed_var.get())
         self.legend_collapsed_var.set(collapsed)
@@ -1185,46 +1514,40 @@ class JournalMapTab(tk.Frame):
             self.legend_text_var.set("")
             return
 
-        # Base state overlays (always relevant to map interaction).
         lines.extend(
             [
-                "Otoczki:",
-                "• biala = wybrany system",
-                "• zielona = aktualny system gracza",
+                "Znaczniki:",
+                "[O] biala otoczka = wybrany system",
+                "[O] zielona otoczka = aktualny system gracza",
             ]
         )
 
         active_items: list[str] = []
         if bool(self.layer_stations_var.get()):
-            active_items.append("• ring zielony = znane stacje w systemie")
+            active_items.append("[O] zielony ring = znane stacje w systemie")
         if bool(self.layer_trade_var.get()):
-            active_items.append("• kwadrat niebieski = znany rynek (Trade)")
+            active_items.append("[#] niebieski kwadrat = znany rynek (Trade)")
         if bool(self.layer_cashin_var.get()):
-            active_items.append("• romb rozowy = znane UC/Vista na stacjach (Cash-In)")
+            active_items.append("[<>] rozowy romb = znane UC/Vista na stacjach (Cash-In)")
         if bool(self.layer_exploration_var.get()):
-            active_items.append("• badge zolty = historia eksploracji (cash-in UC)")
+            active_items.append("[*] zolty badge = historia eksploracji (cash-in UC)")
         if bool(self.layer_exobio_var.get()):
-            active_items.append("• badge turkusowy = historia exobio (cash-in Vista)")
+            active_items.append("[*] turkusowy badge = historia exobio (cash-in Vista)")
         if bool(self.layer_incidents_var.get()):
             if bool((self._action_layers_meta or {}).get("supports_incidents")):
-                active_items.append("• badge czerwony = incydenty")
+                active_items.append("[*] czerwony badge = incydenty")
             else:
-                active_items.append("• Incidents: brak danych w playerdb (future)")
+                active_items.append("Incidents: brak danych w playerdb (future)")
         if bool(self.layer_combat_var.get()):
             if bool((self._action_layers_meta or {}).get("supports_combat")):
-                active_items.append("• badge rozowo-czerwony = combat")
+                active_items.append("[*] rozowo-czerwony badge = combat")
             else:
-                active_items.append("• Combat: brak danych w playerdb (future)")
+                active_items.append("Combat: brak danych w playerdb (future)")
 
         if active_items:
             lines.append("")
             lines.append("Aktywne warstwy:")
             lines.extend(active_items)
-
-        lines.append("")
-        lines.append("Zoom:")
-        lines.append("• maly zoom: mniej badge / label")
-        lines.append("• duzy zoom: wiecej badge i etykiet")
         self.legend_text_var.set("\n".join(lines))
 
     def _on_filter_changed(self) -> None:
@@ -1436,6 +1759,9 @@ class JournalMapTab(tk.Frame):
                     freshness_ts=str(row.get("freshness_ts") or ""),
                     first_seen_ts=str(row.get("first_seen_ts") or ""),
                     last_seen_ts=str(row.get("last_seen_ts") or ""),
+                    primary_star_type=str(row.get("primary_star_type") or ""),
+                    is_neutron=int(bool(row.get("is_neutron"))) if row.get("is_neutron") is not None else 0,
+                    is_black_hole=int(bool(row.get("is_black_hole"))) if row.get("is_black_hole") is not None else 0,
                 )
             except Exception:
                 continue
@@ -1462,6 +1788,8 @@ class JournalMapTab(tk.Frame):
             return None
 
     def _passes_freshness_filter(self, value: Any) -> bool:
+        if bool(self.last_session_only_var.get()):
+            return self._passes_last_session_filter(value)
         max_age = _max_age_for_freshness_filter(self.freshness_var.get())
         if max_age is None:
             return True
@@ -1477,6 +1805,19 @@ class JournalMapTab(tk.Frame):
         *,
         ts_keys: tuple[str, ...] = ("freshness_ts", "last_seen_ts", "services_freshness_ts", "snapshot_ts"),
     ) -> list[dict[str, Any]]:
+        if bool(self.last_session_only_var.get()):
+            out: list[dict[str, Any]] = []
+            for row in rows or []:
+                if not isinstance(row, dict):
+                    continue
+                candidate_ts = ""
+                for key in ts_keys:
+                    candidate_ts = _as_text(row.get(key))
+                    if candidate_ts:
+                        break
+                if self._passes_last_session_filter(candidate_ts):
+                    out.append(dict(row))
+            return out
         max_age = _max_age_for_freshness_filter(self.freshness_var.get())
         if max_age is None:
             return [dict(r) for r in rows if isinstance(r, dict)]
@@ -1581,8 +1922,8 @@ class JournalMapTab(tk.Frame):
             try:
                 action_flags_by_system_cf, action_meta = getter(
                     system_names=system_names,
-                    time_range=str(self.time_range_var.get() or "all"),
-                    freshness_filter=str(self.freshness_var.get() or "any"),
+                    time_range=self._effective_time_range_filter(),
+                    freshness_filter=self._effective_freshness_filter(),
                     limit=max(100, len(system_names) * 2),
                 )
                 if not isinstance(action_flags_by_system_cf, dict):
@@ -1599,7 +1940,7 @@ class JournalMapTab(tk.Frame):
             try:
                 station_flags_batch, _batch_meta = batch_getter(
                     systems=nodes_rows,
-                    freshness_filter=str(self.freshness_var.get() or "any"),
+                    freshness_filter=self._effective_freshness_filter(),
                     limit_per_system=200,
                 )
                 if not isinstance(station_flags_batch, dict):
@@ -1712,13 +2053,13 @@ class JournalMapTab(tk.Frame):
 
     def _coords_layout_from_system_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
-        Mapa (coords) layout: rzutuje rzeczywiste współrzędne galaktyczne (StarPos x, z) na 2D.
+        Mapa (coords) layout: rzutuje rzeczywiste wspĂłĹ‚rzÄ™dne galaktyczne (StarPos x, z) na 2D.
 
         Konwencja ED:
-          x = galaktyczny wschód/zachód, z = galaktyczny N/S (ku rdzeniu), y = wysokość (ignorujemy).
-        Rzut top-down: x → canvas_x, z → canvas_y (z invertowane, żeby N był u góry).
-        Systemy bez współrzędnych trafiają do pasa awaryjnego poniżej mapy.
-        Gdy żaden system nie ma współrzędnych — fallback na travel layout.
+          x = galaktyczny wschĂłd/zachĂłd, z = galaktyczny N/S (ku rdzeniu), y = wysokoĹ›Ä‡ (ignorujemy).
+        Rzut top-down: x â†’ canvas_x, z â†’ canvas_y (z invertowane, ĹĽeby N byĹ‚ u gĂłry).
+        Systemy bez wspĂłĹ‚rzÄ™dnych trafiajÄ… do pasa awaryjnego poniĹĽej mapy.
+        Gdy ĹĽaden system nie ma wspĂłĹ‚rzÄ™dnych â€” fallback na travel layout.
         """
         SCALE_TARGET = 160.0  # docelowe jednostki canvas (podobny zakres co travel layout)
 
@@ -1741,18 +2082,18 @@ class JournalMapTab(tk.Frame):
         range_x = max(max_x - min_x, 1.0)
         range_z = max(max_z - min_z, 1.0)
 
-        # Uniform scale — dłuższa oś dopasowana do SCALE_TARGET
+        # Uniform scale â€” dĹ‚uĹĽsza oĹ› dopasowana do SCALE_TARGET
         scale = SCALE_TARGET / max(range_x, range_z)
 
         out: list[dict[str, Any]] = []
         for row in with_coords:
             item = dict(row)
             item["x"] = (float(row["x"]) - min_x) * scale
-            # Invertujemy z — galaktyczna północ jest u góry (mniejsze canvas_y)
+            # Invertujemy z â€” galaktyczna pĂłĹ‚noc jest u gĂłry (mniejsze canvas_y)
             item["y"] = (max_z - float(row["z"])) * scale
             out.append(item)
 
-        # Systemy bez coords → pas awaryjny poniżej mapy
+        # Systemy bez coords â†’ pas awaryjny poniĹĽej mapy
         fallback_y = range_z * scale + 30.0
         for idx, row in enumerate(without_coords):
             item = dict(row)
@@ -1794,7 +2135,8 @@ class JournalMapTab(tk.Frame):
         edges_count = len(self._edges)
         self.system_details_var.set(
             f"Travel layer: {nodes_count} systemow | {edges_count} krawedzi | "
-            f"time={self.time_range_var.get()} | freshness={self.freshness_var.get()}"
+            f"time={'last_session' if bool(self.last_session_only_var.get()) else _as_text(self.time_range_var.get())} "
+            f"| freshness={'session' if bool(self.last_session_only_var.get()) else _as_text(self.freshness_var.get())}"
         )
         self.station_details_var.set(
             "Wybierz system na mapie, aby zobaczyc stacje i snapshoty rynku."
@@ -1822,6 +2164,8 @@ class JournalMapTab(tk.Frame):
         self._sync_trade_highlight_button_state()
 
     def reload_from_playerdb(self) -> dict[str, Any]:
+        self._sync_time_filter_controls_from_vars()
+        self._sync_time_filter_controls_enabled()
         if not bool(self.layer_travel_var.get()):
             self.set_graph_data(nodes=[], edges=[])
             self._node_layer_flags = {}
@@ -1834,7 +2178,8 @@ class JournalMapTab(tk.Frame):
             self.map_status_var.set("Mapa: warstwa Travel jest wylaczona. Wlacz Travel, aby zobaczyc systemy.")
             return {"ok": True, "travel_enabled": False, "nodes": 0, "edges": 0}
 
-        time_range = str(self.time_range_var.get() or "30d")
+        time_range = self._effective_time_range_filter()
+        freshness_filter = self._effective_freshness_filter()
         source_filter = self._source_filter_mode()
         nodes_rows, nodes_meta = self.data_provider.get_system_nodes(time_range=time_range, source_filter=source_filter)
         edges_rows, edges_meta = self.data_provider.get_edges(time_range=time_range)
@@ -1860,6 +2205,7 @@ class JournalMapTab(tk.Frame):
         self._prime_prefetched_system_stations(render_nodes)
 
         self.set_graph_data(nodes=render_nodes, edges=edges_final)
+        startup_center = self._try_startup_autocenter()
         self._refresh_system_panel_stub()
         self._refresh_trade_commodity_values()
         self._refresh_trade_compare_if_needed()
@@ -1871,6 +2217,9 @@ class JournalMapTab(tk.Frame):
             status_reason = " | krawedzie: fallback sekwencyjny (brak ingestu jumps)"
         if dropped_nodes > 0:
             status_reason += f" | pominieto {int(dropped_nodes)} nodow bez poprawnych koordynatow"
+        if bool(startup_center.get("applied")):
+            target = _as_text(startup_center.get("target")) or "current"
+            status_reason += f" | startup-center={target}"
         layer_state = (
             f" | layers T={int(bool(self.layer_travel_var.get()))}"
             f"/S={int(bool(self.layer_stations_var.get()))}"
@@ -1885,7 +2234,9 @@ class JournalMapTab(tk.Frame):
             status_reason += " | brak danych po filtrach (time/freshness/source)"
         self.map_status_var.set(
             f"Mapa {render_mode}: {count_nodes} systemow / {count_edges} krawedzi | "
-            f"time={time_range} | freshness={self.freshness_var.get()} | source={source_filter}{status_reason}{layer_state}"
+            f"time={'last_session' if bool(self.last_session_only_var.get()) else time_range} "
+            f"| freshness={'session' if bool(self.last_session_only_var.get()) else freshness_filter} "
+            f"| source={source_filter}{status_reason}{layer_state}"
         )
         self._refresh_legend()
         return {
@@ -1893,17 +2244,70 @@ class JournalMapTab(tk.Frame):
             "travel_enabled": True,
             "nodes": count_nodes,
             "edges": count_edges,
+            "startup_center": dict(startup_center or {}),
             "dropped_nodes": int(dropped_nodes),
             "edges_mode": edges_mode,
             "nodes_meta": dict(nodes_meta or {}),
             "edges_meta": dict(edges_meta or {}),
         }
 
+    def _block_startup_autocenter_by_user(self) -> None:
+        if bool(getattr(self, "_startup_autocenter_done", False)):
+            return
+        self._startup_autocenter_pending = False
+        self._startup_autocenter_user_blocked = True
+
+    def _try_startup_autocenter(self) -> dict[str, Any]:
+        if bool(getattr(self, "_startup_autocenter_user_blocked", False)):
+            self._startup_autocenter_pending = False
+            return {"applied": False, "reason": "user_blocked"}
+        if bool(getattr(self, "_startup_autocenter_done", False)):
+            self._startup_autocenter_pending = False
+            return {"applied": False, "reason": "already_done"}
+        if not bool(getattr(self, "_startup_autocenter_pending", False)):
+            return {"applied": False, "reason": "not_pending"}
+        if not bool(self._nodes):
+            return {"applied": False, "reason": "no_nodes"}
+
+        current_node = self._find_current_system_rendered_node()
+        if current_node is not None:
+            self._center_world_point(float(current_node.x), float(current_node.y))
+            self._redraw_scene()
+            self._startup_autocenter_done = True
+            self._startup_autocenter_pending = False
+            return {
+                "applied": True,
+                "reason": "current_system_node",
+                "target": _as_text(getattr(current_node, "system_name", "")),
+            }
+
+        current_star_pos = getattr(app_state, "current_star_pos", None)
+        if isinstance(current_star_pos, (list, tuple)) and len(current_star_pos) >= 3:
+            try:
+                wx = float(current_star_pos[0])
+                wy = float(current_star_pos[2])  # x/z -> 2D (shell fallback)
+                self._center_world_point(wx, wy)
+                self._redraw_scene()
+                self._startup_autocenter_done = True
+                self._startup_autocenter_pending = False
+                return {"applied": True, "reason": "current_star_pos_fallback", "target": "current_star_pos"}
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "startup_autocenter_starpos_fallback",
+                    "startup auto-center fallback current StarPos failed",
+                    current_star_pos=str(current_star_pos),
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+
+        if _as_text(getattr(app_state, "current_system", "")):
+            return {"applied": False, "reason": "current_system_not_visible"}
+        return {"applied": False, "reason": "no_current_context"}
+
     def _refresh_trade_commodity_values(self) -> None:
         try:
             values, _meta = self.data_provider.get_known_commodities(
-                time_range=str(self.time_range_var.get() or "all"),
-                freshness_filter=str(self.freshness_var.get() or "any"),
+                time_range=self._effective_time_range_filter(),
+                freshness_filter=self._effective_freshness_filter(),
                 limit=300,
             )
         except Exception:
@@ -1943,6 +2347,7 @@ class JournalMapTab(tk.Frame):
         state = "normal" if (commodity or self._trade_selected_commodities) else "disabled"
         try:
             self.trade_highlight_btn.configure(state=state)
+            self.trade_clear_btn.configure(state=state)
         except Exception as exc:
             _log_map_soft_failure(
                 "trade_highlight_button_state",
@@ -1978,6 +2383,7 @@ class JournalMapTab(tk.Frame):
             self._trade_highlight_node_keys.clear()
             self._trade_compare_rows = []
             self._trade_compare_rows_by_iid.clear()
+            self.trade_compare_tree.delete(*self.trade_compare_tree.get_children())
             self._redraw_scene()
             return
         self._run_trade_compare(commodity)
@@ -1991,6 +2397,21 @@ class JournalMapTab(tk.Frame):
             self._sync_trade_highlight_button_state()
             return
         self._run_trade_compare(commodity)
+
+    def _clear_trade_compare_state(self) -> None:
+        self._trade_selected_commodities = []
+        self.trade_compare_commodity_var.set("")
+        self._trade_compare_rows = []
+        self._trade_compare_rows_by_iid.clear()
+        self._trade_highlight_node_keys.clear()
+        self.trade_compare_tree.delete(*self.trade_compare_tree.get_children())
+        self._sync_trade_selected_summary()
+        self._sync_trade_highlight_button_state()
+        self._redraw_scene()
+
+    def _on_trade_compare_clear_clicked(self) -> None:
+        self._clear_trade_compare_state()
+        self.map_status_var.set("Mapa: Trade compare wyczyszczony.")
 
     def _set_trade_selected_commodities(self, values: list[str]) -> None:
         seen: set[str] = set()
@@ -2098,7 +2519,7 @@ class JournalMapTab(tk.Frame):
         self._trade_picker_station_only_var = station_only_var
         station_only_chk = tk.Checkbutton(
             controls,
-            text="Pokaż tylko dostępne na stacji",
+            text="PokaĹĽ tylko dostÄ™pne na stacji",
             variable=station_only_var,
             bg=COLOR_BG,
             fg=COLOR_FG,
@@ -2152,7 +2573,7 @@ class JournalMapTab(tk.Frame):
 
         hint = tk.Label(
             win,
-            text="Towary pochodza z Market.json (commodities), nie materialy inżynierskie.",
+            text="Towary pochodza z Market.json (commodities), nie materialy inĹĽynierskie.",
             bg=COLOR_BG,
             fg=COLOR_SEC,
             anchor="w",
@@ -2521,11 +2942,7 @@ class JournalMapTab(tk.Frame):
         if selected_sorted:
             self._run_trade_compare_multi(selected_sorted)
         else:
-            self._trade_compare_rows = []
-            self._trade_compare_rows_by_iid.clear()
-            self.trade_compare_tree.delete(*self.trade_compare_tree.get_children())
-            self._trade_highlight_node_keys.clear()
-            self._redraw_scene()
+            self._clear_trade_compare_state()
             self.map_status_var.set("Mapa: wyczyszczono wybor towarow Trade compare.")
 
     def _node_keys_for_system_name(self, system_name: Any) -> list[str]:
@@ -2634,20 +3051,26 @@ class JournalMapTab(tk.Frame):
         # Deterministic reflow for widget width changes only. This avoids fighting
         # manual column resizing and keeps numeric columns visible.
         fixed_widths = {"mode": 58, "price": 76, "age": 82}
-        min_elastic = {"commodity": 230}
+        min_elastic = {"commodity": 150, "system": 120, "station": 120}
         padding = 18
         try:
             available = max(220, tree_width - padding)
-            elastic_cols = [col for col in ("commodity",) if col in columns]
+            elastic_cols = [col for col in ("commodity", "system", "station") if col in columns]
             fixed_total = sum(fixed_widths.get(col, 0) for col in columns)
             min_total = sum(min_elastic.get(col, 100) for col in elastic_cols)
             extra = max(0, available - fixed_total - min_total)
-            commodity_bonus = extra
+            commodity_bonus = int(extra * 0.45)
+            system_bonus = int(extra * 0.30)
+            station_bonus = max(0, extra - commodity_bonus - system_bonus)
             for col in columns:
                 if col in fixed_widths:
                     tree.column(col, width=fixed_widths[col], stretch=False)
                 elif col == "commodity":
                     tree.column(col, width=min_elastic["commodity"] + commodity_bonus, stretch=True)
+                elif col == "system":
+                    tree.column(col, width=min_elastic["system"] + system_bonus, stretch=True)
+                elif col == "station":
+                    tree.column(col, width=min_elastic["station"] + station_bonus, stretch=True)
         except Exception:
             return
 
@@ -2659,12 +3082,12 @@ class JournalMapTab(tk.Frame):
         self._trade_compare_rows_by_iid.clear()
         self._sync_trade_highlight_button_state()
         if not commodity_name:
-            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "wybierz towar"))
+            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "-", "wybierz towar"))
             self._redraw_scene()
             return {"ok": False, "reason": "missing_commodity"}
 
-        time_range = str(self.time_range_var.get() or "all")
-        freshness_filter = str(self.freshness_var.get() or "any")
+        time_range = self._effective_time_range_filter()
+        freshness_filter = self._effective_freshness_filter()
         try:
             sell_rows, sell_meta = self.data_provider.get_top_prices(
                 commodity_name,
@@ -2681,7 +3104,7 @@ class JournalMapTab(tk.Frame):
                 limit=5,
             )
         except Exception as exc:
-            self.trade_compare_tree.insert("", "end", values=("ERR", "-", "-", type(exc).__name__))
+            self.trade_compare_tree.insert("", "end", values=("ERR", "-", "-", "-", "-", type(exc).__name__))
             self._redraw_scene()
             return {"ok": False, "reason": "provider_error"}
 
@@ -2689,6 +3112,8 @@ class JournalMapTab(tk.Frame):
         for mode_label, rows in (("SELL", sell_rows), ("BUY", buy_rows)):
             for row in rows or []:
                 if not isinstance(row, dict):
+                    continue
+                if not self._passes_freshness_filter(row.get("freshness_ts")):
                     continue
                 self._trade_compare_rows.append(dict(row))
                 system_name = _as_text(row.get("system_name")) or "-"
@@ -2702,7 +3127,7 @@ class JournalMapTab(tk.Frame):
                     "",
                     "end",
                     iid=iid,
-                    values=(mode_label, commodity_name, f"{price}", f"{age} | {conf}"),
+                    values=(mode_label, commodity_name, system_name, station_name, f"{price}", f"{age} | {conf}"),
                 )
                 for key in self._node_keys_for_system_name(system_name):
                     self._trade_highlight_node_keys.add(key)
@@ -2712,7 +3137,7 @@ class JournalMapTab(tk.Frame):
             self.trade_compare_tree.insert(
                 "",
                 "end",
-                values=("INFO", commodity_name, "-", "brak danych po filtrach"),
+                values=("INFO", commodity_name, "-", "-", "-", "brak danych po filtrach"),
             )
         else:
             # Default active commodity highlight (single commodity mode = all rows same commodity).
@@ -2769,7 +3194,7 @@ class JournalMapTab(tk.Frame):
         self._trade_highlight_node_keys.clear()
         self._sync_trade_highlight_button_state()
         if not selected:
-            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "wybierz towary"))
+            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "-", "wybierz towary"))
             self._redraw_scene()
             return {"ok": False, "reason": "missing_commodities"}
 
@@ -2782,15 +3207,15 @@ class JournalMapTab(tk.Frame):
                 sell_rows, _sell_meta = self.data_provider.get_top_prices(
                     commodity_name,
                     "sell",
-                    time_range=str(self.time_range_var.get() or "all"),
-                    freshness_filter=str(self.freshness_var.get() or "any"),
+                    time_range=self._effective_time_range_filter(),
+                    freshness_filter=self._effective_freshness_filter(),
                     limit=5,
                 )
                 buy_rows, _buy_meta = self.data_provider.get_top_prices(
                     commodity_name,
                     "buy",
-                    time_range=str(self.time_range_var.get() or "all"),
-                    freshness_filter=str(self.freshness_var.get() or "any"),
+                    time_range=self._effective_time_range_filter(),
+                    freshness_filter=self._effective_freshness_filter(),
                     limit=5,
                 )
             except Exception:
@@ -2802,6 +3227,8 @@ class JournalMapTab(tk.Frame):
             for mode_label, rows in (("SELL", sell_rows), ("BUY", buy_rows)):
                 for row in rows or []:
                     if not isinstance(row, dict):
+                        continue
+                    if not self._passes_freshness_filter(row.get("freshness_ts")):
                         continue
                     rec = dict(row)
                     self._trade_compare_rows.append(rec)
@@ -2816,12 +3243,12 @@ class JournalMapTab(tk.Frame):
                         "",
                         "end",
                         iid=iid,
-                        values=(mode_label, commodity_name, f"{price}", f"{age} | {conf}"),
+                        values=(mode_label, commodity_name, system_name, station_name, f"{price}", f"{age} | {conf}"),
                     )
                     rows_inserted += 1
 
         if rows_inserted <= 0:
-            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "brak danych po filtrach"))
+            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "-", "brak danych po filtrach"))
             self._redraw_scene()
             self.map_status_var.set("Mapa: Trade compare (multi) - brak danych dla wybranych towarow.")
             self._reflow_trade_compare_tree_columns()
@@ -2981,6 +3408,7 @@ class JournalMapTab(tk.Frame):
             f"Adres systemu: {node.system_address if node.system_address is not None else '-'}",
             f"SystemId64: {node.system_id64 if node.system_id64 is not None else '-'}",
             f"Coords: x={node.x:.1f}, y={node.y:.1f}, z={node.z:.1f}" if node.z is not None else f"Coords: x={node.x:.1f}, y={node.y:.1f}",
+            f"Gwiazda: {self._star_label_for_node(node)}",
             f"Source: {node.source or 'playerdb'} | Confidence: {node.confidence or 'observed'}",
             f"Seen: first={node.first_seen_ts or '-'} | last={node.last_seen_ts or '-'}",
             f"Stacje (playerdb): {len(stations_rows)}",
@@ -3062,7 +3490,10 @@ class JournalMapTab(tk.Frame):
         shown_rows = len(self.station_market_tree.get_children())
         self.station_details_var.set(
             self._station_details_text(station_row)
-            + f"\nSnapshoty rynku: {shown_rows}/{len(snapshots)} (freshness={self.freshness_var.get()})"
+            + (
+                f"\nSnapshoty rynku: {shown_rows}/{len(snapshots)} (freshness="
+                f"{'session' if bool(self.last_session_only_var.get()) else _as_text(self.freshness_var.get())})"
+            )
         )
         return {"ok": True, "market_id": int(market_id), "snapshots": shown_rows, "meta": dict(meta or {})}
 
@@ -3144,6 +3575,8 @@ class JournalMapTab(tk.Frame):
         y = int(getattr(event, "y", 0))
         dx = x - self._pan_last_x
         dy = y - self._pan_last_y
+        if dx or dy:
+            self._block_startup_autocenter_by_user()
         self._pan_last_x = x
         self._pan_last_y = y
         self._set_map_cursor("fleur")
@@ -3178,6 +3611,7 @@ class JournalMapTab(tk.Frame):
         if abs(new_scale - old_scale) < 1e-12:
             return
 
+        self._block_startup_autocenter_by_user()
         # Zoom to cursor: keep the world point under cursor fixed.
         wx, wy = self.screen_to_world(px, py)
         self.view_scale = new_scale
@@ -3302,19 +3736,60 @@ class JournalMapTab(tk.Frame):
         show_labels = self.view_scale >= 0.90
         for node in self._nodes.values():
             sx, sy = self.world_to_screen(node.x, node.y)
-            r = 4 if self.view_scale < 1.2 else 5
+            r = 5 if self.view_scale < 1.2 else 6
+            star_color = self._star_color_for_node(node)
             # Keep click hitbox tight: only the star glyph should carry map_node events.
             node_hit_tags = ("map_node", f"node:{node.key}")
             node_label_tags = ("map_node_label", f"node:{node.key}")
+            base_fill = star_color
+            base_outline = star_color
+            if int(getattr(node, "is_black_hole", 0) or 0):
+                base_fill = COLOR_BG
+                base_outline = star_color
+            elif int(getattr(node, "is_neutron", 0) or 0):
+                base_fill = COLOR_BG
+                base_outline = star_color
             self.map_canvas.create_oval(
                 sx - r,
                 sy - r,
                 sx + r,
                 sy + r,
-                outline=COLOR_NODE,
-                fill=COLOR_NODE,
+                outline=base_outline,
+                fill=base_fill,
                 tags=node_hit_tags,
             )
+            # Distinguish special stars while preserving click hitbox on base glyph.
+            if int(getattr(node, "is_black_hole", 0) or 0):
+                inner = max(1, r - 2)
+                self.map_canvas.create_oval(
+                    sx - inner,
+                    sy - inner,
+                    sx + inner,
+                    sy + inner,
+                    outline=star_color,
+                    width=1.2,
+                    tags=("map_star_marker", f"node:{node.key}"),
+                )
+            elif int(getattr(node, "is_neutron", 0) or 0):
+                burst = r + 2
+                self.map_canvas.create_line(
+                    sx - burst,
+                    sy,
+                    sx + burst,
+                    sy,
+                    fill=star_color,
+                    width=1.0,
+                    tags=("map_star_marker", f"node:{node.key}"),
+                )
+                self.map_canvas.create_line(
+                    sx,
+                    sy - burst,
+                    sx,
+                    sy + burst,
+                    fill=star_color,
+                    width=1.0,
+                    tags=("map_star_marker", f"node:{node.key}"),
+                )
             self._draw_node_layer_badges(node, sx, sy, r)
             self._draw_trade_compare_highlight(node, sx, sy, r)
             self._draw_node_state_rings(node, sx, sy, r)
@@ -3487,3 +3962,4 @@ class _WheelShim:
         self.x = getattr(event, "x", 0)
         self.y = getattr(event, "y", 0)
         self.delta = int(delta)
+

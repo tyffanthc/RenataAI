@@ -11,9 +11,10 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterator
 
-PLAYERDB_SCHEMA_VERSION = 2
+PLAYERDB_SCHEMA_VERSION = 3
 PLAYERDB_SCHEMA_NAME_V1 = "player_local_db_v1"
 PLAYERDB_SCHEMA_NAME_V2 = "player_local_db_v2_market_snapshot_unique"
+PLAYERDB_SCHEMA_NAME_V3 = "player_local_db_v3_system_star_metadata"
 DEFAULT_FIXTURE_PREFIXES: tuple[str, ...] = (
     "F19_",
     "F20_",
@@ -175,6 +176,32 @@ def _event_station_type(ev: dict[str, Any]) -> str:
     return _as_text(ev.get("StationType") or ev.get("StationTypeLocalised") or "station") or "station"
 
 
+def _normalize_star_type_token(value: Any) -> str:
+    raw = _as_text(value).casefold()
+    return "".join(ch for ch in raw if ch.isalnum())
+
+
+def _star_flags_from_type(value: Any) -> tuple[str, int, int]:
+    star_type = _as_text(value)
+    token = _normalize_star_type_token(star_type)
+    if not token:
+        return ("", 0, 0)
+    is_neutron = int(("neutron" in token) or (token in {"n", "ns"}))
+    is_black_hole = int(("blackhole" in token) or (token in {"h", "bh"}))
+    return (star_type, is_neutron, is_black_hole)
+
+
+def _event_primary_star_type(ev: dict[str, Any], *, event_name: str) -> tuple[str, int, int]:
+    # Scan carries star metadata in StarType for star bodies.
+    if event_name == "Scan":
+        body_type = _as_text(ev.get("BodyType")).casefold()
+        if body_type and body_type != "star":
+            return ("", 0, 0)
+        return _star_flags_from_type(ev.get("StarType") or ev.get("StarClass"))
+    # Location/FSDJump/CarrierJump usually expose StarClass.
+    return _star_flags_from_type(ev.get("StarClass") or ev.get("StarType"))
+
+
 def _infer_is_fleet_carrier(station_name: str, station_type: str) -> int:
     st = station_type.casefold()
     nm = station_name.casefold()
@@ -328,6 +355,9 @@ def _migrate_to_v1(conn: sqlite3.Connection) -> None:
             x REAL,
             y REAL,
             z REAL,
+            primary_star_type TEXT,
+            is_neutron INTEGER NOT NULL DEFAULT 0,
+            is_black_hole INTEGER NOT NULL DEFAULT 0,
             source TEXT NOT NULL DEFAULT 'journal',
             confidence TEXT NOT NULL DEFAULT 'observed',
             first_seen_ts TEXT,
@@ -529,6 +559,21 @@ def _migrate_to_v2(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_to_v3(conn: sqlite3.Connection) -> None:
+    # Add star metadata columns to systems; keep ALTER idempotent for partially
+    # migrated local DBs.
+    columns = {
+        str(row["name"]).casefold()
+        for row in conn.execute("PRAGMA table_info(systems);").fetchall()
+    }
+    if "primary_star_type" not in columns:
+        conn.execute("ALTER TABLE systems ADD COLUMN primary_star_type TEXT;")
+    if "is_neutron" not in columns:
+        conn.execute("ALTER TABLE systems ADD COLUMN is_neutron INTEGER NOT NULL DEFAULT 0;")
+    if "is_black_hole" not in columns:
+        conn.execute("ALTER TABLE systems ADD COLUMN is_black_hole INTEGER NOT NULL DEFAULT 0;")
+
+
 def ensure_playerdb_schema(*, path: str | None = None) -> dict[str, Any]:
     db_path = str(path or default_playerdb_path())
     created_new_file = not os.path.isfile(db_path)
@@ -548,6 +593,11 @@ def ensure_playerdb_schema(*, path: str | None = None) -> dict[str, Any]:
                 _record_migration(conn, version=2, name=PLAYERDB_SCHEMA_NAME_V2)
                 _write_user_version(conn, 2)
                 version = 2
+            if version < 3:
+                _migrate_to_v3(conn)
+                _record_migration(conn, version=3, name=PLAYERDB_SCHEMA_NAME_V3)
+                _write_user_version(conn, 3)
+                version = 3
             conn.commit()
         except Exception:
             conn.rollback()
@@ -580,6 +630,9 @@ def _upsert_system_observed(
     x: float | None,
     y: float | None,
     z: float | None,
+    primary_star_type: str | None = None,
+    is_neutron: int | None = None,
+    is_black_hole: int | None = None,
     seen_ts: str,
     source: str = "journal",
     confidence: str = "observed",
@@ -604,8 +657,9 @@ def _upsert_system_observed(
             """
             INSERT INTO systems(
                 system_name, system_address, system_id64, x, y, z,
+                primary_star_type, is_neutron, is_black_hole,
                 source, confidence, first_seen_ts, last_seen_ts, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 system_name,
@@ -614,6 +668,9 @@ def _upsert_system_observed(
                 x,
                 y,
                 z,
+                (_as_text(primary_star_type) or None),
+                int(bool(is_neutron)) if is_neutron is not None else 0,
+                int(bool(is_black_hole)) if is_black_hole is not None else 0,
                 source,
                 confidence,
                 seen_ts,
@@ -635,6 +692,9 @@ def _upsert_system_observed(
             x = COALESCE(?, x),
             y = COALESCE(?, y),
             z = COALESCE(?, z),
+            primary_star_type = COALESCE(NULLIF(?, ''), primary_star_type),
+            is_neutron = CASE WHEN ? IS NOT NULL THEN ? ELSE is_neutron END,
+            is_black_hole = CASE WHEN ? IS NOT NULL THEN ? ELSE is_black_hole END,
             source = ?,
             confidence = ?,
             first_seen_ts = COALESCE(first_seen_ts, ?),
@@ -649,6 +709,11 @@ def _upsert_system_observed(
             x,
             y,
             z,
+            _as_text(primary_star_type),
+            is_neutron,
+            int(bool(is_neutron)) if is_neutron is not None else 0,
+            is_black_hole,
+            int(bool(is_black_hole)) if is_black_hole is not None else 0,
             source,
             confidence,
             first_seen_ts,
@@ -793,7 +858,15 @@ def ingest_journal_event(
     if not isinstance(ev, dict):
         return {"ok": False, "reason": "invalid_event"}
     event_name = _as_text(ev.get("event"))
-    if event_name not in {"Location", "FSDJump", "CarrierJump", "Docked", "SellExplorationData", "SellOrganicData"}:
+    if event_name not in {
+        "Location",
+        "FSDJump",
+        "CarrierJump",
+        "Docked",
+        "Scan",
+        "SellExplorationData",
+        "SellOrganicData",
+    }:
         return {"ok": False, "reason": "unsupported_event", "event": event_name}
 
     ts = _safe_ts(ev.get("timestamp"))
@@ -822,8 +895,9 @@ def ingest_journal_event(
             touched_system = False
             touched_station = False
             touched_cashin = False
-            if event_name in {"Location", "FSDJump", "CarrierJump"} and system_name:
+            if event_name in {"Location", "FSDJump", "CarrierJump", "Scan"} and system_name:
                 x, y, z = _event_starpos_xyz(ev)
+                star_type, is_neutron, is_black_hole = _event_primary_star_type(ev, event_name=event_name)
                 _upsert_system_observed(
                     conn,
                     system_name=system_name,
@@ -832,6 +906,9 @@ def ingest_journal_event(
                     x=x,
                     y=y,
                     z=z,
+                    primary_star_type=star_type or None,
+                    is_neutron=(is_neutron if star_type else None),
+                    is_black_hole=(is_black_hole if star_type else None),
                     seen_ts=ts,
                     source="journal",
                     confidence="observed",
