@@ -331,9 +331,11 @@ class TradeTab(ttk.Frame):
 
 
 
-        f_form = ttk.Frame(fr)
+        top_form_wrap = ttk.Frame(fr)
+        top_form_wrap.pack(fill="x", pady=(0, 4))
 
-        f_form.pack(fill="x", pady=4)
+        f_form = ttk.Frame(top_form_wrap)
+        f_form.pack(side="left", fill="x", expand=True)
 
         layout.configure_form_grid(f_form)
 
@@ -349,7 +351,7 @@ class TradeTab(ttk.Frame):
 
             self.var_start_system,
 
-            entry_width=layout.ENTRY_W_LONG,
+            entry_width=22,
 
         )
 
@@ -363,19 +365,22 @@ class TradeTab(ttk.Frame):
 
             self.var_start_station,
 
-            entry_width=layout.ENTRY_W_LONG,
+            entry_width=22,
 
         )
-        station_tools = ttk.Frame(f_form)
-        station_tools.grid(row=1, column=2, sticky="w", padx=(8, 0))
         self.btn_station_picker = ttk.Button(
-            station_tools,
+            f_form,
             text="Wybierz stacje...",
             command=self._open_station_picker_dialog,
         )
-        self.btn_station_picker.pack(side="left")
-        self.lbl_station_hint = ttk.Label(station_tools, textvariable=self._station_hint_var)
-        self.lbl_station_hint.pack(side="left", padx=(8, 0))
+        self.btn_station_picker.grid(row=1, column=3, columnspan=2, sticky="w", padx=(8, 0))
+        self.lbl_station_hint = ttk.Label(
+            f_form,
+            textvariable=self._station_hint_var,
+            justify="left",
+            wraplength=420,
+        )
+        self.lbl_station_hint.grid(row=2, column=1, columnspan=4, sticky="w", pady=(0, 2))
 
 
 
@@ -428,7 +433,7 @@ class TradeTab(ttk.Frame):
 
             f_form,
 
-            2,
+            3,
 
             ui.LABEL_CAPITAL,
 
@@ -446,7 +451,7 @@ class TradeTab(ttk.Frame):
 
             f_form,
 
-            3,
+            4,
 
             ui.LABEL_CARGO,
 
@@ -464,7 +469,7 @@ class TradeTab(ttk.Frame):
 
                 f_form,
 
-                4,
+                5,
 
                 ui.LABEL_MAX_DISTANCE,
 
@@ -483,36 +488,23 @@ class TradeTab(ttk.Frame):
             self.e_max_age.bind("<FocusOut>", self._on_market_age_cutoff_commit)
 
             self.e_max_age.bind("<Return>", self._on_market_age_cutoff_commit)
-            self.lbl_market_age_relative = ttk.Label(
-                f_form,
-                textvariable=self.var_market_age_relative,
-            )
-            self.lbl_market_age_relative.grid(
-                row=4,
-                column=5,
-                sticky="w",
-                padx=(8, 0),
-            )
+            f_age_inline = ttk.Frame(f_form)
+            f_age_inline.grid(row=6, column=1, columnspan=4, sticky="w", pady=(0, 2))
 
-
-
-            f_age = ttk.Frame(fr)
-
-            f_age.pack(fill="x", pady=(0, 4))
-
-            ttk.Label(f_age, text=f"{ui.LABEL_MARKET_AGE_SLIDER}:").pack(
-
-                side="left", padx=(10, 6)
-
+            ttk.Label(f_age_inline, text=f"{ui.LABEL_MARKET_AGE_SLIDER}:").pack(
+                side="left", padx=(0, 6)
             )
 
             slider_wrap = tk.Frame(
-                f_age,
+                f_age_inline,
                 bg="#d0ccc6",
                 borderwidth=0,
                 highlightthickness=0,
+                width=190,
+                height=16,
             )
-            slider_wrap.pack(side="left", fill="x", expand=True, padx=(0, 6))
+            slider_wrap.pack(side="left", padx=(0, 6))
+            slider_wrap.pack_propagate(False)
 
             self.scale_market_age = ttk.Scale(
 
@@ -525,18 +517,24 @@ class TradeTab(ttk.Frame):
                 variable=self.var_market_age_hours,
 
                 command=self._on_market_age_slider,
+                length=186,
                 style="Horizontal.TScale",
 
             )
 
-            self.scale_market_age.pack(fill="x", expand=True, padx=1, pady=1)
+            self.scale_market_age.pack(fill="both", expand=True, padx=1, pady=1)
+            self.lbl_market_age_relative = ttk.Label(
+                f_age_inline,
+                textvariable=self.var_market_age_relative,
+            )
+            self.lbl_market_age_relative.pack(side="left", padx=(8, 0))
         else:
 
             _, max_age_entry = layout.add_labeled_pair(
 
                 f_form,
 
-                4,
+                5,
 
                 ui.LABEL_MAX_DISTANCE,
 
@@ -554,91 +552,27 @@ class TradeTab(ttk.Frame):
 
 
 
-        # --- Flagowe checkboxy -------------------------------------------------
+        # --- Flagowe checkboxy (kompaktowo po prawej stronie formularza) -----
+        f_flags = ttk.LabelFrame(top_form_wrap, text="Filtry")
+        f_flags.pack(side="right", anchor="n", padx=(12, 0), pady=(0, 2))
 
-        f_flags1 = ttk.Frame(fr)
-
-        f_flags1.pack(fill="x", pady=4)
-
-
-
-        ttk.Checkbutton(
-
-            f_flags1,
-
-            text=ui.FLAG_LARGE_PAD,
-
-            variable=self.var_large_pad,
-
-        ).pack(side="left", padx=5)
-
-        ttk.Checkbutton(
-
-            f_flags1,
-
-            text=ui.FLAG_PLANETARY,
-
-            variable=self.var_planetary,
-
-        ).pack(side="left", padx=5)
-
-        ttk.Checkbutton(
-
-            f_flags1,
-
-            text=ui.FLAG_PLAYER_OWNED,
-
-            variable=self.var_player_owned,
-
-        ).pack(side="left", padx=5)
-
-
-
-        f_flags2 = ttk.Frame(fr)
-
-        f_flags2.pack(fill="x", pady=4)
-
-
-
-        ttk.Checkbutton(
-
-            f_flags2,
-
-            text=ui.FLAG_RESTRICTED,
-
-            variable=self.var_restricted,
-
-        ).pack(side="left", padx=5)
-
-        ttk.Checkbutton(
-
-            f_flags2,
-
-            text=ui.FLAG_PROHIBITED,
-
-            variable=self.var_prohibited,
-
-        ).pack(side="left", padx=5)
-
-        ttk.Checkbutton(
-
-            f_flags2,
-
-            text=ui.FLAG_AVOID_LOOPS,
-
-            variable=self.var_avoid_loops,
-
-        ).pack(side="left", padx=5)
-
-        ttk.Checkbutton(
-
-            f_flags2,
-
-            text=ui.FLAG_ALLOW_PERMITS,
-
-            variable=self.var_allow_permits,
-
-        ).pack(side="left", padx=5)
+        flag_controls = [
+            (ui.FLAG_LARGE_PAD, self.var_large_pad),
+            (ui.FLAG_PLANETARY, self.var_planetary),
+            (ui.FLAG_PLAYER_OWNED, self.var_player_owned),
+            (ui.FLAG_RESTRICTED, self.var_restricted),
+            (ui.FLAG_PROHIBITED, self.var_prohibited),
+            (ui.FLAG_AVOID_LOOPS, self.var_avoid_loops),
+            (ui.FLAG_ALLOW_PERMITS, self.var_allow_permits),
+        ]
+        for idx, (label, var) in enumerate(flag_controls):
+            col = 0 if idx < 4 else 1
+            row = idx if idx < 4 else idx - 4
+            ttk.Checkbutton(
+                f_flags,
+                text=label,
+                variable=var,
+            ).grid(row=row, column=col, sticky="w", padx=8, pady=1)
 
 
 
