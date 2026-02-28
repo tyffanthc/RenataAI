@@ -1016,6 +1016,72 @@ def ingest_journal_event(
     }
 
 
+def ingest_star_metadata_event(
+    ev: dict[str, Any] | None,
+    *,
+    path: str | None = None,
+    fallback_system_name: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(ev, dict):
+        return {"ok": False, "reason": "invalid_event"}
+    event_name = _as_text(ev.get("event"))
+    if event_name not in {"Location", "FSDJump", "CarrierJump", "Scan"}:
+        return {"ok": False, "reason": "unsupported_event", "event": event_name}
+
+    system_name = _journal_system_name(ev) or _as_text(fallback_system_name)
+    if not system_name:
+        return {"ok": False, "reason": "missing_system_name", "event": event_name}
+
+    star_type, is_neutron, is_black_hole = _event_primary_star_type(ev, event_name=event_name)
+    if not star_type:
+        return {
+            "ok": False,
+            "reason": "no_star_metadata",
+            "event": event_name,
+            "system_name": system_name,
+        }
+
+    ts = _safe_ts(ev.get("timestamp"))
+    system_address = _journal_system_address(ev)
+    system_id64 = _journal_system_id64(ev, fallback_address=system_address)
+    x, y, z = _event_starpos_xyz(ev)
+    db_path = str(path or default_playerdb_path())
+
+    with playerdb_connection(path=db_path, ensure_schema=True) as conn:
+        conn.execute("BEGIN;")
+        try:
+            _upsert_system_observed(
+                conn,
+                system_name=system_name,
+                system_address=system_address,
+                system_id64=system_id64,
+                x=x,
+                y=y,
+                z=z,
+                primary_star_type=star_type,
+                is_neutron=is_neutron,
+                is_black_hole=is_black_hole,
+                seen_ts=ts,
+                source="journal_backfill",
+                confidence="observed",
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    return {
+        "ok": True,
+        "event": event_name,
+        "system_name": system_name,
+        "primary_star_type": star_type,
+        "is_neutron": int(bool(is_neutron)),
+        "is_black_hole": int(bool(is_black_hole)),
+        "ingested_system": True,
+        "path": db_path,
+    }
+
+
 def ingest_market_json(
     data: dict[str, Any] | None,
     *,

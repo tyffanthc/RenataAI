@@ -9,6 +9,67 @@ from logic import player_local_db
 
 
 class F16PlayerDbIngestMarketDockedJumpsTests(unittest.TestCase):
+    def test_ingest_star_metadata_event_updates_system_star_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "db", "player_local.db")
+            player_local_db.ingest_journal_event(
+                {
+                    "event": "FSDJump",
+                    "timestamp": "2026-02-22T17:59:00Z",
+                    "StarSystem": "F16_STAR_META_TEST",
+                    "SystemAddress": 700001,
+                    "SystemId64": 700001,
+                    "StarPos": [1.0, 2.0, 3.0],
+                },
+                path=db_path,
+            )
+            out = player_local_db.ingest_star_metadata_event(
+                {
+                    "event": "Scan",
+                    "timestamp": "2026-02-22T18:00:00Z",
+                    "StarSystem": "F16_STAR_META_TEST",
+                    "SystemAddress": 700001,
+                    "BodyType": "Star",
+                    "StarType": "Black Hole",
+                },
+                path=db_path,
+            )
+
+            self.assertTrue(bool(out.get("ok")))
+            self.assertEqual(str(out.get("primary_star_type") or ""), "Black Hole")
+            self.assertEqual(int(out.get("is_black_hole") or 0), 1)
+
+            conn = sqlite3.connect(db_path)
+            try:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT primary_star_type, is_neutron, is_black_hole FROM systems WHERE system_name=?;",
+                    ("F16_STAR_META_TEST",),
+                ).fetchone()
+                self.assertIsNotNone(row)
+                self.assertEqual(str(row["primary_star_type"] or ""), "Black Hole")
+                self.assertEqual(int(row["is_neutron"] or 0), 0)
+                self.assertEqual(int(row["is_black_hole"] or 0), 1)
+            finally:
+                conn.close()
+
+    def test_ingest_star_metadata_event_skips_when_metadata_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "db", "player_local.db")
+            out = player_local_db.ingest_star_metadata_event(
+                {
+                    "event": "Location",
+                    "timestamp": "2026-02-22T18:00:00Z",
+                    "StarSystem": "F16_STAR_META_NO_CLASS",
+                    "SystemAddress": 700002,
+                    "StarPos": [4.0, 5.0, 6.0],
+                },
+                path=db_path,
+            )
+
+            self.assertFalse(bool(out.get("ok")))
+            self.assertEqual(str(out.get("reason") or ""), "no_star_metadata")
+
     def test_ingest_location_and_docked_persists_system_coords_and_station_marketid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = os.path.join(tmp, "db", "player_local.db")
