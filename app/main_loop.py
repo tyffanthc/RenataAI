@@ -1,4 +1,4 @@
-﻿import time
+import time
 import os
 import glob
 from collections import deque
@@ -115,7 +115,7 @@ class MainLoop:
                 time.sleep(1)
 
     # ------------------------------------------------------------------ #
-    def _bootstrap_state(self, path, max_lines: int = 8000) -> None:
+    def _bootstrap_state(self, path, max_lines: int = 50000) -> None:
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 # Keep only the tail needed for bootstrap to avoid loading the whole Journal into RAM.
