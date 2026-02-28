@@ -743,7 +743,11 @@ class SystemValueEngine:
         } else "No"
 
         planet_class = str(event.get("PlanetClass") or "").lower().strip()
-        if str(event.get("StarType") or "").strip() and not planet_class:
+        if not planet_class:
+            # Journal Scan entries without PlanetClass are typically non-valued
+            # entities (e.g. belt clusters/rings from NavBeaconDetail). Never
+            # coerce them into generic "Planet Type", because that inflates
+            # cartography estimates.
             return None, terraformable
         body_type = None
 
