@@ -109,7 +109,7 @@ def _risk_label(score: int) -> str:
     if score >= 75:
         return "Niskie"
     if score >= 50:
-        return "Srednie"
+        return "Średnie"
     return "Wysokie"
 
 
@@ -117,7 +117,7 @@ def _trust_label(score: int) -> str:
     if score >= 75:
         return "Wysoki"
     if score >= 50:
-        return "Sredni"
+        return "Średni"
     return "Niski"
 
 
@@ -1761,7 +1761,7 @@ def _build_edge_case_meta(
         )
         ui_hint = (
             f"EDSM limit 100 LY: requested={req_txt} LY, effective={eff_txt} LY. "
-            "Wynik nearby ma obnizona pewnosc."
+            "Wynik nearby ma obniżoną pewność."
         )
     elif "provider_empty" in reasons:
         req_txt = (
@@ -1800,7 +1800,7 @@ def _build_edge_case_meta(
         if service_norm == "uc":
             ui_hint = "Brak non-carrier dla UC: carrier moze miec fee 25%."
         else:
-            ui_hint = "Brak non-carrier dla Vista: sprawdz status payout i freshness."
+            ui_hint = "Brak non-carrier dla Vista: sprawdź status payout i freshness."
 
     return {
         "reasons": reasons,
@@ -1867,7 +1867,7 @@ def _append_edge_case_note(base_note: str, edge_case_meta: dict[str, Any]) -> st
         extra_parts.append("Brak pełnych danych stacyjnych.")
     if "no_non_carrier" in reasons:
         if _as_text(meta.get("service")).lower() == "uc":
-            extra_parts.append("Brak non-carrier dla UC (sprawdz fee carriera).")
+            extra_parts.append("Brak non-carrier dla UC (sprawdź fee carriera).")
         else:
             extra_parts.append("Brak non-carrier dla Vista.")
     if not extra_parts:
@@ -2489,8 +2489,8 @@ def _build_tts_line(payload: CashInAssistantPayload) -> str:
             or "no_service_candidates" in edge_reasons
         ):
             if _normalize_cash_in_service(payload.service) == "uc":
-                return "Cash-in: dane stacyjne ograniczone i dla UC widze tylko carriery. Sprawdz panel."
-            return "Cash-in: dane stacyjne ograniczone i brak non-carrier dla Vista. Sprawdz panel."
+                return "Cash-in: dane stacyjne ograniczone i dla UC widzę tylko carriery. Sprawdź panel."
+            return "Cash-in: dane stacyjne ograniczone i brak non-carrier dla Vista. Sprawdź panel."
         if (
             "providers_empty" in edge_reasons
             or "no_station_data" in edge_reasons
@@ -2499,8 +2499,8 @@ def _build_tts_line(payload: CashInAssistantPayload) -> str:
             return "Cash-in: brak pełnych danych stacyjnych. Rekomendacja orientacyjna, sprawdź panel."
         if "no_non_carrier" in edge_reasons:
             if _normalize_cash_in_service(payload.service) == "uc":
-                return "Cash-in: dla UC widze tylko carriery. Sprawdz fee i zdecyduj."
-            return "Cash-in: dla Vista widze tylko carriery. Sprawdz status payout i zdecyduj."
+                return "Cash-in: dla UC widzę tylko carriery. Sprawdź fee i zdecyduj."
+            return "Cash-in: dla Vista widzę tylko carriery. Sprawdź status payout i zdecyduj."
 
     count = len(payload.options or [])
     if count >= 3:
@@ -2562,19 +2562,19 @@ def _build_startjump_tts_line(
     conf = _normalize_confidence_level(confidence) or "low"
     if conf == "high":
         return (
-            "Cash-in: Twoje dane naukowe sa warte "
-            f"{_format_cr(session_value)} Cr, a w ostatnim systemie zarobiles "
+            "Cash-in: Twoje dane naukowe są warte "
+            f"{_format_cr(session_value)} Cr, a w ostatnim systemie zarobiłeś "
             f"{_format_cr(system_value)} Cr."
         )
     if conf == "mid":
         session_approx = _round_orientational_value(session_value)
         system_approx = _round_orientational_value(system_value)
         return (
-            "Cash-in orientacyjnie: lacznie okolo "
-            f"{_format_cr(session_approx)} Cr, a ostatni system okolo "
+            "Cash-in orientacyjnie: łącznie około "
+            f"{_format_cr(session_approx)} Cr, a ostatni system około "
             f"{_format_cr(system_approx)} Cr."
         )
-    return f"Cash-in: niska pewnosc wyceny. VaR(Data): {_signal_to_var_tier(signal)}."
+    return f"Cash-in: niska pewność wyceny. VaR(Data): {_signal_to_var_tier(signal)}."
 
 
 def trigger_startjump_cash_in_callout(
