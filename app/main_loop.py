@@ -172,6 +172,25 @@ class MainLoop:
                     powiedz("Bootstrap: ustawiono aktualny system z logu.", self.gui_ref)
                 except Exception as e:
                     self._log_error(f"Bootstrap handler error: {e}")
+                try:
+                    from logic.events import exploration_fss_events
+
+                    fss_stats = exploration_fss_events.bootstrap_fss_state_from_journal_lines(
+                        lines,
+                        max_lines=max_lines,
+                    )
+                    if bool((fss_stats or {}).get("restored")):
+                        MSG_QUEUE.put(
+                            (
+                                "log",
+                                "[BOOTSTRAP] FSS recovery: "
+                                f"discovered={int((fss_stats or {}).get('discovered') or 0)} "
+                                f"total={int((fss_stats or {}).get('total_bodies') or 0)} "
+                                f"manual={bool((fss_stats or {}).get('had_manual_progress_scan'))}",
+                            )
+                        )
+                except Exception as e:
+                    self._log_error(f"Bootstrap FSS recovery error: {e}")
                 app_state.set_bootstrap_replay(False)
                 return
 

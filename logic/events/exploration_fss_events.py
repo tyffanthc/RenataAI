@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict
+import json
 import config
 
 from logic.utils import DEBOUNCER
@@ -228,6 +229,17 @@ def _scan_body_keys(ev: Dict[str, Any]) -> set[str]:
     return keys
 
 
+def _is_manual_progress_scan(scan_type_raw: Any) -> bool:
+    """
+    Treat only explicit non-autoscan ScanType values as manual progress.
+    Missing/empty ScanType is not enough to arm post-jump auto-summary.
+    """
+    scan_type = str(scan_type_raw or "").strip().casefold()
+    if not scan_type:
+        return False
+    return scan_type != "autoscan"
+
+
 def _sync_milestone_flags_after_late_body_count() -> None:
     """
     BUGS_FIX 16.2 follow-up:
@@ -385,8 +397,7 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
         else:
             FSS_SCANNED_BODIES.add(body_name)
         FSS_DISCOVERED += 1
-        scan_type = str(ev.get("ScanType") or "").strip().casefold()
-        if scan_type != "autoscan":
+        if _is_manual_progress_scan(ev.get("ScanType")):
             FSS_HAD_MANUAL_PROGRESS_SCAN = True
 
         # --- S2-LOGIC-05: First Discovery detection ---
@@ -520,3 +531,133 @@ def handle_fss_all_bodies_found(ev: Dict[str, Any], gui_ref=None):
     if FSS_DISCOVERED >= FSS_TOTAL_BODIES:
         _check_fss_thresholds(gui_ref)
         _maybe_speak_fss_full(gui_ref)
+
+
+def bootstrap_fss_state_from_journal_lines(
+    lines: list[str] | tuple[str, ...],
+    *,
+    max_lines: int = 8000,
+) -> Dict[str, Any]:
+    """
+    Rebuild current-system FSS counters from journal tail without emitting TTS/log callouts.
+
+    This closes the startup gap when MainLoop tails from EOF and the commander already
+    scanned part of the current system before Renata attached to the stream.
+    """
+    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES
+    global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED, FSS_FULL_WARNED
+    global FSS_HAD_DISCOVERY_SCAN, FSS_HAD_MANUAL_PROGRESS_SCAN
+    global FSS_PENDING_EXIT_SUMMARY, FSS_PENDING_EXIT_SUMMARY_SYSTEM
+    global FSS_PENDING_EXIT_SUMMARY_SCANNED, FSS_PENDING_EXIT_SUMMARY_TOTAL
+
+    stats: Dict[str, Any] = {
+        "restored": False,
+        "segment_events": 0,
+        "total_bodies": 0,
+        "discovered": 0,
+        "had_discovery_scan": False,
+        "had_manual_progress_scan": False,
+    }
+    if not lines:
+        return stats
+
+    try:
+        tail_lines = list(lines)[-max(1, int(max_lines or 1)) :]
+    except Exception:
+        tail_lines = list(lines or [])
+
+    events: list[Dict[str, Any]] = []
+    for raw in tail_lines:
+        try:
+            ev = json.loads(str(raw or ""))
+        except Exception:
+            continue
+        if isinstance(ev, dict) and ev.get("event"):
+            events.append(ev)
+
+    if not events:
+        return stats
+
+    # Recover only the latest system segment from the tail.
+    start_idx = 0
+    for idx in range(len(events) - 1, -1, -1):
+        if str(events[idx].get("event") or "") in {"Location", "FSDJump", "CarrierJump"}:
+            start_idx = idx
+            break
+    segment = events[start_idx:]
+    stats["segment_events"] = int(len(segment))
+
+    discovered = 0
+    total_bodies = 0
+    had_discovery_scan = False
+    had_manual_progress_scan = False
+    scanned_keys: set[str] = set()
+
+    for ev in segment:
+        typ = str(ev.get("event") or "")
+        if typ == "FSSDiscoveryScan":
+            body_count = ev.get("BodyCount") or 0
+            try:
+                count = int(body_count)
+            except Exception:
+                count = 0
+            if count > 0:
+                had_discovery_scan = True
+                if discovered > 0:
+                    total_bodies = max(total_bodies, discovered, count)
+                else:
+                    total_bodies = max(total_bodies, count)
+            continue
+
+        if typ != "Scan":
+            continue
+
+        body_name = _scan_body_label(ev)
+        if not body_name:
+            continue
+
+        body_keys = _scan_body_keys(ev)
+        if body_keys:
+            if any(key in scanned_keys for key in body_keys):
+                continue
+            scanned_keys.update(body_keys)
+        else:
+            fallback_key = f"label:{str(body_name).strip().casefold()}"
+            if fallback_key in scanned_keys:
+                continue
+            scanned_keys.add(fallback_key)
+
+        discovered += 1
+        if _is_manual_progress_scan(ev.get("ScanType")):
+            had_manual_progress_scan = True
+
+    if discovered <= 0 and total_bodies <= 0:
+        return stats
+
+    FSS_SCANNED_BODIES = set(scanned_keys)
+    FSS_DISCOVERED = int(discovered)
+    FSS_TOTAL_BODIES = int(max(total_bodies, discovered)) if total_bodies > 0 else 0
+    FSS_HAD_DISCOVERY_SCAN = bool(had_discovery_scan)
+    FSS_HAD_MANUAL_PROGRESS_SCAN = bool(had_manual_progress_scan)
+
+    FSS_PENDING_EXIT_SUMMARY = False
+    FSS_PENDING_EXIT_SUMMARY_SYSTEM = None
+    FSS_PENDING_EXIT_SUMMARY_SCANNED = None
+    FSS_PENDING_EXIT_SUMMARY_TOTAL = None
+
+    FSS_25_WARNED = False
+    FSS_50_WARNED = False
+    FSS_75_WARNED = False
+    if FSS_TOTAL_BODIES > 0:
+        _sync_milestone_flags_after_late_body_count()
+    FSS_LAST_WARNED = bool(
+        FSS_TOTAL_BODIES > 1 and FSS_DISCOVERED >= max(0, FSS_TOTAL_BODIES - 1)
+    )
+    FSS_FULL_WARNED = bool(FSS_TOTAL_BODIES > 0 and FSS_DISCOVERED >= FSS_TOTAL_BODIES)
+
+    stats["restored"] = True
+    stats["total_bodies"] = int(FSS_TOTAL_BODIES)
+    stats["discovered"] = int(FSS_DISCOVERED)
+    stats["had_discovery_scan"] = bool(FSS_HAD_DISCOVERY_SCAN)
+    stats["had_manual_progress_scan"] = bool(FSS_HAD_MANUAL_PROGRESS_SCAN)
+    return stats

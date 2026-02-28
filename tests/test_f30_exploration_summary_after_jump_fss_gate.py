@@ -78,6 +78,22 @@ class F30ExplorationSummaryAfterJumpFssGateTests(unittest.TestCase):
         self.assertFalse(trigger_mock.called)
         self.assertFalse(bool(fss_events.FSS_PENDING_EXIT_SUMMARY))
 
+    def test_missing_scan_type_does_not_count_as_manual_progress(self) -> None:
+        fss_events.handle_fss_discovery_scan({"BodyCount": 2}, gui_ref=None)
+        fss_events.handle_scan({"BodyName": "F30_SUMMARY_GATE_SYS A", "BodyID": 1}, gui_ref=None)
+        fss_events.handle_scan({"BodyName": "F30_SUMMARY_GATE_SYS B", "BodyID": 2}, gui_ref=None)
+
+        self.assertTrue(bool(fss_events.FSS_HAD_DISCOVERY_SCAN))
+        self.assertFalse(bool(fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN))
+        self.assertGreaterEqual(int(fss_events.FSS_DISCOVERED), 2)
+        self.assertGreaterEqual(int(fss_events.FSS_TOTAL_BODIES), 2)
+
+        with patch("logic.events.exploration_summary.trigger_exploration_summary") as trigger_mock:
+            fss_events._wire_exit_summary_to_runtime(gui_ref=None)
+
+        self.assertFalse(trigger_mock.called)
+        self.assertFalse(bool(fss_events.FSS_PENDING_EXIT_SUMMARY))
+
 
 if __name__ == "__main__":
     unittest.main()
