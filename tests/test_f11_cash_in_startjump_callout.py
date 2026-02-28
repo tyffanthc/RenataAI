@@ -94,7 +94,7 @@ class F11CashInStartJumpCalloutTests(unittest.TestCase):
         self.assertNotIn("Cash-in", raw_text)
         self.assertIn("8 000 000 Cr", raw_text)
 
-    def test_startjump_low_confidence_uses_var_tier_without_amount(self) -> None:
+    def test_startjump_low_confidence_is_silent_when_values_are_zero(self) -> None:
         with (
             patch.object(app_state.exit_summary, "build_summary_data", return_value=None),
             patch.object(
@@ -102,21 +102,16 @@ class F11CashInStartJumpCalloutTests(unittest.TestCase):
                 "system_value_engine",
                 new=SimpleNamespace(calculate_totals=lambda: {"total": 0.0}),
             ),
-            patch("logic.events.cash_in_assistant.DEBOUNCER.is_allowed", return_value=True),
+            patch("logic.events.cash_in_assistant.DEBOUNCER.is_allowed", return_value=True) as debouncer_mock,
             patch("logic.events.cash_in_assistant.emit_insight") as emit_mock,
         ):
             ok = cash_in_assistant.trigger_startjump_cash_in_callout(
                 event={"event": "StartJump", "JumpType": "Hyperspace"}
             )
 
-        self.assertTrue(ok)
-        kwargs = emit_mock.call_args.kwargs
-        self.assertEqual(kwargs.get("priority"), "P1_HIGH")
-        ctx = dict(kwargs.get("context") or {})
-        self.assertEqual(ctx.get("confidence"), "low")
-        raw_text = str(ctx.get("raw_text") or "")
-        self.assertIn("VaR(Data):", raw_text)
-        self.assertNotIn("Cr", raw_text)
+        self.assertFalse(ok)
+        self.assertEqual(emit_mock.call_count, 0)
+        debouncer_mock.assert_not_called()
 
     def test_startjump_non_hyperspace_is_ignored(self) -> None:
         with patch("logic.events.cash_in_assistant.emit_insight") as emit_mock:

@@ -200,6 +200,51 @@ class BootstrapSystemValueRecoveryTests(unittest.TestCase):
         self.assertTrue(any("Sell reset cartography" in x for x in diagnostics))
         self.assertTrue(any("Sell reset exobiology" in x for x in diagnostics))
 
+    def test_recovery_multisell_scopes_cartography_reset_to_discovered_systems(self) -> None:
+        lines = [
+            json.dumps({"event": "Location", "StarSystem": "BOOTSTRAP_RECOVERY_SYS_A"}),
+            json.dumps(
+                {
+                    "event": "Scan",
+                    "StarSystem": "BOOTSTRAP_RECOVERY_SYS_A",
+                    "BodyName": "BOOTSTRAP_RECOVERY_SYS_A 1",
+                    "PlanetClass": "Water world",
+                    "TerraformState": "Terraformable",
+                    "WasDiscovered": False,
+                    "WasMapped": True,
+                }
+            ),
+            json.dumps({"event": "Location", "StarSystem": "BOOTSTRAP_RECOVERY_SYS_B"}),
+            json.dumps(
+                {
+                    "event": "Scan",
+                    "StarSystem": "BOOTSTRAP_RECOVERY_SYS_B",
+                    "BodyName": "BOOTSTRAP_RECOVERY_SYS_B 1",
+                    "PlanetClass": "Water world",
+                    "TerraformState": "Terraformable",
+                    "WasDiscovered": False,
+                    "WasMapped": True,
+                }
+            ),
+            json.dumps(
+                {
+                    "event": "MultiSellExplorationData",
+                    "Discovered": [
+                        {"SystemName": "BOOTSTRAP_RECOVERY_SYS_A"},
+                    ],
+                }
+            ),
+        ]
+
+        recover_system_value_from_journal_lines(lines, max_lines=500)
+        stats_a = app_state.system_value_engine.get_system_stats("BOOTSTRAP_RECOVERY_SYS_A")
+        stats_b = app_state.system_value_engine.get_system_stats("BOOTSTRAP_RECOVERY_SYS_B")
+        self.assertIsNotNone(stats_a)
+        self.assertIsNotNone(stats_b)
+        self.assertEqual(float(getattr(stats_a, "c_cartography", 0.0) or 0.0), 0.0)
+        self.assertEqual(float(getattr(stats_a, "bonus_discovery", 0.0) or 0.0), 0.0)
+        self.assertGreater(float(getattr(stats_b, "c_cartography", 0.0) or 0.0), 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -309,13 +309,12 @@ class SystemValueEngine:
 
         # High-Value Targets (ELW / WW / terraformable)
         if self._is_high_value_target(body_type, terraformable):
-            stats.high_value_targets.append(
-                {
-                    "body_id": body_id,
-                    "body_type": body_type,
-                    "terraformable": terraformable,
-                    "estimated_value": base_value + bonus,
-                }
+            self._upsert_high_value_target(
+                stats,
+                body_id=str(body_id),
+                body_type=body_type,
+                terraformable=terraformable,
+                estimated_value=base_value + bonus,
             )
 
     def get_runtime_diagnostics(self) -> Dict[str, int]:
@@ -380,6 +379,18 @@ class SystemValueEngine:
         row["base_applied"] = target_base
         row["bonus_applied"] = target_bonus
         row["mapped_accounted"] = True
+
+        # Keep high-value breakdown in sync after DSS upgrades.
+        body_type = str(row.get("body_type") or "")
+        terraformable = str(row.get("terraformable") or "No")
+        if body_type and self._is_high_value_target(body_type, terraformable):
+            self._upsert_high_value_target(
+                stats,
+                body_id=str(body_id),
+                body_type=body_type,
+                terraformable=terraformable,
+                estimated_value=target_base + target_bonus,
+            )
 
     def analyze_biology_event(self, event: Dict[str, Any]) -> None:
         """
@@ -652,6 +663,35 @@ class SystemValueEngine:
         stats.any_discovery_bonuses = False
         stats.system_previously_discovered = None
         self._sync_bonus_aggregate(stats)
+
+    @staticmethod
+    def _upsert_high_value_target(
+        stats: SystemStats,
+        *,
+        body_id: str,
+        body_type: str,
+        terraformable: str,
+        estimated_value: float,
+    ) -> None:
+        body_key = str(body_id or "").strip()
+        if not body_key:
+            return
+        target_value = float(estimated_value or 0.0)
+        for item in list(stats.high_value_targets or []):
+            if str((item or {}).get("body_id") or "").strip() != body_key:
+                continue
+            item["body_type"] = str(body_type or "")
+            item["terraformable"] = str(terraformable or "No")
+            item["estimated_value"] = target_value
+            return
+        stats.high_value_targets.append(
+            {
+                "body_id": body_key,
+                "body_type": str(body_type or ""),
+                "terraformable": str(terraformable or "No"),
+                "estimated_value": target_value,
+            }
+        )
 
     # --- Cartography helpers -------------------------------------------------
 

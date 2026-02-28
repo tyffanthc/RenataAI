@@ -11,14 +11,17 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         self._saved_warned = fuel_events.LOW_FUEL_WARNED
         self._saved_pending = fuel_events.LOW_FUEL_FLAG_PENDING
         self._saved_pending_ts = fuel_events.LOW_FUEL_FLAG_PENDING_TS
+        self._saved_initialized = bool(getattr(fuel_events, "_FUEL_STATUS_INITIALIZED", False))
         fuel_events.LOW_FUEL_WARNED = False
         fuel_events.LOW_FUEL_FLAG_PENDING = False
         fuel_events.LOW_FUEL_FLAG_PENDING_TS = 0.0
+        fuel_events._FUEL_STATUS_INITIALIZED = False
 
     def tearDown(self) -> None:
         fuel_events.LOW_FUEL_WARNED = self._saved_warned
         fuel_events.LOW_FUEL_FLAG_PENDING = self._saved_pending
         fuel_events.LOW_FUEL_FLAG_PENDING_TS = self._saved_pending_ts
+        fuel_events._FUEL_STATUS_INITIALIZED = self._saved_initialized
 
     def test_uncertain_numeric_samples_without_lowfuel_flag_do_not_trigger_or_arm_pending(self) -> None:
         status = {
@@ -60,6 +63,12 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         self.assertFalse(bool(fuel_events.LOW_FUEL_WARNED))
 
     def test_real_low_fuel_from_reliable_numeric_sample_still_alerts(self) -> None:
+        prime_ok_status = {
+            "Docked": False,
+            "LowFuel": False,
+            "Fuel": {"FuelMain": 10.0},
+            "FuelCapacity": {"Main": 20.0},
+        }
         status = {
             "Docked": False,
             "LowFuel": False,
@@ -71,6 +80,7 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
             patch("logic.events.fuel_events.emit_insight", return_value=True) as emit_mock,
             patch.object(fuel_events.DEBOUNCER, "can_send", return_value=True),
         ):
+            fuel_events.handle_status_update(prime_ok_status)
             fuel_events.handle_status_update(status)
 
         self.assertTrue(bool(fuel_events.LOW_FUEL_WARNED))
@@ -80,6 +90,12 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         self.assertEqual(kwargs.get("source"), "fuel_events")
 
     def test_flag_only_low_fuel_still_requires_confirmation_and_then_alerts(self) -> None:
+        prime_ok_status = {
+            "Docked": False,
+            "LowFuel": False,
+            "Fuel": {"FuelMain": 10.0},
+            "FuelCapacity": {"Main": 20.0},
+        }
         status = {
             "Docked": False,
             "LowFuel": True,
@@ -91,6 +107,7 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
             patch("logic.events.fuel_events.emit_insight", return_value=True) as emit_mock,
             patch.object(fuel_events.DEBOUNCER, "can_send", return_value=True),
         ):
+            fuel_events.handle_status_update(prime_ok_status)
             fuel_events.handle_status_update(status)
             self.assertEqual(emit_mock.call_count, 0)
             self.assertTrue(bool(fuel_events.LOW_FUEL_FLAG_PENDING))
@@ -100,6 +117,23 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         self.assertTrue(bool(fuel_events.LOW_FUEL_WARNED))
         self.assertFalse(bool(fuel_events.LOW_FUEL_FLAG_PENDING))
         self.assertEqual(emit_mock.call_count, 1)
+
+    def test_startup_with_already_low_fuel_is_suppressed_but_marked_warned(self) -> None:
+        status = {
+            "Docked": False,
+            "LowFuel": False,
+            "Fuel": {"FuelMain": 2.0},
+            "FuelCapacity": {"Main": 20.0},  # 10%
+            "StarSystem": "F23_STARTUP_SUPPRESS_SYS",
+        }
+        with (
+            patch("logic.events.fuel_events.emit_insight", return_value=True) as emit_mock,
+            patch.object(fuel_events.DEBOUNCER, "can_send", return_value=True),
+        ):
+            fuel_events.handle_status_update(status)
+
+        self.assertEqual(emit_mock.call_count, 0)
+        self.assertTrue(bool(fuel_events.LOW_FUEL_WARNED))
 
 
 if __name__ == "__main__":

@@ -190,6 +190,36 @@ class SystemValueEngineTests(unittest.TestCase):
         self.assertAlmostEqual(stats.c_cartography, 1500.0, places=3)
         self.assertAlmostEqual(stats.bonus_discovery, 1500.0, places=3)
 
+    def test_saa_scan_complete_refreshes_high_value_target_estimate(self) -> None:
+        scan_fss = {
+            "event": "Scan",
+            "StarSystem": "TEST_SYS_HV_DSS",
+            "BodyName": "TEST_SYS_HV_DSS 1",
+            "PlanetClass": "Water world",
+            "TerraformState": "Terraformable",
+            "WasDiscovered": False,
+            "WasMapped": False,
+        }
+        saa_done = {
+            "event": "SAAScanComplete",
+            "StarSystem": "TEST_SYS_HV_DSS",
+            "BodyName": "TEST_SYS_HV_DSS 1",
+        }
+
+        self.engine.analyze_scan_event(scan_fss)
+        stats_before = self.engine.get_system_stats("TEST_SYS_HV_DSS")
+        self.assertIsNotNone(stats_before)
+        hv_before = list(stats_before.high_value_targets or [])
+        self.assertEqual(len(hv_before), 1)
+        self.assertAlmostEqual(float(hv_before[0].get("estimated_value") or 0.0), 2000.0, places=3)
+
+        self.engine.analyze_dss_scan_complete_event(saa_done)
+        stats_after = self.engine.get_system_stats("TEST_SYS_HV_DSS")
+        self.assertIsNotNone(stats_after)
+        hv_after = list(stats_after.high_value_targets or [])
+        self.assertEqual(len(hv_after), 1)
+        self.assertAlmostEqual(float(hv_after[0].get("estimated_value") or 0.0), 3000.0, places=3)
+
     def test_scan_wasmapped_true_for_previously_discovered_body_waits_for_saa_upgrade(self) -> None:
         scan_event = {
             "event": "Scan",

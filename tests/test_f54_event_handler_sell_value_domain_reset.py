@@ -9,7 +9,7 @@ from logic.event_handler import EventHandler, _apply_sell_value_domain_reset
 
 class _DummyValueEngine:
     def __init__(self) -> None:
-        self.domain_calls: list[str] = []
+        self.domain_calls: list[tuple[str, str | None]] = []
         self.totals = {
             "c_cartography": 120.0,
             "c_exobiology": 80.0,
@@ -20,8 +20,8 @@ class _DummyValueEngine:
     def calculate_totals(self) -> dict[str, float]:
         return dict(self.totals)
 
-    def clear_value_domain(self, *, domain: str = "all") -> dict[str, int]:
-        self.domain_calls.append(str(domain))
+    def clear_value_domain(self, *, domain: str = "all", system_name: str | None = None) -> dict[str, int | str | None]:
+        self.domain_calls.append((str(domain), (str(system_name) if system_name is not None else None)))
         if domain == "cartography":
             self.totals["c_cartography"] = 0.0
             self.totals["bonus_discovery"] = 10.0
@@ -37,7 +37,11 @@ class _DummyValueEngine:
             + float(self.totals["c_exobiology"])
             + float(self.totals["bonus_discovery"])
         )
-        return {"systems_touched": 3}
+        return {
+            "systems_touched": 1 if system_name else 3,
+            "scope": "single" if system_name else "all",
+            "system_name": system_name,
+        }
 
 
 class F54EventHandlerSellValueDomainResetTests(unittest.TestCase):
@@ -49,7 +53,7 @@ class F54EventHandlerSellValueDomainResetTests(unittest.TestCase):
         ):
             _apply_sell_value_domain_reset({"event": "SellExplorationData"})
 
-        self.assertEqual(engine.domain_calls, ["cartography"])
+        self.assertEqual(engine.domain_calls, [("cartography", None)])
         log_event_mock.assert_called_once()
         _args, kwargs = log_event_mock.call_args
         self.assertEqual(str(kwargs.get("domain")), "cartography")
@@ -64,12 +68,39 @@ class F54EventHandlerSellValueDomainResetTests(unittest.TestCase):
         ):
             _apply_sell_value_domain_reset({"event": "SellOrganicData"})
 
-        self.assertEqual(engine.domain_calls, ["exobiology"])
+        self.assertEqual(engine.domain_calls, [("exobiology", None)])
         log_event_mock.assert_called_once()
         _args, kwargs = log_event_mock.call_args
         self.assertEqual(str(kwargs.get("domain")), "exobiology")
         self.assertEqual(float(kwargs.get("before_total") or 0.0), 230.0)
         self.assertEqual(float(kwargs.get("after_total") or 0.0), 140.0)
+
+    def test_apply_sell_value_domain_reset_multisell_scopes_to_discovered_systems_when_available(self) -> None:
+        engine = _DummyValueEngine()
+        with (
+            patch("app.state.app_state.system_value_engine", engine),
+            patch("logic.event_handler.log_event") as log_event_mock,
+        ):
+            _apply_sell_value_domain_reset(
+                {
+                    "event": "MultiSellExplorationData",
+                    "Discovered": [
+                        {"SystemName": "SYS_A"},
+                        ["SYS_B", 12345],
+                        "SYS_A",
+                    ],
+                }
+            )
+
+        self.assertEqual(
+            engine.domain_calls,
+            [("cartography", "SYS_A"), ("cartography", "SYS_B")],
+        )
+        log_event_mock.assert_called_once()
+        _args, kwargs = log_event_mock.call_args
+        self.assertEqual(str(kwargs.get("domain")), "cartography")
+        self.assertEqual(str(kwargs.get("reset_scope")), "scoped")
+        self.assertEqual(int(kwargs.get("scoped_systems") or 0), 2)
 
     def test_handle_event_sell_triggers_snapshot_and_domain_reset(self) -> None:
         handler = EventHandler()

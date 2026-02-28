@@ -32,6 +32,35 @@ def _body_id_from_event(event: Dict[str, Any]) -> str:
     return _as_text(body)
 
 
+def _extract_multisell_discovered_systems(event: Dict[str, Any]) -> list[str]:
+    raw = event.get("Discovered")
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        system_name = ""
+        if isinstance(item, dict):
+            system_name = _as_text(
+                item.get("StarSystem")
+                or item.get("SystemName")
+                or item.get("System")
+                or item.get("name")
+            )
+        elif isinstance(item, (list, tuple)) and item:
+            system_name = _as_text(item[0])
+        elif isinstance(item, str):
+            system_name = _as_text(item)
+        if not system_name:
+            continue
+        key = system_name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(system_name)
+    return out
+
+
 def recover_system_value_from_journal_lines(
     lines: list[str] | tuple[str, ...] | None,
     *,
@@ -164,8 +193,16 @@ def recover_system_value_from_journal_lines(
 
             if event_name in {"SellExplorationData", "MultiSellExplorationData"}:
                 if hasattr(engine, "clear_value_domain"):
-                    engine.clear_value_domain(domain="cartography")
-                    sale_reset_cartography += 1
+                    target_systems: list[str] = []
+                    if event_name == "MultiSellExplorationData":
+                        target_systems = _extract_multisell_discovered_systems(ev_work)
+                    if target_systems:
+                        for system_name in target_systems:
+                            engine.clear_value_domain(domain="cartography", system_name=system_name)
+                            sale_reset_cartography += 1
+                    else:
+                        engine.clear_value_domain(domain="cartography")
+                        sale_reset_cartography += 1
                 recovered_events += 1
                 meta_events += 1
                 continue

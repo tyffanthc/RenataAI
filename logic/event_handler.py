@@ -85,6 +85,44 @@ def _sell_value_domain_for_event(event_name: str) -> str | None:
     return None
 
 
+def _extract_multisell_discovered_systems(ev: dict) -> list[str]:
+    raw = ev.get("Discovered")
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        system_name = ""
+        if isinstance(item, dict):
+            system_name = str(
+                item.get("StarSystem")
+                or item.get("SystemName")
+                or item.get("System")
+                or item.get("name")
+                or ""
+            ).strip()
+        elif isinstance(item, (list, tuple)) and item:
+            system_name = str(item[0] or "").strip()
+        elif isinstance(item, str):
+            system_name = str(item).strip()
+        if not system_name:
+            continue
+        key = system_name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(system_name)
+    return out
+
+
+def _sell_reset_target_systems(ev: dict, *, event_name: str, domain: str) -> list[str]:
+    if str(domain or "").strip() != "cartography":
+        return []
+    if str(event_name or "").strip() != "MultiSellExplorationData":
+        return []
+    return _extract_multisell_discovered_systems(ev)
+
+
 def _safe_engine_totals_snapshot() -> dict[str, float]:
     try:
         from app.state import app_state
@@ -112,15 +150,33 @@ def _apply_sell_value_domain_reset(ev: dict) -> None:
         if engine is None or not hasattr(engine, "clear_value_domain"):
             return
 
+        target_systems = _sell_reset_target_systems(ev, event_name=event_name, domain=domain)
         before = _safe_engine_totals_snapshot()
-        result = engine.clear_value_domain(domain=domain)
+        if target_systems:
+            touched_sum = 0
+            per_scope: list[str] = []
+            for system_name in target_systems:
+                result_one = engine.clear_value_domain(domain=domain, system_name=system_name)
+                touched_sum += int((result_one or {}).get("systems_touched") or 0)
+                per_scope.append(str(system_name))
+            result = {
+                "systems_touched": int(touched_sum),
+                "scope": "scoped",
+                "system_name": ",".join(per_scope),
+            }
+        else:
+            result = engine.clear_value_domain(domain=domain)
         after = _safe_engine_totals_snapshot()
+        reset_scope = str((result or {}).get("scope") or ("scoped" if target_systems else "all"))
+        scoped_systems = int(len(target_systems))
 
         log_event(
             "VALUE",
             "cashin_sell_reset",
             event=event_name,
             domain=domain,
+            reset_scope=reset_scope,
+            scoped_systems=scoped_systems,
             systems_touched=int((result or {}).get("systems_touched") or 0),
             before_total=round(_safe_float(before.get("total")), 2),
             after_total=round(_safe_float(after.get("total")), 2),

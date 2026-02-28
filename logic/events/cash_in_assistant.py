@@ -2621,6 +2621,11 @@ def trigger_startjump_cash_in_callout(
     except Exception:
         session_value = 0.0
 
+    # Bez danych eksploracyjnych callout startjump nie wnosi informacji
+    # i nie powinien konsumowac slotu debouncera.
+    if max(system_value, session_value) <= 0.0:
+        return False
+
     explicit_confidence = _normalize_confidence_level(
         ev.get("cash_in_confidence")
         or ev.get("cashInConfidence")

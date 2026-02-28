@@ -33,14 +33,17 @@ class F23QualityGatesAndSmokeTests(unittest.TestCase):
         self._saved_warned = fuel_events.LOW_FUEL_WARNED
         self._saved_pending = fuel_events.LOW_FUEL_FLAG_PENDING
         self._saved_pending_ts = fuel_events.LOW_FUEL_FLAG_PENDING_TS
+        self._saved_initialized = bool(getattr(fuel_events, "_FUEL_STATUS_INITIALIZED", False))
         fuel_events.LOW_FUEL_WARNED = False
         fuel_events.LOW_FUEL_FLAG_PENDING = False
         fuel_events.LOW_FUEL_FLAG_PENDING_TS = 0.0
+        fuel_events._FUEL_STATUS_INITIALIZED = False
 
     def tearDown(self) -> None:
         fuel_events.LOW_FUEL_WARNED = self._saved_warned
         fuel_events.LOW_FUEL_FLAG_PENDING = self._saved_pending
         fuel_events.LOW_FUEL_FLAG_PENDING_TS = self._saved_pending_ts
+        fuel_events._FUEL_STATUS_INITIALIZED = self._saved_initialized
 
     def test_smoke_f23_focus_policy_blocks_runtime_force_but_keeps_user_dialog_focus(self) -> None:
         win_runtime = _FakeWindow()
