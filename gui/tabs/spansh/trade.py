@@ -1885,7 +1885,7 @@ class TradeTab(ttk.Frame):
 
         """
 
-        system = (self.var_start_system.get() or "").strip()
+        system = self._system_name_for_station_lookup(self.var_start_system.get() or "")
 
         if not system:
             if hasattr(self.app_state, "has_live_system_event_flag"):
@@ -1894,25 +1894,15 @@ class TradeTab(ttk.Frame):
                 live_ready = bool(getattr(self.app_state, "has_live_system_event", False))
             if live_ready:
                 if hasattr(self.app_state, "get_current_system_name"):
-                    system = (self.app_state.get_current_system_name() or "").strip()
+                    system = self._system_name_for_station_lookup(
+                        self.app_state.get_current_system_name() or ""
+                    )
                 else:
-                    system = (getattr(self.app_state, "current_system", "") or "").strip()
+                    system = self._system_name_for_station_lookup(
+                        getattr(self.app_state, "current_system", "") or ""
+                    )
 
-
-
-        # Jesli ktos ma w polu systemu format "System / Stacja" / "System, Stacja",
-
-        # to do zapytania o stacje bierzemy tylko nazwe systemu (czesc przed separatorem).
-
-        raw = system
-
-        if "/" in raw:
-
-            raw = raw.split("/", 1)[0].strip()
-
-        elif "," in raw:
-
-            raw = raw.split(",", 1)[0].strip()
+        raw = self._system_name_for_station_lookup(system)
 
 
 
@@ -2010,8 +2000,19 @@ class TradeTab(ttk.Frame):
         self._open_station_picker_dialog()
         return "break"
 
+    @staticmethod
+    def _system_name_for_station_lookup(value: str) -> str:
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        if "/" in raw:
+            raw = raw.split("/", 1)[0].strip()
+        elif "," in raw:
+            raw = raw.split(",", 1)[0].strip()
+        return raw
+
     def _load_station_candidates(self, system: str) -> list[str]:
-        raw_system = (system or "").strip()
+        raw_system = self._system_name_for_station_lookup(system)
         if not raw_system:
             return []
 
@@ -2059,7 +2060,21 @@ class TradeTab(ttk.Frame):
         return self._filter_stations(self._recent_stations, "")
 
     def _open_station_picker_dialog(self) -> None:
-        system = (self.var_start_system.get() or "").strip()
+        source_system = (self.var_start_system.get() or "").strip()
+        if not source_system:
+            self._set_station_hint("Najpierw wybierz system")
+            try:
+                self.e_system.focus_set()
+            except Exception:
+                log_event_throttled(
+                    "WARN",
+                    "TRADE_STATION_PICKER_FOCUS_FAILED",
+                    "Spansh Trade: focus system field failed",
+                    cooldown_sec=60.0,
+                    context="spansh.trade.station_picker.focus_system",
+                )
+            return
+        system = self._system_name_for_station_lookup(source_system)
         if not system:
             self._set_station_hint("Najpierw wybierz system")
             try:
@@ -2109,6 +2124,13 @@ class TradeTab(ttk.Frame):
         top.transient(self.root)
         top.geometry("760x520")
         top.minsize(560, 380)
+        # Explicit palette for picker to avoid theme-dependent invisible controls.
+        bg = "#0b0c10"
+        panel_bg = "#1f2833"
+        fg_main = "#ff7100"
+        fg_sec = "#c5c6c7"
+        fg_text = "#ffffff"
+        top.configure(bg=bg)
         try:
             apply_renata_orange_window_chrome(top)
         except Exception:
@@ -2123,21 +2145,58 @@ class TradeTab(ttk.Frame):
         info_var = tk.StringVar(value=f"Dostepne stacje: {len(stations_all)}")
         query_var = tk.StringVar()
 
-        f_top = ttk.Frame(top, padding=10)
+        f_top = tk.Frame(top, bg=bg, padx=10, pady=10)
         f_top.pack(fill="both", expand=True)
 
-        ttk.Label(f_top, text=f"System: {system}").pack(anchor="w")
-        ttk.Label(f_top, textvariable=info_var).pack(anchor="w", pady=(2, 8))
+        tk.Label(
+            f_top,
+            text=f"System: {system}",
+            bg=bg,
+            fg=fg_main,
+            anchor="w",
+        ).pack(anchor="w")
+        tk.Label(
+            f_top,
+            textvariable=info_var,
+            bg=bg,
+            fg=fg_sec,
+            anchor="w",
+        ).pack(anchor="w", pady=(2, 8))
 
-        f_filter = ttk.Frame(f_top)
+        f_filter = tk.Frame(f_top, bg=bg)
         f_filter.pack(fill="x", pady=(0, 8))
-        ttk.Label(f_filter, text="Filtr stacji:").pack(side="left", padx=(0, 6))
-        e_filter = ttk.Entry(f_filter, textvariable=query_var)
+        tk.Label(
+            f_filter,
+            text="Filtr stacji:",
+            bg=bg,
+            fg=fg_main,
+        ).pack(side="left", padx=(0, 6))
+        e_filter = tk.Entry(
+            f_filter,
+            textvariable=query_var,
+            bg=panel_bg,
+            fg=fg_text,
+            insertbackground=fg_text,
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=panel_bg,
+            highlightcolor=fg_main,
+            borderwidth=0,
+        )
         e_filter.pack(side="left", fill="x", expand=True)
 
-        f_list = ttk.Frame(f_top)
+        f_list = tk.Frame(f_top, bg=bg)
         f_list.pack(fill="both", expand=True)
-        sc = ttk.Scrollbar(f_list, orient="vertical", style="Vertical.TScrollbar")
+        sc = tk.Scrollbar(
+            f_list,
+            orient="vertical",
+            bg=panel_bg,
+            troughcolor=bg,
+            activebackground=fg_main,
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+        )
         sc.pack(side="right", fill="y")
         lb = tk.Listbox(
             f_list,
@@ -2145,6 +2204,16 @@ class TradeTab(ttk.Frame):
             selectmode="browse",
             exportselection=False,
             font=("Consolas", 10),
+            bg=panel_bg,
+            fg=fg_text,
+            selectbackground=fg_main,
+            selectforeground=bg,
+            activestyle="none",
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=1,
+            highlightbackground=panel_bg,
+            highlightcolor=fg_main,
         )
         lb.pack(side="left", fill="both", expand=True)
         sc.config(command=lb.yview)
@@ -2152,19 +2221,32 @@ class TradeTab(ttk.Frame):
         displayed: list[str] = []
 
         def _refresh_list(*_args) -> None:
-            q = (query_var.get() or "").strip().lower()
-            lb.delete(0, tk.END)
-            displayed.clear()
-            for item in stations_all:
-                if q and q not in item.lower():
-                    continue
-                displayed.append(item)
-                lb.insert(tk.END, item)
-            info_var.set(f"Dostepne stacje: {len(displayed)} / {len(stations_all)}")
-            if displayed:
-                lb.selection_clear(0, tk.END)
-                lb.selection_set(0)
-                lb.activate(0)
+            try:
+                q = (query_var.get() or "").strip().lower()
+                lb.delete(0, tk.END)
+                displayed.clear()
+                for item in stations_all:
+                    text = str(item or "").strip()
+                    if not text:
+                        continue
+                    if q and q not in text.lower():
+                        continue
+                    displayed.append(text)
+                    lb.insert(tk.END, text)
+                info_var.set(f"Dostepne stacje: {len(displayed)} / {len(stations_all)}")
+                if displayed:
+                    lb.selection_clear(0, tk.END)
+                    lb.selection_set(0)
+                    lb.activate(0)
+            except Exception as e:
+                log_event_throttled(
+                    "TRADE:station_picker_refresh_exception",
+                    3000,
+                    "TRADE",
+                    "station picker refresh exception",
+                    system=system,
+                    error=f"{type(e).__name__}: {e}",
+                )
 
         def _apply_selection(_event=None) -> None:
             if not displayed:
@@ -2213,10 +2295,34 @@ class TradeTab(ttk.Frame):
                         context="spansh.trade.station_picker.focus_restore",
                     )
 
-        f_btn = ttk.Frame(f_top)
+        f_btn = tk.Frame(f_top, bg=bg)
         f_btn.pack(fill="x", pady=(10, 0))
-        ttk.Button(f_btn, text="Wybierz", command=_apply_selection).pack(side="right")
-        ttk.Button(f_btn, text="Anuluj", command=_close_picker).pack(side="right", padx=(0, 8))
+        tk.Button(
+            f_btn,
+            text="Wybierz",
+            command=_apply_selection,
+            bg=panel_bg,
+            fg=fg_main,
+            activebackground=fg_main,
+            activeforeground=bg,
+            relief="flat",
+            borderwidth=0,
+            padx=10,
+            pady=4,
+        ).pack(side="right")
+        tk.Button(
+            f_btn,
+            text="Anuluj",
+            command=_close_picker,
+            bg=panel_bg,
+            fg=fg_sec,
+            activebackground=fg_main,
+            activeforeground=bg,
+            relief="flat",
+            borderwidth=0,
+            padx=10,
+            pady=4,
+        ).pack(side="right", padx=(0, 8))
 
         query_var.trace_add("write", _refresh_list)
         lb.bind("<Double-Button-1>", _apply_selection)

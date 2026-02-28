@@ -120,22 +120,54 @@ def log_event(category: str, msg: str, **fields: Any) -> None:
             print("logging failed")
 
 
-def log_event_throttled(
-    key: str,
-    interval_ms: int,
-    category: str,
-    msg: str,
-    **fields: Any,
-) -> bool:
+def log_event_throttled(*args: Any, **fields: Any) -> bool:
+    """
+    Emit throttled structured logs.
+
+    Supported call signatures:
+    1) log_event_throttled(key, interval_ms, category, msg, **fields)
+    2) legacy:
+       log_event_throttled(category, code, msg, cooldown_sec=60.0, context="...", **fields)
+    """
     try:
-        interval_sec = max(0.0, float(interval_ms) / 1000.0)
+        category = "GENERAL"
+        msg = ""
+        key = ""
+        payload = dict(fields)
+
+        if len(args) >= 4 and isinstance(args[1], (int, float)):
+            key = str(args[0] or "").strip()
+            interval_sec = max(0.0, float(args[1]) / 1000.0)
+            category = str(args[2] or "GENERAL").strip().upper() or "GENERAL"
+            msg = str(args[3] or "")
+        elif len(args) >= 3:
+            # Backward compatibility for older callsites that used
+            # (level, code, msg, cooldown_sec=..., context=...).
+            category = str(args[0] or "GENERAL").strip().upper() or "GENERAL"
+            code = str(args[1] or "").strip()
+            msg = str(args[2] or "")
+            cooldown_sec_raw = payload.pop("cooldown_sec", 60.0)
+            context = str(payload.get("context") or "").strip()
+            try:
+                interval_sec = max(0.0, float(cooldown_sec_raw))
+            except Exception:
+                interval_sec = 60.0
+            key = context or code or f"{category}:{msg}"
+            if code and "code" not in payload:
+                payload["code"] = code
+        else:
+            return False
+
+        if not key:
+            key = f"{category}:{msg}".strip() or "GENERAL"
+
         now = _now()
         with _THROTTLE_LOCK:
             last = _THROTTLE_LAST.get(key)
             if last is not None and (now - last) < interval_sec:
                 return False
             _THROTTLE_LAST[key] = now
-        log_event(category, msg, **fields)
+        log_event(category, msg, **payload)
         return True
     except Exception:
         if _debug_logging_enabled():
