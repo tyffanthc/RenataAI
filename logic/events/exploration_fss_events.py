@@ -44,6 +44,9 @@ FIRST_SYS_DISC_WARNED = False           # komunikat o dziewiczym systemie
 FIRST_BODY_DISC_WARNED_BODIES = set()   # ciala, dla ktorych padl komunikat discovery
 FIRST_SYS_OPPORTUNITY_WARNED = False    # ostrozny komunikat "mozliwy first" przy niepelnych danych
 
+_MANUAL_FSS_SCAN_TYPES = {"detailed"}
+_NON_MANUAL_FSS_SCAN_TYPES = {"autoscan", "navbeacondetail", "basic"}
+
 
 def _fss_gate_context(system_name: str | None, *, body_name: str | None = None) -> Dict[str, Any]:
     ctx: Dict[str, Any] = {
@@ -231,13 +234,28 @@ def _scan_body_keys(ev: Dict[str, Any]) -> set[str]:
 
 def _is_manual_progress_scan(scan_type_raw: Any) -> bool:
     """
-    Treat only explicit non-autoscan ScanType values as manual progress.
-    Missing/empty ScanType is not enough to arm post-jump auto-summary.
+    Treat only explicit FSS-manual ScanType values as manual progress.
+    Missing/empty ScanType and known auto/beacon-derived scan types must not arm
+    post-jump auto-summary.
     """
     scan_type = str(scan_type_raw or "").strip().casefold()
     if not scan_type:
         return False
-    return scan_type != "autoscan"
+    if scan_type in _MANUAL_FSS_SCAN_TYPES:
+        return True
+    if scan_type in _NON_MANUAL_FSS_SCAN_TYPES:
+        return False
+
+    # Unknown ScanType variants are treated as non-manual by default to avoid
+    # false-positive summary arming (safe default). Emit throttled diagnostic.
+    log_event_throttled(
+        f"exploration.fss.unknown_scan_type:{scan_type}",
+        15000,
+        "FSS",
+        "unknown ScanType treated as non-manual for summary gate",
+        scan_type=scan_type,
+    )
+    return False
 
 
 def _sync_milestone_flags_after_late_body_count() -> None:

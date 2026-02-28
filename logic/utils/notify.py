@@ -24,6 +24,194 @@ _TTS_DEFAULT_COOLDOWNS = {
     "info": 20.0,
 }
 
+_TTS_SYSTEM_SCOPED_MESSAGE_IDS = {
+    "MSG.FSS_PROGRESS_25",
+    "MSG.FSS_PROGRESS_50",
+    "MSG.FSS_PROGRESS_75",
+    "MSG.FSS_LAST_BODY",
+    "MSG.SYSTEM_FULLY_SCANNED",
+    "MSG.FIRST_DISCOVERY",
+    "MSG.FIRST_DISCOVERY_OPPORTUNITY",
+    "MSG.BODY_NO_PREV_DISCOVERY",
+    "MSG.ELW_DETECTED",
+    "MSG.WW_DETECTED",
+    "MSG.TERRAFORMABLE_DETECTED",
+    "MSG.BIO_SIGNALS_HIGH",
+    "MSG.DSS_TARGET_HINT",
+    "MSG.DSS_COMPLETED",
+    "MSG.DSS_PROGRESS",
+    "MSG.FIRST_MAPPED",
+}
+
+_TTS_PRIORITY_MESSAGE_IDS = {
+    "MSG.FSS_PROGRESS_25",
+    "MSG.FSS_PROGRESS_50",
+    "MSG.FSS_PROGRESS_75",
+    "MSG.FSS_LAST_BODY",
+    "MSG.SYSTEM_FULLY_SCANNED",
+}
+
+_TTS_FSS_MILESTONE_RANK = {
+    "MSG.FSS_PROGRESS_25": 25,
+    "MSG.FSS_PROGRESS_50": 50,
+    "MSG.FSS_PROGRESS_75": 75,
+    "MSG.FSS_LAST_BODY": 90,
+    "MSG.SYSTEM_FULLY_SCANNED": 100,
+}
+
+
+def _normalize_system_token(value: Any) -> str:
+    try:
+        return " ".join(str(value or "").strip().split()).casefold()
+    except Exception:
+        return ""
+
+
+def _current_system_norm() -> str:
+    try:
+        from app.state import app_state  # local import to avoid hard import cycles
+
+        return _normalize_system_token(app_state.get_current_system_name())
+    except Exception:
+        return ""
+
+
+def _should_drop_stale_system_tts(item: dict[str, Any]) -> bool:
+    message_id = str(item.get("message_id") or "").strip()
+    if message_id not in _TTS_SYSTEM_SCOPED_MESSAGE_IDS:
+        return False
+
+    queued_system_norm = _normalize_system_token(item.get("context_system"))
+    if not queued_system_norm:
+        return False
+
+    current_system_norm = _current_system_norm()
+    if not current_system_norm:
+        return False
+
+    if queued_system_norm == current_system_norm:
+        return False
+
+    log_event_throttled(
+        "tts:queue_drop_stale_system",
+        5000,
+        "TTS",
+        "dropping stale system-scoped queued TTS item",
+        message_id=message_id,
+        queued_system=queued_system_norm,
+        current_system=current_system_norm,
+    )
+    return True
+
+
+def _is_priority_tts_message(message_id: Any) -> bool:
+    return str(message_id or "").strip() in _TTS_PRIORITY_MESSAGE_IDS
+
+
+def _fss_milestone_rank(message_id: Any) -> int:
+    return int(_TTS_FSS_MILESTONE_RANK.get(str(message_id or "").strip(), 0))
+
+
+def _drain_tts_queue_unlocked() -> list[Any]:
+    items: list[Any] = []
+    while True:
+        try:
+            items.append(_TTS_SPEECH_QUEUE.get_nowait())
+        except Exception:
+            break
+    return items
+
+
+def _refill_tts_queue_unlocked(items: list[Any]) -> None:
+    for item in items:
+        _TTS_SPEECH_QUEUE.put(item)
+
+
+def _coalesce_fss_milestones_same_system_unlocked(items: list[Any], new_item: dict[str, Any]) -> tuple[list[Any], bool]:
+    """
+    Keep only the strongest pending FSS milestone per system.
+    Returns (new_items, enqueue_new_item).
+    """
+    new_system = _normalize_system_token(new_item.get("context_system"))
+    if not new_system:
+        return items, True
+    new_rank = _fss_milestone_rank(new_item.get("message_id"))
+    if new_rank <= 0:
+        return items, True
+
+    same_system_existing: list[tuple[int, int]] = []
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        msg_id = str(item.get("message_id") or "").strip()
+        if _fss_milestone_rank(msg_id) <= 0:
+            continue
+        item_system = _normalize_system_token(item.get("context_system"))
+        if item_system == new_system:
+            same_system_existing.append((idx, _fss_milestone_rank(msg_id)))
+
+    if not same_system_existing:
+        return items, True
+
+    strongest_existing_rank = max(rank for _, rank in same_system_existing)
+    keep_new = new_rank > strongest_existing_rank
+
+    # Remove all pending same-system FSS milestones; we'll add back the strongest one (existing or new).
+    filtered: list[Any] = []
+    strongest_kept = False
+    for item in items:
+        if not isinstance(item, dict):
+            filtered.append(item)
+            continue
+        msg_id = str(item.get("message_id") or "").strip()
+        rank = _fss_milestone_rank(msg_id)
+        if rank <= 0:
+            filtered.append(item)
+            continue
+        item_system = _normalize_system_token(item.get("context_system"))
+        if item_system != new_system:
+            filtered.append(item)
+            continue
+        if not keep_new and (not strongest_kept) and rank == strongest_existing_rank:
+            filtered.append(item)
+            strongest_kept = True
+
+    return filtered, keep_new
+
+
+def _enqueue_tts_item_unlocked(queue_item: dict[str, Any]) -> None:
+    items = _drain_tts_queue_unlocked()
+
+    msg_id = str(queue_item.get("message_id") or "").strip()
+    if _fss_milestone_rank(msg_id) > 0:
+        items, should_enqueue_new = _coalesce_fss_milestones_same_system_unlocked(items, queue_item)
+        if not should_enqueue_new:
+            _refill_tts_queue_unlocked(items)
+            log_event_throttled(
+                "tts:queue_coalesce_fss",
+                3000,
+                "TTS",
+                "coalesced FSS milestone queue item (kept stronger existing pending)",
+                message_id=msg_id,
+                system=_normalize_system_token(queue_item.get("context_system")),
+            )
+            return
+
+    if _is_priority_tts_message(msg_id):
+        priority_items: list[Any] = []
+        normal_items: list[Any] = []
+        for item in items:
+            if isinstance(item, dict) and _is_priority_tts_message(item.get("message_id")):
+                priority_items.append(item)
+            else:
+                normal_items.append(item)
+        priority_items.append(queue_item)
+        _refill_tts_queue_unlocked(priority_items + normal_items)
+        return
+
+    items.append(queue_item)
+    _refill_tts_queue_unlocked(items)
+
 
 def _tts_category(message_id: str) -> str:
     return get_tts_policy_spec(message_id).category
@@ -183,14 +371,22 @@ def powiedz(tekst, gui_ref=None, *, message_id=None, context=None, force: bool =
         if force or _should_speak_tts(str(message_id), context):
             tts_text = prepare_tts(str(message_id), context=context)
             if tts_text:
-                _start_tts_thread(tts_text)
+                _start_tts_thread(tts_text, message_id=str(message_id), context=ctx)
 
 
-def _start_tts_thread(tekst: str) -> bool:
+def _start_tts_thread(tekst: str, *, message_id: str | None = None, context: dict | None = None) -> bool:
     global _TTS_THREAD_ACTIVE
     should_start_worker = False
+    queue_item: dict[str, Any] = {"text": str(tekst or "")}
+    msg = str(message_id or "").strip()
+    if msg:
+        queue_item["message_id"] = msg
+    if isinstance(context, dict):
+        context_system = context.get("system")
+        if context_system:
+            queue_item["context_system"] = str(context_system)
     with _TTS_THREAD_GUARD_LOCK:
-        _TTS_SPEECH_QUEUE.put(str(tekst or ""))
+        _enqueue_tts_item_unlocked(queue_item)
         if not _TTS_THREAD_ACTIVE:
             _TTS_THREAD_ACTIVE = True
             should_start_worker = True
@@ -223,7 +419,17 @@ def _tts_worker_loop() -> None:
                 if _TTS_SPEECH_QUEUE.empty():
                     _TTS_THREAD_ACTIVE = False
                     return
-                tekst = _TTS_SPEECH_QUEUE.get_nowait()
+                payload = _TTS_SPEECH_QUEUE.get_nowait()
+            if isinstance(payload, dict):
+                tekst = str(payload.get("text") or "")
+                if not tekst:
+                    continue
+                if _should_drop_stale_system_tts(payload):
+                    continue
+            else:
+                tekst = str(payload or "")
+                if not tekst:
+                    continue
             _watek_mowy(tekst, release_slot=False)
     finally:
         with _TTS_THREAD_GUARD_LOCK:

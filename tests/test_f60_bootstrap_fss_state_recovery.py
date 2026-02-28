@@ -54,6 +54,22 @@ class TestF60BootstrapFssStateRecovery(unittest.TestCase):
         self.assertEqual(int(fss_events.FSS_DISCOVERED), 2)
         self.assertEqual(int(fss_events.FSS_TOTAL_BODIES), 5)
 
+    def test_bootstrap_navbeacon_only_does_not_restore_manual_progress(self) -> None:
+        lines = [
+            _j("Location", StarSystem="NAVBEACON_SYS"),
+            _j("FSSDiscoveryScan", BodyCount=2),
+            _j("Scan", BodyName="NAVBEACON_SYS A 1", BodyID=201, ScanType="NavBeaconDetail"),
+            _j("Scan", BodyName="NAVBEACON_SYS A 2", BodyID=202, ScanType="NavBeaconDetail"),
+        ]
+
+        stats = fss_events.bootstrap_fss_state_from_journal_lines(lines, max_lines=200)
+
+        self.assertTrue(bool(stats.get("restored")))
+        self.assertTrue(bool(fss_events.FSS_HAD_DISCOVERY_SCAN))
+        self.assertFalse(bool(fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN))
+        self.assertEqual(int(fss_events.FSS_DISCOVERED), 2)
+        self.assertEqual(int(fss_events.FSS_TOTAL_BODIES), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
