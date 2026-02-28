@@ -333,248 +333,205 @@ class TradeTab(ttk.Frame):
 
         top_form_wrap = ttk.Frame(fr)
         top_form_wrap.pack(fill="x", pady=(0, 4))
+        top_form_wrap.columnconfigure(0, weight=0)
+        top_form_wrap.columnconfigure(1, weight=0)
+        top_form_wrap.columnconfigure(2, weight=1)
 
         f_form = ttk.Frame(top_form_wrap)
-        f_form.pack(side="left", fill="x", expand=True)
+        f_form.grid(row=0, column=0, sticky="nw")
+        for col in range(8):
+            f_form.grid_columnconfigure(col, weight=0)
+        f_form.grid_columnconfigure(2, minsize=24)
+        f_form.grid_columnconfigure(5, minsize=24)
 
-        layout.configure_form_grid(f_form)
-
-
+        f_filters_wrap = ttk.Frame(top_form_wrap)
+        f_filters_wrap.grid(row=0, column=1, sticky="nw", padx=(20, 0))
 
         self.e_system = layout.add_labeled_entry(
-
             f_form,
-
             0,
-
             ui.LABEL_SYSTEM,
-
             self.var_start_system,
-
             entry_width=22,
-
+            column=0,
         )
-
         self.e_station = layout.add_labeled_entry(
-
             f_form,
-
             1,
-
             ui.LABEL_STATION_REQUIRED,
-
             self.var_start_station,
-
             entry_width=22,
-
+            column=0,
         )
         self.btn_station_picker = ttk.Button(
             f_form,
             text="Wybierz stacje...",
             command=self._open_station_picker_dialog,
         )
-        self.btn_station_picker.grid(row=1, column=3, columnspan=2, sticky="w", padx=(8, 0))
+        self.btn_station_picker.grid(row=2, column=1, sticky="w", pady=(2, 0))
+        self.lbl_detected = ttk.Label(f_form, text="")
+        self.lbl_detected.grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
         self.lbl_station_hint = ttk.Label(
             f_form,
             textvariable=self._station_hint_var,
             justify="left",
-            wraplength=420,
+            wraplength=460,
         )
-        self.lbl_station_hint.grid(row=2, column=1, columnspan=4, sticky="w", pady=(0, 2))
+        self.lbl_station_hint.grid(row=4, column=0, columnspan=3, sticky="w", pady=(0, 2))
 
-
-
-        # Autocomplete dla systemu
-
-        self.ac_source = AutocompleteController(
-
-            self.root,
-
-            self.e_system,
-
-            suggest_func=self._suggest_system,
-
-        )
-
-
-
-        # Autocomplete dla stacji (D3b ??" na podstawie wybranego systemu)
-
-        self.ac_station = AutocompleteController(
-
-            self.root,
-
-            self.e_station,
-
-            min_chars=2,
-
-            suggest_func=self._suggest_station,
-
-        )
-        self.e_station.bind("<FocusIn>", self._on_station_focus, add="+")
-        self.e_station.bind("<Button-1>", self._on_station_focus, add="+")
-        self.e_station.bind("<FocusOut>", self._on_station_focus_out, add="+")
-        self.e_station.bind("<KeyPress>", self._on_station_keypress, add="+")
-        self.e_station.bind("<Control-space>", self._on_station_picker_hotkey, add="+")
-
-
-
-        f_detect = ttk.Frame(fr)
-
-        f_detect.pack(fill="x", pady=(0, 6))
-
-        self.lbl_detected = ttk.Label(f_detect, text="")
-
-        self.lbl_detected.pack(side="left", padx=(10, 0))
-
-
-
-        layout.add_labeled_pair(
-
+        layout.add_labeled_entry(
             f_form,
-
-            3,
-
+            0,
             ui.LABEL_CAPITAL,
-
             self.var_capital,
-
-            ui.LABEL_MAX_HOP,
-
-            self.var_max_hop,
-
-            left_entry_width=12,
-
+            entry_width=12,
+            column=3,
         )
-
-        layout.add_labeled_pair(
-
+        layout.add_labeled_entry(
             f_form,
-
-            4,
-
+            1,
             ui.LABEL_CARGO,
-
             self.var_cargo,
-
+            entry_width=12,
+            column=3,
+        )
+        layout.add_labeled_entry(
+            f_form,
+            2,
+            ui.LABEL_MAX_DISTANCE,
+            self.var_max_dta,
+            entry_width=12,
+            column=3,
+        )
+        layout.add_labeled_entry(
+            f_form,
+            0,
+            ui.LABEL_MAX_HOP,
+            self.var_max_hop,
+            entry_width=10,
+            column=6,
+        )
+        layout.add_labeled_entry(
+            f_form,
+            1,
             ui.LABEL_MAX_HOPS,
-
             self.var_max_hops,
-
+            entry_width=10,
+            column=6,
         )
 
         if self._market_age_slider_enabled:
-
-            _, max_age_entry = layout.add_labeled_pair(
-
+            max_age_entry = layout.add_labeled_entry(
                 f_form,
-
-                5,
-
-                ui.LABEL_MAX_DISTANCE,
-
-                self.var_max_dta,
-
+                2,
                 ui.LABEL_MARKET_AGE_CUTOFF,
-
                 self.var_market_age_cutoff,
-
-                right_entry_width=18,
-
+                entry_width=18,
+                column=6,
             )
-
+            self.e_max_age = max_age_entry
+            self.e_max_age.bind("<FocusOut>", self._on_market_age_cutoff_commit)
+            self.e_max_age.bind("<Return>", self._on_market_age_cutoff_commit)
+        else:
+            max_age_entry = layout.add_labeled_entry(
+                f_form,
+                2,
+                ui.LABEL_MAX_AGE,
+                self.var_max_age,
+                entry_width=10,
+                column=6,
+            )
             self.e_max_age = max_age_entry
 
-            self.e_max_age.bind("<FocusOut>", self._on_market_age_cutoff_commit)
-
-            self.e_max_age.bind("<Return>", self._on_market_age_cutoff_commit)
-            f_age_inline = ttk.Frame(f_form)
-            f_age_inline.grid(row=6, column=1, columnspan=4, sticky="w", pady=(0, 2))
-
-            ttk.Label(f_age_inline, text=f"{ui.LABEL_MARKET_AGE_SLIDER}:").pack(
-                side="left", padx=(0, 6)
-            )
+        if self._market_age_slider_enabled:
+            ttk.Label(
+                f_form,
+                text=f"{ui.LABEL_MARKET_AGE_SLIDER}:",
+                font=("Arial", 11, "bold"),
+            ).grid(row=3, column=3, columnspan=5, sticky="w", pady=(8, 2))
+            f_age_panel = ttk.Frame(f_form)
+            f_age_panel.grid(row=4, column=3, columnspan=5, sticky="we")
 
             slider_wrap = tk.Frame(
-                f_age_inline,
+                f_age_panel,
                 bg="#d0ccc6",
                 borderwidth=0,
                 highlightthickness=0,
-                width=190,
                 height=16,
             )
-            slider_wrap.pack(side="left", padx=(0, 6))
+            slider_wrap.pack(fill="x", expand=True, anchor="w", padx=(0, 0), pady=(2, 2))
             slider_wrap.pack_propagate(False)
 
             self.scale_market_age = ttk.Scale(
-
                 slider_wrap,
-
                 from_=self._market_age_slider_min_position(),
-
                 to=self._market_age_slider_max_position(),
-
                 variable=self.var_market_age_hours,
-
                 command=self._on_market_age_slider,
-                length=186,
+                length=280,
                 style="Horizontal.TScale",
-
             )
-
             self.scale_market_age.pack(fill="both", expand=True, padx=1, pady=1)
             self.lbl_market_age_relative = ttk.Label(
-                f_age_inline,
+                f_age_panel,
                 textvariable=self.var_market_age_relative,
             )
-            self.lbl_market_age_relative.pack(side="left", padx=(8, 0))
-        else:
+            self.lbl_market_age_relative.pack(anchor="w", padx=(0, 0), pady=(0, 4))
 
-            _, max_age_entry = layout.add_labeled_pair(
+            def _sync_market_age_slider_width(_event=None) -> None:
+                try:
+                    target = int(f_age_panel.winfo_width() or 0)
+                    if target <= 0:
+                        return
+                    slider_wrap.configure(width=max(120, target))
+                    self.scale_market_age.configure(length=max(116, target - 4))
+                except Exception:
+                    return
 
-                f_form,
+            f_age_panel.bind("<Configure>", _sync_market_age_slider_width, add="+")
+            self.root.after(0, _sync_market_age_slider_width)
 
-                5,
-
-                ui.LABEL_MAX_DISTANCE,
-
-                self.var_max_dta,
-
-                ui.LABEL_MAX_AGE,
-
-                self.var_max_age,
-
-            )
-
-            self.e_max_age = max_age_entry
-
-
-
-
-
-        # --- Flagowe checkboxy (kompaktowo po prawej stronie formularza) -----
-        f_flags = ttk.LabelFrame(top_form_wrap, text="Filtry")
-        f_flags.pack(side="right", anchor="n", padx=(12, 0), pady=(0, 2))
+        ttk.Label(f_filters_wrap, text="Filtry", font=("Arial", 11, "bold")).pack(anchor="w", pady=(0, 2))
+        f_flags = ttk.Frame(f_filters_wrap)
+        f_flags.pack(anchor="w")
 
         flag_controls = [
             (ui.FLAG_LARGE_PAD, self.var_large_pad),
-            (ui.FLAG_PLANETARY, self.var_planetary),
-            (ui.FLAG_PLAYER_OWNED, self.var_player_owned),
-            (ui.FLAG_RESTRICTED, self.var_restricted),
             (ui.FLAG_PROHIBITED, self.var_prohibited),
+            (ui.FLAG_PLANETARY, self.var_planetary),
             (ui.FLAG_AVOID_LOOPS, self.var_avoid_loops),
+            (ui.FLAG_PLAYER_OWNED, self.var_player_owned),
             (ui.FLAG_ALLOW_PERMITS, self.var_allow_permits),
+            (ui.FLAG_RESTRICTED, self.var_restricted),
         ]
         for idx, (label, var) in enumerate(flag_controls):
-            col = 0 if idx < 4 else 1
-            row = idx if idx < 4 else idx - 4
+            col = 0 if idx % 2 == 0 else 1
+            row = idx // 2
             ttk.Checkbutton(
                 f_flags,
                 text=label,
                 variable=var,
             ).grid(row=row, column=col, sticky="w", padx=8, pady=1)
 
+        # Autocomplete dla systemu
+        self.ac_source = AutocompleteController(
+            self.root,
+            self.e_system,
+            suggest_func=self._suggest_system,
+        )
 
+        # Autocomplete dla stacji (na podstawie wybranego systemu)
+        self.ac_station = AutocompleteController(
+            self.root,
+            self.e_station,
+            min_chars=2,
+            suggest_func=self._suggest_station,
+        )
+        self.e_station.bind("<FocusIn>", self._on_station_focus, add="+")
+        self.e_station.bind("<Button-1>", self._on_station_focus, add="+")
+        self.e_station.bind("<FocusOut>", self._on_station_focus_out, add="+")
+        self.e_station.bind("<KeyPress>", self._on_station_keypress, add="+")
+        self.e_station.bind("<Control-space>", self._on_station_picker_hotkey, add="+")
 
         # --- Przyciski / status / lista ---------------------------------------
 
