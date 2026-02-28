@@ -14,6 +14,22 @@ LOW_FUEL_FLAG_PENDING_TS = 0.0
 LOW_FUEL_FLAG_CONFIRM_WINDOW_SEC = 8.0
 
 
+def _reset_low_fuel_pending_confirmation() -> None:
+    global LOW_FUEL_FLAG_PENDING, LOW_FUEL_FLAG_PENDING_TS
+    LOW_FUEL_FLAG_PENDING = False
+    LOW_FUEL_FLAG_PENDING_TS = 0.0
+
+
+def _log_uncertain_startup_sample_ignored(*, reason: str) -> None:
+    log_event_throttled(
+        f"fuel_startup_uncertain_sample_ignored:{str(reason or 'unknown')}",
+        5000,
+        "FUEL",
+        "fuel startup uncertain sample ignored",
+        reason=str(reason or "unknown"),
+    )
+
+
 def handle_status_update(status: dict, gui_ref=None):
     """
     Czysta logika niskiego paliwa oparta o przekazany dict status.
@@ -30,8 +46,7 @@ def handle_status_update(status: dict, gui_ref=None):
     # Zadokowany statek -> ignorujemy alert i resetujemy stan.
     if bool(status.get("Docked")):
         LOW_FUEL_WARNED = False
-        LOW_FUEL_FLAG_PENDING = False
-        LOW_FUEL_FLAG_PENDING_TS = 0.0
+        _reset_low_fuel_pending_confirmation()
         return
 
     # Flaga low fuel z gry.
@@ -56,6 +71,19 @@ def handle_status_update(status: dict, gui_ref=None):
     fuel_main = fuel.get("FuelMain")
     cap = status.get("FuelCapacity") or {}
     cap_main = cap.get("Main")
+    has_cap_main = False
+    try:
+        has_cap_main = bool(cap_main and float(cap_main) > 0.0)
+    except (TypeError, ValueError):
+        has_cap_main = False
+
+    # Startup/no-data sample: brak flagi low-fuel + brak danych o paliwie i pojemnosci
+    # oznacza brak decyzji diagnostycznej (nie armujemy alertu).
+    if fuel_main is None and not low_fuel_flag and not has_cap_main:
+        _reset_low_fuel_pending_confirmation()
+        _log_uncertain_startup_sample_ignored(reason="missing_fuel_and_capacity")
+        return
+
     try:
         if fuel_main is not None:
             val = float(fuel_main)
@@ -64,11 +92,11 @@ def handle_status_update(status: dict, gui_ref=None):
             if (
                 val == 0.0
                 and not low_fuel_flag
-                and not (cap_main and float(cap_main) > 0.0)
+                and not has_cap_main
             ):
+                _reset_low_fuel_pending_confirmation()
+                _log_uncertain_startup_sample_ignored(reason="zero_without_capacity")
                 return
-
-            has_cap_main = bool(cap_main and float(cap_main) > 0.0)
 
             # 0..1 traktujemy jako procent 0..100.
             if 0.0 <= val <= 1.0:
@@ -88,8 +116,8 @@ def handle_status_update(status: dict, gui_ref=None):
     # Niepewna probka liczbowa (np. transient startup/SCO/launch) bez flagi low-fuel z gry
     # nie moze budowac alertu ani pending-confirmation. Traktujemy jako "brak decyzji".
     if uncertain_low_sample and not low_fuel_flag:
-        LOW_FUEL_FLAG_PENDING = False
-        LOW_FUEL_FLAG_PENDING_TS = 0.0
+        _reset_low_fuel_pending_confirmation()
+        _log_uncertain_startup_sample_ignored(reason="ambiguous_numeric_without_capacity")
         return
 
     try:
@@ -151,5 +179,4 @@ def handle_status_update(status: dict, gui_ref=None):
 
     # Reset pending, jesli nie ma stanu low fuel.
     if not low_fuel:
-        LOW_FUEL_FLAG_PENDING = False
-        LOW_FUEL_FLAG_PENDING_TS = 0.0
+        _reset_low_fuel_pending_confirmation()
