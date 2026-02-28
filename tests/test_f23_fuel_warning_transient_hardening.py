@@ -38,6 +38,27 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         self.assertFalse(bool(fuel_events.LOW_FUEL_FLAG_PENDING))
         self.assertFalse(bool(fuel_events.LOW_FUEL_WARNED))
 
+    def test_missing_fuel_and_capacity_sample_without_flag_is_ignored_and_resets_pending(self) -> None:
+        status = {
+            "Docked": False,
+            "LowFuel": False,
+            "Fuel": {},
+            "FuelCapacity": {},
+        }
+        # Seed pending to ensure "no-decision" startup sample clears stale confirmation state.
+        fuel_events.LOW_FUEL_FLAG_PENDING = True
+        fuel_events.LOW_FUEL_FLAG_PENDING_TS = 123.0
+        with (
+            patch("logic.events.fuel_events.emit_insight") as emit_mock,
+            patch.object(fuel_events.DEBOUNCER, "can_send", return_value=True),
+        ):
+            fuel_events.handle_status_update(status)
+
+        self.assertFalse(emit_mock.called)
+        self.assertFalse(bool(fuel_events.LOW_FUEL_FLAG_PENDING))
+        self.assertEqual(float(fuel_events.LOW_FUEL_FLAG_PENDING_TS), 0.0)
+        self.assertFalse(bool(fuel_events.LOW_FUEL_WARNED))
+
     def test_real_low_fuel_from_reliable_numeric_sample_still_alerts(self) -> None:
         status = {
             "Docked": False,
