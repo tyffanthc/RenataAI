@@ -113,6 +113,18 @@ def _pick_system_quality_hint(data: ExitSummaryData) -> str:
 
 
 def _confidence_for_payload(data: ExitSummaryData) -> str:
+    try:
+        scanned = int(data.scanned_bodies or 0)
+    except Exception:
+        scanned = 0
+    try:
+        total = int(data.total_bodies or 0)
+    except Exception:
+        total = 0
+
+    # Full FSS closure (N/N) is considered high-confidence for voice policy.
+    if total > 0 and scanned >= total:
+        return "high"
     if data.total_value > 0:
         return "mid"
     return "low"

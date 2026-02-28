@@ -1951,6 +1951,7 @@ class JournalMapTab(tk.Frame):
         result = self.reload_from_playerdb()
 
         reselected = False
+        compare_refreshed = False
         reselect_key: str | None = None
         if selected_key and selected_key in self._nodes:
             reselect_key = selected_key
@@ -1960,6 +1961,7 @@ class JournalMapTab(tk.Frame):
             try:
                 sel_result = self.select_system_node(reselect_key)
                 reselected = bool(isinstance(sel_result, dict) and sel_result.get("ok"))
+                compare_refreshed = reselected
             except Exception as exc:
                 _log_map_soft_failure(
                     "auto_refresh_reselect",
@@ -1968,6 +1970,17 @@ class JournalMapTab(tk.Frame):
                     error=f"{type(exc).__name__}: {exc}",
                 )
                 reselected = False
+                compare_refreshed = False
+
+        if not compare_refreshed:
+            try:
+                self._refresh_trade_compare_if_needed()
+            except Exception as exc:
+                _log_map_soft_failure(
+                    "auto_refresh_trade_compare",
+                    "refresh trade compare after auto refresh failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
 
         info = dict(self._auto_refresh_last_update or {})
         event_name = _as_text(info.get("event_name")) or "playerdb"
@@ -3732,6 +3745,7 @@ class JournalMapTab(tk.Frame):
             self._populate_station_list([])
             self.station_details_var.set("Warstwa Stations jest wylaczona. Wlacz, aby zobaczyc stacje i snapshoty rynku.")
 
+        compare_refreshed = False
         # Auto-select first station for quick drilldown UX.
         children = self.system_stations_tree.get_children()
         if children:
@@ -3746,11 +3760,16 @@ class JournalMapTab(tk.Frame):
                     iid=first_iid,
                     error=f"{type(exc).__name__}: {exc}",
                 )
-            self._select_station_by_iid(first_iid)
+            selected_station_result = self._select_station_by_iid(first_iid)
+            compare_refreshed = bool(isinstance(selected_station_result, dict) and selected_station_result.get("ok"))
         else:
             self.station_market_tree.delete(*self.station_market_tree.get_children())
             if bool(self.layer_stations_var.get()):
                 self.station_details_var.set("Brak znanych stacji w playerdb dla wybranego systemu (po filtrach).")
+
+        # Keep trade compare in sync even when there is no station in selected system.
+        if not compare_refreshed:
+            self._refresh_trade_compare_if_needed()
 
         self.map_status_var.set(
             f"Mapa: wybrano system {node.system_name} | stacje={len(stations_rows)} | source=playerdb"
