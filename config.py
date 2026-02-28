@@ -4,6 +4,7 @@ import copy
 import json
 import os
 import shutil
+import tempfile
 import threading
 from contextlib import contextmanager
 from typing import Any, Dict
@@ -28,6 +29,20 @@ def _renata_user_home_dir() -> str:
     return os.path.join(os.path.expanduser("~"), "RenataAI")
 
 
+def _log_config_warning(key: str, msg: str, **fields: Any) -> None:
+    try:
+        from logic.utils.renata_log import log_event_throttled
+
+        log_event_throttled(key, 120_000, "WARN", msg, **fields)
+        return
+    except Exception:
+        pass
+    try:
+        print(f"[CONFIG][WARN] {msg}")
+    except Exception:
+        pass
+
+
 def renata_user_home_dir() -> str:
     """
     Public helper for local user-owned data that should live in:
@@ -37,8 +52,13 @@ def renata_user_home_dir() -> str:
     path = _renata_user_home_dir()
     try:
         os.makedirs(path, exist_ok=True)
-    except Exception:
-        pass
+    except Exception as exc:
+        _log_config_warning(
+            "config.user_home_dir.makedirs_failed",
+            "Config: failed to ensure RenataAI user home directory",
+            directory=os.path.basename(path),
+            error=f"{type(exc).__name__}: {exc}",
+        )
     return path
 
 
@@ -608,10 +628,24 @@ class ConfigManager:
 
     def _write_file(self) -> None:
         settings_dir = os.path.dirname(self.settings_path)
-        if settings_dir:
-            os.makedirs(settings_dir, exist_ok=True)
-        with open(self.settings_path, "w", encoding="utf-8") as f:
-            json.dump(self._settings, f, indent=4, ensure_ascii=False)
+        write_dir = settings_dir or os.path.dirname(os.path.abspath(self.settings_path)) or "."
+        os.makedirs(write_dir, exist_ok=True)
+
+        fd, tmp_path = tempfile.mkstemp(
+            prefix="user_settings_",
+            suffix=".tmp",
+            dir=write_dir,
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(self._settings, f, indent=4, ensure_ascii=False)
+            os.replace(tmp_path, self.settings_path)
+        except Exception:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+            raise
 
     # --- API PUBLICZNE ------------------------------------------------------
 

@@ -14,6 +14,14 @@ from logic.utils.renata_log import log_event_throttled
 _CACHE_ROOT_MIGRATION_DONE = False
 
 
+def _safe_log_path_name(path: str) -> str:
+    try:
+        name = os.path.basename(str(path or ""))
+    except Exception:
+        name = ""
+    return name or "<unknown>"
+
+
 def _merge_tree_no_overwrite(src_dir: str, dst_dir: str) -> int:
     moved = 0
     for root, _dirs, files in os.walk(src_dir):
@@ -34,8 +42,8 @@ def _merge_tree_no_overwrite(src_dir: str, dst_dir: str) -> int:
                     5000,
                     "WARN",
                     "Cache migration: failed to move cache file",
-                    src=src,
-                    dst=dst,
+                    src=_safe_log_path_name(src),
+                    dst=_safe_log_path_name(dst),
                     error=f"{type(exc).__name__}: {exc}",
                 )
                 continue
@@ -56,7 +64,7 @@ def _prune_empty_dirs(path: str) -> None:
                     5000,
                     "WARN",
                     "Cache prune: failed to remove empty child directory",
-                    path=full,
+                    path=_safe_log_path_name(full),
                     error=f"{type(exc).__name__}: {exc}",
                 )
     try:
@@ -67,7 +75,7 @@ def _prune_empty_dirs(path: str) -> None:
             5000,
             "WARN",
             "Cache prune: failed to remove empty cache directory",
-            path=path,
+            path=_safe_log_path_name(path),
             error=f"{type(exc).__name__}: {exc}",
         )
 
@@ -180,7 +188,7 @@ class CacheStore:
                     5000,
                     "WARN",
                     "Cache: failed to remove corrupt cache file",
-                    path=path,
+                    path=_safe_log_path_name(path),
                     error=f"{type(exc).__name__}: {exc}",
                 )
             meta["reason"] = "corrupt"
@@ -267,6 +275,6 @@ class CacheStore:
                 "WARN",
                 "Cache: failed to delete cache key file",
                 key=str(key),
-                path=path,
+                path=_safe_log_path_name(path),
             )
             return

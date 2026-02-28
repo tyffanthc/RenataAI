@@ -126,7 +126,7 @@ def _resolve_appdata_voicepack() -> Optional[PiperPaths]:
                 60.0,
                 "WARN",
                 "piper: appdata models scan failed",
-                base=base,
+                base=os.path.basename(base),
             )
             return None
     return None
@@ -298,5 +298,5 @@ def speak(text: str, *, paths: Optional[PiperPaths] = None) -> bool:
                 60.0,
                 "WARN",
                 "piper: temporary wav cleanup failed",
-                path=wav_path,
+                path=os.path.basename(wav_path),
             )
