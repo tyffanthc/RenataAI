@@ -221,9 +221,11 @@ class JournalMapTab(tk.Frame):
         self._tooltip_last_pos: tuple[int, int] | None = None
         self._star_legend_popup = None
         self._star_legend_hide_after_id: str | None = None
+        self._star_legend_pinned = False
         self._startup_autocenter_pending = True
         self._startup_autocenter_done = False
         self._startup_autocenter_user_blocked = False
+        self._startup_autocenter_recenter_pending = False
         self._trade_picker_window = None
         self._trade_picker_search_var = None
         self._trade_picker_tree = None
@@ -375,10 +377,10 @@ class JournalMapTab(tk.Frame):
             try:
                 self.legend_collapsed_var.set(collapsed)
                 if collapsed:
-                    self.legend_body_frame.grid_remove()
+                    self.legend_body_host.grid_remove()
                     self.legend_toggle_text_var.set("Pokaz")
                 else:
-                    self.legend_body_frame.grid()
+                    self.legend_body_host.grid()
                     self.legend_toggle_text_var.set("Ukryj")
             except Exception as exc:
                 _log_map_soft_failure(
@@ -739,10 +741,9 @@ class JournalMapTab(tk.Frame):
             fg=COLOR_FG,
             relief="flat",
             width=8,
+            command=self._toggle_star_legend_popup,
         )
         self.legend_star_info_btn.grid(row=0, column=1, sticky="e", padx=(6, 0), pady=(4, 2))
-        self.legend_star_info_btn.bind("<Enter>", self._on_star_legend_hover_enter)
-        self.legend_star_info_btn.bind("<Leave>", self._on_star_legend_hover_leave)
         self.legend_toggle_btn = tk.Button(
             legend_head,
             textvariable=self.legend_toggle_text_var,
@@ -754,19 +755,36 @@ class JournalMapTab(tk.Frame):
         )
         self.legend_toggle_btn.grid(row=0, column=2, sticky="e", padx=6, pady=(4, 2))
 
-        self.legend_body_frame = tk.Frame(legend_box, bg=COLOR_BG)
-        self.legend_body_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 6))
-        self.legend_body_frame.columnconfigure(0, weight=1)
-        self.legend_label = tk.Label(
-            self.legend_body_frame,
-            textvariable=self.legend_text_var,
+        self.legend_body_host = tk.Frame(legend_box, bg=COLOR_BG)
+        self.legend_body_host.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 6))
+        self.legend_body_host.columnconfigure(0, weight=1)
+        self.legend_body_host.rowconfigure(0, weight=1)
+
+        self.legend_body_canvas = tk.Canvas(
+            self.legend_body_host,
             bg=COLOR_BG,
-            fg=COLOR_SEC,
-            justify="left",
-            anchor="nw",
-            wraplength=270,
+            highlightthickness=0,
+            bd=0,
+            relief="flat",
         )
-        self.legend_label.grid(row=0, column=0, sticky="nsew")
+        self.legend_body_canvas.grid(row=0, column=0, sticky="nsew")
+        self.legend_body_scrollbar = ttk.Scrollbar(
+            self.legend_body_host,
+            orient="vertical",
+            command=self.legend_body_canvas.yview,
+        )
+        self.legend_body_scrollbar.grid(row=0, column=1, sticky="ns", padx=(4, 0))
+        self.legend_body_canvas.configure(yscrollcommand=self.legend_body_scrollbar.set)
+
+        self.legend_body_frame = tk.Frame(self.legend_body_canvas, bg=COLOR_BG)
+        self.legend_body_frame.columnconfigure(0, weight=1)
+        self._legend_body_window_id = self.legend_body_canvas.create_window(
+            (0, 0),
+            window=self.legend_body_frame,
+            anchor="nw",
+        )
+        self.legend_body_frame.bind("<Configure>", self._on_legend_body_frame_configure)
+        self.legend_body_canvas.bind("<Configure>", self._on_legend_canvas_configure)
 
         # Center panel (canvas)
         self.center_frame = tk.Frame(self, bg=COLOR_BG)
@@ -1404,6 +1422,8 @@ class JournalMapTab(tk.Frame):
         return None
 
     def _on_star_legend_hover_enter(self, _event=None) -> None:
+        if bool(getattr(self, "_star_legend_pinned", False)):
+            return
         hide_id = getattr(self, "_star_legend_hide_after_id", None)
         if hide_id:
             try:
@@ -1414,10 +1434,21 @@ class JournalMapTab(tk.Frame):
         self._show_star_legend_popup()
 
     def _on_star_legend_hover_leave(self, _event=None) -> None:
+        if bool(getattr(self, "_star_legend_pinned", False)):
+            return
         try:
             self._star_legend_hide_after_id = str(self.after(120, self._hide_star_legend_popup))
         except Exception:
             self._hide_star_legend_popup()
+
+    def _toggle_star_legend_popup(self) -> None:
+        popup = getattr(self, "_star_legend_popup", None)
+        if popup is not None:
+            self._star_legend_pinned = False
+            self._hide_star_legend_popup(force=True)
+            return
+        self._star_legend_pinned = True
+        self._show_star_legend_popup()
 
     def _show_star_legend_popup(self) -> None:
         btn = getattr(self, "legend_star_info_btn", None)
@@ -1438,8 +1469,19 @@ class JournalMapTab(tk.Frame):
             popup.configure(bg=COLOR_BG)
             frame = tk.Frame(popup, bg=COLOR_BG, bd=1, relief="solid")
             frame.pack(fill="both", expand=True)
+            frame.columnconfigure(1, weight=1)
             title = tk.Label(frame, text="Legenda gwiazd", bg=COLOR_BG, fg=COLOR_FG, font=("Segoe UI", 9, "bold"))
-            title.grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(6, 4))
+            title.grid(row=0, column=0, sticky="w", padx=8, pady=(6, 4))
+            close_btn = tk.Button(
+                frame,
+                text="x",
+                command=self._toggle_star_legend_popup,
+                bg=COLOR_ACCENT,
+                fg=COLOR_FG,
+                relief="flat",
+                width=2,
+            )
+            close_btn.grid(row=0, column=1, sticky="e", padx=(0, 6), pady=(4, 2))
             legend_rows = [
                 (COLOR_STAR_NEUTRON, "Neutron Star"),
                 (COLOR_STAR_BLACK_HOLE, "Black Hole"),
@@ -1456,12 +1498,15 @@ class JournalMapTab(tk.Frame):
                 tk.Label(frame, text=label, bg=COLOR_BG, fg=COLOR_SEC, anchor="w").grid(
                     row=idx, column=1, sticky="w", padx=(0, 8), pady=2
                 )
-            popup.bind("<Leave>", self._on_star_legend_hover_leave)
-            popup.bind("<Enter>", self._on_star_legend_hover_enter)
+            popup.bind("<Escape>", lambda _e: self._toggle_star_legend_popup())
             x = int(btn.winfo_rootx())
             y = int(btn.winfo_rooty() + btn.winfo_height() + 2)
             popup.geometry(f"+{x}+{y}")
             self._star_legend_popup = popup
+            try:
+                self.legend_star_info_btn.configure(relief="sunken")
+            except Exception:
+                pass
         except Exception as exc:
             _log_map_soft_failure(
                 "legend_star_popup_show",
@@ -1487,16 +1532,42 @@ class JournalMapTab(tk.Frame):
                 raise
         finally:
             self._star_legend_popup = None
+            self._star_legend_pinned = False
+            try:
+                self.legend_star_info_btn.configure(relief="flat")
+            except Exception:
+                pass
+
+    def _on_legend_body_frame_configure(self, _event=None) -> None:
+        self._sync_legend_scrollregion()
+
+    def _on_legend_canvas_configure(self, event=None) -> None:
+        try:
+            width = int(getattr(event, "width", 0) or self.legend_body_canvas.winfo_width() or 0)
+            if width > 0:
+                self.legend_body_canvas.itemconfigure(self._legend_body_window_id, width=width)
+        except Exception:
+            pass
+        self._sync_legend_scrollregion()
+
+    def _sync_legend_scrollregion(self) -> None:
+        try:
+            self.legend_body_canvas.update_idletasks()
+            bbox = self.legend_body_canvas.bbox("all")
+            if bbox:
+                self.legend_body_canvas.configure(scrollregion=bbox)
+        except Exception:
+            pass
 
     def _toggle_legend(self) -> None:
         collapsed = not bool(self.legend_collapsed_var.get())
         self.legend_collapsed_var.set(collapsed)
         try:
             if collapsed:
-                self.legend_body_frame.grid_remove()
+                self.legend_body_host.grid_remove()
                 self.legend_toggle_text_var.set("Pokaz")
             else:
-                self.legend_body_frame.grid()
+                self.legend_body_host.grid()
                 self.legend_toggle_text_var.set("Ukryj")
         except Exception as exc:
             _log_map_soft_failure(
@@ -1510,45 +1581,183 @@ class JournalMapTab(tk.Frame):
 
     def _refresh_legend(self) -> None:
         lines: list[str] = []
+        self._legend_clear_visual_rows()
         if bool(self.legend_collapsed_var.get()):
             self.legend_text_var.set("")
+            self._sync_legend_scrollregion()
             return
 
+        row_idx = 0
+        row_idx = self._legend_add_section_title("Znaczniki", row=row_idx)
+        row_idx = self._legend_add_icon_row("selected", "Biala otoczka = wybrany system", row=row_idx)
+        row_idx = self._legend_add_icon_row("current", "Zielona otoczka = aktualny system gracza", row=row_idx)
         lines.extend(
             [
                 "Znaczniki:",
-                "[O] biala otoczka = wybrany system",
-                "[O] zielona otoczka = aktualny system gracza",
+                "Biala otoczka = wybrany system",
+                "Zielona otoczka = aktualny system gracza",
             ]
         )
 
-        active_items: list[str] = []
+        active_items: list[tuple[str, str]] = []
         if bool(self.layer_stations_var.get()):
-            active_items.append("[O] zielony ring = znane stacje w systemie")
+            active_items.append(("stations", "Znane stacje w systemie"))
         if bool(self.layer_trade_var.get()):
-            active_items.append("[#] niebieski kwadrat = znany rynek (Trade)")
+            active_items.append(("trade", "Znany rynek (Trade)"))
         if bool(self.layer_cashin_var.get()):
-            active_items.append("[<>] rozowy romb = znane UC/Vista na stacjach (Cash-In)")
+            active_items.append(("cashin", "Znane UC/Vista na stacjach (Cash-In)"))
         if bool(self.layer_exploration_var.get()):
-            active_items.append("[*] zolty badge = historia eksploracji (cash-in UC)")
+            active_items.append(("exploration", "Historia eksploracji (cash-in UC)"))
         if bool(self.layer_exobio_var.get()):
-            active_items.append("[*] turkusowy badge = historia exobio (cash-in Vista)")
+            active_items.append(("exobio", "Historia exobio (cash-in Vista)"))
         if bool(self.layer_incidents_var.get()):
             if bool((self._action_layers_meta or {}).get("supports_incidents")):
-                active_items.append("[*] czerwony badge = incydenty")
+                active_items.append(("incidents", "Incydenty"))
             else:
-                active_items.append("Incidents: brak danych w playerdb (future)")
+                active_items.append(("incidents_off", "Incidents: brak danych w playerdb (future)"))
         if bool(self.layer_combat_var.get()):
             if bool((self._action_layers_meta or {}).get("supports_combat")):
-                active_items.append("[*] rozowo-czerwony badge = combat")
+                active_items.append(("combat", "Combat"))
             else:
-                active_items.append("Combat: brak danych w playerdb (future)")
+                active_items.append(("combat_off", "Combat: brak danych w playerdb (future)"))
 
         if active_items:
             lines.append("")
             lines.append("Aktywne warstwy:")
-            lines.extend(active_items)
+            row_idx = self._legend_add_section_title("Aktywne warstwy", row=row_idx, top_pad=6)
+            for key, label in active_items:
+                row_idx = self._legend_add_icon_row(key, label, row=row_idx)
+                lines.append(label)
         self.legend_text_var.set("\n".join(lines))
+        self._sync_legend_scrollregion()
+
+    def _legend_clear_visual_rows(self) -> None:
+        for child in list(self.legend_body_frame.winfo_children()):
+            try:
+                child.destroy()
+            except Exception:
+                continue
+
+    def _legend_add_section_title(self, text: str, *, row: int, top_pad: int = 2) -> int:
+        lbl = tk.Label(
+            self.legend_body_frame,
+            text=str(text),
+            bg=COLOR_BG,
+            fg=COLOR_FG,
+            anchor="w",
+            justify="left",
+            font=("Segoe UI", 9, "bold"),
+        )
+        lbl.grid(row=row, column=0, sticky="ew", pady=(top_pad, 2))
+        return row + 1
+
+    def _legend_add_icon_row(self, icon_key: str, text: str, *, row: int) -> int:
+        row_frame = tk.Frame(self.legend_body_frame, bg=COLOR_BG)
+        row_frame.grid(row=row, column=0, sticky="ew", pady=1)
+        row_frame.columnconfigure(1, weight=1)
+        icon = tk.Canvas(row_frame, width=20, height=14, bg=COLOR_BG, highlightthickness=0)
+        icon.grid(row=0, column=0, sticky="w", padx=(0, 6))
+        self._draw_legend_icon(icon, icon_key)
+        fg = COLOR_SEC if not icon_key.endswith("_off") else "#9ca3af"
+        tk.Label(
+            row_frame,
+            text=str(text),
+            bg=COLOR_BG,
+            fg=fg,
+            anchor="w",
+            justify="left",
+            wraplength=248,
+        ).grid(row=0, column=1, sticky="ew")
+        return row + 1
+
+    def _draw_legend_icon(self, canvas: tk.Canvas, icon_key: str) -> None:
+        canvas.delete("all")
+        cx, cy = 8, 7
+        r = 3
+        # Base star glyph
+        canvas.create_oval(cx - r, cy - r, cx + r, cy + r, outline=COLOR_NODE, fill=COLOR_NODE)
+        if icon_key == "selected":
+            rr = r + 3
+            canvas.create_oval(cx - rr, cy - rr, cx + rr, cy + rr, outline=COLOR_SELECTED_RING, width=1.6)
+            return
+        if icon_key == "current":
+            rr = r + 3
+            canvas.create_oval(cx - rr, cy - rr, cx + rr, cy + rr, outline=COLOR_CURRENT_RING, width=1.6)
+            return
+        if icon_key == "stations":
+            rr = r + 2
+            canvas.create_oval(cx - rr, cy - rr, cx + rr, cy + rr, outline=COLOR_STATION_LAYER, width=1.2)
+            return
+        if icon_key == "trade":
+            s = 2.6
+            canvas.create_rectangle(
+                cx + r + 1,
+                cy - r - 1,
+                cx + r + 1 + (s * 2),
+                cy - r - 1 + (s * 2),
+                outline=COLOR_TRADE_LAYER,
+                fill=COLOR_TRADE_LAYER,
+            )
+            return
+        if icon_key == "cashin":
+            d = 3
+            canvas.create_polygon(
+                cx,
+                cy + r + 1,
+                cx + d,
+                cy + r + 1 + d,
+                cx,
+                cy + r + 1 + (d * 2),
+                cx - d,
+                cy + r + 1 + d,
+                outline=COLOR_CASHIN_LAYER,
+                fill=COLOR_CASHIN_LAYER,
+            )
+            return
+        if icon_key == "exploration":
+            rr = 2.4
+            canvas.create_oval(
+                cx - rr,
+                cy + r + 2 - rr,
+                cx + rr,
+                cy + r + 2 + rr,
+                outline=COLOR_EXPLORATION_LAYER,
+                fill=COLOR_EXPLORATION_LAYER,
+            )
+            return
+        if icon_key == "exobio":
+            rr = 2.4
+            canvas.create_oval(
+                cx - rr,
+                cy + r + 2 - rr,
+                cx + rr,
+                cy + r + 2 + rr,
+                outline=COLOR_EXOBIO_LAYER,
+                fill=COLOR_EXOBIO_LAYER,
+            )
+            return
+        if icon_key == "incidents":
+            rr = 2.4
+            canvas.create_oval(
+                cx - rr,
+                cy + r + 2 - rr,
+                cx + rr,
+                cy + r + 2 + rr,
+                outline=COLOR_INCIDENT_LAYER,
+                fill=COLOR_INCIDENT_LAYER,
+            )
+            return
+        if icon_key == "combat":
+            rr = 2.4
+            canvas.create_oval(
+                cx - rr,
+                cy + r + 2 - rr,
+                cx + rr,
+                cy + r + 2 + rr,
+                outline=COLOR_COMBAT_LAYER,
+                fill=COLOR_COMBAT_LAYER,
+            )
+            return
 
     def _on_filter_changed(self) -> None:
         # Invalidate tooltip immediately so stale badges/text are not shown
@@ -2053,13 +2262,12 @@ class JournalMapTab(tk.Frame):
 
     def _coords_layout_from_system_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
-        Mapa (coords) layout: rzutuje rzeczywiste wspĂłĹ‚rzÄ™dne galaktyczne (StarPos x, z) na 2D.
+        Mapa (coords) layout: rzutuje rzeczywiste wspolrzedne galaktyczne (StarPos x, z) na 2D.
 
         Konwencja ED:
-          x = galaktyczny wschĂłd/zachĂłd, z = galaktyczny N/S (ku rdzeniu), y = wysokoĹ›Ä‡ (ignorujemy).
-        Rzut top-down: x â†’ canvas_x, z â†’ canvas_y (z invertowane, ĹĽeby N byĹ‚ u gĂłry).
-        Systemy bez wspĂłĹ‚rzÄ™dnych trafiajÄ… do pasa awaryjnego poniĹĽej mapy.
-        Gdy ĹĽaden system nie ma wspĂłĹ‚rzÄ™dnych â€” fallback na travel layout.
+          x = galaktyczny wschod/zachod, z = galaktyczny N/S (ku rdzeniowi), y = wysokosc (ignorujemy).
+        Rzut top-down: x -> canvas_x, z -> canvas_y (z invertowane, zeby N byl u gory).
+        Tryb Mapa pokazuje tylko systemy z realnymi koordynatami (x/z), bez fallback-strip.
         """
         SCALE_TARGET = 160.0  # docelowe jednostki canvas (podobny zakres co travel layout)
 
@@ -2067,13 +2275,8 @@ class JournalMapTab(tk.Frame):
             dict(r) for r in rows
             if isinstance(r, dict) and r.get("x") is not None and r.get("z") is not None
         ]
-        without_coords = [
-            dict(r) for r in rows
-            if isinstance(r, dict) and (r.get("x") is None or r.get("z") is None)
-        ]
-
         if not with_coords:
-            return self._travel_layout_from_system_rows(rows)
+            return []
 
         xs = [float(r["x"]) for r in with_coords]
         zs = [float(r["z"]) for r in with_coords]
@@ -2089,16 +2292,8 @@ class JournalMapTab(tk.Frame):
         for row in with_coords:
             item = dict(row)
             item["x"] = (float(row["x"]) - min_x) * scale
-            # Invertujemy z â€” galaktyczna pĂłĹ‚noc jest u gĂłry (mniejsze canvas_y)
+            # Invertujemy z - galaktyczna polnoc jest u gory (mniejsze canvas_y)
             item["y"] = (max_z - float(row["z"])) * scale
-            out.append(item)
-
-        # Systemy bez coords â†’ pas awaryjny poniĹĽej mapy
-        fallback_y = range_z * scale + 30.0
-        for idx, row in enumerate(without_coords):
-            item = dict(row)
-            item["x"] = float(idx % 10) * 14.0
-            item["y"] = fallback_y + float(idx // 10) * 12.0
             out.append(item)
 
         return out
@@ -2186,6 +2381,13 @@ class JournalMapTab(tk.Frame):
         nodes_rows = self._filter_rows_by_freshness(nodes_rows, ts_keys=("freshness_ts", "last_seen_ts", "first_seen_ts"))
 
         render_mode = _as_text(self.render_mode_var.get() or "Trasa")
+        hidden_without_coords = 0
+        if render_mode == "Mapa":
+            hidden_without_coords = sum(
+                1
+                for r in nodes_rows
+                if isinstance(r, dict) and (r.get("x") is None or r.get("z") is None)
+            )
         if render_mode == "Mapa":
             laid_out_nodes = self._coords_layout_from_system_rows(nodes_rows)
         else:
@@ -2215,6 +2417,8 @@ class JournalMapTab(tk.Frame):
         status_reason = ""
         if edges_mode == "sequential_fallback":
             status_reason = " | krawedzie: fallback sekwencyjny (brak ingestu jumps)"
+        if render_mode == "Mapa" and hidden_without_coords > 0:
+            status_reason += f" | ukryto {int(hidden_without_coords)} systemow bez koordynatow (tryb Mapa)"
         if dropped_nodes > 0:
             status_reason += f" | pominieto {int(dropped_nodes)} nodow bez poprawnych koordynatow"
         if bool(startup_center.get("applied")):
@@ -2231,7 +2435,10 @@ class JournalMapTab(tk.Frame):
             f"/Cb={int(bool(self.layer_combat_var.get()))}"
         )
         if count_nodes <= 0:
-            status_reason += " | brak danych po filtrach (time/freshness/source)"
+            if render_mode == "Mapa":
+                status_reason += " | Brak systemow z koordynatami w tym zakresie"
+            else:
+                status_reason += " | brak danych po filtrach (time/freshness/source)"
         self.map_status_var.set(
             f"Mapa {render_mode}: {count_nodes} systemow / {count_edges} krawedzi | "
             f"time={'last_session' if bool(self.last_session_only_var.get()) else time_range} "
@@ -2246,6 +2453,7 @@ class JournalMapTab(tk.Frame):
             "edges": count_edges,
             "startup_center": dict(startup_center or {}),
             "dropped_nodes": int(dropped_nodes),
+            "hidden_without_coords": int(hidden_without_coords),
             "edges_mode": edges_mode,
             "nodes_meta": dict(nodes_meta or {}),
             "edges_meta": dict(edges_meta or {}),
@@ -2253,9 +2461,11 @@ class JournalMapTab(tk.Frame):
 
     def _block_startup_autocenter_by_user(self) -> None:
         if bool(getattr(self, "_startup_autocenter_done", False)):
+            self._startup_autocenter_recenter_pending = False
             return
         self._startup_autocenter_pending = False
         self._startup_autocenter_user_blocked = True
+        self._startup_autocenter_recenter_pending = False
 
     def _try_startup_autocenter(self) -> dict[str, Any]:
         if bool(getattr(self, "_startup_autocenter_user_blocked", False)):
@@ -2275,6 +2485,7 @@ class JournalMapTab(tk.Frame):
             self._redraw_scene()
             self._startup_autocenter_done = True
             self._startup_autocenter_pending = False
+            self._startup_autocenter_recenter_pending = True
             return {
                 "applied": True,
                 "reason": "current_system_node",
@@ -2290,6 +2501,7 @@ class JournalMapTab(tk.Frame):
                 self._redraw_scene()
                 self._startup_autocenter_done = True
                 self._startup_autocenter_pending = False
+                self._startup_autocenter_recenter_pending = True
                 return {"applied": True, "reason": "current_star_pos_fallback", "target": "current_star_pos"}
             except Exception as exc:
                 _log_map_soft_failure(
@@ -3559,6 +3771,28 @@ class JournalMapTab(tk.Frame):
             self._center_world_point(0.0, 0.0)
         self._hide_map_tooltip()
         self._redraw_scene()
+        # Startup auto-center can be delayed until canvas has a real size.
+        if (
+            bool(getattr(self, "_startup_autocenter_pending", False))
+            and not bool(getattr(self, "_startup_autocenter_done", False))
+            and not bool(getattr(self, "_startup_autocenter_user_blocked", False))
+            and bool(self._nodes)
+        ):
+            self._try_startup_autocenter()
+        if (
+            bool(getattr(self, "_startup_autocenter_recenter_pending", False))
+            and bool(getattr(self, "_startup_autocenter_done", False))
+            and not bool(getattr(self, "_startup_autocenter_user_blocked", False))
+            and bool(self._nodes)
+        ):
+            canvas_w = max(0, int(self.map_canvas.winfo_width() or 0))
+            canvas_h = max(0, int(self.map_canvas.winfo_height() or 0))
+            if canvas_w >= 32 and canvas_h >= 32:
+                current_node = self._find_current_system_rendered_node()
+                if current_node is not None:
+                    self._center_world_point(float(current_node.x), float(current_node.y))
+                    self._redraw_scene()
+                self._startup_autocenter_recenter_pending = False
 
     def _on_canvas_press(self, event) -> None:
         self._pan_active = True

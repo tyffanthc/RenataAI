@@ -89,11 +89,35 @@ class F31MapLegendPopupContractTests(unittest.TestCase):
 
                 legend_text = str(frame.legend_text_var.get() or "").lower()
                 self.assertNotIn("zoom", legend_text)
-                self.assertIn("[o]", legend_text)
+                self.assertNotIn("[o]", legend_text)
+                self.assertNotIn("[#]", legend_text)
                 self.assertIn("aktywne warstwy", legend_text)
+                self.assertIn("znane stacje", legend_text)
+                self.assertTrue(hasattr(frame, "legend_body_canvas"))
+                self.assertTrue(hasattr(frame, "legend_body_scrollbar"))
+                self.assertTrue(bool(str(frame.legend_body_canvas.cget("yscrollcommand") or "").strip()))
+
+                # Visual legend uses real icon canvases (map-like badges).
+                icon_canvases = [
+                    w for w in frame.legend_body_frame.winfo_children()
+                    if str(w.winfo_class()) == "Frame"
+                ]
+                self.assertGreaterEqual(len(icon_canvases), 3)
+                self.assertEqual(str(frame.legend_star_info_btn.winfo_manager() or ""), "grid")
+                self.assertEqual(str(frame.legend_toggle_btn.winfo_manager() or ""), "grid")
+                self.assertEqual(str(frame.legend_body_host.winfo_manager() or ""), "grid")
+
+                frame.legend_toggle_btn.invoke()
+                root.update_idletasks()
+                self.assertEqual(str(frame.legend_body_host.winfo_manager() or ""), "")
+                self.assertEqual(str(frame.legend_star_info_btn.winfo_manager() or ""), "grid")
+                self.assertEqual(str(frame.legend_toggle_btn.winfo_manager() or ""), "grid")
+                frame.legend_toggle_btn.invoke()
+                root.update_idletasks()
+                self.assertEqual(str(frame.legend_body_host.winfo_manager() or ""), "grid")
 
                 self.assertTrue(hasattr(frame, "legend_star_info_btn"))
-                frame._show_star_legend_popup()
+                frame.legend_star_info_btn.invoke()
                 root.update_idletasks()
 
                 popup = getattr(frame, "_star_legend_popup", None)
@@ -105,7 +129,7 @@ class F31MapLegendPopupContractTests(unittest.TestCase):
                 self.assertIn("neutron", joined)
                 self.assertIn("black hole", joined)
 
-                frame._hide_star_legend_popup(force=True)
+                frame.legend_star_info_btn.invoke()
                 root.update_idletasks()
                 self.assertIsNone(getattr(frame, "_star_legend_popup", None))
             finally:
@@ -122,4 +146,3 @@ class F31MapLegendPopupContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
