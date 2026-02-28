@@ -183,6 +183,9 @@ def _plural_form_pl(value: int, one: str, few: str, many: str) -> str:
         return one
     if 10 <= (n % 100) <= 19:
         return many
+    if n % 10 == 1:
+        # 21, 31, 41, ..., 101, 121, ... - ends in 1 but NOT in 11-19 range
+        return one
     if 2 <= (n % 10) <= 4:
         return few
     return many
