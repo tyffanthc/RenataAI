@@ -400,6 +400,12 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
         if _is_manual_progress_scan(ev.get("ScanType")):
             FSS_HAD_MANUAL_PROGRESS_SCAN = True
 
+        # --- FSS progi + high-value planets ---
+        # Keep progress callouts first in queue to avoid perceived lag during scanning.
+        _check_fss_thresholds(gui_ref)
+        check_high_value_planet(ev, gui_ref)
+        _maybe_speak_fss_full(gui_ref)
+
         # --- S2-LOGIC-05: First Discovery detection ---
         was_discovered = ev.get("WasDiscovered")
         # W journalu to jest zwykle bool; interesuje nas wyrazne False / 0
@@ -453,11 +459,6 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
                 cooldown_seconds=120.0,
             )
             FIRST_SYS_OPPORTUNITY_WARNED = True
-
-        # --- FSS progi + high-value planets ---
-        _check_fss_thresholds(gui_ref)
-        check_high_value_planet(ev, gui_ref)
-        _maybe_speak_fss_full(gui_ref)
 
 
 def handle_fss_discovery_scan(ev: Dict[str, Any], gui_ref=None):

@@ -53,6 +53,18 @@ class F23QualityGatesAndSmokeTests(unittest.TestCase):
         self.assertFalse(blocked)
         self.assertEqual(win_runtime.calls, [])
 
+        win_runtime_front = _FakeWindow()
+        blocked_front = window_focus.bring_window_to_front(
+            win_runtime_front,
+            source="f23.smoke.runtime.front",
+            user_initiated=False,
+            deiconify=True,
+            request_focus=True,
+            force_focus=False,
+        )
+        self.assertFalse(blocked_front)
+        self.assertEqual(win_runtime_front.calls, [])
+
         win_dialog = _FakeWindow()
         ok = window_focus.bring_window_to_front(
             win_dialog,
@@ -132,4 +144,3 @@ class F23QualityGatesAndSmokeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

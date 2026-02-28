@@ -62,7 +62,19 @@ class F23FocusSafeWindowPolicyTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(win.calls, ["lift"])
 
+    def test_bring_window_to_front_blocks_runtime_non_user_path(self) -> None:
+        win = _FakeWindow()
+        ok = window_focus.bring_window_to_front(
+            win,
+            source="test.runtime.autonomous",
+            user_initiated=False,
+            deiconify=True,
+            request_focus=True,
+            force_focus=False,
+        )
+        self.assertFalse(ok)
+        self.assertEqual(win.calls, [])
+
 
 if __name__ == "__main__":
     unittest.main()
-

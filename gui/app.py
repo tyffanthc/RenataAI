@@ -14,7 +14,6 @@ from gui.window_positions import restore_window_geometry, bind_window_geometry, 
 from gui.window_chrome import apply_renata_orange_window_chrome
 from gui.window_focus import bring_window_to_front
 from gui.tabs.logbook import LogbookTab
-import webbrowser
 from logic.generate_renata_science_data import generate_science_excel
 from logic.generate_renata_modules_data import generate_modules_data
 from app.state import app_state
@@ -56,6 +55,20 @@ def _log_app_fallback(
         message,
         **payload,
     )
+
+
+def _safe_copy_external_url(url: str) -> tuple[bool, str]:
+    text = str(url or "").strip()
+    if not text:
+        return False, "Pusty URL."
+    try:
+        result = common.try_copy_to_clipboard(text, context="external.link")
+    except Exception as exc:
+        return False, f"Blad schowka: {type(exc).__name__}"
+    if bool((result or {}).get("ok")):
+        return True, ""
+    reason = str((result or {}).get("reason") or "").strip()
+    return False, reason or "Nie udalo sie skopiowac URL do schowka."
 
 
 def _to_tk_hotkey_sequence(binding: str | None) -> str | None:
@@ -555,13 +568,14 @@ class RenataApp:
             "- Offline-first, bezpieczne fallbacki\n"
             "- Voice Pack Piper PL jest opcjonalny\n\n"
             f"Release: {release_url}\n\n"
-            "Otworzyc strone release w przegladarce?"
+            "Skopiowac link release do schowka?"
         )
         if mbox.askyesno("O programie", text):
-            try:
-                webbrowser.open(release_url)
-            except Exception as exc:
-                _log_app_fallback("about.open_release", "failed to open release URL", exc)
+            ok, reason = _safe_copy_external_url(release_url)
+            if ok:
+                self.show_status(f"Link release skopiowany: {release_url}")
+            else:
+                self.show_status(f"Nie udalo sie skopiowac linku release: {reason}")
 
     # ------------------------------------------------------------------ #
     #   Okno ustawień (Konfiguracja Systemów R.E.N.A.T.A.)
@@ -1704,11 +1718,11 @@ class RenataApp:
             self.show_status(f"Nieznany link: {target}")
             return
 
-        try:
-            webbrowser.open(url)
-            self.show_status(f"Otworzono: {url}")
-        except Exception as e:
-            self.show_status(f"Błąd otwierania linku: {e}")
+        ok, reason = _safe_copy_external_url(url)
+        if ok:
+            self.show_status(f"Link skopiowany do schowka: {url}")
+            return
+        self.show_status(f"Nie udało się skopiować linku: {reason}")
 
     def on_generate_science_excel(self):
         """

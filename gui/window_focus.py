@@ -98,10 +98,11 @@ def request_window_focus(
     user_initiated: bool,
     force: bool = False,
 ) -> bool:
-    # Runtime/autonomous paths must not demand foreground.
-    if force and not user_initiated:
+    # Runtime/autonomous paths must never request foreground/focus.
+    if not user_initiated:
+        method_name = "focus_force" if force else "focus_set"
         _trace(
-            "focus_force",
+            method_name,
             source=source,
             win=win,
             result="blocked",
@@ -129,18 +130,38 @@ def bring_window_to_front(
 ) -> bool:
     ok = False
     if deiconify:
+        if user_initiated:
+            ok = _call_window_action(
+                win,
+                "deiconify",
+                source=source,
+                user_initiated=user_initiated,
+            ) or ok
+        else:
+            _trace(
+                "deiconify",
+                source=source,
+                win=win,
+                result="blocked",
+                user_initiated=user_initiated,
+                reason="not_user_initiated",
+            )
+    if user_initiated:
         ok = _call_window_action(
             win,
-            "deiconify",
+            "lift",
             source=source,
             user_initiated=user_initiated,
         ) or ok
-    ok = _call_window_action(
-        win,
-        "lift",
-        source=source,
-        user_initiated=user_initiated,
-    ) or ok
+    else:
+        _trace(
+            "lift",
+            source=source,
+            win=win,
+            result="blocked",
+            user_initiated=user_initiated,
+            reason="not_user_initiated",
+        )
     if request_focus:
         ok = request_window_focus(
             win,
@@ -149,4 +170,3 @@ def bring_window_to_front(
             force=force_focus,
         ) or ok
     return ok
-

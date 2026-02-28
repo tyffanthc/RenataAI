@@ -78,6 +78,29 @@ class F30FssMilestoneCatchupAndBodyDedupeTests(unittest.TestCase):
         self.assertNotIn("MSG.FSS_PROGRESS_25", emit_ids)
         self.assertNotIn("MSG.FSS_PROGRESS_50", emit_ids)
 
+    def test_handle_scan_prioritizes_fss_progress_before_first_discovery_callouts(self) -> None:
+        fss_events.FSS_TOTAL_BODIES = 4
+        with (
+            patch("logic.events.exploration_fss_events.DEBOUNCER.can_send", return_value=True),
+            patch("logic.events.exploration_fss_events.emit_insight") as emit_mock,
+        ):
+            fss_events.handle_scan(
+                {
+                    "event": "Scan",
+                    "StarSystem": "F30_FSS_TEST_SYSTEM",
+                    "BodyName": "F30_FSS_TEST_SYSTEM A 1",
+                    "BodyID": 1,
+                    "ScanType": "Detailed",
+                    "WasDiscovered": False,
+                },
+                gui_ref=None,
+            )
+
+        emitted = [str(c.kwargs.get("message_id") or "") for c in emit_mock.call_args_list]
+        self.assertIn("MSG.FSS_PROGRESS_25", emitted)
+        self.assertIn("MSG.FIRST_DISCOVERY", emitted)
+        self.assertLess(emitted.index("MSG.FSS_PROGRESS_25"), emitted.index("MSG.FIRST_DISCOVERY"))
+
 
 if __name__ == "__main__":
     unittest.main()

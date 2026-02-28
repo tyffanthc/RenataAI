@@ -1472,7 +1472,6 @@ class JournalMapTab(tk.Frame):
         if popup is not None:
             try:
                 popup.deiconify()
-                popup.lift()
             except Exception:
                 pass
             return
@@ -1480,6 +1479,11 @@ class JournalMapTab(tk.Frame):
             popup = tk.Toplevel(self)
             popup.overrideredirect(True)
             popup.transient(self.winfo_toplevel())
+            # Focus-safe: legend popup should never request topmost/foreground.
+            try:
+                popup.attributes("-topmost", False)
+            except Exception:
+                pass
             popup.configure(bg=COLOR_BG)
             frame = tk.Frame(popup, bg=COLOR_BG, bd=1, relief="solid")
             frame.pack(fill="both", expand=True)

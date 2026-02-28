@@ -1384,15 +1384,6 @@ class SettingsTab(ttk.Frame):
             )
         restore_window_geometry(dialog, "jackpot_dialog", include_size=False)
         bind_window_geometry(dialog, "jackpot_dialog", include_size=False)
-        try:
-            dialog.attributes("-topmost", True)
-        except Exception:
-            log_event_throttled(
-                "settings.jackpot_dialog.topmost",
-                3000,
-                "SETTINGS",
-                "Jackpot dialog topmost attribute failed",
-            )
         dialog.grab_set()
 
         entries: Dict[str, tk.Entry] = {}
