@@ -307,6 +307,23 @@ class SystemValueEngineTests(unittest.TestCase):
         diag = self.engine.get_runtime_diagnostics()
         self.assertGreaterEqual(int(diag.get("scan_star_skipped_unmapped") or 0), 1)
 
+    def test_scan_without_planetclass_and_startype_is_not_forced_to_planet_type(self) -> None:
+        self.engine.analyze_scan_event(
+            {
+                "event": "Scan",
+                "StarSystem": "TEST_SYS_BELT_A",
+                "BodyName": "TEST_SYS_BELT_A A Belt Cluster 1",
+                "WasDiscovered": True,
+                "WasMapped": False,
+            }
+        )
+        stats = self.engine.get_system_stats("TEST_SYS_BELT_A")
+        self.assertIsNotNone(stats)
+        self.assertEqual(float(stats.c_cartography or 0.0), 0.0)
+        self.assertEqual(float(stats.bonus_discovery or 0.0), 0.0)
+        diag = self.engine.get_runtime_diagnostics()
+        self.assertGreaterEqual(int(diag.get("scan_planet_skipped_unmapped") or 0), 1)
+
     def test_clear_value_domain_cartography_preserves_exobiology_and_allows_recount(self) -> None:
         scan_event = {
             "event": "Scan",
