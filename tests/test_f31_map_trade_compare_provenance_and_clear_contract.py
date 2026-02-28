@@ -127,7 +127,12 @@ class F31MapTradeCompareProvenanceAndClearContractTests(unittest.TestCase):
                 self.assertTrue(bool(result.get("ok")))
 
                 columns = tuple(frame.trade_compare_tree["columns"] or ())
-                self.assertEqual(columns, ("mode", "commodity", "system", "station", "price", "age"))
+                self.assertEqual(columns, ("mode", "commodity", "price", "age"))
+
+                node_key = frame._find_node_key_by_system_name("F31_TRADE_A")
+                self.assertTrue(bool(node_key))
+                select_result = frame.select_system_node(str(node_key))
+                self.assertTrue(bool(select_result.get("ok")))
 
                 frame._set_trade_selected_commodities(["Gold", "Silver"])
                 compare_result = frame._run_trade_compare_multi(["Gold", "Silver"])
@@ -137,9 +142,15 @@ class F31MapTradeCompareProvenanceAndClearContractTests(unittest.TestCase):
                 rows = frame.trade_compare_tree.get_children()
                 self.assertGreaterEqual(len(rows), 4)
                 first_values = tuple(frame.trade_compare_tree.item(rows[0], "values") or ())
-                self.assertGreaterEqual(len(first_values), 6)
-                self.assertTrue(str(first_values[2]).strip())  # system
-                self.assertTrue(str(first_values[3]).strip())  # station
+                self.assertGreaterEqual(len(first_values), 4)
+                self.assertEqual(
+                    {str((row or {}).get("system_name") or "") for row in (frame._trade_compare_rows or [])},
+                    {"F31_TRADE_A"},
+                )
+                self.assertEqual(
+                    {str((row or {}).get("station_name") or "") for row in (frame._trade_compare_rows or [])},
+                    {"A Market"},
+                )
 
                 self.assertGreaterEqual(len(frame._trade_highlight_node_keys), 1)
                 self.assertEqual(str(frame.trade_clear_btn.cget("state")), "normal")
@@ -167,4 +178,3 @@ class F31MapTradeCompareProvenanceAndClearContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

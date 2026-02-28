@@ -685,6 +685,9 @@ class MapDataProvider:
         time_range: str = "all",
         freshness_filter: str = "any",
         *,
+        system_name: str | None = None,
+        station_market_id: int | None = None,
+        station_name: str | None = None,
         limit: int = 5,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         commodity_name = _as_text(commodity)
@@ -694,6 +697,14 @@ class MapDataProvider:
         max_rows = max(1, int(limit or 5))
         cutoff = _cutoff_for_time_range(time_range)
         max_age = _max_age_for_freshness_filter(freshness_filter)
+        system_filter = _as_text(system_name)
+        station_filter = _as_text(station_name)
+        market_filter: int | None = None
+        try:
+            if station_market_id is not None:
+                market_filter = int(station_market_id)
+        except Exception:
+            market_filter = None
 
         sql = """
             SELECT
@@ -720,6 +731,15 @@ class MapDataProvider:
             WHERE msi.commodity = ? COLLATE NOCASE
         """
         params: list[Any] = [commodity_name]
+        if system_filter:
+            sql += " AND ms.system_name = ? COLLATE NOCASE"
+            params.append(system_filter)
+        if market_filter is not None:
+            sql += " AND ms.station_market_id = ?"
+            params.append(market_filter)
+        elif station_filter:
+            sql += " AND ms.station_name = ? COLLATE NOCASE"
+            params.append(station_filter)
         if cutoff is not None:
             sql += " AND ms.snapshot_ts >= ?"
             params.append(cutoff.isoformat().replace("+00:00", "Z"))
@@ -789,6 +809,9 @@ class MapDataProvider:
             "mode": mode_norm,
             "time_range": _as_text(time_range) or "all",
             "freshness_filter": _as_text(freshness_filter) or "any",
+            "system_name": system_filter,
+            "station_market_id": market_filter,
+            "station_name": station_filter,
             "db_path": self.db_path,
         }
 

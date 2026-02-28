@@ -109,7 +109,8 @@ class F31QualityGatesAndSmokeTests(unittest.TestCase):
             "_hide_star_legend_popup",
             "Wyczysc compare",
             "_on_trade_compare_clear_clicked",
-            'columns=("mode", "commodity", "system", "station", "price", "age")',
+            'columns=("mode", "commodity", "price", "age")',
+            "_trade_compare_scope_from_selection",
         ):
             self.assertIn(snippet, content)
 
@@ -144,6 +145,11 @@ class F31QualityGatesAndSmokeTests(unittest.TestCase):
                 root.update_idletasks()
                 self.assertTrue(bool(result.get("ok")))
                 self.assertGreaterEqual(int(result.get("nodes") or 0), 2)
+
+                node_key = frame._find_node_key_by_system_name("F31_QG_ALPHA")
+                self.assertTrue(bool(node_key))
+                select_result = frame.select_system_node(str(node_key))
+                self.assertTrue(bool(select_result.get("ok")))
 
                 frame._show_star_legend_popup()
                 root.update_idletasks()
@@ -180,4 +186,3 @@ class F31QualityGatesAndSmokeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

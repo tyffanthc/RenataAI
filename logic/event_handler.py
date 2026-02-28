@@ -442,16 +442,6 @@ class EventHandler:
             _log_sell_value_snapshot(ev)
             _apply_sell_value_domain_reset(ev)
 
-        if typ == "StartJump":
-            try:
-                cash_in_assistant.trigger_startjump_cash_in_callout(event=ev, gui_ref=gui_ref)
-            except Exception as exc:
-                _log_router_fallback(
-                    "journal.cash_in_startjump",
-                    "journal event: cash-in startjump callout failed",
-                    exc,
-                )
-
         # AUTO-SCHOWEK
         if typ == "FSDJump":
             try:

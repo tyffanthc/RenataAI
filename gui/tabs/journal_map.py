@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import math
@@ -943,7 +943,7 @@ class JournalMapTab(tk.Frame):
 
         self.trade_compare_tree = ttk.Treeview(
             self.right_frame,
-            columns=("mode", "commodity", "system", "station", "price", "age"),
+            columns=("mode", "commodity", "price", "age"),
             show="headings",
             style="Treeview",
             height=6,
@@ -951,8 +951,6 @@ class JournalMapTab(tk.Frame):
         for col, title, width, anchor in (
             ("mode", "Tryb", 58, "w"),
             ("commodity", "Towar", 150, "w"),
-            ("system", "System", 120, "w"),
-            ("station", "Stacja", 120, "w"),
             ("price", "Cena", 76, "e"),
             ("age", "Age", 82, "w"),
         ):
@@ -961,7 +959,7 @@ class JournalMapTab(tk.Frame):
                 col,
                 width=width,
                 anchor=anchor,
-                stretch=(col in {"commodity", "system", "station"}),
+                stretch=(col in {"commodity"}),
             )
         self.trade_compare_tree.grid(row=10, column=0, sticky="nsew")
         self.trade_compare_tree.bind("<<TreeviewSelect>>", self._on_trade_compare_row_selected)
@@ -1207,12 +1205,12 @@ class JournalMapTab(tk.Frame):
     def _map_ppm_action_set_neutron_route(self, target: str) -> dict[str, Any]:
         neutron_tab = getattr(getattr(self.app, "tab_spansh", None), "tab_neutron", None)
         if neutron_tab is None:
-            self.map_status_var.set("Mapa: planner neutronowy jest niedostÄ™pny.")
+            self.map_status_var.set("Mapa: planner neutronowy jest niedostępny.")
             return {"ok": False, "reason": "neutron_tab_unavailable"}
         if bool(route_manager.is_busy()):
             mode_now = str(route_manager.current_mode() or "").strip().lower()
             if mode_now and mode_now != "neutron":
-                self.map_status_var.set("Mapa: planner jest zajÄ™ty innym trybem. SprĂłbuj za chwilÄ™.")
+                self.map_status_var.set("Mapa: planner jest zajęty innym trybem. Spróbuj za chwilę.")
                 return {"ok": False, "reason": "planner_busy_other_mode"}
         current_system = str(getattr(app_state, "current_system", "") or "").strip()
         try:
@@ -2346,7 +2344,7 @@ class JournalMapTab(tk.Frame):
         range_x = max(max_x - min_x, 1.0)
         range_z = max(max_z - min_z, 1.0)
 
-        # Uniform scale â€” dĹ‚uĹĽsza oĹ› dopasowana do SCALE_TARGET
+        # Uniform scale - dłuższa oś dopasowana do SCALE_TARGET
         scale = SCALE_TARGET / max(range_x, range_z)
 
         out: list[dict[str, Any]] = []
@@ -2792,7 +2790,7 @@ class JournalMapTab(tk.Frame):
         self._trade_picker_station_only_var = station_only_var
         station_only_chk = tk.Checkbutton(
             controls,
-            text="PokaĹĽ tylko dostÄ™pne na stacji",
+            text="Pokaż tylko dostępne na stacji",
             variable=station_only_var,
             bg=COLOR_BG,
             fg=COLOR_FG,
@@ -2846,7 +2844,7 @@ class JournalMapTab(tk.Frame):
 
         hint = tk.Label(
             win,
-            text="Towary pochodza z Market.json (commodities), nie materialy inĹĽynierskie.",
+            text="Towary pochodzą z Market.json (commodities), nie materiały inżynierskie.",
             bg=COLOR_BG,
             fg=COLOR_SEC,
             anchor="w",
@@ -3305,6 +3303,39 @@ class JournalMapTab(tk.Frame):
         self._trade_compare_tree_last_reflow_width = tree_width
         self._reflow_trade_compare_tree_columns()
 
+    def _trade_compare_scope_from_selection(self) -> dict[str, Any]:
+        station_row = self._trade_picker_selected_station_row()
+        selected_node = self._nodes.get(_as_text(getattr(self, "_selected_node_key", "")))
+        system_name = _as_text((station_row or {}).get("system_name"))
+        if not system_name and selected_node is not None:
+            system_name = _as_text(getattr(selected_node, "system_name", ""))
+
+        station_name = _as_text((station_row or {}).get("station_name"))
+        market_id = None
+        try:
+            raw_market_id = (station_row or {}).get("market_id")
+            if raw_market_id is not None:
+                market_id = int(raw_market_id)
+        except Exception:
+            market_id = None
+
+        if not system_name:
+            return {
+                "ok": False,
+                "reason": "no_selected_system",
+                "system_name": "",
+                "station_name": "",
+                "market_id": None,
+            }
+
+        return {
+            "ok": True,
+            "reason": "selected_station" if station_row else "selected_system_only",
+            "system_name": system_name,
+            "station_name": station_name,
+            "market_id": market_id,
+        }
+
     def _reflow_trade_compare_tree_columns(self) -> None:
         tree = getattr(self, "trade_compare_tree", None)
         if not isinstance(tree, ttk.Treeview):
@@ -3323,27 +3354,18 @@ class JournalMapTab(tk.Frame):
             return
         # Deterministic reflow for widget width changes only. This avoids fighting
         # manual column resizing and keeps numeric columns visible.
-        fixed_widths = {"mode": 58, "price": 76, "age": 82}
-        min_elastic = {"commodity": 150, "system": 120, "station": 120}
+        fixed_widths = {"mode": 58, "price": 86, "age": 96}
+        min_commodity = 180
         padding = 18
         try:
             available = max(220, tree_width - padding)
-            elastic_cols = [col for col in ("commodity", "system", "station") if col in columns]
             fixed_total = sum(fixed_widths.get(col, 0) for col in columns)
-            min_total = sum(min_elastic.get(col, 100) for col in elastic_cols)
-            extra = max(0, available - fixed_total - min_total)
-            commodity_bonus = int(extra * 0.45)
-            system_bonus = int(extra * 0.30)
-            station_bonus = max(0, extra - commodity_bonus - system_bonus)
+            commodity_width = max(min_commodity, available - fixed_total)
             for col in columns:
                 if col in fixed_widths:
                     tree.column(col, width=fixed_widths[col], stretch=False)
                 elif col == "commodity":
-                    tree.column(col, width=min_elastic["commodity"] + commodity_bonus, stretch=True)
-                elif col == "system":
-                    tree.column(col, width=min_elastic["system"] + system_bonus, stretch=True)
-                elif col == "station":
-                    tree.column(col, width=min_elastic["station"] + station_bonus, stretch=True)
+                    tree.column(col, width=commodity_width, stretch=True)
         except Exception:
             return
 
@@ -3355,9 +3377,24 @@ class JournalMapTab(tk.Frame):
         self._trade_compare_rows_by_iid.clear()
         self._sync_trade_highlight_button_state()
         if not commodity_name:
-            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "-", "wybierz towar"))
+            self.trade_compare_tree.insert("", "end", values=("INFO", "wybierz towar", "-", "-"))
             self._redraw_scene()
             return {"ok": False, "reason": "missing_commodity"}
+
+        scope = self._trade_compare_scope_from_selection()
+        if not bool(scope.get("ok")):
+            self.trade_compare_tree.insert(
+                "",
+                "end",
+                values=("INFO", "wybierz system/stacje", "-", "-"),
+            )
+            self._redraw_scene()
+            self.map_status_var.set("Mapa: Trade compare wymaga wybranego systemu/stacji z panelu System details.")
+            return {"ok": False, "reason": "missing_scope"}
+
+        scope_system = _as_text(scope.get("system_name"))
+        scope_station = _as_text(scope.get("station_name"))
+        scope_market_id = scope.get("market_id")
 
         time_range = self._effective_time_range_filter()
         freshness_filter = self._effective_freshness_filter()
@@ -3367,6 +3404,9 @@ class JournalMapTab(tk.Frame):
                 "sell",
                 time_range=time_range,
                 freshness_filter=freshness_filter,
+                system_name=scope_system,
+                station_market_id=scope_market_id,
+                station_name=scope_station,
                 limit=5,
             )
             buy_rows, buy_meta = self.data_provider.get_top_prices(
@@ -3374,10 +3414,13 @@ class JournalMapTab(tk.Frame):
                 "buy",
                 time_range=time_range,
                 freshness_filter=freshness_filter,
+                system_name=scope_system,
+                station_market_id=scope_market_id,
+                station_name=scope_station,
                 limit=5,
             )
         except Exception as exc:
-            self.trade_compare_tree.insert("", "end", values=("ERR", "-", "-", "-", "-", type(exc).__name__))
+            self.trade_compare_tree.insert("", "end", values=("ERR", type(exc).__name__, "-", "-"))
             self._redraw_scene()
             return {"ok": False, "reason": "provider_error"}
 
@@ -3400,7 +3443,7 @@ class JournalMapTab(tk.Frame):
                     "",
                     "end",
                     iid=iid,
-                    values=(mode_label, commodity_name, system_name, station_name, f"{price}", f"{age} | {conf}"),
+                    values=(mode_label, commodity_name, f"{price}", f"{age} | {conf}"),
                 )
                 for key in self._node_keys_for_system_name(system_name):
                     self._trade_highlight_node_keys.add(key)
@@ -3410,7 +3453,7 @@ class JournalMapTab(tk.Frame):
             self.trade_compare_tree.insert(
                 "",
                 "end",
-                values=("INFO", commodity_name, "-", "-", "-", "brak danych po filtrach"),
+                values=("INFO", commodity_name, "-", "brak danych po filtrach"),
             )
         else:
             # Default active commodity highlight (single commodity mode = all rows same commodity).
@@ -3433,7 +3476,8 @@ class JournalMapTab(tk.Frame):
         trade_layer_on = bool(self.layer_trade_var.get())
         suffix = "" if trade_layer_on else " (warstwa Trade wylaczona - highlight ukryty)"
         self.map_status_var.set(
-            f"Mapa: Trade compare '{commodity_name}' | sell={len(sell_rows)} buy={len(buy_rows)} | "
+            f"Mapa: Trade compare '{commodity_name}' [{scope_system}{' / ' + scope_station if scope_station else ''}] | "
+            f"sell={len(sell_rows)} buy={len(buy_rows)} | "
             f"nodes_hilite={len(self._trade_highlight_node_keys)}{suffix}"
         )
         return {
@@ -3467,9 +3511,24 @@ class JournalMapTab(tk.Frame):
         self._trade_highlight_node_keys.clear()
         self._sync_trade_highlight_button_state()
         if not selected:
-            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "-", "wybierz towary"))
+            self.trade_compare_tree.insert("", "end", values=("INFO", "wybierz towary", "-", "-"))
             self._redraw_scene()
             return {"ok": False, "reason": "missing_commodities"}
+
+        scope = self._trade_compare_scope_from_selection()
+        if not bool(scope.get("ok")):
+            self.trade_compare_tree.insert(
+                "",
+                "end",
+                values=("INFO", "wybierz system/stacje", "-", "-"),
+            )
+            self._redraw_scene()
+            self.map_status_var.set("Mapa: Trade compare wymaga wybranego systemu/stacji z panelu System details.")
+            return {"ok": False, "reason": "missing_scope", "commodities": selected}
+
+        scope_system = _as_text(scope.get("system_name"))
+        scope_station = _as_text(scope.get("station_name"))
+        scope_market_id = scope.get("market_id")
 
         rows_inserted = 0
         total_sell = 0
@@ -3482,6 +3541,9 @@ class JournalMapTab(tk.Frame):
                     "sell",
                     time_range=self._effective_time_range_filter(),
                     freshness_filter=self._effective_freshness_filter(),
+                    system_name=scope_system,
+                    station_market_id=scope_market_id,
+                    station_name=scope_station,
                     limit=5,
                 )
                 buy_rows, _buy_meta = self.data_provider.get_top_prices(
@@ -3489,6 +3551,9 @@ class JournalMapTab(tk.Frame):
                     "buy",
                     time_range=self._effective_time_range_filter(),
                     freshness_filter=self._effective_freshness_filter(),
+                    system_name=scope_system,
+                    station_market_id=scope_market_id,
+                    station_name=scope_station,
                     limit=5,
                 )
             except Exception:
@@ -3516,12 +3581,12 @@ class JournalMapTab(tk.Frame):
                         "",
                         "end",
                         iid=iid,
-                        values=(mode_label, commodity_name, system_name, station_name, f"{price}", f"{age} | {conf}"),
+                        values=(mode_label, commodity_name, f"{price}", f"{age} | {conf}"),
                     )
                     rows_inserted += 1
 
         if rows_inserted <= 0:
-            self.trade_compare_tree.insert("", "end", values=("INFO", "-", "-", "-", "-", "brak danych po filtrach"))
+            self.trade_compare_tree.insert("", "end", values=("INFO", "brak danych", "-", "po filtrach"))
             self._redraw_scene()
             self.map_status_var.set("Mapa: Trade compare (multi) - brak danych dla wybranych towarow.")
             self._reflow_trade_compare_tree_columns()
@@ -3547,7 +3612,8 @@ class JournalMapTab(tk.Frame):
         trade_layer_on = bool(self.layer_trade_var.get())
         suffix = "" if trade_layer_on else " (warstwa Trade wylaczona - highlight ukryty)"
         self.map_status_var.set(
-            f"Mapa: Trade compare multi ({len(selected)} towarow) | sell={total_sell} buy={total_buy} | rows={rows_inserted}{suffix}"
+            f"Mapa: Trade compare multi ({len(selected)} towarow) [{scope_system}{' / ' + scope_station if scope_station else ''}] | "
+            f"sell={total_sell} buy={total_buy} | rows={rows_inserted}{suffix}"
         )
         return {
             "ok": True,
@@ -3810,6 +3876,7 @@ class JournalMapTab(tk.Frame):
             return {"ok": False, "reason": "station_row_not_found", "iid": str(iid)}
         result = self._populate_station_market_snapshots(row)
         self._refresh_trade_picker_rows_if_open()
+        self._refresh_trade_compare_if_needed()
         return {"ok": True, "iid": str(iid), "station_name": _as_text(row.get("station_name")), **result}
 
     def reset_view(self) -> None:
