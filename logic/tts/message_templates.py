@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Dict, Set
 
 
-# Centralny rejestr template'ow TTS.
-# `raw_text_first=True` oznacza: jesli context ma `raw_text`, preprocessor
-# powinien preferowac ten tekst (po naprawie kodowania/diakrytykow).
+# Centralny rejestr template'ów TTS.
+# `raw_text_first=True` oznacza: jeśli context ma `raw_text`, preprocessor
+# powinien preferować ten tekst (po naprawie kodowania/diakrytyków).
 TTS_TEMPLATE_REGISTRY: Dict[str, dict[str, object]] = {
     "MSG.NEXT_HOP": {"template": "Następny skok. {system}.", "raw_text_first": False},
     "MSG.JUMPED_SYSTEM": {"template": "Aktualnie w {system}.", "raw_text_first": False},
