@@ -453,6 +453,27 @@ class EventHandler:
                 exploration_dss_events.handle_dss_target_hint(ev, gui_ref)
             except Exception as exc:
                 _log_router_fallback("scan.dss_target_hint", "scan event: DSS target hint failed", exc)
+            try:
+                from app.state import app_state
+
+                scan_body_type = str(ev.get("BodyType") or "").strip().casefold()
+                should_try_star_meta = (not scan_body_type) or (scan_body_type == "star")
+                star_meta_out = (
+                    player_local_db.ingest_star_metadata_event(
+                        ev,
+                        fallback_system_name=str(getattr(app_state, "current_system", "") or "").strip() or None,
+                    )
+                    if should_try_star_meta
+                    else {"ok": False, "reason": "scan_not_star_body"}
+                )
+                if bool((star_meta_out or {}).get("ok")):
+                    _emit_playerdb_updated(source="journal", event_name="Scan")
+            except Exception as exc:
+                _log_router_fallback(
+                    "scan.playerdb_star_meta",
+                    "scan event: playerdb star metadata ingest failed",
+                    exc,
+                )
         if typ == "SAASignalsFound":
             try:
                 exploration_bio_events.handle_dss_bio_signals(ev, gui_ref)

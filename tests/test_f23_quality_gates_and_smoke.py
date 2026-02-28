@@ -111,6 +111,29 @@ class F23QualityGatesAndSmokeTests(unittest.TestCase):
         self.assertTrue(any(str(p.get("event_name")) == "FSDJump" for p in payloads))
         self.assertTrue(any(str(p.get("event_name")) == "Market" for p in payloads))
 
+    def test_smoke_f23_scan_ingests_star_metadata_and_emits_playerdb_updated(self) -> None:
+        handler = EventHandler()
+        queued: list[tuple[str, object]] = []
+
+        with (
+            patch("logic.event_handler.player_local_db.ingest_star_metadata_event") as ingest_star_meta,
+            patch("logic.event_handler.build_logbook_feed_item", return_value=None),
+            patch("logic.event_handler.MSG_QUEUE.put", side_effect=lambda item: queued.append(item)),
+            patch("app.state.app_state.system_value_engine.analyze_scan_event"),
+            patch("logic.event_handler.exploration_fss_events.handle_scan"),
+            patch("logic.event_handler.exploration_dss_events.handle_dss_target_hint"),
+        ):
+            ingest_star_meta.return_value = {"ok": True, "primary_star_type": "M"}
+            handler.handle_event(
+                '{"event":"Scan","timestamp":"2026-02-23T12:02:00Z","StarSystem":"F23_SCAN_META_SYS","SystemAddress":11,"BodyType":"Star","StarType":"M"}'
+            )
+
+        ingest_star_meta.assert_called_once()
+        playerdb_msgs = [item for item in queued if isinstance(item, tuple) and item and item[0] == "playerdb_updated"]
+        self.assertGreaterEqual(len(playerdb_msgs), 1)
+        payloads = [dict(item[1]) for item in playerdb_msgs if isinstance(item[1], dict)]
+        self.assertTrue(any(str(p.get("event_name")) == "Scan" for p in payloads))
+
     def test_smoke_f23_fuel_transient_guard_and_real_alert(self) -> None:
         uncertain_status = {
             "Docked": False,
