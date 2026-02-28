@@ -983,6 +983,7 @@ class JournalMapTab(tk.Frame):
         self.map_canvas.bind("<B1-Motion>", self._on_canvas_drag)
         self.map_canvas.bind("<ButtonRelease-1>", self._on_canvas_release)
         self.map_canvas.bind("<Leave>", self._on_canvas_leave)
+        self.map_canvas.bind("<Motion>", self._on_canvas_node_motion, add="+")
         self.map_canvas.bind("<Button-3>", self._on_canvas_context_menu)
         self.map_canvas.bind("<MouseWheel>", self._on_canvas_mousewheel)
         # Linux compatibility (no-op on Windows if never fired)
@@ -992,6 +993,14 @@ class JournalMapTab(tk.Frame):
         self.map_canvas.tag_bind("map_node", "<Double-Button-1>", self._on_canvas_node_double_click)
         self.map_canvas.tag_bind("map_node", "<Motion>", self._on_canvas_node_motion)
         self.map_canvas.tag_bind("map_node", "<Leave>", self._on_canvas_node_leave)
+        self.map_canvas.tag_bind("map_star_marker", "<ButtonPress-1>", self._on_canvas_node_click)
+        self.map_canvas.tag_bind("map_star_marker", "<Double-Button-1>", self._on_canvas_node_double_click)
+        self.map_canvas.tag_bind("map_star_marker", "<Motion>", self._on_canvas_node_motion)
+        self.map_canvas.tag_bind("map_star_marker", "<Leave>", self._on_canvas_node_leave)
+        self.map_canvas.tag_bind("map_node_label", "<ButtonPress-1>", self._on_canvas_node_click)
+        self.map_canvas.tag_bind("map_node_label", "<Double-Button-1>", self._on_canvas_node_double_click)
+        self.map_canvas.tag_bind("map_node_label", "<Motion>", self._on_canvas_node_motion)
+        self.map_canvas.tag_bind("map_node_label", "<Leave>", self._on_canvas_node_leave)
 
     def _build_map_context_menu(self) -> None:
         self._map_context_menu = tk.Menu(self, tearoff=0, bg=COLOR_BG, fg=COLOR_FG, activebackground=COLOR_ACCENT)
@@ -1394,7 +1403,13 @@ class JournalMapTab(tk.Frame):
         if self._pan_active:
             self._hide_map_tooltip()
             return None
-        key = self._canvas_current_node_key()
+        sx = int(getattr(event, "x", 0))
+        sy = int(getattr(event, "y", 0))
+        key = self._node_key_from_canvas_current_item()
+        if not key:
+            # Fallback for thin glyphs/special markers where "current" may miss
+            # the intended node hit area on some render paths.
+            key = self._node_key_near_canvas_point(sx, sy, near_px=7)
         if not key:
             self._hide_map_tooltip()
             return None
@@ -1402,8 +1417,6 @@ class JournalMapTab(tk.Frame):
         if node is None:
             self._hide_map_tooltip()
             return None
-        sx = int(getattr(event, "x", 0))
-        sy = int(getattr(event, "y", 0))
         text = self._tooltip_text_for_node(node)
         if (
             self._tooltip_visible
@@ -3498,6 +3511,9 @@ class JournalMapTab(tk.Frame):
         }
 
     def _canvas_current_node_key(self) -> str | None:
+        return self._node_key_from_canvas_current_item()
+
+    def _node_key_from_canvas_current_item(self) -> str | None:
         try:
             current = self.map_canvas.find_withtag("current")
             if not current:
@@ -3505,6 +3521,9 @@ class JournalMapTab(tk.Frame):
             tags = self.map_canvas.gettags(current[0]) or ()
         except Exception:
             return None
+        return self._node_key_from_tags(tags)
+
+    def _node_key_from_tags(self, tags: tuple[Any, ...] | list[Any]) -> str | None:
         for tag in tags:
             text = str(tag)
             if text.startswith("node:"):
@@ -3513,8 +3532,28 @@ class JournalMapTab(tk.Frame):
                     return key
         return None
 
+    def _node_key_near_canvas_point(self, sx: int, sy: int, *, near_px: int = 6) -> str | None:
+        try:
+            radius = max(0, int(near_px))
+            ids = self.map_canvas.find_overlapping(sx - radius, sy - radius, sx + radius, sy + radius)
+        except Exception:
+            return None
+        if not ids:
+            return None
+        for item_id in reversed(ids):
+            try:
+                tags = self.map_canvas.gettags(item_id) or ()
+            except Exception:
+                continue
+            key = self._node_key_from_tags(tags)
+            if key:
+                return key
+        return None
+
     def _on_canvas_node_click(self, event=None):
         key = self._canvas_current_node_key()
+        if not key and event is not None:
+            key = self._node_key_near_canvas_point(int(getattr(event, "x", 0)), int(getattr(event, "y", 0)), near_px=8)
         if not key:
             return None
         self._pan_active = False
@@ -3525,6 +3564,8 @@ class JournalMapTab(tk.Frame):
 
     def _on_canvas_node_double_click(self, event=None):
         key = self._canvas_current_node_key()
+        if not key and event is not None:
+            key = self._node_key_near_canvas_point(int(getattr(event, "x", 0)), int(getattr(event, "y", 0)), near_px=8)
         if not key:
             return None
         self._pan_active = False
