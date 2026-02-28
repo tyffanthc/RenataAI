@@ -123,8 +123,8 @@ def emit_callout_or_summary(
     priority: str = "P2_NORMAL",
     context: Dict[str, Any] | None = None,
     summary_text: str = (
-        "W tym systemie sa jeszcze obiekty warte uwagi eksploracyjnej. "
-        "Oznaczylam najlepsze kandydaty."
+        "W tym systemie są jeszcze obiekty warte uwagi eksploracyjnej. "
+        "Oznaczyłam najlepsze kandydaty."
     ),
     summary_message_id: str = "MSG.EXPLORATION_SYSTEM_SUMMARY",
     required_callout: bool = False,

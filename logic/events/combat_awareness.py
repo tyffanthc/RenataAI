@@ -369,7 +369,7 @@ def _tts_line(payload: CombatAwarenessPayload) -> str:
     if payload.pattern_id == "combat_hull_critical":
         return "Wzorzec ryzyka. Kadlub jest krytyczny i stawka jest wysoka."
     if payload.pattern_id == "combat_shields_down_exposed":
-        return "Wzorzec ryzyka. Oslony sa poza walka ochronna przy aktywnym zagrozeniu."
+        return "Wzorzec ryzyka. Osłony są poza walką ochronną przy aktywnym zagrożeniu."
     if payload.pattern_id == "combat_escape_window_unstable":
         return "Wzorzec ryzyka. Okno bezpiecznego wyjscia jest niestabilne."
     if payload.pattern_id == "combat_high_stake_exposure":
