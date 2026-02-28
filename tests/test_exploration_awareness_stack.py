@@ -58,7 +58,10 @@ class ExplorationAwarenessStackTests(unittest.TestCase):
         self.assertEqual(second, "summary")
         self.assertEqual(third, "dropped_limit")
         self.assertEqual(emit_mock.call_count, 2)
-        self.assertEqual(emit_mock.call_args_list[1].kwargs.get("message_id"), "MSG.EXPLORATION_SYSTEM_SUMMARY")
+        self.assertEqual(
+            emit_mock.call_args_list[1].kwargs.get("message_id"),
+            "MSG.EXPLORATION_AWARENESS_SUMMARY",
+        )
 
         snap = awareness.get_awareness_snapshot("Sol")
         self.assertEqual(snap["callouts_emitted"], 1)
@@ -131,7 +134,10 @@ class ExplorationAwarenessStackTests(unittest.TestCase):
         self.assertEqual(second, "callout")
         self.assertEqual(third, "summary")
         self.assertEqual(emit_mock.call_count, 3)
-        self.assertEqual(emit_mock.call_args_list[2].kwargs.get("message_id"), "MSG.EXPLORATION_SYSTEM_SUMMARY")
+        self.assertEqual(
+            emit_mock.call_args_list[2].kwargs.get("message_id"),
+            "MSG.EXPLORATION_AWARENESS_SUMMARY",
+        )
 
 
 if __name__ == "__main__":

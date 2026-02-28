@@ -51,6 +51,7 @@ TTS_TEMPLATE_REGISTRY: Dict[str, dict[str, object]] = {
     "MSG.FSS_PROGRESS_75": {"template": "Siedemdziesiąt pięć procent systemu przeskanowane.", "raw_text_first": False},
     "MSG.FSS_LAST_BODY": {"template": "Ostatnia planeta do skanowania.", "raw_text_first": False},
     "MSG.EXPLORATION_SYSTEM_SUMMARY": {"template": "Podsumowanie eksploracji gotowe.", "raw_text_first": True},
+    "MSG.EXPLORATION_AWARENESS_SUMMARY": {"template": "Podsumowanie uwag eksploracyjnych gotowe.", "raw_text_first": True},
     "MSG.CASH_IN_ASSISTANT": {"template": "Cash-in. Sprawdź decyzje w panelu.", "raw_text_first": True},
     "MSG.CASH_IN_STARTJUMP": {"template": "Cash-in. Punkt kontrolny danych gotowy.", "raw_text_first": True},
     "MSG.SURVIVAL_REBUY_HIGH": {

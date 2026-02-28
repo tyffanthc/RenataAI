@@ -366,7 +366,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "cash_in.show_tariff_meta": True,
     "cash_in.hutton_guard_ls_threshold": 500_000,
     "cash_in.hutton_guard_score_penalty": 18,
-    "cash_in.startjump_callout_enabled": True,
+    "cash_in.startjump_callout_enabled": False,
     "cash_in.startjump_callout_cooldown_sec": 35.0,
     "cash_in.hotkey_enabled": True,
     "cash_in.hotkey_binding": "Ctrl+Shift+C",

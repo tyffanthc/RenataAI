@@ -7,7 +7,7 @@ from typing import Iterable, Optional
 import config
 from logic.event_insight_mapping import resolve_emit_contract
 from logic.utils import notify as _notify
-from logic.utils.renata_log import log_event_throttled
+from logic.utils.renata_log import log_event, log_event_throttled
 
 
 _PRIORITY_ORDER = {
@@ -65,6 +65,7 @@ _MODULE_CLASS_BY_MESSAGE = {
     "MSG.EXOBIO_RANGE_READY": "EXPLORATION",
     "MSG.EXOBIO_NEW_ENTRY": "EXPLORATION",
     "MSG.FOOTFALL": "EXPLORATION",
+    "MSG.EXPLORATION_AWARENESS_SUMMARY": "EXPLORATION",
     # F4
     "MSG.EXPLORATION_SYSTEM_SUMMARY": "F4",
     "MSG.CASH_IN_ASSISTANT": "F4",
@@ -750,6 +751,21 @@ def emit_insight(
         runtime_ctx["voice_priority_forced"] = True
     if forced_by_matrix:
         runtime_ctx["voice_priority_forced"] = True
+
+    log_event(
+        "INSIGHT",
+        "emit_decision",
+        message_id=str(effective_insight.message_id or ""),
+        source=str(effective_insight.source or ""),
+        event_type=str(event_type or ""),
+        allow_tts=bool(allow_tts),
+        gate_reason=str(gate.reason or ""),
+        voice_reason=str(allow_reason or ""),
+        base_priority=str(insight.priority or "P2_NORMAL"),
+        effective_priority=str(effective_insight.priority or "P2_NORMAL"),
+        dedup_key=str(effective_insight.dedup_key or ""),
+        system=str(runtime_ctx.get("system") or ""),
+    )
 
     # Keep log/UI line behavior from existing powiedz() path.
     _notify.powiedz(

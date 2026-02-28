@@ -295,6 +295,16 @@ INSIGHT_CLASS_BY_MESSAGE_ID: Dict[str, InsightClassSpec] = {
         default_cooldown_seconds=45.0,
         dedup_template="exp_summary:{system}",
     ),
+    "MSG.EXPLORATION_AWARENESS_SUMMARY": InsightClassSpec(
+        class_id="EXP_AWARENESS_SUMMARY",
+        canonical_event="SYSTEM_SUMMARY",
+        kind="exploration",
+        decision_space="awareness_summary",
+        default_priority="P3_LOW",
+        default_cooldown_scope="entity",
+        default_cooldown_seconds=45.0,
+        dedup_template="exp_awareness_summary:{system}",
+    ),
     "MSG.CASH_IN_ASSISTANT": InsightClassSpec(
         class_id="EXP_CASH_IN_ASSISTANT",
         canonical_event="CASH_IN_REVIEW",
@@ -595,6 +605,11 @@ TTS_POLICY_BY_MESSAGE_ID: Dict[str, TTSPolicySpec] = {
     ),
     "MSG.CASH_IN_ASSISTANT": TTSPolicySpec(
         message_id="MSG.CASH_IN_ASSISTANT",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.EXPLORATION_AWARENESS_SUMMARY": TTSPolicySpec(
+        message_id="MSG.EXPLORATION_AWARENESS_SUMMARY",
         intent="context",
         category="explore",
     ),

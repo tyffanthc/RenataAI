@@ -569,6 +569,10 @@ def handle_fss_discovery_scan(ev: Dict[str, Any], gui_ref=None):
         # Keep progress and only refresh total body count metadata.
         FSS_TOTAL_BODIES = max(count, discovered_now)
         if previous_total <= 0 and discovered_now > 0:
+            # Late BodyCount arrived after scans were already counted.
+            # Emit one best-effort catch-up callout for current progress/last-body,
+            # then sync threshold flags so follow-up scans do not replay retro milestones.
+            _check_fss_thresholds(gui_ref)
             _sync_milestone_flags_after_late_body_count()
         if FSS_TOTAL_BODIES != previous_total:
             utils.MSG_QUEUE.put(

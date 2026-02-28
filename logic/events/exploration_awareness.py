@@ -126,7 +126,7 @@ def emit_callout_or_summary(
         "W tym systemie są jeszcze obiekty warte uwagi eksploracyjnej. "
         "Oznaczyłam najlepsze kandydaty."
     ),
-    summary_message_id: str = "MSG.EXPLORATION_SYSTEM_SUMMARY",
+    summary_message_id: str = "MSG.EXPLORATION_AWARENESS_SUMMARY",
     required_callout: bool = False,
 ) -> str:
     """
@@ -183,6 +183,7 @@ def emit_callout_or_summary(
         ctx["exploration_awareness_required"] = True
 
     if emit_mode == "summary":
+        ctx["raw_text"] = summary_text
         ctx["suppressed_count"] = int(state.suppressed_count)
         emit_insight(
             summary_text,
@@ -192,7 +193,7 @@ def emit_callout_or_summary(
             event_type="SYSTEM_SUMMARY",
             context=ctx,
             priority="P3_LOW",
-            dedup_key=f"exp_summary:{system_key}",
+            dedup_key=f"exp_awareness_summary:{system_key}",
             cooldown_scope="entity",
             cooldown_seconds=45.0,
         )
