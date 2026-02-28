@@ -365,7 +365,7 @@ class TradeTab(ttk.Frame):
         )
         self.btn_station_picker = ttk.Button(
             f_form,
-            text="Wybierz stacje...",
+            text="Wybierz stację...",
             command=self._open_station_picker_dialog,
         )
         self.btn_station_picker.grid(row=2, column=1, sticky="w", pady=(2, 0))
@@ -928,7 +928,7 @@ class TradeTab(ttk.Frame):
             return
         first = rows[0] if rows else {}
         system = str(first.get("from_system") or getattr(app_state, "current_system", "") or "unknown").strip() or "unknown"
-        raw_text = "Dane rynkowe sa nieswieze. Traktuj wynik orientacyjnie."
+        raw_text = "Dane rynkowe są nieświeże. Traktuj wynik orientacyjnie."
         try:
             emit_insight(
                 raw_text,
@@ -1455,7 +1455,7 @@ class TradeTab(ttk.Frame):
 
                 {
 
-                    "label": "Kopiuj stacje",
+                    "label": "Kopiuj stację",
 
                     "action": lambda p: common.copy_text_to_clipboard(station, context="results.station"),
 
@@ -2011,7 +2011,7 @@ class TradeTab(ttk.Frame):
 
         top = tk.Toplevel(self)
         self._station_picker_window = top
-        top.title(f"Wybierz stacje ({system})")
+        top.title(f"Wybierz stację ({system})")
         top.transient(self.root)
         top.geometry("760x520")
         top.minsize(560, 380)
@@ -2033,7 +2033,7 @@ class TradeTab(ttk.Frame):
                 context="spansh.trade.station_picker.chrome",
             )
 
-        info_var = tk.StringVar(value=f"Dostepne stacje: {len(stations_all)}")
+        info_var = tk.StringVar(value=f"Dostępne stacje: {len(stations_all)}")
         query_var = tk.StringVar()
 
         f_top = tk.Frame(top, bg=bg, padx=10, pady=10)
@@ -2124,7 +2124,7 @@ class TradeTab(ttk.Frame):
                         continue
                     displayed.append(text)
                     lb.insert(tk.END, text)
-                info_var.set(f"Dostepne stacje: {len(displayed)} / {len(stations_all)}")
+                info_var.set(f"Dostępne stacje: {len(displayed)} / {len(stations_all)}")
                 if displayed:
                     lb.selection_clear(0, tk.END)
                     lb.selection_set(0)

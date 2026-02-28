@@ -109,7 +109,7 @@ class MainLoop:
             except Exception as e:
                 self._log_error(f"[BŁĄD MainLoop/run] {e}")
                 self._emit_runtime_critical(
-                    "Czytnik journala napotkal blad. Restartuje petle.",
+                    "Czytnik journala napotkał błąd. Restartuję pętlę.",
                     component="journal_stream",
                 )
                 time.sleep(1)

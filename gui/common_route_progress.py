@@ -306,9 +306,9 @@ def _restore_active_milestone_progress_cache() -> bool:
 
 
 STATUS_TEXTS = {
-    "NEXT_HOP_COPIED": "Skopiowano nastepny system.",
-    "ROUTE_COMPLETE": "Trasa zakonczona.",
-    "ROUTE_DESYNC": "Jestes poza trasa - nie kopiuje kolejnego celu.",
+    "NEXT_HOP_COPIED": "Skopiowano następny system.",
+    "ROUTE_COMPLETE": "Trasa zakończona.",
+    "ROUTE_DESYNC": "Jesteś poza trasą - nie kopiuję kolejnego celu.",
     "NEXT_HOP_EMPTY": "Brak kolejnego celu.",
     "AUTO_CLIPBOARD_MODE_NEXT_HOP": "Auto-schowek: tryb NEXT_HOP.",
     "ROUTE_COPIED": "Skopiowano trasę",
@@ -330,7 +330,7 @@ STATUS_TEXTS = {
     "DEDUP_WAIT": "Dedup wait",
     "JR_READY": "Jump range obliczony.",
     "JR_WAITING_DATA": "Jump range: czekam na dane.",
-    "JR_COMPUTE_FAIL": "Jump range: blad obliczen.",
+    "JR_COMPUTE_FAIL": "Jump range: błąd obliczeń.",
     "JR_VALIDATE_OK": "Jump range: walidacja OK.",
     "JR_VALIDATE_DELTA": "Jump range: odchylka od gry.",
     "JR_ENGINEERING_APPLIED": "Jump range: zastosowano engineering.",
@@ -661,7 +661,7 @@ def _copy_next_hop_at_index(
         _emit_next_hop_status(
             "OK",
             "NEXT_HOP_COPIED",
-            f"Skopiowano nastepny system: {next_system}",
+            f"Skopiowano następny system: {next_system}",
             source=source,
         )
         return True
@@ -1109,7 +1109,7 @@ def update_next_hop_on_system(current_system: str | None, trigger: str, source: 
                 emit_status(
                     "INFO",
                     "ROUTE_DESYNC_PENDING",
-                    text=f"Poza trasa: {_ACTIVE_ROUTE_DESYNC_STRIKES}/{confirm_jumps}",
+                    text=f"Poza trasą: {_ACTIVE_ROUTE_DESYNC_STRIKES}/{confirm_jumps}",
                     source=source,
                     notify_overlay=False,
                 )

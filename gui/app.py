@@ -2087,12 +2087,12 @@ class RenataApp:
                         and pending_target.casefold() == target.casefold()
                     )
                     parts = [
-                        "Znalazlam trase neutronowa.",
-                        f"Skopiowalam nastepny cel do schowka: {next_hop}.",
+                        "Znalazłam trasę neutronową.",
+                        f"Skopiowałam następny cel do schowka: {next_hop}.",
                     ]
                     if station_pending_for_target:
                         parts.append(
-                            "Stacja zostanie skopiowana po wejsciu do systemu docelowego."
+                            "Stacja zostanie skopiowana po wejściu do systemu docelowego."
                         )
                     self._emit_cash_in_ui_callout(
                         " ".join(parts),
@@ -2104,7 +2104,7 @@ class RenataApp:
                     "Cash-in: nie znaleziono trasy neutronowej. Skopiowano cel systemu."
                 )
                 self._emit_cash_in_ui_callout(
-                    "Nie znalazlam trasy neutronowej. Skopiowalam cel do schowka.",
+                    "Nie znalazłam trasy neutronowej. Skopiowałam cel do schowka.",
                     action_tag="set_route:fast_neutron:fallback",
                 )
             except Exception as exc:
@@ -2205,9 +2205,9 @@ class RenataApp:
                         status_parts.append(f"Nie udalo sie skopiowac systemu: {target_system}.")
 
                     if copied_station_now and target_station:
-                        status_parts.append(f"Skopiowano stacje: {target_station}.")
+                        status_parts.append(f"Skopiowano stację: {target_station}.")
                     elif pending_station_armed:
-                        status_parts.append("Stacja zostanie skopiowana po wejsciu do systemu docelowego.")
+                        status_parts.append("Stacja zostanie skopiowana po wejściu do systemu docelowego.")
 
                     self.show_status(" ".join(status_parts))
 
@@ -2218,14 +2218,14 @@ class RenataApp:
                     if target_system:
                         if copied_system:
                             tts_parts.append(
-                                f"Ustawilam cel trasy i skopiowalam nastepny hop: {target_system}."
+                                f"Ustawiłam cel trasy i skopiowałam następny hop: {target_system}."
                             )
                         else:
-                            tts_parts.append(f"Ustawilam cel trasy: {target_system}.")
+                            tts_parts.append(f"Ustawiłam cel trasy: {target_system}.")
                     if copied_station_now and target_station:
-                        tts_parts.append(f"Skopiowalam stacje: {target_station}.")
+                        tts_parts.append(f"Skopiowałam stację: {target_station}.")
                     elif pending_station_armed:
-                        tts_parts.append("Stacja zostanie skopiowana po wejsciu do systemu docelowego.")
+                        tts_parts.append("Stacja zostanie skopiowana po wejściu do systemu docelowego.")
 
                     if emit_immediate_tts and tts_parts:
                         self._emit_cash_in_ui_callout(
@@ -2240,10 +2240,10 @@ class RenataApp:
                             reason = str(neutron_trigger.get("reason") or "").strip().lower()
                             if reason == "planner_busy_other_mode":
                                 self.show_status(
-                                    "Cash-in: planner jest zajety innym trybem. Skopiowano cel systemu."
+                                    "Cash-in: planner jest zajęty innym trybem. Skopiowano cel systemu."
                                 )
                                 self._emit_cash_in_ui_callout(
-                                    "Planner trasy jest teraz zajety. Skopiowalam cel do schowka.",
+                                    "Planner trasy jest teraz zajęty. Skopiowałam cel do schowka.",
                                     action_tag="set_route:fast_neutron:planner_busy",
                                 )
                             else:
@@ -2251,7 +2251,7 @@ class RenataApp:
                                     "Cash-in: nie udalo sie uruchomic trasy neutronowej. Skopiowano cel systemu."
                                 )
                                 self._emit_cash_in_ui_callout(
-                                    "Nie znalazlam trasy neutronowej. Skopiowalam cel do schowka.",
+                                    "Nie znalazłam trasy neutronowej. Skopiowałam cel do schowka.",
                                     action_tag="set_route:fast_neutron:fallback",
                                 )
                 else:
@@ -2291,14 +2291,14 @@ class RenataApp:
                 copied = common.copy_text_to_clipboard(next_hop, context="cash_in.next_hop")
                 if copied:
                     self.show_status(f"Cash-in: skopiowano next hop -> {next_hop}.")
-                    tts = f"Skopiowalam nastepny hop: {next_hop}."
+                    tts = f"Skopiowałam następny hop: {next_hop}."
                     neutron_fallback = False
                     if route_profile == "FAST_NEUTRON":
                         neutron_fallback = not self._has_ready_neutron_route_for_target(next_hop)
                         if neutron_fallback:
                             tts = (
-                                f"{tts} Nie znalazlam trasy neutronowej. "
-                                "Skopiowalam cel do schowka."
+                                f"{tts} Nie znalazłam trasy neutronowej. "
+                                "Skopiowałam cel do schowka."
                             )
                     self._emit_cash_in_ui_callout(
                         tts,

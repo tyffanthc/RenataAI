@@ -1390,7 +1390,7 @@ def _open_columns_picker(listbox) -> None:
 
     ttk.Label(
         dialog,
-        text="Zmiany sa natychmiastowe.",
+        text="Zmiany są natychmiastowe.",
         foreground="#888888",
     ).pack(anchor="w", padx=10, pady=(6, 8))
 

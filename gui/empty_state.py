@@ -33,24 +33,24 @@ MICROCOPY = {
             "",
         ),
         "provider_off": (
-            "Dane online sa wylaczone.",
-            "Wlacz providera w ustawieniach.",
+            "Dane online są wyłączone.",
+            "Włącz providera w ustawieniach.",
         ),
         "online_error": (
-            "Nie udalo sie pobrac danych online.",
-            "Sprawdz polaczenie lub sprobuj ponownie.",
+            "Nie udało się pobrać danych online.",
+            "Sprawdź połączenie lub spróbuj ponownie.",
         ),
         "route_empty": (
             "Trasa jest pusta.",
             "Brak punktow do wyswietlenia.",
         ),
         "route_completed": (
-            "Trasa zakonczona.",
-            "Brak kolejnych punktow.",
+            "Trasa zakończona.",
+            "Brak kolejnych punktów.",
         ),
         "fallback": (
-            "Wystapil problem, ale aplikacja dziala dalej.",
-            "Sprawdz logi, jesli problem sie powtarza.",
+            "Wystąpił problem, ale aplikacja działa dalej.",
+            "Sprawdź logi, jeśli problem się powtarza.",
         ),
     },
     "en": {
