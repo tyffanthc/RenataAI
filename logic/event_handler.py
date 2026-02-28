@@ -578,6 +578,28 @@ class EventHandler:
         if typ in ("ApproachSettlement", "DockingRequested"):
             smuggler_events.handle_smuggler_alert(ev, gui_ref)
 
+        # StartJump: podsumowanie eksploracji ma pojawic sie przed skokiem (hyperspace)
+        if typ == "StartJump":
+            try:
+                exploration_fss_events.flush_pending_exit_summary_on_jump(gui_ref=gui_ref)
+            except Exception as exc:
+                _log_router_fallback(
+                    "startjump.exploration_summary.flush",
+                    "startjump event: failed to flush armed exploration summary",
+                    exc,
+                    event=str(typ),
+                )
+            try:
+                cash_in_assistant.trigger_startjump_cash_in_callout(event=ev, gui_ref=gui_ref)
+            except Exception as exc:
+                _log_router_fallback(
+                    "startjump.cash_in_callout",
+                    "startjump event: cash-in callout failed",
+                    exc,
+                    event=str(typ),
+                )
+            return
+
         # Pozycja gracza
         if typ in ("Location", "FSDJump", "CarrierJump"):
             navigation_events.handle_location_fsdjump_carrier(ev, gui_ref)

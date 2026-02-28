@@ -25,6 +25,7 @@ from logic.events.exploration_awareness import reset_system_awareness
 # --- FSS ASSISTANT (S2-LOGIC-02) ---
 FSS_TOTAL_BODIES = 0       # ile cial w systemie (z FSSDiscoveryScan)
 FSS_DISCOVERED = 0         # ile juz "zaliczonych" skanow
+FSS_DISCOVERED_MANUAL = 0  # ile cial zaliczonych przez manualny FSS (Detailed)
 FSS_SCANNED_BODIES = set()  # BodyName/BodyID, zeby nie liczyc 2x
 
 FSS_25_WARNED = False
@@ -48,6 +49,23 @@ FIRST_SYS_OPPORTUNITY_WARNED = False    # ostrozny komunikat "mozliwy first" prz
 
 _MANUAL_FSS_SCAN_TYPES = {"detailed"}
 _NON_MANUAL_FSS_SCAN_TYPES = {"autoscan", "navbeacondetail", "basic"}
+
+
+def _progress_count_for_thresholds() -> int:
+    """Progress used by FSS milestones (prefers manual counter when available)."""
+    manual = int(FSS_DISCOVERED_MANUAL or 0)
+    if manual > 0:
+        return manual
+    return int(FSS_DISCOVERED or 0)
+
+
+def _progress_count_for_summary_gate() -> int:
+    """
+    Progress used by summary/full gate.
+    Full-scan closure is based on total discovered bodies; arming itself is still gated
+    by manual FSS participation flags in _wire_exit_summary_to_runtime().
+    """
+    return int(FSS_DISCOVERED or 0)
 
 
 def _fss_gate_context(system_name: str | None, *, body_name: str | None = None) -> Dict[str, Any]:
@@ -110,6 +128,7 @@ def _wire_exit_summary_to_runtime(gui_ref=None, *, trigger_source: str | None = 
     has_manual = bool(FSS_HAD_MANUAL_PROGRESS_SCAN)
     manual_scan_type = str(FSS_LAST_MANUAL_SCAN_TYPE or "").strip().casefold()
     has_manual_type = manual_scan_type in _MANUAL_FSS_SCAN_TYPES
+    manual_discovered = int(FSS_DISCOVERED_MANUAL or 0)
     if not (has_discovery and has_manual and has_manual_type):
         log_event_throttled(
             "exploration.fss.exit_summary_arm_blocked",
@@ -124,6 +143,7 @@ def _wire_exit_summary_to_runtime(gui_ref=None, *, trigger_source: str | None = 
             had_manual=has_manual,
             has_manual_type=has_manual_type,
             discovered=int(FSS_DISCOVERED or 0),
+            discovered_manual=manual_discovered,
             total=int(FSS_TOTAL_BODIES or 0),
             full_warned=bool(FSS_FULL_WARNED),
         )
@@ -137,7 +157,8 @@ def _wire_exit_summary_to_runtime(gui_ref=None, *, trigger_source: str | None = 
     # transit systems do not spam summary/cash-in while the commander is still busy.
     FSS_PENDING_EXIT_SUMMARY = True
     FSS_PENDING_EXIT_SUMMARY_SYSTEM = str(system_name or "").strip() or None
-    FSS_PENDING_EXIT_SUMMARY_SCANNED = int(FSS_DISCOVERED) if int(FSS_DISCOVERED or 0) > 0 else None
+    total_discovered = int(FSS_DISCOVERED or 0)
+    FSS_PENDING_EXIT_SUMMARY_SCANNED = total_discovered if total_discovered > 0 else None
     FSS_PENDING_EXIT_SUMMARY_TOTAL = int(FSS_TOTAL_BODIES) if int(FSS_TOTAL_BODIES or 0) > 0 else None
     log_event(
         "FSS",
@@ -149,6 +170,7 @@ def _wire_exit_summary_to_runtime(gui_ref=None, *, trigger_source: str | None = 
         had_discovery=bool(FSS_HAD_DISCOVERY_SCAN),
         had_manual=bool(FSS_HAD_MANUAL_PROGRESS_SCAN),
         discovered=int(FSS_DISCOVERED or 0),
+        discovered_manual=manual_discovered,
         total=int(FSS_TOTAL_BODIES or 0),
     )
 
@@ -203,7 +225,7 @@ def reset_fss_progress(*, preserve_exobio: bool = False) -> None:
     - resetuje flagi biologii,
     - resetuje flagi first footfall.
     """
-    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES
+    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_DISCOVERED_MANUAL, FSS_SCANNED_BODIES
     global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED, FSS_FULL_WARNED
     global FSS_HAD_DISCOVERY_SCAN, FSS_HAD_MANUAL_PROGRESS_SCAN
     global FSS_LAST_SCAN_TYPE, FSS_LAST_MANUAL_SCAN_TYPE
@@ -216,6 +238,7 @@ def reset_fss_progress(*, preserve_exobio: bool = False) -> None:
     # Lokalny stan FSS
     FSS_TOTAL_BODIES = 0
     FSS_DISCOVERED = 0
+    FSS_DISCOVERED_MANUAL = 0
     FSS_SCANNED_BODIES = set()
     FSS_25_WARNED = False
     FSS_50_WARNED = False
@@ -246,9 +269,10 @@ def reset_fss_progress(*, preserve_exobio: bool = False) -> None:
 
 
 def _set_fss_total_bodies(count: int):
-    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES
+    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_DISCOVERED_MANUAL, FSS_SCANNED_BODIES
     FSS_TOTAL_BODIES = max(count, 0)
     FSS_DISCOVERED = 0
+    FSS_DISCOVERED_MANUAL = 0
     FSS_SCANNED_BODIES = set()
 
 
@@ -308,8 +332,11 @@ def _sync_milestone_flags_after_late_body_count() -> None:
     global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED
     if FSS_TOTAL_BODIES <= 0:
         return
+    progress_count = _progress_count_for_thresholds()
+    if progress_count <= 0:
+        return
     try:
-        progress = float(FSS_DISCOVERED or 0) / float(FSS_TOTAL_BODIES or 1)
+        progress = float(progress_count) / float(FSS_TOTAL_BODIES or 1)
     except Exception:
         return
     if progress >= 0.25:
@@ -332,7 +359,10 @@ def _check_fss_thresholds(gui_ref=None):
     if FSS_TOTAL_BODIES <= 0:
         return
 
-    progress = FSS_DISCOVERED / FSS_TOTAL_BODIES
+    progress_count = _progress_count_for_thresholds()
+    if progress_count <= 0:
+        return
+    progress = float(progress_count) / float(FSS_TOTAL_BODIES)
     system_name = app_state.get_current_system_name() or None
 
     # Milestone catch-up rule: when progress jumps over multiple thresholds in one step
@@ -374,7 +404,7 @@ def _check_fss_thresholds(gui_ref=None):
             )
 
     # Ostatnia planeta do skanowania
-    remaining = FSS_TOTAL_BODIES - FSS_DISCOVERED
+    remaining = int(FSS_TOTAL_BODIES) - int(progress_count)
     if not FSS_LAST_WARNED and FSS_TOTAL_BODIES > 1 and remaining == 1:
         FSS_LAST_WARNED = True
         if DEBOUNCER.can_send("FSS_LAST", 120, context=system_name):
@@ -396,7 +426,7 @@ def _maybe_speak_fss_full(gui_ref=None, *, trigger_source: str | None = None) ->
     """Emit full-scan message once; never emit last-body hint at 100%."""
     global FSS_FULL_WARNED
 
-    if FSS_TOTAL_BODIES <= 0 or FSS_DISCOVERED < FSS_TOTAL_BODIES:
+    if FSS_TOTAL_BODIES <= 0 or int(FSS_DISCOVERED or 0) < int(FSS_TOTAL_BODIES or 0):
         return False
 
     system_name = app_state.get_current_system_name() or None
@@ -432,7 +462,7 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
     body_name = _scan_body_label(ev)
     body_keys = _scan_body_keys(ev)
 
-    global FSS_SCANNED_BODIES, FSS_DISCOVERED, FSS_HAD_MANUAL_PROGRESS_SCAN
+    global FSS_SCANNED_BODIES, FSS_DISCOVERED, FSS_DISCOVERED_MANUAL, FSS_HAD_MANUAL_PROGRESS_SCAN
     global FSS_LAST_SCAN_TYPE, FSS_LAST_MANUAL_SCAN_TYPE
     global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES, FIRST_SYS_OPPORTUNITY_WARNED
 
@@ -460,15 +490,19 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
         else:
             FSS_SCANNED_BODIES.add(body_name)
         FSS_DISCOVERED += 1
-        if _is_manual_progress_scan(ev.get("ScanType")):
+        is_manual_progress = _is_manual_progress_scan(ev.get("ScanType"))
+        if is_manual_progress:
+            FSS_DISCOVERED_MANUAL += 1
             FSS_HAD_MANUAL_PROGRESS_SCAN = True
             FSS_LAST_MANUAL_SCAN_TYPE = scan_type_norm or None
 
         # --- FSS progi + high-value planets ---
         # Keep progress callouts first in queue to avoid perceived lag during scanning.
-        _check_fss_thresholds(gui_ref)
+        # Milestones track only manual FSS progression (Detailed), not autoscan/nav-beacon feed.
+        if is_manual_progress:
+            _check_fss_thresholds(gui_ref)
+            _maybe_speak_fss_full(gui_ref, trigger_source="Scan")
         check_high_value_planet(ev, gui_ref)
-        _maybe_speak_fss_full(gui_ref, trigger_source="Scan")
 
         # --- S2-LOGIC-05: First Discovery detection ---
         was_discovered = ev.get("WasDiscovered")
@@ -597,7 +631,7 @@ def handle_fss_all_bodies_found(ev: Dict[str, Any], gui_ref=None):
     # FSSAllBodiesFound confirms discovery coverage in FSS, but should not
     # overwrite our Scan-based progress counter. Otherwise Renata can announce
     # "System w pelni przeskanowany" before the player actually reaches N/N scans.
-    if FSS_DISCOVERED >= FSS_TOTAL_BODIES:
+    if int(FSS_DISCOVERED or 0) >= int(FSS_TOTAL_BODIES or 0):
         _check_fss_thresholds(gui_ref)
         _maybe_speak_fss_full(gui_ref, trigger_source="FSSAllBodiesFound")
 
@@ -613,7 +647,7 @@ def bootstrap_fss_state_from_journal_lines(
     This closes the startup gap when MainLoop tails from EOF and the commander already
     scanned part of the current system before Renata attached to the stream.
     """
-    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SCANNED_BODIES
+    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_DISCOVERED_MANUAL, FSS_SCANNED_BODIES
     global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED, FSS_FULL_WARNED
     global FSS_HAD_DISCOVERY_SCAN, FSS_HAD_MANUAL_PROGRESS_SCAN
     global FSS_LAST_SCAN_TYPE, FSS_LAST_MANUAL_SCAN_TYPE
@@ -625,6 +659,7 @@ def bootstrap_fss_state_from_journal_lines(
         "segment_events": 0,
         "total_bodies": 0,
         "discovered": 0,
+        "discovered_manual": 0,
         "had_discovery_scan": False,
         "had_manual_progress_scan": False,
     }
@@ -658,6 +693,7 @@ def bootstrap_fss_state_from_journal_lines(
     stats["segment_events"] = int(len(segment))
 
     discovered = 0
+    discovered_manual = 0
     total_bodies = 0
     had_discovery_scan = False
     had_manual_progress_scan = False
@@ -704,6 +740,7 @@ def bootstrap_fss_state_from_journal_lines(
 
         discovered += 1
         if _is_manual_progress_scan(ev.get("ScanType")):
+            discovered_manual += 1
             had_manual_progress_scan = True
             last_manual_scan_type = scan_type_norm or None
 
@@ -712,6 +749,7 @@ def bootstrap_fss_state_from_journal_lines(
 
     FSS_SCANNED_BODIES = set(scanned_keys)
     FSS_DISCOVERED = int(discovered)
+    FSS_DISCOVERED_MANUAL = int(discovered_manual)
     FSS_TOTAL_BODIES = int(max(total_bodies, discovered)) if total_bodies > 0 else 0
     FSS_HAD_DISCOVERY_SCAN = bool(had_discovery_scan)
     FSS_HAD_MANUAL_PROGRESS_SCAN = bool(had_manual_progress_scan)
@@ -728,14 +766,18 @@ def bootstrap_fss_state_from_journal_lines(
     FSS_75_WARNED = False
     if FSS_TOTAL_BODIES > 0:
         _sync_milestone_flags_after_late_body_count()
+    summary_progress = int(FSS_DISCOVERED or 0)
     FSS_LAST_WARNED = bool(
-        FSS_TOTAL_BODIES > 1 and FSS_DISCOVERED >= max(0, FSS_TOTAL_BODIES - 1)
+        FSS_TOTAL_BODIES > 1 and int(summary_progress) >= max(0, int(FSS_TOTAL_BODIES or 0) - 1)
     )
-    FSS_FULL_WARNED = bool(FSS_TOTAL_BODIES > 0 and FSS_DISCOVERED >= FSS_TOTAL_BODIES)
+    FSS_FULL_WARNED = bool(
+        int(FSS_TOTAL_BODIES or 0) > 0 and int(summary_progress) >= int(FSS_TOTAL_BODIES or 0)
+    )
 
     stats["restored"] = True
     stats["total_bodies"] = int(FSS_TOTAL_BODIES)
     stats["discovered"] = int(FSS_DISCOVERED)
+    stats["discovered_manual"] = int(FSS_DISCOVERED_MANUAL)
     stats["had_discovery_scan"] = bool(FSS_HAD_DISCOVERY_SCAN)
     stats["had_manual_progress_scan"] = bool(FSS_HAD_MANUAL_PROGRESS_SCAN)
     return stats
