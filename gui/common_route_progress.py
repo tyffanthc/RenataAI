@@ -808,6 +808,37 @@ def _resolve_active_milestone(current_index: int) -> tuple[str, str, int] | None
             return norm_target, str(raw_target), idx
     return None
 
+
+def _resolve_milestone_phase(target_index: int | None) -> str:
+    """
+    Resolve route-progress wording phase:
+    - 'boost' for neutron milestone legs before final destination,
+    - 'goal' otherwise.
+    """
+    is_neutron = False
+    try:
+        from app.state import app_state  # type: ignore
+
+        mode = str(getattr(app_state, "spansh_milestone_mode", "") or "").strip().lower()
+        is_neutron = mode == "neutron"
+    except Exception:
+        is_neutron = False
+
+    if not is_neutron:
+        source_norm = str(_ACTIVE_ROUTE_SOURCE or "").strip().lower()
+        is_neutron = ("neutron" in source_norm) or (source_norm == "neu")
+
+    if not is_neutron:
+        return "goal"
+
+    try:
+        if target_index is None:
+            return "boost"
+        last_index = max(0, len(_ACTIVE_ROUTE_SYSTEMS) - 1)
+        return "boost" if int(target_index) < int(last_index) else "goal"
+    except Exception:
+        return "boost"
+
 def _maybe_emit_milestone_progress(current_index: int, source: str | None) -> None:
     global _ACTIVE_MILESTONE_TARGET_NORM, _ACTIVE_MILESTONE_TARGET_RAW
     global _ACTIVE_MILESTONE_TARGET_INDEX, _ACTIVE_MILESTONE_START_INDEX
@@ -906,10 +937,16 @@ def _maybe_emit_milestone_progress(current_index: int, source: str | None) -> No
         )
         return
 
+    milestone_phase = _resolve_milestone_phase(target_index)
     utils.powiedz(
         f"Do kolejnego odcinka. {threshold}% odcinka.",
         message_id="MSG.MILESTONE_PROGRESS",
-        context={"percent": threshold, "target": target_raw, "source": source},
+        context={
+            "percent": threshold,
+            "target": target_raw,
+            "source": source,
+            "milestone_phase": milestone_phase,
+        },
     )
     emit_status(
         "INFO",
@@ -972,10 +1009,16 @@ def _maybe_emit_milestone_progress_from_navroute(current_norm: str, source: str 
     _ACTIVE_MILESTONE_ANNOUNCED.add(threshold)
     _save_active_milestone_progress_cache()
 
+    milestone_phase = _resolve_milestone_phase(target_index)
     utils.powiedz(
         f"Do kolejnego odcinka. {threshold}% odcinka.",
         message_id="MSG.MILESTONE_PROGRESS",
-        context={"percent": threshold, "target": target_raw, "source": source},
+        context={
+            "percent": threshold,
+            "target": target_raw,
+            "source": source,
+            "milestone_phase": milestone_phase,
+        },
     )
     emit_status(
         "INFO",

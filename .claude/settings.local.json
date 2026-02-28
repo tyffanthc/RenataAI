@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"def test_\" /c/Users/Patryk/Desktop/RenataAI/tests/test_f16_playerdb*.py)",
+      "Bash(grep -E \"def test_\" /c/Users/Patryk/Desktop/RenataAI/tests/test_*route*.py)",
+      "Bash(xargs grep -l \"def \")"
+    ]
+  }
+}

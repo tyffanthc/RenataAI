@@ -1828,7 +1828,13 @@ class RenataApp:
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def on_generate_cash_in_assistant(self, *, mode: str = "manual"):
+    def on_generate_cash_in_assistant(
+        self,
+        *,
+        mode: str = "manual",
+        summary_seed: dict | None = None,
+        service_override: str | None = None,
+    ):
         """
         Manual trigger for F4 cash-in assistant baseline.
         """
@@ -1836,12 +1842,17 @@ class RenataApp:
             self.show_status("Cash-in: trwa odswiezanie sugestii...")
             return
 
-        summary_payload = {}
-        try:
-            if hasattr(self.tab_pulpit, "get_current_exploration_summary_payload"):
-                summary_payload = self.tab_pulpit.get_current_exploration_summary_payload() or {}
-        except Exception:
-            summary_payload = {}
+        summary_payload: dict = {}
+        if isinstance(summary_seed, dict) and summary_seed:
+            summary_payload = dict(summary_seed)
+        else:
+            try:
+                if hasattr(self.tab_pulpit, "get_current_exploration_summary_payload"):
+                    summary_payload = self.tab_pulpit.get_current_exploration_summary_payload() or {}
+            except Exception:
+                summary_payload = {}
+        if str(service_override or "").strip():
+            summary_payload["cash_in_service"] = str(service_override).strip()
 
         mode_norm = str(mode or "manual")
         self._cash_in_manual_trigger_active = True

@@ -522,6 +522,9 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
     if message_id == "MSG.MILESTONE_PROGRESS":
         percent = ctx.get("percent")
         target = _normalize_system_name(ctx.get("target"))
+        phase = str(ctx.get("milestone_phase") or "").strip().lower()
+        is_boost_phase = phase == "boost"
+        lead_phrase = "Do busta" if is_boost_phase else "Do celu"
         try:
             percent_i = int(percent)
         except Exception:
@@ -529,8 +532,8 @@ def prepare_tts(message_id: str, context: Optional[Dict[str, Any]] = None) -> Op
         if percent_i is None:
             return _finalize_tts(_render_template(message_id))
         if target:
-            return _finalize_tts(f"Do boosta. {percent_i}% drogi. Cel. {target}.")
-        return _finalize_tts(f"Do boosta. {percent_i}% drogi.")
+            return _finalize_tts(f"{lead_phrase}. {percent_i}% drogi. Cel. {target}.")
+        return _finalize_tts(f"{lead_phrase}. {percent_i}% drogi.")
 
     if message_id == "MSG.MILESTONE_REACHED":
         target = _normalize_system_name(ctx.get("target"))

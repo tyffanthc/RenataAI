@@ -96,10 +96,32 @@ class F28TtsNumberVerbalizationAndRawTextFirstTests(unittest.TestCase):
     def test_milestone_progress_percent_is_not_double_processed(self) -> None:
         text = prepare_tts("MSG.MILESTONE_PROGRESS", {"percent": 25}) or ""
         normalized = _norm_ascii(text)
+        self.assertIn("do celu", normalized)
         self.assertIn("dwadziescia piec", normalized)
         self.assertIn("procent drogi", normalized)
         self.assertEqual(normalized.count("procent"), 1)
         self.assertIn(";", text)
+
+    def test_milestone_progress_uses_boost_phrase_for_boost_phase(self) -> None:
+        text = prepare_tts(
+            "MSG.MILESTONE_PROGRESS",
+            {"percent": 50, "target": "COL 285 SECTOR", "milestone_phase": "boost"},
+        ) or ""
+        normalized = _norm_ascii(text)
+        normalized_flat = " ".join(normalized.replace(";", " ").split())
+        self.assertIn("do busta", normalized)
+        self.assertIn("piecdziesiat procent drogi", normalized_flat)
+        self.assertIn("cel", normalized)
+
+    def test_milestone_progress_uses_goal_phrase_for_goal_phase(self) -> None:
+        text = prepare_tts(
+            "MSG.MILESTONE_PROGRESS",
+            {"percent": 50, "target": "COL 285 SECTOR", "milestone_phase": "goal"},
+        ) or ""
+        normalized = _norm_ascii(text)
+        normalized_flat = " ".join(normalized.replace(";", " ").split())
+        self.assertIn("do celu", normalized)
+        self.assertIn("piecdziesiat procent drogi", normalized_flat)
 
     def test_alphanumeric_system_suffix_digits_are_verbalized_consistently(self) -> None:
         text = prepare_tts("MSG.JUMPED_SYSTEM", {"system": "Eol Prou RS-T d3-94"}) or ""

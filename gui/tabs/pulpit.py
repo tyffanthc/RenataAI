@@ -81,6 +81,7 @@ class PulpitTab(ttk.Frame):
         self._current_cash_in_payload: dict = {}
         self._current_cash_in_signature: str = ""
         self._cash_selected_option_id: str = ""
+        self._cash_service_mode: str = "uc"
         self._current_survival_payload: dict = {}
         self._current_combat_payload: dict = {}
         self._current_risk_payload: dict = {}
@@ -220,12 +221,27 @@ class PulpitTab(ttk.Frame):
         )
         btn_cash_in_assistant.pack(side="right", padx=(0, 8))
 
+        self.btn_cash_mode_ucvista = ttk.Button(
+            btn_frame,
+            text="Tryb UC+Vista",
+            command=lambda: self._set_cash_service_mode("ucvista"),
+        )
+        self.btn_cash_mode_ucvista.pack(side="right", padx=(0, 8))
+
+        self.btn_cash_mode_uc = ttk.Button(
+            btn_frame,
+            text="Tryb UC",
+            command=lambda: self._set_cash_service_mode("uc"),
+        )
+        self.btn_cash_mode_uc.pack(side="right", padx=(0, 8))
+
         btn_cash_in_skip = ttk.Button(
             btn_frame,
             text="Pomijam cash-in",
             command=self._on_click_cash_in_skip,
         )
         btn_cash_in_skip.pack(side="right", padx=(0, 8))
+        self._sync_cash_service_mode_buttons()
 
         self.console_area = ttk.Frame(self)
         self.console_area.pack(fill="both", expand=True, padx=5, pady=(0, 5))
@@ -601,6 +617,7 @@ class PulpitTab(ttk.Frame):
                 f"Wartosc: {self._fmt_cr(payload.get('system_value_estimated'))} Cr (system) | "
                 f"{self._fmt_cr(payload.get('session_value_estimated'))} Cr (sesja)"
             ),
+            f"Tryb uslugi: {self._cash_service_mode_label(self._cash_service_mode)}",
             f"Wybrana: {selected_idx}. {selected_label} -> {selected_target}",
         ]
 
@@ -1206,6 +1223,92 @@ class PulpitTab(ttk.Frame):
     # ------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------
+    @staticmethod
+    def _normalize_cash_service_mode(value: Any) -> str:
+        mode = str(value or "").strip().lower()
+        if mode in {"ucvista", "uc+vista", "vista", "both"}:
+            return "ucvista"
+        return "uc"
+
+    @staticmethod
+    def _cash_service_mode_label(mode: str) -> str:
+        return "UC+Vista" if mode == "ucvista" else "UC"
+
+    @staticmethod
+    def _cash_service_mode_backend_value(mode: str) -> str:
+        # Runtime backend uses existing service selector: uc / vista.
+        return "vista" if mode == "ucvista" else "uc"
+
+    def _sync_cash_service_mode_buttons(self) -> None:
+        mode = self._normalize_cash_service_mode(self._cash_service_mode)
+        self._cash_service_mode = mode
+        if hasattr(self, "btn_cash_mode_uc"):
+            if mode == "uc":
+                self.btn_cash_mode_uc.state(["disabled"])
+            else:
+                self.btn_cash_mode_uc.state(["!disabled"])
+        if hasattr(self, "btn_cash_mode_ucvista"):
+            if mode == "ucvista":
+                self.btn_cash_mode_ucvista.state(["disabled"])
+            else:
+                self.btn_cash_mode_ucvista.state(["!disabled"])
+
+    def _build_cash_summary_seed(self) -> dict[str, Any]:
+        payload = dict(self._current_cash_in_payload or {})
+        if payload:
+            return {
+                "system": payload.get("system"),
+                "scanned_bodies": payload.get("scanned_bodies"),
+                "total_bodies": payload.get("total_bodies"),
+                "cash_in_signal": payload.get("signal"),
+                "cash_in_system_estimated": payload.get("system_value_estimated"),
+                "cash_in_session_estimated": payload.get("session_value_estimated"),
+                "trust_status": payload.get("trust_status"),
+                "confidence": payload.get("confidence"),
+            }
+        return dict(self._current_exploration_summary_payload or {})
+
+    def _request_cash_in_assistant(
+        self,
+        *,
+        mode: str = "manual",
+        summary_seed: dict[str, Any] | None = None,
+    ) -> bool:
+        callback = self._on_generate_cash_in_assistant
+        if callback is None:
+            self.log("[CASH_IN] Brak podpietego callbacku on_generate_cash_in_assistant.")
+            return False
+        backend_service = self._cash_service_mode_backend_value(self._cash_service_mode)
+        try:
+            callback(
+                mode=str(mode or "manual"),
+                summary_seed=dict(summary_seed or {}),
+                service_override=backend_service,
+            )
+            return True
+        except TypeError:
+            # Backward compatibility for older callback signature.
+            try:
+                callback()
+                return True
+            except Exception as exc:
+                self.log(f"[CASH_IN] Blad triggera asystenta cash-in: {exc}")
+                return False
+        except Exception as exc:
+            self.log(f"[CASH_IN] Blad triggera asystenta cash-in: {exc}")
+            return False
+
+    def _set_cash_service_mode(self, mode: str) -> None:
+        self._cash_service_mode = self._normalize_cash_service_mode(mode)
+        self._sync_cash_service_mode_buttons()
+        self._show_loading_panel("cash")
+        ok = self._request_cash_in_assistant(
+            mode="manual",
+            summary_seed=self._build_cash_summary_seed(),
+        )
+        if not ok:
+            self._show_info_panel("cash", "Cash-in: nie udalo sie odswiezyc sugestii dla wybranego trybu.")
+
     def _safe_callback(self, callback, error_prefix: str, missing_message: str) -> bool:
         if callback is None:
             self.log(missing_message)
@@ -1233,10 +1336,9 @@ class PulpitTab(ttk.Frame):
                 self._render_cash_panel(force_open=True)
             else:
                 self._show_loading_panel("cash")
-                self._safe_callback(
-                    self._on_generate_cash_in_assistant,
-                    "[CASH_IN] Blad triggera asystenta cash-in",
-                    "[CASH_IN] Brak podpietego callbacku on_generate_cash_in_assistant.",
+                self._request_cash_in_assistant(
+                    mode="manual",
+                    summary_seed=self._build_cash_summary_seed(),
                 )
         elif domain == "risk":
             self._render_risk_panel(force_open=True)
@@ -1281,10 +1383,9 @@ class PulpitTab(ttk.Frame):
 
     def _on_click_cash_in_assistant(self) -> None:
         self._show_loading_panel("cash")
-        self._safe_callback(
-            self._on_generate_cash_in_assistant,
-            "[CASH_IN] Blad triggera asystenta cash-in",
-            "[CASH_IN] Brak podpietego callbacku on_generate_cash_in_assistant.",
+        self._request_cash_in_assistant(
+            mode="manual",
+            summary_seed=self._build_cash_summary_seed(),
         )
 
     def _on_click_cash_in_skip(self) -> None:
@@ -1341,6 +1442,7 @@ class PulpitTab(ttk.Frame):
             return
         self._current_cash_in_payload = dict(payload)
         self._current_cash_in_signature = str(payload.get("signature") or "").strip()
+        self._sync_cash_service_mode_buttons()
         options = self._cash_options()
         selected = str(self._cash_selected_option_id or "").strip()
         selected_exists = False

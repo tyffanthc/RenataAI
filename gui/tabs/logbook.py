@@ -46,6 +46,7 @@ COLOR_ACCENT = "#1f2833"
 _CATEGORY_ALL = "(Wszystkie)"
 _CATEGORY_FALLBACK = "Dziennik/Ogolne"
 _LOGBOOK_CLASS_ALL = "Wszystkie (ALL)"
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _LOGBOOK_FEED_CLASS_ORDER = (
     "Nawigacja",
     "Eksploracja",
@@ -111,6 +112,48 @@ def _to_iso_date(value: str, *, end_of_day: bool = False) -> str | None:
 
 def _today_date_text() -> str:
     return datetime.now().strftime("%Y-%m-%d")
+
+
+def _normalize_loaded_date_to_filter(value: Any, filters: dict[str, Any] | None = None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "today"
+
+    lowered = text.lower()
+    if lowered in {"today", "dzisiaj"}:
+        return "today"
+    if lowered in {"forever", "bez limitu"}:
+        return "forever"
+    if not _ISO_DATE_RE.fullmatch(text):
+        return text
+
+    f = filters if isinstance(filters, dict) else {}
+    has_text = bool(str(f.get("text") or "").strip())
+    has_tags = bool(f.get("tags")) if isinstance(f.get("tags"), list) else False
+    pinned_only = bool(f.get("pinned_only"))
+    tag_mode = str(f.get("tag_mode") or "ALL").strip().upper()
+    sort_name = str(f.get("sort") or "Najnowsze").strip()
+    date_from = str(f.get("date_from") or "").strip().lower()
+    date_from_is_default = date_from in {"", "forever", "od zawsze"}
+    default_context = (
+        not has_text
+        and not has_tags
+        and not pinned_only
+        and tag_mode in {"", "ALL"}
+        and sort_name in {"", "Najnowsze"}
+        and date_from_is_default
+    )
+    if not default_context:
+        return text
+
+    try:
+        loaded_day = datetime.strptime(text, "%Y-%m-%d").date()
+        today_day = datetime.now().date()
+    except Exception:
+        return text
+    if loaded_day < today_day:
+        return "today"
+    return text
 
 
 def _format_ts(iso_text: str) -> str:
@@ -201,7 +244,7 @@ class LogbookTab(tk.Frame):
         self.filter_text_var = tk.StringVar()
         self.filter_tag_var = tk.StringVar(value="Wszystkie (ALL)")
         self.filter_date_from_var = tk.StringVar(value="forever")
-        self.filter_date_to_var = tk.StringVar(value=_today_date_text())
+        self.filter_date_to_var = tk.StringVar(value="today")
         self.filter_tag_mode_var = tk.StringVar(value="ALL")
         self.filter_pinned_only_var = tk.BooleanVar(value=False)
         self.sort_var = tk.StringVar(value="Najnowsze")
@@ -1566,7 +1609,7 @@ class LogbookTab(tk.Frame):
 
                 date_to = str(filters.get("date_to") or "").strip()
                 if date_to:
-                    self.filter_date_to_var.set(date_to)
+                    self.filter_date_to_var.set(_normalize_loaded_date_to_filter(date_to, filters))
 
                 tag_mode = str(filters.get("tag_mode") or "").strip().upper()
                 if tag_mode in {"ALL", "ANY"}:
@@ -1922,7 +1965,7 @@ class LogbookTab(tk.Frame):
                 if which == "from":
                     date_var.set("forever")
                 else:
-                    date_var.set(_today_date_text())
+                    date_var.set("today")
                 self._close_active_popover()
                 self._persist_ui_state()
                 self._refresh_entries()
