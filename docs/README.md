@@ -1,4 +1,6 @@
-﻿# R.E.N.A.T.A. (RenataAI)
+# R.E.N.A.T.A. (RenataAI)
+
+[README (repo)](../README.md) | [CHANGELOG](./CHANGELOG.md) | [Releases](https://github.com/tyffanthc/RenataAI/releases)
 
 Route, Exploration & Navigation Assistant for Trading & Analysis.
 Desktopowy companion dla Elite Dangerous, ktory czyta dane z gry i pomaga podejmowac decyzje bez automatyzowania rozgrywki.
@@ -94,8 +96,8 @@ py -m unittest tests.test_spansh_payloads
 
 ## Dokumentacja
 - Publiczny opis produktu i granic: `docs/Flow/public/`.
+- Zmiany release: `docs/CHANGELOG.md`.
 - Status release i quality gate: `docs/RELEASE_CHECKLIST.md`.
-- Szybki handoff: `docs/README_TRANSFER.md`.
 - Backlog wykonawczy i refaktor: `docs/internal/`.
 
 ## Model FREE/PRO (high-level)
