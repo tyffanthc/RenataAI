@@ -125,6 +125,16 @@ INSIGHT_CLASS_BY_MESSAGE_ID: Dict[str, InsightClassSpec] = {
         default_cooldown_seconds=120.0,
         dedup_template="fss_last:{system}",
     ),
+    "MSG.FSS_BODYCOUNT_SYNCED": InsightClassSpec(
+        class_id="FSS_BODYCOUNT_SYNCED",
+        canonical_event="SYSTEM_SCANNED",
+        kind="exploration",
+        decision_space="scan_progress",
+        default_priority="P3_LOW",
+        default_cooldown_scope="entity",
+        default_cooldown_seconds=120.0,
+        dedup_template="fss_bodycount_synced:{system}",
+    ),
     "MSG.SYSTEM_FULLY_SCANNED": InsightClassSpec(
         class_id="FSS_FULLY_SCANNED",
         canonical_event="SYSTEM_SCANNED",
@@ -598,6 +608,12 @@ TTS_POLICY_BY_MESSAGE_ID: Dict[str, TTSPolicySpec] = {
     ),
     "MSG.FSS_LAST_BODY": TTSPolicySpec(
         message_id="MSG.FSS_LAST_BODY",
+        intent="context",
+        category="explore",
+        cooldown_policy="BYPASS_GLOBAL",
+    ),
+    "MSG.FSS_BODYCOUNT_SYNCED": TTSPolicySpec(
+        message_id="MSG.FSS_BODYCOUNT_SYNCED",
         intent="context",
         category="explore",
         cooldown_policy="BYPASS_GLOBAL",

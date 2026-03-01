@@ -119,6 +119,21 @@ class F30FssMilestoneCatchupAndBodyDedupeTests(unittest.TestCase):
         self.assertNotIn("MSG.FSS_PROGRESS_25", emit_ids)
         self.assertNotIn("MSG.FSS_PROGRESS_75", emit_ids)
 
+    def test_late_bodycount_emits_sync_callout(self) -> None:
+        fss_events.FSS_TOTAL_BODIES = 0
+        fss_events.FSS_DISCOVERED = 4
+        fss_events.FSS_SCANNED_BODIES = {f"id:{i}" for i in range(1, 5)}
+
+        with (
+            patch("logic.events.exploration_fss_events.DEBOUNCER.can_send", return_value=True),
+            patch("logic.events.exploration_fss_events.emit_insight") as emit_mock,
+            patch("logic.events.exploration_fss_events.utils.MSG_QUEUE.put"),
+        ):
+            fss_events.handle_fss_discovery_scan({"event": "FSSDiscoveryScan", "BodyCount": 8}, gui_ref=None)
+
+        emit_ids = [str(c.kwargs.get("message_id") or "") for c in emit_mock.call_args_list]
+        self.assertIn("MSG.FSS_BODYCOUNT_SYNCED", emit_ids)
+
     def test_handle_scan_prioritizes_fss_progress_before_first_discovery_callouts(self) -> None:
         fss_events.FSS_TOTAL_BODIES = 4
         with (

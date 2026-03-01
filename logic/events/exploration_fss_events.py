@@ -687,6 +687,19 @@ def handle_fss_discovery_scan(ev: Dict[str, Any], gui_ref=None):
         # Keep progress and only refresh total body count metadata.
         FSS_TOTAL_BODIES = max(count, discovered_now)
         if previous_total <= 0 and discovered_now > 0:
+            if DEBOUNCER.can_send("FSS_BODYCOUNT_SYNCED", 120, context=app_state.get_current_system_name() or None):
+                emit_insight(
+                    "Zsynchronizowano licznik ciał systemu.",
+                    gui_ref=gui_ref,
+                    message_id="MSG.FSS_BODYCOUNT_SYNCED",
+                    source="exploration_fss_events",
+                    event_type="SYSTEM_SCANNED",
+                    context=_fss_gate_context(app_state.get_current_system_name() or None),
+                    priority="P3_LOW",
+                    dedup_key=f"fss_bodycount_synced:{app_state.get_current_system_name() or 'unknown'}",
+                    cooldown_scope="entity",
+                    cooldown_seconds=120.0,
+                )
             # Late BodyCount arrived after scans were already counted.
             # Emit one best-effort catch-up callout for current progress/last-body,
             # then sync threshold flags so follow-up scans do not replay retro milestones.
