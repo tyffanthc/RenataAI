@@ -747,6 +747,68 @@ def _candidate_distance_ls(candidate: dict[str, Any]) -> float:
     return max(0.0, value)
 
 
+def _source_tokens(value: Any) -> list[str]:
+    out: list[str] = []
+    for token in str(value or "").split("+"):
+        norm = token.strip().upper()
+        if norm and norm not in out:
+            out.append(norm)
+    return out
+
+
+def _tag_candidates_source(
+    rows: list[dict[str, Any]] | tuple[dict[str, Any], ...] | None,
+    source_marker: str,
+) -> list[dict[str, Any]]:
+    marker = _as_text(source_marker).upper()
+    out: list[dict[str, Any]] = []
+    for raw in rows or []:
+        if not isinstance(raw, dict):
+            continue
+        item = dict(raw)
+        tokens = _source_tokens(item.get("source"))
+        if marker and marker not in tokens:
+            tokens.append(marker)
+        item["source"] = "+".join(tokens) if tokens else marker
+        out.append(item)
+    return out
+
+
+def _resolve_source_status_from_top_candidate(
+    *,
+    candidates: list[dict[str, Any]],
+    default_status: str,
+    swr_freshness: str = "",
+) -> str:
+    if not candidates:
+        return default_status
+    top = dict(candidates[0] or {})
+    tokens = _source_tokens(top.get("source"))
+    token_set = set(tokens)
+
+    if "RUNTIME_LOCAL" in token_set:
+        return "local_fallback"
+    if "RUNTIME_PAYLOAD" in token_set:
+        return "payload"
+    if "RUNTIME_NAMES" in token_set:
+        return "payload_names"
+    if "CROSS_SYSTEM" in token_set:
+        return "providers_cross_system"
+    if "SWR_CACHE" in token_set:
+        return "providers_cache_stale" if _as_text(swr_freshness).upper() == "STALE" else "providers"
+    if "PLAYERDB" in token_set:
+        return "playerdb"
+    if "LOCAL_KNOWN" in token_set:
+        return "local_known_fallback"
+    if "OFFLINE_INDEX" in token_set:
+        return "offline_index"
+    if "PROVIDERS_LOCAL" in token_set:
+        return "providers"
+    if "EDSM" in token_set or "SPANSH" in token_set:
+        return "providers"
+    return default_status
+
+
 def _is_hutton_guard(candidate: dict[str, Any], *, threshold_ls: float) -> bool:
     distance_ls = _safe_optional_float(candidate.get("distance_ls"))
     if distance_ls is None:
@@ -1971,6 +2033,7 @@ def _build_station_candidates_runtime(
             freshness_ts=freshness_ts,
             limit=limit,
         )
+        candidates = _tag_candidates_source(candidates, "RUNTIME_PAYLOAD")
         source_status = "payload"
 
     if not candidates:
@@ -1983,6 +2046,7 @@ def _build_station_candidates_runtime(
                 freshness_ts=freshness_ts,
                 limit=limit,
             )
+            candidates = _tag_candidates_source(candidates, "RUNTIME_NAMES")
             source_status = "payload_names"
 
     lookup_enabled = bool(config.get("cash_in.station_candidates_lookup_enabled", False))
@@ -2078,6 +2142,7 @@ def _build_station_candidates_runtime(
     if not candidates and not lookup_enabled:
         playerdb_rows = _attempt_playerdb_lookup()
         if playerdb_rows:
+            playerdb_rows = _tag_candidates_source(playerdb_rows, "PLAYERDB")
             candidates = playerdb_rows
             source_status = "playerdb"
 
@@ -2093,6 +2158,7 @@ def _build_station_candidates_runtime(
                 limit=limit,
             )
             if known_candidates:
+                known_candidates = _tag_candidates_source(known_candidates, "LOCAL_KNOWN")
                 candidates = known_candidates
                 source_status = "local_known_fallback"
                 local_known_fallback_used = True
@@ -2103,21 +2169,35 @@ def _build_station_candidates_runtime(
     if not candidates and offline_index_enabled and not lookup_enabled:
         offline_rows = _attempt_offline_index_lookup()
         if offline_rows:
+            offline_rows = _tag_candidates_source(offline_rows, "OFFLINE_INDEX")
             candidates = offline_rows
             source_status = "offline_index"
 
-    if not candidates and lookup_enabled:
+    if lookup_enabled:
         provider_lookup_attempted = True
-        candidates = station_candidates_for_system_from_providers(
+        provider_rows = station_candidates_for_system_from_providers(
             system,
             include_edsm=include_edsm,
             include_spansh=include_spansh,
             freshness_ts=freshness_ts,
             limit=limit,
         )
+        provider_rows = _tag_candidates_source(provider_rows, "PROVIDERS_LOCAL")
         if include_edsm:
             edsm_snapshot_data = dict(edsm_provider_resilience_snapshot() or {})
-        if candidates:
+        if provider_rows:
+            if candidates:
+                candidates = collect_then_rank_station_candidates(
+                    source_rows={
+                        "RUNTIME_LOCAL": candidates,
+                        "PROVIDERS_LOCAL": provider_rows,
+                    },
+                    default_system=system,
+                    freshness_ts=freshness_ts,
+                    limit=limit,
+                )
+            else:
+                candidates = provider_rows
             provider_lookup_status = "providers"
             source_status = provider_lookup_status
         else:
@@ -2128,7 +2208,8 @@ def _build_station_candidates_runtime(
             )
             if status_override:
                 provider_lookup_status = status_override
-            source_status = provider_lookup_status
+            if not candidates:
+                source_status = provider_lookup_status
     elif not lookup_enabled:
         provider_lookup_status = "disabled"
 
@@ -2169,6 +2250,7 @@ def _build_station_candidates_runtime(
         )
         nearby_reason = _as_text(cross_meta.get("nearby_reason")).lower()
         if cross_candidates:
+            cross_candidates = _tag_candidates_source(cross_candidates, "CROSS_SYSTEM")
             candidates = collect_then_rank_station_candidates(
                 source_rows={
                     "RUNTIME_LOCAL": candidates,
@@ -2216,6 +2298,8 @@ def _build_station_candidates_runtime(
         )
 
     if provider_lookup_attempted and not candidates:
+        fallback_source_rows: dict[str, list[dict[str, Any]]] = {}
+
         swr_snapshot = _load_swr_snapshot(cache_key=swr_cache_key)
         swr_lookup_status = _as_text(swr_snapshot.get("status")).upper() or "NONE"
         swr_freshness = (
@@ -2235,25 +2319,18 @@ def _build_station_candidates_runtime(
                 limit=limit,
             )
             if cached_candidates:
-                candidates = cached_candidates
-                swr_cache_used = True
+                fallback_source_rows["SWR_CACHE"] = _tag_candidates_source(
+                    cached_candidates,
+                    "SWR_CACHE",
+                )
                 swr_cache_age_sec = float(swr_snapshot.get("age_sec") or 0.0)
                 swr_cache_source_status = _as_text(swr_entry.get("source_status"))
                 swr_saved_at_utc = cached_freshness_ts
-                if swr_lookup_status == "STALE":
-                    source_status = "providers_cache_stale"
-                else:
-                    restored_status = swr_cache_source_status or "providers"
-                    source_status = restored_status
-                    provider_lookup_status = restored_status
 
-    if provider_lookup_attempted and not candidates:
         playerdb_rows = _attempt_playerdb_lookup()
         if playerdb_rows:
-            candidates = playerdb_rows
-            source_status = "playerdb"
+            fallback_source_rows["PLAYERDB"] = _tag_candidates_source(playerdb_rows, "PLAYERDB")
 
-    if provider_lookup_attempted and not candidates:
         known = _load_local_known_candidates(service=service_norm, limit=limit)
         if bool(known.get("used")):
             known_rows = list(known.get("candidates") or [])
@@ -2265,17 +2342,45 @@ def _build_station_candidates_runtime(
                 limit=limit,
             )
             if known_candidates:
-                candidates = known_candidates
-                source_status = "local_known_fallback"
-                local_known_fallback_used = True
+                fallback_source_rows["LOCAL_KNOWN"] = _tag_candidates_source(
+                    known_candidates,
+                    "LOCAL_KNOWN",
+                )
                 local_known_fallback_age_sec = float(known.get("age_sec") or 0.0)
                 local_known_fallback_count = int(known.get("count") or 0)
 
-    if provider_lookup_attempted and not candidates and offline_index_enabled:
-        offline_rows = _attempt_offline_index_lookup()
-        if offline_rows:
-            candidates = offline_rows
-            source_status = "offline_index"
+        if offline_index_enabled:
+            offline_rows = _attempt_offline_index_lookup()
+            if offline_rows:
+                fallback_source_rows["OFFLINE_INDEX"] = _tag_candidates_source(
+                    offline_rows,
+                    "OFFLINE_INDEX",
+                )
+
+        if fallback_source_rows:
+            candidates = collect_then_rank_station_candidates(
+                source_rows=fallback_source_rows,
+                default_system=system,
+                freshness_ts=freshness_ts,
+                limit=limit,
+            )
+            source_status = _resolve_source_status_from_top_candidate(
+                candidates=candidates,
+                default_status=source_status,
+                swr_freshness=swr_freshness,
+            )
+            playerdb_used = source_status == "playerdb"
+            local_known_fallback_used = source_status == "local_known_fallback"
+            offline_index_used = source_status == "offline_index"
+            swr_cache_used = source_status in {"providers_cache_stale", "providers"} and bool(
+                fallback_source_rows.get("SWR_CACHE")
+            )
+            if source_status == "providers_cache_stale":
+                provider_lookup_status = provider_lookup_status or "providers_empty"
+            elif source_status == "providers" and bool(fallback_source_rows.get("SWR_CACHE")):
+                restored_status = swr_cache_source_status or "providers"
+                provider_lookup_status = restored_status
+                source_status = restored_status
 
     if not candidates:
         current_station = _as_text(getattr(app_state, "current_station", ""))
@@ -2294,7 +2399,24 @@ def _build_station_candidates_runtime(
                 freshness_ts=freshness_ts,
                 limit=limit,
             )
+            candidates = _tag_candidates_source(candidates, "RUNTIME_LOCAL")
             source_status = "local_fallback"
+
+    if candidates:
+        resolved_source_status = _resolve_source_status_from_top_candidate(
+            candidates=candidates,
+            default_status=source_status,
+            swr_freshness=swr_freshness,
+        )
+        source_status = resolved_source_status or source_status
+        if source_status != "local_known_fallback":
+            local_known_fallback_used = False
+        if source_status != "playerdb":
+            playerdb_used = False
+        if source_status != "offline_index":
+            offline_index_used = False
+        if source_status not in {"providers_cache_stale", "providers"}:
+            swr_cache_used = False
 
     if not offline_index_enabled:
         offline_index_lookup_status = "disabled"
@@ -2885,4 +3007,3 @@ def trigger_cash_in_assistant(
         cooldown_seconds=cooldown_seconds,
     )
     return True
-
