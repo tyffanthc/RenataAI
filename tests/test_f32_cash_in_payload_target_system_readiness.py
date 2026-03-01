@@ -53,14 +53,23 @@ class F32CashInPayloadTargetSystemReadinessTests(unittest.TestCase):
                 }
             ],
         }
-        with patch("logic.events.cash_in_assistant.emit_insight") as emit_mock:
+        with (
+            patch("logic.events.cash_in_assistant.try_copy_to_clipboard", return_value={"ok": True}) as copy_mock,
+            patch("logic.events.cash_in_assistant.emit_insight") as emit_mock,
+        ):
             ok = cash_in_assistant.trigger_cash_in_assistant(mode="manual", summary_payload=payload)
 
         self.assertTrue(ok)
+        copy_mock.assert_called_once_with(
+            "F32_TARGET_SYSTEM",
+            context="cash_in.assistant.target_system",
+        )
         ctx = dict(emit_mock.call_args.kwargs.get("context") or {})
         structured = dict(ctx.get("cash_in_payload") or {})
         self.assertEqual(str(structured.get("target_system_name") or ""), "F32_TARGET_SYSTEM")
+        self.assertEqual(str(structured.get("target_station_name") or ""), "F32 Ready Port")
         self.assertEqual(str(ctx.get("target_system_name") or ""), "F32_TARGET_SYSTEM")
+        self.assertEqual(str(ctx.get("target_station_name") or ""), "F32 Ready Port")
 
     def test_payload_target_system_name_empty_when_no_real_target(self) -> None:
         payload = {
@@ -81,16 +90,21 @@ class F32CashInPayloadTargetSystemReadinessTests(unittest.TestCase):
                 }
             ],
         }
-        with patch("logic.events.cash_in_assistant.emit_insight") as emit_mock:
+        with (
+            patch("logic.events.cash_in_assistant.try_copy_to_clipboard", return_value={"ok": True}) as copy_mock,
+            patch("logic.events.cash_in_assistant.emit_insight") as emit_mock,
+        ):
             ok = cash_in_assistant.trigger_cash_in_assistant(mode="manual", summary_payload=payload)
 
         self.assertTrue(ok)
+        copy_mock.assert_not_called()
         ctx = dict(emit_mock.call_args.kwargs.get("context") or {})
         structured = dict(ctx.get("cash_in_payload") or {})
         self.assertEqual(str(structured.get("target_system_name") or ""), "")
+        self.assertEqual(str(structured.get("target_station_name") or ""), "")
         self.assertEqual(str(ctx.get("target_system_name") or ""), "")
+        self.assertEqual(str(ctx.get("target_station_name") or ""), "")
 
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -366,6 +366,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "cash_in.express_max_distance_ls": 5_000.0,
     "cash_in.planetary_vista_max_gravity_g": 2.0,
     "cash_in.ship_size_auto_lock_enabled": True,
+    "cash_in.clipboard_auto_target_enabled": True,
     "cash_in.show_tariff_meta": True,
     "cash_in.hutton_guard_ls_threshold": 500_000,
     "cash_in.hutton_guard_score_penalty": 18,

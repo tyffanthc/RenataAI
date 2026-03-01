@@ -17,6 +17,7 @@ from logic.cash_in_station_candidates import (
     station_candidates_cross_system_from_providers,
     station_candidates_for_system_from_providers,
 )
+from logic.route_clipboard import try_copy_to_clipboard
 from logic.insight_dispatcher import emit_insight
 from logic.utils.http_edsm import edsm_provider_resilience_snapshot
 from logic.utils import DEBOUNCER
@@ -38,6 +39,7 @@ class CashInAssistantPayload:
     note: str
     signature: str
     target_system_name: str = ""
+    target_station_name: str = ""
     service: str = "uc"
     payout_contract: dict[str, Any] = field(default_factory=dict)
     station_candidates: list[dict[str, Any]] = field(default_factory=list)
@@ -785,6 +787,22 @@ def _candidate_system(candidate: dict[str, Any]) -> str:
     return _as_text(candidate.get("system_name")) or "unknown"
 
 
+def _candidate_type(candidate: dict[str, Any]) -> str:
+    return _as_text(candidate.get("type") or candidate.get("station_type")).lower()
+
+
+def _candidate_is_outpost(candidate: dict[str, Any]) -> bool:
+    return _candidate_type(candidate) == "outpost"
+
+
+def _candidate_max_pad_size(candidate: dict[str, Any]) -> str:
+    return _as_text(
+        candidate.get("max_landing_pad_size")
+        or candidate.get("maxLandingPadSize")
+        or candidate.get("landing_pad_size")
+    ).upper()
+
+
 def _candidate_distance_ly(candidate: dict[str, Any]) -> float:
     value = _safe_optional_float(candidate.get("distance_ly"))
     if value is None:
@@ -1161,6 +1179,15 @@ def _build_profiled_options(
         if pad_filter_applied
         else 0
     )
+    pad_filtered_outpost_count = 0
+    pad_filtered_small_pad_count = 0
+    if pad_filter_applied:
+        for row in raw_rows:
+            if _candidate_is_outpost(row):
+                pad_filtered_outpost_count += 1
+                continue
+            if _candidate_max_pad_size(row) in {"S", "M"}:
+                pad_filtered_small_pad_count += 1
     filtered = filter_candidates_by_service(pad_filtered_rows, service=service_norm)
     if not filtered:
         return [], {
@@ -1171,6 +1198,8 @@ def _build_profiled_options(
             "ship_size_auto_lock_enabled": ship_size_auto_lock_enabled,
             "ship_pad_filter_applied": pad_filter_applied,
             "ship_pad_filtered_out_count": pad_filtered_out_count,
+            "ship_pad_filtered_outpost_count": pad_filtered_outpost_count,
+            "ship_pad_filtered_small_pad_count": pad_filtered_small_pad_count,
             "service_candidates_count": 0,
             "service_non_carrier_count": 0,
             "service_carrier_count": 0,
@@ -1342,6 +1371,8 @@ def _build_profiled_options(
         "ship_size_auto_lock_enabled": ship_size_auto_lock_enabled,
         "ship_pad_filter_applied": pad_filter_applied,
         "ship_pad_filtered_out_count": pad_filtered_out_count,
+        "ship_pad_filtered_outpost_count": pad_filtered_outpost_count,
+        "ship_pad_filtered_small_pad_count": pad_filtered_small_pad_count,
         "docked": docked,
         "secure_fallback_to_nearest": secure_fallback,
         "secure_fallback_to_safe": secure_fallback,
@@ -1420,6 +1451,82 @@ def _resolve_payload_target_system_name(options: list[dict[str, Any]]) -> str:
         if bool(target.get("target_is_real")):
             return _as_text(target.get("target_system"))
     return ""
+
+
+def _resolve_payload_target_station_name(options: list[dict[str, Any]]) -> str:
+    for item in options or []:
+        if not isinstance(item, dict):
+            continue
+        target = resolve_cash_in_option_target(item)
+        if bool(target.get("target_is_real")):
+            return _as_text(target.get("target_station"))
+    return ""
+
+
+def _resolve_payload_top_profile(options: list[dict[str, Any]]) -> str:
+    for item in options or []:
+        if not isinstance(item, dict):
+            continue
+        target = resolve_cash_in_option_target(item)
+        if bool(target.get("target_is_real")):
+            return _normalize_cash_in_profile(
+                item.get("profile"),
+                default=CASH_IN_PROFILE_NEAREST,
+            )
+    for item in options or []:
+        if isinstance(item, dict):
+            return _normalize_cash_in_profile(
+                item.get("profile"),
+                default=CASH_IN_PROFILE_NEAREST,
+            )
+    return CASH_IN_PROFILE_NEAREST
+
+
+def _auto_copy_cash_in_target_system(payload: CashInAssistantPayload) -> dict[str, Any]:
+    enabled = bool(config.get("cash_in.clipboard_auto_target_enabled", True))
+    target_system = _as_text(payload.target_system_name)
+    if not enabled:
+        return {
+            "enabled": False,
+            "attempted": False,
+            "copied": False,
+            "target_system_name": target_system,
+            "reason": "disabled",
+        }
+    if not target_system:
+        return {
+            "enabled": True,
+            "attempted": False,
+            "copied": False,
+            "target_system_name": "",
+            "reason": "target_missing",
+        }
+    try:
+        result = dict(
+            try_copy_to_clipboard(
+                target_system,
+                context="cash_in.assistant.target_system",
+            )
+            or {}
+        )
+    except Exception as exc:
+        return {
+            "enabled": True,
+            "attempted": True,
+            "copied": False,
+            "target_system_name": target_system,
+            "reason": f"exception:{type(exc).__name__}",
+        }
+    reason = _as_text(result.get("error") or result.get("reason"))
+    if not reason:
+        reason = "ok" if bool(result.get("ok")) else "clipboard_unavailable"
+    return {
+        "enabled": True,
+        "attempted": True,
+        "copied": bool(result.get("ok")),
+        "target_system_name": target_system,
+        "reason": reason,
+    }
 
 
 def handoff_cash_in_to_route_intent(
@@ -1944,6 +2051,10 @@ def _build_edge_case_meta(
     nearby_effective_radius_ly = _safe_float(station_meta.get("nearby_effective_radius_ly"))
     nearby_provider_response_count = int(station_meta.get("nearby_provider_response_count") or 0)
     nearby_reason = _as_text(station_meta.get("nearby_reason")).lower()
+    ship_pad_filter_applied = bool(rank_meta.get("ship_pad_filter_applied"))
+    ship_pad_filtered_out_count = int(rank_meta.get("ship_pad_filtered_out_count") or 0)
+    ship_pad_filtered_outpost_count = int(rank_meta.get("ship_pad_filtered_outpost_count") or 0)
+    ship_pad_filtered_small_pad_count = int(rank_meta.get("ship_pad_filtered_small_pad_count") or 0)
 
     if (
         (source_status == "providers_empty" or provider_lookup_status == "providers_empty")
@@ -1991,6 +2102,12 @@ def _build_edge_case_meta(
     carrier_candidates = [row for row in service_candidates if _candidate_is_carrier(row)]
     if service_candidates and not non_carrier_candidates:
         _append_unique_reason(reasons, "no_non_carrier")
+    if ship_pad_filter_applied and ship_pad_filtered_out_count > 0:
+        _append_unique_reason(reasons, "ship_pad_filter_rejected")
+    if ship_pad_filter_applied and ship_pad_filtered_outpost_count > 0:
+        _append_unique_reason(reasons, "outpost_rejected_by_ship_constraints")
+    if ship_pad_filter_applied and ship_pad_filtered_small_pad_count > 0:
+        _append_unique_reason(reasons, "small_pad_rejected_by_ship_constraints")
 
     if _detect_offline_or_interrupted(payload):
         _append_unique_reason(reasons, "offline")
@@ -2083,6 +2200,10 @@ def _build_edge_case_meta(
         ui_hint = "Provider stacyjny chwilowo niedostĂ„â„˘pny (circuit open). UÄąÄ˝yj decyzji orientacyjnej."
     elif "provider_down_503" in reasons:
         ui_hint = "Provider stacyjny chwilowo niedostĂ„â„˘pny (HTTP 503). UÄąÄ˝yj decyzji orientacyjnej."
+    elif "outpost_rejected_by_ship_constraints" in reasons:
+        ui_hint = "Outpost odrzucony przez ograniczenia statku (large-pad lock)."
+    elif "small_pad_rejected_by_ship_constraints" in reasons:
+        ui_hint = "Stacje S/M odrzucone przez ograniczenia statku (large-pad lock)."
     elif "providers_empty" in reasons or "no_station_data" in reasons or "no_service_candidates" in reasons:
         ui_hint = "Dane stacyjne ograniczone: traktuj decyzje orientacyjnie."
     elif "no_non_carrier" in reasons:
@@ -2118,6 +2239,10 @@ def _build_edge_case_meta(
         "nearby_requested_radius_ly": float(nearby_requested_radius_ly),
         "nearby_effective_radius_ly": float(nearby_effective_radius_ly),
         "nearby_provider_response_count": int(nearby_provider_response_count),
+        "ship_pad_filter_applied": ship_pad_filter_applied,
+        "ship_pad_filtered_out_count": ship_pad_filtered_out_count,
+        "ship_pad_filtered_outpost_count": ship_pad_filtered_outpost_count,
+        "ship_pad_filtered_small_pad_count": ship_pad_filtered_small_pad_count,
     }
 
 
@@ -2159,6 +2284,10 @@ def _append_edge_case_note(base_note: str, edge_case_meta: dict[str, Any]) -> st
             extra_parts.append("Brak non-carrier dla UC (sprawdÄąĹź fee carriera).")
         else:
             extra_parts.append("Brak non-carrier dla Vista.")
+    if "outpost_rejected_by_ship_constraints" in reasons:
+        extra_parts.append("Outpost odrzucony przez ograniczenia statku (large-pad lock).")
+    if "small_pad_rejected_by_ship_constraints" in reasons:
+        extra_parts.append("Stacje S/M odrzucone przez ograniczenia statku (large-pad lock).")
     if not extra_parts:
         extra_parts.append("Scenariusz fallback: decyzja orientacyjna.")
 
@@ -2787,13 +2916,34 @@ def _strip_cashin_voice_prefix(text: Any) -> str:
     return value
 
 
-def _build_tts_line(payload: CashInAssistantPayload) -> str:
+def _build_tts_line(
+    payload: CashInAssistantPayload,
+    *,
+    clipboard_copied: bool = False,
+) -> str:
     edge_meta = dict(payload.edge_case_meta or {})
     edge_reasons = {
         str(item).strip().lower()
         for item in (edge_meta.get("reasons") or [])
         if str(item).strip()
     }
+    top_profile = _resolve_payload_top_profile(payload.options)
+    target_system_name = _as_text(payload.target_system_name)
+
+    if "outpost_rejected_by_ship_constraints" in edge_reasons:
+        if clipboard_copied and target_system_name:
+            return (
+                "Cash-in: odrzucilam outpost przez ograniczenia statku. "
+                f"Wybralam bezpieczny port. System w schowku: {target_system_name}."
+            )
+        return (
+            "Cash-in: odrzucilam outpost przez ograniczenia statku. "
+            "Wybralam bezpieczny port, sprawdz panel."
+        )
+
+    if clipboard_copied and target_system_name and top_profile == CASH_IN_PROFILE_SECURE:
+        return f"Cash-in: wybralam bezpieczny port. System w schowku: {target_system_name}."
+
     if edge_reasons:
         if "offline" in edge_reasons:
             return "Cash-in: tryb offline lub przerwane logi. Rekomendacja orientacyjna, sprawdź panel."
@@ -3174,6 +3324,7 @@ def trigger_cash_in_assistant(
         confidence=confidence,
         options=options,
         target_system_name=_resolve_payload_target_system_name(options),
+        target_station_name=_resolve_payload_target_station_name(options),
         skip_action={"id": "skip", "label": "Pomijam"},
         note="To jest rekomendacja orientacyjna. Ostateczna decyzja nalezy do Ciebie.",
         signature="",
@@ -3198,15 +3349,25 @@ def trigger_cash_in_assistant(
 
     risk_status = "RISK_MEDIUM" if signal == "wysoki" else "RISK_LOW"
     var_status = "VAR_HIGH" if signal == "wysoki" else "VAR_MEDIUM" if signal == "sredni" else "VAR_LOW"
+    clipboard_meta = _auto_copy_cash_in_target_system(payload)
 
     context = {
         "system": payload.system,
-        "raw_text": _strip_cashin_voice_prefix(_build_tts_line(payload)),
+        "raw_text": _strip_cashin_voice_prefix(
+            _build_tts_line(
+                payload,
+                clipboard_copied=bool(clipboard_meta.get("copied")),
+            )
+        ),
         "risk_status": risk_status,
         "var_status": var_status,
         "trust_status": payload.trust_status,
         "confidence": payload.confidence,
         "target_system_name": payload.target_system_name,
+        "target_station_name": payload.target_station_name,
+        "clipboard_target_system_attempted": bool(clipboard_meta.get("attempted")),
+        "clipboard_target_system_copied": bool(clipboard_meta.get("copied")),
+        "clipboard_target_system_reason": _as_text(clipboard_meta.get("reason")),
         "cash_in_payload": asdict(payload),
     }
     if suppress_tts:
