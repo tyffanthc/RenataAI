@@ -24,13 +24,13 @@ class F16PlayerDbSchemaAndMigrationsTests(unittest.TestCase):
             result = player_local_db.ensure_playerdb_schema(path=db_path)
 
             self.assertTrue(os.path.isfile(db_path))
-            self.assertEqual(int(result.get("schema_version") or 0), 3)
-            self.assertEqual(int(result.get("migrations_count") or 0), 3)
+            self.assertEqual(int(result.get("schema_version") or 0), 4)
+            self.assertEqual(int(result.get("migrations_count") or 0), 4)
 
             conn = sqlite3.connect(db_path)
             try:
                 user_version = int(conn.execute("PRAGMA user_version;").fetchone()[0])
-                self.assertEqual(user_version, 3)
+                self.assertEqual(user_version, 4)
 
                 tables = {
                     str(row[0])
@@ -46,6 +46,7 @@ class F16PlayerDbSchemaAndMigrationsTests(unittest.TestCase):
                     "market_snapshot_items",
                     "trade_history",
                     "cashin_history",
+                    "visited_nav_beacons",
                 }
                 self.assertTrue(expected.issubset(tables))
 
@@ -129,14 +130,14 @@ class F16PlayerDbSchemaAndMigrationsTests(unittest.TestCase):
             first = player_local_db.ensure_playerdb_schema(path=db_path)
             second = player_local_db.ensure_playerdb_schema(path=db_path)
 
-            self.assertEqual(int(first.get("schema_version") or 0), 3)
-            self.assertEqual(int(second.get("schema_version") or 0), 3)
-            self.assertEqual(int(second.get("migrations_count") or 0), 3)
+            self.assertEqual(int(first.get("schema_version") or 0), 4)
+            self.assertEqual(int(second.get("schema_version") or 0), 4)
+            self.assertEqual(int(second.get("migrations_count") or 0), 4)
 
             conn = sqlite3.connect(db_path)
             try:
                 row = conn.execute("SELECT COUNT(*) FROM schema_migrations;").fetchone()
-                self.assertEqual(int(row[0]), 3)
+                self.assertEqual(int(row[0]), 4)
             finally:
                 conn.close()
 
@@ -157,7 +158,7 @@ class F16PlayerDbSchemaAndMigrationsTests(unittest.TestCase):
                         player_local_db._PLAYERDB_SCHEMA_ENSURED_PATHS.add(
                             player_local_db._playerdb_schema_cache_key(str(path or ""))
                         )
-                    return {"schema_version": 3, "migrations_count": 3}
+                    return {"schema_version": 4, "migrations_count": 4}
 
                 with (
                     patch(

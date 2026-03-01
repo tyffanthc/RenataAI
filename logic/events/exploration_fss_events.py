@@ -9,6 +9,7 @@ import config
 from logic.utils import DEBOUNCER
 from logic.insight_dispatcher import emit_insight
 from logic import utils
+from logic import player_local_db
 from logic.utils.renata_log import log_event, log_event_throttled
 from app.state import app_state
 
@@ -361,7 +362,35 @@ def _is_passive_progress_scan(scan_type_raw: Any) -> bool:
     return scan_type in _PASSIVE_PROGRESS_SCAN_TYPES
 
 
-def _maybe_emit_passive_scan_callouts(gui_ref=None, *, scan_type: str | None = None) -> None:
+def _safe_optional_int(value: Any) -> int | None:
+    try:
+        if value is None:
+            return None
+        return int(float(value))
+    except Exception:
+        return None
+
+
+def _scan_system_address(ev: dict[str, Any] | None) -> int | None:
+    payload = ev or {}
+    return _safe_optional_int(
+        payload.get("SystemAddress")
+        or payload.get("SystemAddress64")
+        or payload.get("SystemId64")
+        or payload.get("StarSystemAddress")
+    )
+
+
+def _current_system_population() -> int | None:
+    return _safe_optional_int(config.STATE.get("current_system_population"))
+
+
+def _maybe_emit_passive_scan_callouts(
+    gui_ref=None,
+    *,
+    scan_type: str | None = None,
+    system_address: int | None = None,
+) -> None:
     """
     Passive FSS awareness path (Nav Beacon / AutoScan).
     This path must not arm exit summary (manual gate remains unchanged).
@@ -371,13 +400,44 @@ def _maybe_emit_passive_scan_callouts(gui_ref=None, *, scan_type: str | None = N
     system_name = app_state.get_current_system_name() or None
     scan_type_norm = str(scan_type or "").strip().casefold()
     is_passive = _is_passive_progress_scan(scan_type_norm)
+    visited_nav_beacon = False
+    if system_address is not None:
+        try:
+            visited_nav_beacon = bool(
+                player_local_db.is_nav_beacon_already_scanned(system_address=system_address)
+            )
+        except Exception:
+            visited_nav_beacon = False
 
     if is_passive and not FSS_PASSIVE_DATA_WARNED:
-        if DEBOUNCER.can_send("FSS_PASSIVE_DATA", 120, context=system_name):
+        if visited_nav_beacon:
+            log_event_throttled(
+                "exploration.fss.passive_data_intro_suppressed",
+                5000,
+                "FSS",
+                "passive nav-beacon intro suppressed for visited system",
+                system=str(system_name or ""),
+                system_address=system_address,
+                scan_type=scan_type_norm,
+            )
+        elif DEBOUNCER.can_send("FSS_PASSIVE_DATA", 120, context=system_name):
+            population = _current_system_population()
+            population_known_zero = (population is not None) and int(population) <= 0
+            is_offline_maps_variant = population_known_zero and scan_type_norm == "autoscan"
+            message_id = (
+                "MSG.FSS_PASSIVE_DATA_OFFLINE_MAP"
+                if is_offline_maps_variant
+                else "MSG.FSS_PASSIVE_DATA_INGESTED"
+            )
+            text = (
+                "Według moich map w tym systemie są dane obiektów."
+                if is_offline_maps_variant
+                else "Dane systemu pobrane pasywnie z boi nawigacyjnej."
+            )
             emit_insight(
-                "Dane systemu pobrane pasywnie z boi nawigacyjnej.",
+                text,
                 gui_ref=gui_ref,
-                message_id="MSG.FSS_PASSIVE_DATA_INGESTED",
+                message_id=message_id,
                 source="exploration_fss_events",
                 event_type="SYSTEM_SCANNED",
                 context=_fss_gate_context(system_name),
@@ -602,7 +662,11 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
             _check_fss_thresholds(gui_ref)
             _maybe_speak_fss_full(gui_ref, trigger_source="Scan")
         else:
-            _maybe_emit_passive_scan_callouts(gui_ref, scan_type=scan_type_norm)
+            _maybe_emit_passive_scan_callouts(
+                gui_ref,
+                scan_type=scan_type_norm,
+                system_address=_scan_system_address(ev),
+            )
 
         # --- S2-LOGIC-05: First Discovery detection ---
         was_discovered = ev.get("WasDiscovered")

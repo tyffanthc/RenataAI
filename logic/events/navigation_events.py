@@ -30,6 +30,63 @@ def _log_nav_fallback(key: str, message: str, exc: Exception, *, interval_ms: in
     )
 
 
+def _safe_optional_int(value) -> int | None:
+    try:
+        if value is None:
+            return None
+        return int(float(value))
+    except Exception:
+        return None
+
+
+def _system_address_from_event(ev: Dict[str, object]) -> int | None:
+    return _safe_optional_int(
+        ev.get("SystemAddress")
+        or ev.get("SystemAddress64")
+        or ev.get("SystemId64")
+        or ev.get("StarSystemAddress")
+    )
+
+
+def _mark_nav_beacon_scanned(
+    *,
+    system_address: int | None,
+    system_name: str | None,
+    source: str,
+    timestamp: str | None = None,
+) -> None:
+    if system_address is None:
+        return
+    try:
+        from logic import player_local_db
+
+        out = player_local_db.mark_nav_beacon_as_scanned(
+            system_address=system_address,
+            system_name=system_name,
+            last_scan_utc=timestamp,
+        )
+        if bool((out or {}).get("ok")):
+            log_event_throttled(
+                "nav.visited_nav_beacon.marked",
+                1000,
+                "NAV",
+                "visited nav beacon marked",
+                system_address=int(system_address),
+                system=str(system_name or ""),
+                source=str(source or "unknown"),
+            )
+    except Exception as exc:
+        _log_nav_fallback(
+            "visited_nav_beacon.mark",
+            "failed to mark visited nav beacon",
+            exc,
+            interval_ms=5000,
+            system_address=system_address,
+            system=system_name,
+            source=source,
+        )
+
+
 def _copy_pending_station_clipboard_on_arrival(current_system: str, gui_ref=None) -> None:
     system_norm = str(current_system or "").strip()
     if not system_norm:
@@ -155,13 +212,27 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
         or ev.get("SystemName")
         or ev.get("StarSystemName")
     )
+    population = _safe_optional_int(ev.get("Population"))
+    if population is None:
+        config.STATE.pop("current_system_population", None)
+    else:
+        config.STATE["current_system_population"] = max(0, int(population))
+
     if sysname:
+        system_address = _system_address_from_event(ev)
         star_pos = ev.get("StarPos")
         if isinstance(star_pos, (list, tuple)) and len(star_pos) >= 3:
             app_state.set_star_pos(star_pos)
         # reset FSS + discovery/footfall przy wej+Ťciu do nowego systemu
         reset_fss_progress(preserve_exobio=is_bootstrap_replay)
         app_state.set_system(sysname)
+        if typ == "FSDJump" and int(population or 0) > 0:
+            _mark_nav_beacon_scanned(
+                system_address=system_address,
+                system_name=str(sysname),
+                source="journal.fsdjump.population",
+                timestamp=str(ev.get("timestamp") or ""),
+            )
         try:
             app_state.update_spansh_milestone_on_system(sysname)
         except Exception as exc:
@@ -271,6 +342,22 @@ def handle_location_fsdjump_carrier(ev: Dict[str, object], gui_ref=None):
                     exc,
                     interval_ms=7000,
                 )
+
+
+def handle_nav_beacon_scan(ev: Dict[str, object], gui_ref=None) -> None:
+    system_name = (
+        ev.get("StarSystem")
+        or ev.get("SystemName")
+        or ev.get("StarSystemName")
+        or app_state.get_current_system_name()
+    )
+    system_address = _system_address_from_event(ev)
+    _mark_nav_beacon_scanned(
+        system_address=system_address,
+        system_name=str(system_name or ""),
+        source="journal.navbeaconscan",
+        timestamp=str(ev.get("timestamp") or ""),
+    )
 
 def handle_docked(ev: Dict[str, object], gui_ref=None):
     """

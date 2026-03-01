@@ -491,6 +491,17 @@ class EventHandler:
                 )
             return
 
+        if typ == "NavBeaconScan":
+            try:
+                navigation_events.handle_nav_beacon_scan(ev, gui_ref)
+            except Exception as exc:
+                _log_router_fallback(
+                    "journal.nav_beacon_scan",
+                    "journal event: NavBeaconScan handler failed",
+                    exc,
+                    event=str(typ),
+                )
+
         if typ == "Scan":
             # Feed value engine first so F4 summary built on full-scan includes the current body.
             try:

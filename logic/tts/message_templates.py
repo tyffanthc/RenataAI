@@ -64,6 +64,10 @@ TTS_TEMPLATE_REGISTRY: Dict[str, dict[str, object]] = {
         "template": "Dane systemu pobrane pasywnie z boi nawigacyjnej.",
         "raw_text_first": False,
     },
+    "MSG.FSS_PASSIVE_DATA_OFFLINE_MAP": {
+        "template": "Według moich map w tym systemie są dane obiektów.",
+        "raw_text_first": False,
+    },
     "MSG.FSS_PASSIVE_SYSTEM_COMPLETE": {
         "template": "Pełny obraz ciał systemu dostępny pasywnie. Bez ręcznego skanowania FSS.",
         "raw_text_first": False,

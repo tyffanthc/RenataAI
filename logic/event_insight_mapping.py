@@ -165,6 +165,16 @@ INSIGHT_CLASS_BY_MESSAGE_ID: Dict[str, InsightClassSpec] = {
         default_cooldown_seconds=120.0,
         dedup_template="fss_passive_data:{system}",
     ),
+    "MSG.FSS_PASSIVE_DATA_OFFLINE_MAP": InsightClassSpec(
+        class_id="FSS_PASSIVE_DATA_OFFLINE_MAP",
+        canonical_event="SYSTEM_SCANNED",
+        kind="exploration",
+        decision_space="scan_progress",
+        default_priority="P3_LOW",
+        default_cooldown_scope="entity",
+        default_cooldown_seconds=120.0,
+        dedup_template="fss_passive_data:{system}",
+    ),
     "MSG.FSS_PASSIVE_SYSTEM_COMPLETE": InsightClassSpec(
         class_id="FSS_PASSIVE_SYSTEM_COMPLETE",
         canonical_event="SYSTEM_SCANNED",
@@ -672,6 +682,12 @@ TTS_POLICY_BY_MESSAGE_ID: Dict[str, TTSPolicySpec] = {
     ),
     "MSG.FSS_PASSIVE_DATA_INGESTED": TTSPolicySpec(
         message_id="MSG.FSS_PASSIVE_DATA_INGESTED",
+        intent="context",
+        category="explore",
+        cooldown_policy="BYPASS_GLOBAL",
+    ),
+    "MSG.FSS_PASSIVE_DATA_OFFLINE_MAP": TTSPolicySpec(
+        message_id="MSG.FSS_PASSIVE_DATA_OFFLINE_MAP",
         intent="context",
         category="explore",
         cooldown_policy="BYPASS_GLOBAL",

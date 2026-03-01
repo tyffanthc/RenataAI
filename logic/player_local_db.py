@@ -11,10 +11,11 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterator
 
-PLAYERDB_SCHEMA_VERSION = 3
+PLAYERDB_SCHEMA_VERSION = 4
 PLAYERDB_SCHEMA_NAME_V1 = "player_local_db_v1"
 PLAYERDB_SCHEMA_NAME_V2 = "player_local_db_v2_market_snapshot_unique"
 PLAYERDB_SCHEMA_NAME_V3 = "player_local_db_v3_system_star_metadata"
+PLAYERDB_SCHEMA_NAME_V4 = "player_local_db_v4_visited_nav_beacons"
 DEFAULT_FIXTURE_PREFIXES: tuple[str, ...] = (
     "F19_",
     "F20_",
@@ -574,6 +575,24 @@ def _migrate_to_v3(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE systems ADD COLUMN is_black_hole INTEGER NOT NULL DEFAULT 0;")
 
 
+def _migrate_to_v4(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS visited_nav_beacons (
+            system_address INTEGER PRIMARY KEY,
+            system_name TEXT NOT NULL COLLATE NOCASE,
+            last_scan_utc TEXT NOT NULL
+        );
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_visited_nav_beacons_last_scan_utc ON visited_nav_beacons(last_scan_utc DESC);"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_visited_nav_beacons_system_name ON visited_nav_beacons(system_name);"
+    )
+
+
 def ensure_playerdb_schema(*, path: str | None = None) -> dict[str, Any]:
     db_path = str(path or default_playerdb_path())
     created_new_file = not os.path.isfile(db_path)
@@ -598,6 +617,11 @@ def ensure_playerdb_schema(*, path: str | None = None) -> dict[str, Any]:
                 _record_migration(conn, version=3, name=PLAYERDB_SCHEMA_NAME_V3)
                 _write_user_version(conn, 3)
                 version = 3
+            if version < 4:
+                _migrate_to_v4(conn)
+                _record_migration(conn, version=4, name=PLAYERDB_SCHEMA_NAME_V4)
+                _write_user_version(conn, 4)
+                version = 4
             conn.commit()
         except Exception:
             conn.rollback()
@@ -1081,6 +1105,74 @@ def ingest_star_metadata_event(
         "ingested_system": True,
         "path": db_path,
     }
+
+
+def mark_nav_beacon_as_scanned(
+    system_address: Any,
+    system_name: Any,
+    *,
+    path: str | None = None,
+    last_scan_utc: Any | None = None,
+) -> dict[str, Any]:
+    addr = _as_optional_int(system_address)
+    if addr is None:
+        return {
+            "ok": False,
+            "reason": "missing_system_address",
+            "system_address": system_address,
+            "system_name": _as_text(system_name),
+        }
+    name = _as_text(system_name) or "UNKNOWN_SYSTEM"
+    ts = _safe_ts(last_scan_utc)
+    db_path = str(path or default_playerdb_path())
+
+    with playerdb_connection(path=db_path, ensure_schema=True) as conn:
+        conn.execute("BEGIN;")
+        try:
+            conn.execute(
+                """
+                INSERT INTO visited_nav_beacons(system_address, system_name, last_scan_utc)
+                VALUES (?, ?, ?)
+                ON CONFLICT(system_address) DO UPDATE SET
+                    system_name = excluded.system_name,
+                    last_scan_utc = excluded.last_scan_utc;
+                """,
+                (int(addr), name, ts),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    return {
+        "ok": True,
+        "system_address": int(addr),
+        "system_name": name,
+        "last_scan_utc": ts,
+        "path": db_path,
+    }
+
+
+def is_nav_beacon_already_scanned(
+    system_address: Any,
+    *,
+    path: str | None = None,
+) -> bool:
+    addr = _as_optional_int(system_address)
+    if addr is None:
+        return False
+    db_path = str(path or default_playerdb_path())
+    with playerdb_connection(path=db_path, ensure_schema=True) as conn:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM visited_nav_beacons
+            WHERE system_address = ?
+            LIMIT 1;
+            """,
+            (int(addr),),
+        ).fetchone()
+    return bool(row)
 
 
 def ingest_market_json(
