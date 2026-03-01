@@ -30,7 +30,7 @@ Renata to asystent decyzyjny, nie autopilot.
 - Runtime stability hardening: FIFO worker TTS, timeout guards i lock-safe odczyty stanu pod dlugie sesje bez przyciec.
 - Konfigurowalne UI tabel (Treeview, kolumny, sort, copy/export) + spojny globalny styl scrollbarow.
 
-## Najwazniejsze zmiany od v0.9.4 do v0.9.5
+## Najwazniejsze zmiany od v0.9.4 do v0.9.5 (wg LAST_TICKET)
 - Cash-In (F11-F17, F32-F33): pelny pipeline kandydatow stacji, profile semantyczne, ship-size constraints, clipboard auto-target i quality gates.
 - Dziennik/Logbook (F8-F10, F19): `Entry` offline-first, feed Journal z whitelist, mapowanie event->entry, cache/restore i UX klas/filtrow.
 - Player Local DB (F16 + F31 + F34): rozszerzone migracje/schema (`v1..v4`), bridge danych runtime, star metadata, pamiec visited nav beacons.
