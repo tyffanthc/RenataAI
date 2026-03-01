@@ -28,6 +28,7 @@ FSS_TOTAL_BODIES = 0       # ile cial w systemie (z FSSDiscoveryScan)
 FSS_DISCOVERED = 0         # ile juz "zaliczonych" skanow
 FSS_DISCOVERED_MANUAL = 0  # ile cial zaliczonych przez manualny FSS (Detailed)
 FSS_SCANNED_BODIES = set()  # BodyName/BodyID, zeby nie liczyc 2x
+FSS_NON_BODY_SCANNED_KEYS = set()  # Belt/barycentre itp. skany odfiltrowane z progresu N/N
 
 FSS_25_WARNED = False
 FSS_50_WARNED = False
@@ -238,6 +239,7 @@ def reset_fss_progress(*, preserve_exobio: bool = False) -> None:
     - resetuje flagi first footfall.
     """
     global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_DISCOVERED_MANUAL, FSS_SCANNED_BODIES
+    global FSS_NON_BODY_SCANNED_KEYS
     global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED, FSS_FULL_WARNED
     global FSS_SIGNALS_COMPLETE_WARNED
     global FSS_HAD_DISCOVERY_SCAN, FSS_HAD_MANUAL_PROGRESS_SCAN
@@ -254,6 +256,7 @@ def reset_fss_progress(*, preserve_exobio: bool = False) -> None:
     FSS_DISCOVERED = 0
     FSS_DISCOVERED_MANUAL = 0
     FSS_SCANNED_BODIES = set()
+    FSS_NON_BODY_SCANNED_KEYS = set()
     FSS_25_WARNED = False
     FSS_50_WARNED = False
     FSS_75_WARNED = False
@@ -287,10 +290,12 @@ def reset_fss_progress(*, preserve_exobio: bool = False) -> None:
 
 def _set_fss_total_bodies(count: int):
     global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_DISCOVERED_MANUAL, FSS_SCANNED_BODIES
+    global FSS_NON_BODY_SCANNED_KEYS
     FSS_TOTAL_BODIES = max(count, 0)
     FSS_DISCOVERED = 0
     FSS_DISCOVERED_MANUAL = 0
     FSS_SCANNED_BODIES = set()
+    FSS_NON_BODY_SCANNED_KEYS = set()
 
 
 def _scan_body_label(ev: Dict[str, Any]) -> Any:
@@ -381,6 +386,28 @@ def _scan_system_address(ev: dict[str, Any] | None) -> int | None:
     )
 
 
+def _runtime_system_address() -> int | None:
+    candidates = (
+        getattr(app_state, "current_system_address", None),
+        config.STATE.get("current_system_address"),
+        config.STATE.get("sys_addr"),
+        config.STATE.get("system_address"),
+        config.STATE.get("SystemAddress"),
+    )
+    for raw in candidates:
+        parsed = _safe_optional_int(raw)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _resolve_scan_system_address(ev: dict[str, Any] | None) -> int | None:
+    direct = _scan_system_address(ev)
+    if direct is not None:
+        return direct
+    return _runtime_system_address()
+
+
 def _current_system_population() -> int | None:
     return _safe_optional_int(config.STATE.get("current_system_population"))
 
@@ -419,6 +446,12 @@ def _maybe_emit_passive_scan_callouts(
                 system=str(system_name or ""),
                 system_address=system_address,
                 scan_type=scan_type_norm,
+            )
+            log_event_throttled(
+                "NAV_DEBUG",
+                0,
+                "NAV",
+                f"System {system_name!r} already scanned: suppressing beacon callout (addr={system_address})",
             )
         elif DEBOUNCER.can_send("FSS_PASSIVE_DATA", 120, context=system_name):
             population = _current_system_population()
@@ -615,13 +648,35 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
     body_name = _scan_body_label(ev)
     body_keys = _scan_body_keys(ev)
 
-    global FSS_SCANNED_BODIES, FSS_DISCOVERED, FSS_DISCOVERED_MANUAL, FSS_HAD_MANUAL_PROGRESS_SCAN
+    global FSS_SCANNED_BODIES, FSS_NON_BODY_SCANNED_KEYS
+    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_DISCOVERED_MANUAL, FSS_HAD_MANUAL_PROGRESS_SCAN
     global FSS_LAST_SCAN_TYPE, FSS_LAST_MANUAL_SCAN_TYPE
     global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES, FIRST_SYS_OPPORTUNITY_WARNED
 
     if not body_name:
         return
     if not _is_real_celestial_body(ev):
+        # Belt clusters and barycentres inflate BodyCount from FSSDiscoveryScan.
+        # Track each unique non-body and reduce FSS_TOTAL_BODIES accordingly so
+        # the progress percentage stays aligned with the in-game Bodies N/N counter.
+        non_body_keys = _scan_body_keys(ev)
+        if not non_body_keys:
+            non_body_label = _scan_body_label(ev)
+            if non_body_label:
+                non_body_keys = {f"nonbody:{str(non_body_label).strip().casefold()}"}
+        if non_body_keys:
+            already_excluded = any(k in FSS_NON_BODY_SCANNED_KEYS for k in non_body_keys)
+            if not already_excluded and FSS_TOTAL_BODIES > 0:
+                FSS_NON_BODY_SCANNED_KEYS.update(non_body_keys)
+                FSS_TOTAL_BODIES = max(0, FSS_TOTAL_BODIES - 1)
+                log_event_throttled(
+                    "exploration.fss.non_body_excluded",
+                    5000,
+                    "FSS",
+                    "non-body (belt/barycentre) excluded from FSS total; adjusted BodyCount",
+                    body=str(_scan_body_label(ev) or ""),
+                    total_after=int(FSS_TOTAL_BODIES),
+                )
         return
     scan_type_norm = str(ev.get("ScanType") or "").strip().casefold()
     if scan_type_norm:
@@ -665,7 +720,7 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
             _maybe_emit_passive_scan_callouts(
                 gui_ref,
                 scan_type=scan_type_norm,
-                system_address=_scan_system_address(ev),
+                system_address=_resolve_scan_system_address(ev),
             )
 
         # --- S2-LOGIC-05: First Discovery detection ---
