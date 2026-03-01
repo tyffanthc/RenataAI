@@ -37,6 +37,7 @@ class CashInAssistantPayload:
     skip_action: dict[str, str]
     note: str
     signature: str
+    target_system_name: str = ""
     service: str = "uc"
     payout_contract: dict[str, Any] = field(default_factory=dict)
     station_candidates: list[dict[str, Any]] = field(default_factory=list)
@@ -1259,6 +1260,16 @@ def resolve_cash_in_option_target(option: dict[str, Any] | None) -> dict[str, st
         "target_is_real": is_real,
         "target_quality": target_quality,
     }
+
+
+def _resolve_payload_target_system_name(options: list[dict[str, Any]]) -> str:
+    for item in options or []:
+        if not isinstance(item, dict):
+            continue
+        target = resolve_cash_in_option_target(item)
+        if bool(target.get("target_is_real")):
+            return _as_text(target.get("target_system"))
+    return ""
 
 
 def handoff_cash_in_to_route_intent(
@@ -3012,6 +3023,7 @@ def trigger_cash_in_assistant(
         trust_status=trust_status,
         confidence=confidence,
         options=options,
+        target_system_name=_resolve_payload_target_system_name(options),
         skip_action={"id": "skip", "label": "Pomijam"},
         note="To jest rekomendacja orientacyjna. Ostateczna decyzja nalezy do Ciebie.",
         signature="",
@@ -3044,6 +3056,7 @@ def trigger_cash_in_assistant(
         "var_status": var_status,
         "trust_status": payload.trust_status,
         "confidence": payload.confidence,
+        "target_system_name": payload.target_system_name,
         "cash_in_payload": asdict(payload),
     }
     if suppress_tts:
