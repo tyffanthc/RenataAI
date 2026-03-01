@@ -27,3 +27,5 @@ docs/internal/
 docs/flow/private/
 docs/Flow/private/
 docs/README_TRANSFER.md
+.claude/
+.vscode/
