@@ -3,6 +3,7 @@ import threading
 import pandas as pd
 from datetime import datetime
 import time
+import math
 
 from logic import utils
 from logic.science_data import load_science_data
@@ -176,6 +177,7 @@ class AppState:
         self.route_profile: str = saved_route_profile
         self.is_off_route: bool = bool(config.STATE.get("route_is_off_route", False))
         self.needs_large_pad: bool = bool(config.STATE.get("needs_large_pad", False))
+        self.fuel_capacity: float | None = self._safe_positive_float(config.STATE.get("fuel_capacity"))
         self.inventory = config.STATE.get("inventory", {})
         self.pending_station_clipboard_target_system: str | None = None
         self.pending_station_clipboard_station: str | None = None
@@ -328,6 +330,46 @@ class AppState:
             return int(value)
         except Exception:
             return None
+
+    @staticmethod
+    def _safe_positive_float(value) -> float | None:
+        try:
+            if value is None:
+                return None
+            out = float(value)
+        except Exception:
+            return None
+        if not math.isfinite(out):
+            return None
+        if out <= 0.0:
+            return None
+        return float(out)
+
+    @classmethod
+    def _extract_loadout_fuel_capacity(cls, event: dict | None) -> float | None:
+        if not isinstance(event, dict):
+            return None
+
+        raw_capacity = event.get("FuelCapacity")
+        if isinstance(raw_capacity, dict):
+            main = cls._safe_positive_float(
+                raw_capacity.get("Main")
+                or raw_capacity.get("main")
+                or raw_capacity.get("FuelMain")
+            )
+            reservoir = cls._safe_positive_float(
+                raw_capacity.get("Reserve")
+                or raw_capacity.get("Reservoir")
+                or raw_capacity.get("reserve")
+                or raw_capacity.get("reservoir")
+                or raw_capacity.get("FuelReservoir")
+            )
+            total = float(main or 0.0) + float(reservoir or 0.0)
+            if total > 0.0:
+                return float(total)
+            return None
+
+        return cls._safe_positive_float(raw_capacity)
 
     @staticmethod
     def _status_flag(status: dict, bit: int) -> bool:
@@ -738,6 +780,20 @@ class AppState:
             if event_name == "Loadout":
                 modules = ev.get("Modules")
                 self._mode_signal_mining_loadout = self._detect_mining_loadout_from_modules(modules)
+
+                parsed_capacity = self._extract_loadout_fuel_capacity(ev)
+                if parsed_capacity is not None:
+                    prev_capacity = self.fuel_capacity
+                    self.fuel_capacity = float(parsed_capacity)
+                    config.STATE["fuel_capacity"] = float(parsed_capacity)
+                    if prev_capacity is None or abs(float(prev_capacity) - float(parsed_capacity)) > 0.0001:
+                        log_event_throttled(
+                            "state.fuel_capacity",
+                            500,
+                            "STATE",
+                            f"fuel_capacity={float(parsed_capacity):.3f} source={source}.loadout",
+                        )
+
                 ship_type_raw = str(
                     ev.get("Ship")
                     or ev.get("ShipType")
