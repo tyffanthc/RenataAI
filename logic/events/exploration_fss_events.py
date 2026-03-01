@@ -557,6 +557,10 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
     if scan_type_norm:
         FSS_LAST_SCAN_TYPE = scan_type_norm
 
+    # High-value hint should be evaluated for every real body Scan payload,
+    # including follow-up Detailed scans on already-counted bodies.
+    check_high_value_planet(ev, gui_ref)
+
     # Jesli nie znamy jeszcze calkowitej liczby cial w systemie,
     # nie liczymy procentow - ale i tak mozemy policzyc discovery.
     # Czy to pierwszy skan w systemie (przed dodaniem do setu)?
@@ -589,7 +593,6 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
             _maybe_speak_fss_full(gui_ref, trigger_source="Scan")
         else:
             _maybe_emit_passive_scan_callouts(gui_ref, scan_type=scan_type_norm)
-        check_high_value_planet(ev, gui_ref)
 
         # --- S2-LOGIC-05: First Discovery detection ---
         was_discovered = ev.get("WasDiscovered")

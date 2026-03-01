@@ -49,6 +49,29 @@ class F30FssMilestoneCatchupAndBodyDedupeTests(unittest.TestCase):
 
         self.assertEqual(int(fss_events.FSS_DISCOVERED or 0), 1)
 
+    def test_handle_scan_runs_high_value_check_for_followup_detailed_on_same_body(self) -> None:
+        fss_events.FSS_TOTAL_BODIES = 10
+
+        with (
+            patch("logic.events.exploration_fss_events._check_fss_thresholds"),
+            patch("logic.events.exploration_fss_events._maybe_speak_fss_full"),
+            patch("logic.events.exploration_fss_events.emit_insight"),
+            patch("logic.events.exploration_fss_events.check_high_value_planet") as high_value_mock,
+        ):
+            # First passively discovered.
+            fss_events.handle_scan(
+                {"event": "Scan", "BodyName": "F30 A 1", "BodyID": 7, "ScanType": "AutoScan"},
+                gui_ref=None,
+            )
+            # Follow-up detailed scan for the same body should still run high-value evaluation.
+            fss_events.handle_scan(
+                {"event": "Scan", "BodyName": "F30 A 1", "BodyID": 7, "ScanType": "Detailed"},
+                gui_ref=None,
+            )
+
+        self.assertEqual(int(fss_events.FSS_DISCOVERED or 0), 1)
+        self.assertEqual(high_value_mock.call_count, 2)
+
     def test_late_bodycount_syncs_milestone_flags_without_retro_callouts(self) -> None:
         # Simulate partial scan progress collected before FSSDiscoveryScan delivered BodyCount.
         fss_events.FSS_TOTAL_BODIES = 0
