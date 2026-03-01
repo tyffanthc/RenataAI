@@ -103,6 +103,28 @@ class F11StationCandidateContractTests(unittest.TestCase):
         self.assertEqual([item.get("name") for item in uc_only], ["A"])
         self.assertEqual([item.get("name") for item in vista_only], ["B"])
 
+    def test_merge_station_candidates_uses_station_name_when_name_missing(self) -> None:
+        rows = [
+            {
+                "name": "",
+                "station_name": "Alpha Port",
+                "system_name": "Diagaundri",
+                "source": "OFFLINE_INDEX",
+                "distance_ly": 10.0,
+            },
+            {
+                "name": "",
+                "station_name": "Beta Port",
+                "system_name": "Diagaundri",
+                "source": "OFFLINE_INDEX",
+                "distance_ly": 12.0,
+            },
+        ]
+        merged = merge_station_candidates(rows, limit=10)
+        self.assertEqual(len(merged), 2)
+        names = {str(item.get("station_name") or item.get("name") or "") for item in merged}
+        self.assertEqual(names, {"Alpha Port", "Beta Port"})
+
     def test_trigger_cash_in_assistant_includes_station_candidates_from_payload(self) -> None:
         payload = {
             "system": "F11_STATION_CONTRACT_SYSTEM",
@@ -179,4 +201,3 @@ class F11StationCandidateContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

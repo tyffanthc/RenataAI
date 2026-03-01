@@ -229,18 +229,22 @@ def normalize_station_candidate(
     return candidate
 
 
+def _candidate_station_name(candidate: Dict[str, Any]) -> str:
+    return _as_text(candidate.get("station_name") or candidate.get("name"))
+
+
 def _candidate_key(candidate: Dict[str, Any]) -> str:
     market_id = _as_text(candidate.get("market_id"))
     if market_id:
         return f"market::{market_id.casefold()}"
     system_name = _as_text(candidate.get("system_name")).casefold()
-    station_name = _as_text(candidate.get("name")).casefold()
+    station_name = _candidate_station_name(candidate).casefold()
     return f"{system_name}::{station_name}"
 
 
 def _candidate_score(candidate: Dict[str, Any]) -> int:
     score = 0
-    if _as_text(candidate.get("name")):
+    if _candidate_station_name(candidate):
         score += 2
     if _as_text(candidate.get("system_name")):
         score += 2
@@ -324,6 +328,8 @@ def _merge_candidate_pair(current: Dict[str, Any], incoming: Dict[str, Any]) -> 
         out["market_id"] = base.get("market_id")
     if not _as_text(out.get("station_name")) and _as_text(base.get("station_name")):
         out["station_name"] = _as_text(base.get("station_name"))
+    if not _as_text(out.get("name")):
+        out["name"] = _candidate_station_name(base)
     return out
 
 
@@ -352,7 +358,7 @@ def merge_station_candidates(
         dist_ls = row.get("distance_ls")
         ly = float(dist_ly) if dist_ly is not None else 1e18
         ls = float(dist_ls) if dist_ls is not None else 1e18
-        return (ly, ls, _as_text(row.get("name")).casefold())
+        return (ly, ls, _candidate_station_name(row).casefold())
 
     rows.sort(key=_sort_key)
     if limit > 0:

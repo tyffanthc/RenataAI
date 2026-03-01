@@ -90,6 +90,47 @@ class F32CashInCollectThenRankContractTests(unittest.TestCase):
         out = collect_then_rank_station_candidates(source_rows={}, default_system="Sol", limit=5)
         self.assertEqual(out, [])
 
+    def test_collect_then_rank_prefers_spansh_edsm_on_freshness_tie(self) -> None:
+        rows = {
+            "OFFLINE_INDEX": [
+                {
+                    "market_id": "322199991",
+                    "name": "Legacy Offline Port",
+                    "system_name": "Diagaundri",
+                    "services": {"has_uc": True},
+                    "distance_ly": 18.0,
+                    "distance_ls": 4200,
+                    "freshness_ts": "2026-03-01T12:00:00Z",
+                    "source": "OFFLINE_INDEX",
+                }
+            ],
+            "EDSM": [
+                {
+                    "market_id": "322199991",
+                    "name": "Live EDSM Port",
+                    "system_name": "Diagaundri",
+                    "services": {"has_uc": True},
+                    "distance_ly": 19.0,
+                    "distance_ls": 4300,
+                    "freshness_ts": "2026-03-01T12:00:00Z",
+                    "source": "EDSM",
+                }
+            ],
+        }
+
+        out = collect_then_rank_station_candidates(
+            source_rows=rows,
+            default_system="Diagaundri",
+            limit=10,
+        )
+
+        self.assertEqual(len(out), 1)
+        row = dict(out[0])
+        # Tie on freshness_ts -> source preference picks live provider (EDSM/SPANSH) over offline.
+        self.assertEqual(str(row.get("name") or ""), "Live EDSM Port")
+        self.assertIn("EDSM", str(row.get("source") or ""))
+        self.assertIn("OFFLINE_INDEX", str(row.get("source") or ""))
+
 
 if __name__ == "__main__":
     unittest.main()
