@@ -275,7 +275,7 @@ class F32QualityGatesAndSmokeTests(unittest.TestCase):
         self.assertIn("OFFLINE_INDEX", source_union)
 
         profiles = [str(item).strip().upper() for item in (ranking_meta.get("profiles") or [])]
-        self.assertEqual(profiles, ["SECURE_PORT", "NEAREST", "CARRIER_FRIENDLY"])
+        self.assertEqual(profiles, ["SECURE", "NEAREST", "EXPRESS", "PLANETARY_VISTA"])
         self.assertEqual(str(structured.get("target_system_name") or ""), "F32_PLAYER_SYS")
         self.assertEqual(str(ctx.get("target_system_name") or ""), "F32_PLAYER_SYS")
 

@@ -55,12 +55,12 @@ class F17TtsClickAndCashInDecisionTests(unittest.TestCase):
 
     def test_set_intent_emits_profile_tts(self) -> None:
         with patch("logic.insight_dispatcher.emit_insight") as emit_mock:
-            self.app.on_cash_in_assistant_action("set_intent", {"profile": "CARRIER_FRIENDLY"})
+            self.app.on_cash_in_assistant_action("set_intent", {"profile": "EXPRESS"})
 
-        self.assertTrue(any("wybrano profil CARRIER_FRIENDLY" in line for line in self.app.status_lines))
+        self.assertTrue(any("wybrano profil EXPRESS" in line for line in self.app.status_lines))
         self.assertEqual(emit_mock.call_count, 1)
         ctx = dict(emit_mock.call_args.kwargs.get("context") or {})
-        self.assertIn("Wybrano profil CARRIER_FRIENDLY", str(ctx.get("raw_text") or ""))
+        self.assertIn("Wybrano profil EXPRESS", str(ctx.get("raw_text") or ""))
 
     def test_set_route_emits_tts_and_arms_station_copy(self) -> None:
         with (
@@ -112,7 +112,7 @@ class F17TtsClickAndCashInDecisionTests(unittest.TestCase):
             self.app.on_cash_in_assistant_action(
                 "set_route",
                 {
-                    "profile": "CARRIER_FRIENDLY",
+                    "profile": "EXPRESS",
                     "target": {"system_name": "F17_NEUTRON_SYS", "name": "F17 Neutron Hub"},
                 },
             )
@@ -142,7 +142,7 @@ class F17TtsClickAndCashInDecisionTests(unittest.TestCase):
             self.app.on_cash_in_assistant_action(
                 "set_route",
                 {
-                    "profile": "CARRIER_FRIENDLY",
+                    "profile": "EXPRESS",
                     "target": {"system_name": "F17_NEUTRON_SYS", "name": "F17 Neutron Hub"},
                 },
             )

@@ -18,6 +18,8 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
         app_state.current_station = ""
         config.config._settings["cash_in.avoid_carriers_for_uc"] = True
         config.config._settings["cash_in.carrier_ok_for_fast_mode"] = True
+        config.config._settings["cash_in.express_max_distance_ls"] = 5_000.0
+        config.config._settings["cash_in.planetary_vista_max_gravity_g"] = 2.0
         config.config._settings["cash_in.hutton_guard_ls_threshold"] = 500_000
         config.config._settings["cash_in.hutton_guard_score_penalty"] = 18
 
@@ -36,7 +38,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
             freshness_ts="2026-02-20T10:00:00Z",
         )
 
-    def test_safe_prefers_non_carrier_for_uc_and_fast_can_pick_carrier(self) -> None:
+    def test_nearest_allows_carrier_and_express_prefers_short_ls(self) -> None:
         candidates = [
             {
                 "name": "Safe Station",
@@ -44,8 +46,9 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
                 "type": "station",
                 "services": {"has_uc": True, "has_vista": False},
                 "distance_ly": 18.0,
-                "distance_ls": 2_000.0,
+                "distance_ls": 400.0,
                 "source": "EDSM",
+                "security": "high",
             },
             {
                 "name": "Fast Carrier",
@@ -53,7 +56,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
                 "type": "fleet_carrier",
                 "services": {"has_uc": True, "has_vista": False},
                 "distance_ly": 8.0,
-                "distance_ls": 2_000.0,
+                "distance_ls": 2_200.0,
                 "source": "SPANSH",
             },
             {
@@ -73,10 +76,10 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
             trust_status="TRUST_HIGH",
             confidence="high",
         )
-        safe = next(item for item in options if item.get("profile") == "NEAREST")
-        fast = next(item for item in options if item.get("profile") == "CARRIER_FRIENDLY")
-        self.assertEqual(((safe.get("target") or {}).get("name") or ""), "Safe Station")
-        self.assertEqual(((fast.get("target") or {}).get("name") or ""), "Fast Carrier")
+        nearest = next(item for item in options if item.get("profile") == "NEAREST")
+        express = next(item for item in options if item.get("profile") == "EXPRESS")
+        self.assertEqual(((nearest.get("target") or {}).get("name") or ""), "Fast Carrier")
+        self.assertEqual(((express.get("target") or {}).get("name") or ""), "Safe Station")
         self.assertEqual(meta.get("hard_filter_count"), 2)
 
     def test_fast_respects_carrier_toggle(self) -> None:
@@ -108,7 +111,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
             trust_status="TRUST_HIGH",
             confidence="high",
         )
-        fast = next(item for item in options if item.get("profile") == "CARRIER_FRIENDLY")
+        fast = next(item for item in options if item.get("profile") == "EXPRESS")
         self.assertEqual(((fast.get("target") or {}).get("name") or ""), "Safe Station")
 
     def test_hutton_guard_adds_warning_without_rejecting_candidate(self) -> None:
@@ -146,6 +149,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
                 "distance_ly": 0.0,
                 "distance_ls": 0.0,
                 "source": "RUNTIME_LOCAL",
+                "security": "high",
             },
             {
                 "name": "Away Station",
@@ -155,6 +159,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
                 "distance_ly": 12.0,
                 "distance_ls": 1_000.0,
                 "source": "EDSM",
+                "security": "medium",
             },
         ]
         options, meta = cash_in_assistant._build_profiled_options(
@@ -164,7 +169,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
             trust_status="TRUST_HIGH",
             confidence="high",
         )
-        secure = next(item for item in options if item.get("profile") == "SECURE_PORT")
+        secure = next(item for item in options if item.get("profile") == "SECURE")
         self.assertEqual(((secure.get("target") or {}).get("name") or ""), "Dock Hub")
         self.assertEqual(secure.get("eta_minutes"), 0)
         self.assertFalse(bool(secure.get("secure_fallback_to_safe")))
@@ -192,6 +197,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
                 "distance_ly": 11.0,
                 "distance_ls": 900.0,
                 "source": "EDSM",
+                "security": "low",
             },
         ]
         options, meta = cash_in_assistant._build_profiled_options(
@@ -201,7 +207,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
             trust_status="TRUST_HIGH",
             confidence="high",
         )
-        secure = next(item for item in options if item.get("profile") == "SECURE_PORT")
+        secure = next(item for item in options if item.get("profile") == "SECURE")
         self.assertEqual(((secure.get("target") or {}).get("name") or ""), "Safe UC")
         self.assertTrue(bool(secure.get("secure_fallback_to_safe")))
         self.assertTrue(bool(meta.get("secure_fallback_to_safe")))
@@ -241,7 +247,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
         first = dict(enriched[0])
         self.assertEqual(first.get("ui_contract_version"), "F11_UI_V1")
         ui = dict(first.get("ui_contract") or {})
-        self.assertIn(ui.get("label"), {"NEAREST", "CARRIER_FRIENDLY", "SECURE_PORT"})
+        self.assertIn(ui.get("label"), {"NEAREST", "SECURE", "EXPRESS", "PLANETARY_VISTA"})
         self.assertIn("target", ui)
         self.assertIn("payout", ui)
         self.assertIn("eta", ui)
@@ -280,6 +286,59 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
         payout_ui = dict(ui.get("payout") or {})
         self.assertEqual(str(payout_ui.get("assumption_label") or ""), "assumption")
         self.assertTrue(bool(str(payout_ui.get("freshness_ts") or "").strip()))
+
+    def test_planetary_vista_profile_prefers_planetary_candidate_within_gravity_cap(self) -> None:
+        candidates = [
+            {
+                "name": "Vista Orbital",
+                "system_name": "F11_RANKING_SYSTEM",
+                "type": "station",
+                "services": {"has_uc": False, "has_vista": True},
+                "distance_ly": 4.0,
+                "distance_ls": 800.0,
+                "source": "SPANSH",
+                "is_planetary": False,
+            },
+            {
+                "name": "Vista Ground Alpha",
+                "system_name": "F11_RANKING_SYSTEM",
+                "type": "settlement",
+                "services": {"has_uc": False, "has_vista": True},
+                "distance_ly": 9.0,
+                "distance_ls": 1_200.0,
+                "source": "EDSM",
+                "is_planetary": True,
+                "gravity_g": 1.4,
+            },
+            {
+                "name": "Vista Ground HighG",
+                "system_name": "F11_RANKING_SYSTEM",
+                "type": "settlement",
+                "services": {"has_uc": False, "has_vista": True},
+                "distance_ly": 2.0,
+                "distance_ls": 900.0,
+                "source": "EDSM",
+                "is_planetary": True,
+                "gravity_g": 2.7,
+            },
+        ]
+        payout = cash_in_assistant._build_payout_contract(
+            gross_value=8_000_000.0,
+            tariff_percent=None,
+            vista_fc_policy_mode="ASSUMED_100",
+            freshness_ts="2026-02-21T13:40:00Z",
+        )
+        options, meta = cash_in_assistant._build_profiled_options(
+            service="vista",
+            candidates=candidates,
+            payout_contract=payout,
+            trust_status="TRUST_HIGH",
+            confidence="high",
+        )
+        planetary = next(item for item in options if item.get("profile") == "PLANETARY_VISTA")
+        self.assertEqual(str((planetary.get("target") or {}).get("name") or ""), "Vista Ground Alpha")
+        self.assertFalse(bool(planetary.get("planetary_vista_fallback_to_nearest")))
+        self.assertEqual(int(meta.get("planetary_vista_candidates_count") or 0), 1)
 
 
 if __name__ == "__main__":

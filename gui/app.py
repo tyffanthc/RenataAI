@@ -1967,14 +1967,16 @@ class RenataApp:
     def _resolve_cash_in_profile_label(option_payload: dict) -> str:
         aliases = {
             "1": "NEAREST",
-            "2": "SECURE_PORT",
-            "3": "CARRIER_FRIENDLY",
+            "2": "SECURE",
+            "3": "EXPRESS",
             "SAFE": "NEAREST",
-            "FAST": "CARRIER_FRIENDLY",
-            "SECURE": "SECURE_PORT",
+            "FAST": "EXPRESS",
+            "SECURE": "SECURE",
+            "SECURE_PORT": "SECURE",
+            "CARRIER_FRIENDLY": "EXPRESS",
             "NEAREST": "NEAREST",
-            "SECURE_PORT": "SECURE_PORT",
-            "CARRIER_FRIENDLY": "CARRIER_FRIENDLY",
+            "EXPRESS": "EXPRESS",
+            "PLANETARY_VISTA": "PLANETARY_VISTA",
         }
         profile = aliases.get(str((option_payload or {}).get("profile") or "").strip().upper(), "")
         if profile:
@@ -1983,9 +1985,11 @@ class RenataApp:
         if label.startswith("NEAREST") or label.startswith("SAFE"):
             return "NEAREST"
         if label.startswith("SECURE_PORT") or label.startswith("SECURE"):
-            return "SECURE_PORT"
-        if label.startswith("CARRIER_FRIENDLY") or label.startswith("FAST"):
-            return "CARRIER_FRIENDLY"
+            return "SECURE"
+        if label.startswith("CARRIER_FRIENDLY") or label.startswith("FAST") or label.startswith("EXPRESS"):
+            return "EXPRESS"
+        if label.startswith("PLANETARY_VISTA") or label.startswith("VISTA"):
+            return "PLANETARY_VISTA"
         return "NEAREST"
 
     @staticmethod

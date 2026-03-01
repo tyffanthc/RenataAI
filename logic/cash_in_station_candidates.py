@@ -83,6 +83,28 @@ def _normalize_type(value: Any) -> str:
     return "station"
 
 
+def _normalize_security(value: Any) -> str:
+    text = _as_text(value).lower()
+    if "high" in text:
+        return "high"
+    if "med" in text:
+        return "medium"
+    if "low" in text:
+        return "low"
+    if "anarchy" in text:
+        return "anarchy"
+    return ""
+
+
+def _normalize_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return bool(int(value))
+    text = _as_text(value).lower()
+    return text in {"1", "true", "yes", "y", "on"}
+
+
 def _normalize_pad_size(value: Any) -> str:
     text = _as_text(value).upper()
     if not text:
@@ -246,6 +268,27 @@ def normalize_station_candidate(
             or row.get("updatedAt")
             or freshness_ts
         ),
+        "security": _normalize_security(
+            row.get("security")
+            or row.get("security_level")
+            or row.get("securityLevel")
+            or row.get("system_security")
+            or row.get("systemSecurity")
+        ),
+        "is_planetary": bool(
+            _normalize_bool(row.get("is_planetary"))
+            or _normalize_bool(row.get("isPlanetary"))
+            or _normalize_bool(row.get("on_planet"))
+            or _normalize_bool(row.get("onPlanet"))
+            or ("settlement" in _normalize_type(row.get("type") or row.get("station_type")))
+        ),
+        "gravity_g": _safe_optional_float(
+            row.get("gravity_g")
+            or row.get("gravityG")
+            or row.get("surface_gravity")
+            or row.get("surfaceGravity")
+            or row.get("gravity")
+        ),
     }
     return candidate
 
@@ -281,6 +324,12 @@ def _candidate_score(candidate: Dict[str, Any]) -> int:
     if candidate.get("distance_ls") is not None:
         score += 1
     if _normalize_pad_size(candidate.get("max_landing_pad_size")):
+        score += 1
+    if _normalize_security(candidate.get("security")):
+        score += 1
+    if bool(candidate.get("is_planetary")):
+        score += 1
+    if _safe_optional_float(candidate.get("gravity_g")) is not None:
         score += 1
     return score
 
@@ -360,6 +409,21 @@ def _merge_candidate_pair(current: Dict[str, Any], incoming: Dict[str, Any]) -> 
     elif out_pad and base_pad and out_pad != base_pad:
         if "L" in {out_pad, base_pad}:
             out["max_landing_pad_size"] = "L"
+
+    out_security = _normalize_security(out.get("security"))
+    base_security = _normalize_security(base.get("security"))
+    if not out_security and base_security:
+        out["security"] = base_security
+
+    if bool(base.get("is_planetary")) and not bool(out.get("is_planetary")):
+        out["is_planetary"] = True
+
+    out_gravity = _safe_optional_float(out.get("gravity_g"))
+    base_gravity = _safe_optional_float(base.get("gravity_g"))
+    if out_gravity is None and base_gravity is not None:
+        out["gravity_g"] = float(base_gravity)
+    elif out_gravity is not None and base_gravity is not None:
+        out["gravity_g"] = min(float(out_gravity), float(base_gravity))
     return out
 
 
@@ -1012,6 +1076,24 @@ def station_candidates_from_offline_index(
                     or row.get("updatedAt")
                     or index_date
                     or freshness_ts
+                ),
+                "security": _normalize_security(
+                    row.get("security")
+                    or row.get("security_level")
+                    or row.get("securityLevel")
+                ),
+                "is_planetary": bool(
+                    _normalize_bool(row.get("is_planetary"))
+                    or _normalize_bool(row.get("isPlanetary"))
+                    or _normalize_bool(row.get("on_planet"))
+                    or _normalize_bool(row.get("onPlanet"))
+                ),
+                "gravity_g": _safe_optional_float(
+                    row.get("gravity_g")
+                    or row.get("gravityG")
+                    or row.get("surface_gravity")
+                    or row.get("surfaceGravity")
+                    or row.get("gravity")
                 ),
             }
         )

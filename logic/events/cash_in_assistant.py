@@ -63,20 +63,30 @@ def _as_text(value: Any) -> str:
 
 
 CASH_IN_PROFILE_NEAREST = "NEAREST"
+CASH_IN_PROFILE_SECURE = "SECURE"
+CASH_IN_PROFILE_EXPRESS = "EXPRESS"
+CASH_IN_PROFILE_PLANETARY_VISTA = "PLANETARY_VISTA"
+
+# Legacy labels kept for backward compatibility in persisted/runtime payloads.
 CASH_IN_PROFILE_SECURE_PORT = "SECURE_PORT"
 CASH_IN_PROFILE_CARRIER_FRIENDLY = "CARRIER_FRIENDLY"
 
 _CASH_IN_PROFILE_ALIASES = {
     "": CASH_IN_PROFILE_NEAREST,
     "1": CASH_IN_PROFILE_NEAREST,
-    "2": CASH_IN_PROFILE_SECURE_PORT,
-    "3": CASH_IN_PROFILE_CARRIER_FRIENDLY,
+    "2": CASH_IN_PROFILE_SECURE,
+    "3": CASH_IN_PROFILE_EXPRESS,
     "SAFE": CASH_IN_PROFILE_NEAREST,
-    "FAST": CASH_IN_PROFILE_CARRIER_FRIENDLY,
-    "SECURE": CASH_IN_PROFILE_SECURE_PORT,
+    "FAST": CASH_IN_PROFILE_EXPRESS,
+    "SECURE": CASH_IN_PROFILE_SECURE,
+    CASH_IN_PROFILE_SECURE_PORT: CASH_IN_PROFILE_SECURE,
+    CASH_IN_PROFILE_CARRIER_FRIENDLY: CASH_IN_PROFILE_EXPRESS,
     CASH_IN_PROFILE_NEAREST: CASH_IN_PROFILE_NEAREST,
-    CASH_IN_PROFILE_SECURE_PORT: CASH_IN_PROFILE_SECURE_PORT,
-    CASH_IN_PROFILE_CARRIER_FRIENDLY: CASH_IN_PROFILE_CARRIER_FRIENDLY,
+    CASH_IN_PROFILE_SECURE: CASH_IN_PROFILE_SECURE,
+    CASH_IN_PROFILE_EXPRESS: CASH_IN_PROFILE_EXPRESS,
+    CASH_IN_PROFILE_PLANETARY_VISTA: CASH_IN_PROFILE_PLANETARY_VISTA,
+    "VISTA": CASH_IN_PROFILE_PLANETARY_VISTA,
+    "PLANETARY": CASH_IN_PROFILE_PLANETARY_VISTA,
 }
 
 
@@ -637,17 +647,20 @@ def _infer_profile_for_option(option: dict[str, Any]) -> str:
     profile = _normalize_cash_in_profile(option.get("profile"))
     if profile in {
         CASH_IN_PROFILE_NEAREST,
-        CASH_IN_PROFILE_SECURE_PORT,
-        CASH_IN_PROFILE_CARRIER_FRIENDLY,
+        CASH_IN_PROFILE_SECURE,
+        CASH_IN_PROFILE_EXPRESS,
+        CASH_IN_PROFILE_PLANETARY_VISTA,
     }:
         return profile
     option_id = _as_text(option.get("option_id")).lower()
     strategy = _as_text(option.get("strategy")).lower()
     combined = f"{option_id}:{strategy}"
-    if "now" in combined or "secure" in combined or "port" in combined:
-        return CASH_IN_PROFILE_SECURE_PORT
-    if "carrier" in combined or "later" in combined or "fast" in combined:
-        return CASH_IN_PROFILE_CARRIER_FRIENDLY
+    if "planetary" in combined or "vista" in combined:
+        return CASH_IN_PROFILE_PLANETARY_VISTA
+    if "express" in combined or "carrier" in combined or "fast" in combined:
+        return CASH_IN_PROFILE_EXPRESS
+    if "secure" in combined or "port" in combined:
+        return CASH_IN_PROFILE_SECURE
     return CASH_IN_PROFILE_NEAREST
 
 
@@ -786,6 +799,55 @@ def _candidate_distance_ls(candidate: dict[str, Any]) -> float:
     return max(0.0, value)
 
 
+def _candidate_security_label(candidate: dict[str, Any]) -> str:
+    raw = _as_text(
+        candidate.get("security")
+        or candidate.get("security_level")
+        or candidate.get("securityLevel")
+        or candidate.get("system_security")
+        or candidate.get("systemSecurity")
+    ).lower()
+    if "high" in raw:
+        return "high"
+    if "med" in raw:
+        return "medium"
+    if "low" in raw:
+        return "low"
+    if "anarchy" in raw:
+        return "anarchy"
+    return "unknown"
+
+
+def _candidate_matches_secure_constraints(candidate: dict[str, Any]) -> bool:
+    if _candidate_is_carrier(candidate):
+        return False
+    return _candidate_security_label(candidate) in {"high", "medium"}
+
+
+def _candidate_is_planetary(candidate: dict[str, Any]) -> bool:
+    if bool(candidate.get("is_planetary")) or bool(candidate.get("isPlanetary")):
+        return True
+    if bool(candidate.get("on_planet")) or bool(candidate.get("onPlanet")):
+        return True
+    station_type = _as_text(candidate.get("type")).lower()
+    if "settlement" in station_type:
+        return True
+    return False
+
+
+def _candidate_gravity_g(candidate: dict[str, Any]) -> float | None:
+    value = _safe_optional_float(
+        candidate.get("gravity_g")
+        or candidate.get("gravityG")
+        or candidate.get("surface_gravity")
+        or candidate.get("surfaceGravity")
+        or candidate.get("gravity")
+    )
+    if value is None:
+        return None
+    return max(0.0, float(value))
+
+
 def _source_tokens(value: Any) -> list[str]:
     out: list[str] = []
     for token in str(value or "").split("+"):
@@ -860,36 +922,51 @@ def _candidate_sort_key(
     *,
     profile: str,
     service: str,
-    avoid_carriers_for_uc: bool,
     carrier_ok_for_fast_mode: bool,
     hutton_threshold_ls: float,
-) -> tuple[float, float, float, float, str]:
+    express_max_distance_ls: float,
+    planetary_vista_max_gravity_g: float,
+) -> tuple[float, float, float, float, float, str]:
     profile_norm = _normalize_cash_in_profile(profile)
     is_carrier = _candidate_is_carrier(candidate)
     hutton_guard = _is_hutton_guard(candidate, threshold_ls=hutton_threshold_ls)
     dist_ly = _candidate_distance_ly(candidate)
     dist_ls = _candidate_distance_ls(candidate)
+    gravity_g = _candidate_gravity_g(candidate)
+    security = _candidate_security_label(candidate)
     name_key = _candidate_name(candidate).casefold()
-
-    carrier_penalty = 0.0
     hutton_penalty = 1.0 if hutton_guard else 0.0
 
     if profile_norm == CASH_IN_PROFILE_NEAREST:
-        if service == "uc" and is_carrier:
-            carrier_penalty += 1.0
-            if avoid_carriers_for_uc:
-                carrier_penalty += 2.0
-        return (carrier_penalty, hutton_penalty, dist_ly, dist_ls, name_key)
+        # NEAREST: carriers are allowed; keep global ly/ls sort.
+        return (0.0, hutton_penalty, dist_ly, dist_ls, 0.0, name_key)
 
-    if profile_norm == CASH_IN_PROFILE_CARRIER_FRIENDLY:
-        if service == "uc" and is_carrier and not carrier_ok_for_fast_mode:
-            carrier_penalty += 2.0
-        return (carrier_penalty, dist_ly, hutton_penalty, dist_ls, name_key)
+    if profile_norm == CASH_IN_PROFILE_EXPRESS:
+        express_penalty = 0.0 if dist_ls <= max(0.0, express_max_distance_ls) else 1.0
+        carrier_penalty = 1.0 if (service == "uc" and is_carrier and not carrier_ok_for_fast_mode) else 0.0
+        # EXPRESS: short supercruise first, then ly.
+        return (express_penalty, carrier_penalty, dist_ls, dist_ly, hutton_penalty, name_key)
 
-    # SECURE_PORT fallback path uses NEAREST key.
-    if service == "uc" and is_carrier:
-        carrier_penalty += 1.0
-    return (carrier_penalty, hutton_penalty, dist_ly, dist_ls, name_key)
+    if profile_norm == CASH_IN_PROFILE_PLANETARY_VISTA:
+        planetary_penalty = 0.0 if _candidate_is_planetary(candidate) else 1.0
+        gravity_penalty = 0.0
+        gravity_rank = 1e9
+        if gravity_g is None:
+            gravity_penalty = 1.0
+        else:
+            gravity_rank = gravity_g
+            if gravity_g > max(0.0, planetary_vista_max_gravity_g):
+                gravity_penalty = 1.0
+        return (planetary_penalty, gravity_penalty, dist_ly, dist_ls, gravity_rank, name_key)
+
+    # SECURE: NPC-only + prefer medium/high security.
+    carrier_penalty = 1.0 if is_carrier else 0.0
+    security_penalty = 2.0
+    if security == "high":
+        security_penalty = 0.0
+    elif security == "medium":
+        security_penalty = 1.0
+    return (carrier_penalty, security_penalty, dist_ly, dist_ls, hutton_penalty, name_key)
 
 
 def _resolve_payout_for_candidate(
@@ -931,16 +1008,18 @@ def _estimate_eta_minutes(
     docked_here: bool = False,
 ) -> int | None:
     profile_norm = _normalize_cash_in_profile(profile)
-    if docked_here and profile_norm == CASH_IN_PROFILE_SECURE_PORT:
+    if docked_here and profile_norm == CASH_IN_PROFILE_SECURE:
         return 0
     if distance_ly is None:
         return None
     ly = max(0.0, float(distance_ly))
     factor = 0.42
-    if profile_norm == CASH_IN_PROFILE_CARRIER_FRIENDLY:
+    if profile_norm == CASH_IN_PROFILE_EXPRESS:
         factor = 0.30
     elif profile_norm == CASH_IN_PROFILE_NEAREST:
         factor = 0.45
+    elif profile_norm == CASH_IN_PROFILE_PLANETARY_VISTA:
+        factor = 0.50
     return max(2, int(round(ly * factor)) + 2)
 
 
@@ -972,18 +1051,20 @@ def _build_profile_option(
     time_score = 55
     if eta_minutes is not None:
         time_score = _clamp_0_100(100 - min(90, eta_minutes * 2))
-    if docked_here and profile_norm == CASH_IN_PROFILE_SECURE_PORT:
+    if docked_here and profile_norm == CASH_IN_PROFILE_SECURE:
         time_score = 99
 
     payout_ratio = float(payout.get("payout_ratio") or 1.0)
     profit_score = _clamp_0_100(55 + (payout_ratio * 40.0))
     risk_score = 72
     if profile_norm == CASH_IN_PROFILE_NEAREST:
-        risk_score = 84
-    elif profile_norm == CASH_IN_PROFILE_CARRIER_FRIENDLY:
-        risk_score = 68
-    elif profile_norm == CASH_IN_PROFILE_SECURE_PORT:
-        risk_score = 90 if docked_here else 78
+        risk_score = 82
+    elif profile_norm == CASH_IN_PROFILE_EXPRESS:
+        risk_score = 66
+    elif profile_norm == CASH_IN_PROFILE_SECURE:
+        risk_score = 92 if docked_here else 80
+    elif profile_norm == CASH_IN_PROFILE_PLANETARY_VISTA:
+        risk_score = 74
 
     hutton_guard = _is_hutton_guard(candidate, threshold_ls=hutton_threshold_ls)
     warnings: list[str] = []
@@ -1040,7 +1121,7 @@ def _build_profile_option(
     option["reasoning"] = {
         "time_text": (
             "docked i usluga dostepna, cash-in tu i teraz"
-            if docked_here and profile_norm == CASH_IN_PROFILE_SECURE_PORT
+            if docked_here and profile_norm == CASH_IN_PROFILE_SECURE
             else f"ETA ~{eta_minutes} min" if eta_minutes is not None else "ETA nieznane"
         ),
         "profit_text": (
@@ -1102,6 +1183,10 @@ def _build_profiled_options(
     carrier_ok_for_fast_mode = bool(config.get("cash_in.carrier_ok_for_fast_mode", True))
     hutton_threshold_ls = float(config.get("cash_in.hutton_guard_ls_threshold", 500_000.0) or 500_000.0)
     hutton_penalty_score = int(config.get("cash_in.hutton_guard_score_penalty", 18) or 18)
+    express_max_distance_ls = float(config.get("cash_in.express_max_distance_ls", 5_000.0) or 5_000.0)
+    planetary_vista_max_gravity_g = float(
+        config.get("cash_in.planetary_vista_max_gravity_g", 2.0) or 2.0
+    )
 
     docked = bool(getattr(app_state, "is_docked", False))
     current_station = _as_text(getattr(app_state, "current_station", ""))
@@ -1109,8 +1194,23 @@ def _build_profiled_options(
     secure_candidate: dict[str, Any] | None = None
     secure_fallback = False
 
+    nearest_sorted = sorted(
+        filtered,
+        key=lambda row: _candidate_sort_key(
+            row,
+            profile=CASH_IN_PROFILE_NEAREST,
+            service=service_norm,
+            carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
+            hutton_threshold_ls=hutton_threshold_ls,
+            express_max_distance_ls=express_max_distance_ls,
+            planetary_vista_max_gravity_g=planetary_vista_max_gravity_g,
+        ),
+    )
+    nearest_candidate = nearest_sorted[0] if nearest_sorted else None
+
+    secure_rows = [row for row in filtered if _candidate_matches_secure_constraints(row)]
     if docked and current_station:
-        for candidate in filtered:
+        for candidate in secure_rows:
             if _candidate_name(candidate).casefold() != current_station.casefold():
                 continue
             candidate_system = _candidate_system(candidate)
@@ -1118,41 +1218,72 @@ def _build_profiled_options(
                 continue
             secure_candidate = candidate
             break
-
-    nearest_sorted = sorted(
-        filtered,
-        key=lambda row: _candidate_sort_key(
-            row,
-            profile=CASH_IN_PROFILE_NEAREST,
-            service=service_norm,
-            avoid_carriers_for_uc=avoid_carriers_for_uc,
-            carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
-            hutton_threshold_ls=hutton_threshold_ls,
-        ),
-    )
-    carrier_friendly_sorted = sorted(
-        filtered,
-        key=lambda row: _candidate_sort_key(
-            row,
-            profile=CASH_IN_PROFILE_CARRIER_FRIENDLY,
-            service=service_norm,
-            avoid_carriers_for_uc=avoid_carriers_for_uc,
-            carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
-            hutton_threshold_ls=hutton_threshold_ls,
-        ),
-    )
-
-    nearest_candidate = nearest_sorted[0] if nearest_sorted else None
-    carrier_friendly_candidate = carrier_friendly_sorted[0] if carrier_friendly_sorted else None
+    if secure_candidate is None and secure_rows:
+        secure_sorted = sorted(
+            secure_rows,
+            key=lambda row: _candidate_sort_key(
+                row,
+                profile=CASH_IN_PROFILE_SECURE,
+                service=service_norm,
+                carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
+                hutton_threshold_ls=hutton_threshold_ls,
+                express_max_distance_ls=express_max_distance_ls,
+                planetary_vista_max_gravity_g=planetary_vista_max_gravity_g,
+            ),
+        )
+        secure_candidate = secure_sorted[0] if secure_sorted else None
     if secure_candidate is None:
         secure_candidate = nearest_candidate
-        secure_fallback = docked and nearest_candidate is not None
+        secure_fallback = nearest_candidate is not None
+
+    express_rows = [
+        row
+        for row in filtered
+        if _candidate_distance_ls(row) <= max(0.0, express_max_distance_ls)
+    ]
+    express_sorted = sorted(
+        express_rows or filtered,
+        key=lambda row: _candidate_sort_key(
+            row,
+            profile=CASH_IN_PROFILE_EXPRESS,
+            service=service_norm,
+            carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
+            hutton_threshold_ls=hutton_threshold_ls,
+            express_max_distance_ls=express_max_distance_ls,
+            planetary_vista_max_gravity_g=planetary_vista_max_gravity_g,
+        ),
+    )
+    express_candidate = express_sorted[0] if express_sorted else nearest_candidate
+    express_fallback = (not express_rows) and express_candidate is not None
+
+    planetary_rows = []
+    for row in filtered:
+        if not _candidate_is_planetary(row):
+            continue
+        gravity = _candidate_gravity_g(row)
+        if gravity is None or gravity > max(0.0, planetary_vista_max_gravity_g):
+            continue
+        planetary_rows.append(row)
+    planetary_sorted = sorted(
+        planetary_rows or filtered,
+        key=lambda row: _candidate_sort_key(
+            row,
+            profile=CASH_IN_PROFILE_PLANETARY_VISTA,
+            service=service_norm,
+            carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
+            hutton_threshold_ls=hutton_threshold_ls,
+            express_max_distance_ls=express_max_distance_ls,
+            planetary_vista_max_gravity_g=planetary_vista_max_gravity_g,
+        ),
+    )
+    planetary_candidate = planetary_sorted[0] if planetary_sorted else nearest_candidate
+    planetary_fallback = (not planetary_rows) and planetary_candidate is not None
 
     options: list[dict[str, Any]] = []
     if secure_candidate is not None:
         options.append(
             _build_profile_option(
-                profile=CASH_IN_PROFILE_SECURE_PORT,
+                profile=CASH_IN_PROFILE_SECURE,
                 candidate=secure_candidate,
                 service=service_norm,
                 trust_score=trust_score,
@@ -1175,21 +1306,33 @@ def _build_profiled_options(
                 hutton_penalty_score=hutton_penalty_score,
             )
         )
-    if carrier_friendly_candidate is not None:
-        options.append(
-            _build_profile_option(
-                profile=CASH_IN_PROFILE_CARRIER_FRIENDLY,
-                candidate=carrier_friendly_candidate,
-                service=service_norm,
-                trust_score=trust_score,
-                payout_contract=payout_contract,
-                hutton_threshold_ls=hutton_threshold_ls,
-                hutton_penalty_score=hutton_penalty_score,
-            )
+    if express_candidate is not None:
+        express_option = _build_profile_option(
+            profile=CASH_IN_PROFILE_EXPRESS,
+            candidate=express_candidate,
+            service=service_norm,
+            trust_score=trust_score,
+            payout_contract=payout_contract,
+            hutton_threshold_ls=hutton_threshold_ls,
+            hutton_penalty_score=hutton_penalty_score,
         )
+        express_option["express_fallback_to_nearest"] = bool(express_fallback)
+        options.append(express_option)
+    if planetary_candidate is not None:
+        planetary_option = _build_profile_option(
+            profile=CASH_IN_PROFILE_PLANETARY_VISTA,
+            candidate=planetary_candidate,
+            service=service_norm,
+            trust_score=trust_score,
+            payout_contract=payout_contract,
+            hutton_threshold_ls=hutton_threshold_ls,
+            hutton_penalty_score=hutton_penalty_score,
+        )
+        planetary_option["planetary_vista_fallback_to_nearest"] = bool(planetary_fallback)
+        options.append(planetary_option)
 
-    if len(options) > 3:
-        options = options[:3]
+    if len(options) > 4:
+        options = options[:4]
 
     ranking_meta = {
         "enabled": True,
@@ -1202,6 +1345,13 @@ def _build_profiled_options(
         "docked": docked,
         "secure_fallback_to_nearest": secure_fallback,
         "secure_fallback_to_safe": secure_fallback,
+        "secure_candidates_count": len(secure_rows),
+        "express_candidates_count": len(express_rows),
+        "express_fallback_to_nearest": express_fallback,
+        "express_max_distance_ls": express_max_distance_ls,
+        "planetary_vista_candidates_count": len(planetary_rows),
+        "planetary_vista_fallback_to_nearest": planetary_fallback,
+        "planetary_vista_max_gravity_g": planetary_vista_max_gravity_g,
         "hard_filter_count": len(filtered),
         "service_candidates_count": len(filtered),
         "service_non_carrier_count": non_carrier_count,
@@ -1243,9 +1393,9 @@ def resolve_cash_in_option_target(option: dict[str, Any] | None) -> dict[str, st
         target_display = target_station
 
     route_profile = "SAFE"
-    if profile == CASH_IN_PROFILE_CARRIER_FRIENDLY:
+    if profile == CASH_IN_PROFILE_EXPRESS:
         route_profile = "FAST_NEUTRON"
-    elif profile == CASH_IN_PROFILE_SECURE_PORT:
+    elif profile == CASH_IN_PROFILE_SECURE:
         route_profile = "SECURE"
 
     is_real = _option_has_real_target(payload)

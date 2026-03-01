@@ -81,13 +81,22 @@ class F11QualityGatesAndSmokeTests(unittest.TestCase):
         structured = dict(ctx.get("cash_in_payload") or {})
         options = [dict(item) for item in (structured.get("options") or []) if isinstance(item, dict)]
         self.assertGreaterEqual(len(options), 2)
-        self.assertLessEqual(len(options), 3)
+        self.assertLessEqual(len(options), 4)
         for option in options:
             self.assertEqual(str(option.get("ui_contract_version") or ""), "F11_UI_V1")
             ui = dict(option.get("ui_contract") or {})
             self.assertIn(
                 str(ui.get("label") or ""),
-                {"SAFE", "FAST", "SECURE", "NEAREST", "CARRIER_FRIENDLY", "SECURE_PORT"},
+                {
+                    "SAFE",
+                    "FAST",
+                    "SECURE",
+                    "NEAREST",
+                    "SECURE_PORT",
+                    "CARRIER_FRIENDLY",
+                    "EXPRESS",
+                    "PLANETARY_VISTA",
+                },
             )
             self.assertTrue(isinstance(ui.get("target"), dict))
             self.assertTrue(isinstance(ui.get("payout"), dict))
