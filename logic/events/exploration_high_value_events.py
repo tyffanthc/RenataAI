@@ -26,9 +26,23 @@ def _system_label(ev: Dict[str, Any]) -> str:
     return str(getattr(app_state, "current_system", "") or "").strip()
 
 
-def _dss_hint_text(body: str, fallback: str) -> str:
-    if body:
-        return f"Planeta {body} jest warta dogłębnej analizy DSS."
+def get_short_body_name(full_name: str, system_name: str) -> str:
+    """Strip system-name prefix from body name for concise TTS.
+
+    Example: 'Sol 243 A 2' with system='Sol 243' -> 'A 2'.
+    Returns full_name unchanged when no match or result would be empty.
+    """
+    full = str(full_name or "").strip()
+    system = str(system_name or "").strip()
+    if system and full.lower().startswith(system.lower()):
+        short = full[len(system):].strip()
+        return short if short else full
+    return full
+
+
+def _dss_hint_text(short_body: str, fallback: str) -> str:
+    if short_body:
+        return f"Planeta {short_body} jest warta dogłębnej analizy DSS."
     return fallback
 
 
@@ -91,15 +105,17 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
 
     raw_text: str | None = None
     callout_key: str | None = None
+    system_name = _system_label(ev)
+    short_body = get_short_body_name(body, system_name)
 
     # 1) Earth-like World
     if "earth-like" in planet_class and has_body_type("earth-like"):
-        raw_text = _dss_hint_text(body, "Wykryto planetę ziemiopodobną. Wysoka wartość.")
+        raw_text = _dss_hint_text(short_body, "Wykryto planetę ziemiopodobną. Wysoka wartość.")
         callout_key = f"hv_dss_hint:elw:{body_key}"
 
     # 2) Water World
     elif "water world" in planet_class and has_body_type("water world"):
-        raw_text = _dss_hint_text(body, "Wykryto oceaniczny świat. Bardzo wartościowy.")
+        raw_text = _dss_hint_text(short_body, "Wykryto oceaniczny świat. Bardzo wartościowy.")
         callout_key = f"hv_dss_hint:ww:{body_key}"
 
     # 3) Terraformable High Metal Content World
@@ -108,7 +124,7 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
         and ("terra" in terraform_state)
         and has_body_type("high metal content", terraformable="yes")
     ):
-        raw_text = _dss_hint_text(body, "Wykryto terraformowalny świat.")
+        raw_text = _dss_hint_text(short_body, "Wykryto terraformowalny świat.")
         callout_key = f"hv_dss_hint:hmc_terraformable:{body_key}"
 
     if raw_text and callout_key:
@@ -117,7 +133,7 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
             gui_ref=gui_ref,
             message_id="MSG.HIGH_VALUE_DSS_HINT",
             source="exploration_high_value_events",
-            system_name=_system_label(ev),
+            system_name=system_name,
             body_name=body,
             callout_key=callout_key,
             event_type="BODY_DISCOVERED",

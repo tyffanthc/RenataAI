@@ -563,6 +563,7 @@ TTS_POLICY_BY_MESSAGE_ID: Dict[str, TTSPolicySpec] = {
         message_id="MSG.HIGH_VALUE_DSS_HINT",
         intent="context",
         category="explore",
+        cooldown_policy="BYPASS_GLOBAL",
     ),
     "MSG.HIGH_VALUE_FIRST_LOGGED_ALERT": TTSPolicySpec(
         message_id="MSG.HIGH_VALUE_FIRST_LOGGED_ALERT",
@@ -594,6 +595,7 @@ TTS_POLICY_BY_MESSAGE_ID: Dict[str, TTSPolicySpec] = {
         message_id="MSG.DSS_TARGET_HINT",
         intent="context",
         category="explore",
+        cooldown_policy="BYPASS_GLOBAL",
     ),
     "MSG.DSS_COMPLETED": TTSPolicySpec(
         message_id="MSG.DSS_COMPLETED",

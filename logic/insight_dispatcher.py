@@ -610,6 +610,9 @@ def _apply_priority_matrix(
     if bool((insight.context or {}).get("fss_milestone_sequence")):
         return allow_tts, allow_reason, False
 
+    if bool((insight.context or {}).get("exploration_awareness_required")):
+        return allow_tts, allow_reason, False
+
     if str(allow_reason or "").startswith("cross_module_"):
         return allow_tts, allow_reason, False
 

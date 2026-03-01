@@ -5,6 +5,7 @@ from typing import Any, Dict
 import config
 from app.state import app_state
 from logic.events.exploration_awareness import emit_callout_or_summary
+from logic.events.exploration_high_value_events import get_short_body_name
 from logic.insight_dispatcher import emit_insight
 from logic.utils.renata_log import log_event_throttled
 
@@ -181,7 +182,8 @@ def handle_dss_target_hint(ev: Dict[str, Any], gui_ref=None) -> None:
     if not _is_worth_mapping(ev, gui_ref):
         return
 
-    raw_text = f"Planeta {body_name} wyglada na warta mapowania DSS."
+    short_name = get_short_body_name(body_name, system_name)
+    raw_text = f"Planeta {short_name} wyglada na warta mapowania DSS."
     emit_callout_or_summary(
         text=raw_text,
         gui_ref=gui_ref,
