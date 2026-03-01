@@ -25,7 +25,7 @@ class F24ExplorationExobioLandingCalloutsCoverageTests(unittest.TestCase):
         self.assertEqual(emit_mock.call_count, 1)
         kwargs = emit_mock.call_args.kwargs
         self.assertEqual(kwargs.get("message_id"), "MSG.BIO_SIGNALS_HIGH")
-        self.assertIn("Planeta F24_EXO_SYSTEM A 2", str(kwargs.get("text") or ""))
+        self.assertIn("Planeta A 2", str(kwargs.get("text") or ""))
         self.assertIn("mało sygnałów biologicznych", str(kwargs.get("text") or ""))
 
     def test_dss_bio_signals_emits_high_count_landing_hint_with_body_name(self) -> None:
@@ -39,6 +39,7 @@ class F24ExplorationExobioLandingCalloutsCoverageTests(unittest.TestCase):
             bio_events.handle_dss_bio_signals(ev, gui_ref=None)
 
         self.assertEqual(emit_mock.call_count, 1)
+        self.assertIn("Planeta A 3", str(emit_mock.call_args.kwargs.get("text") or ""))
         self.assertIn("liczne sygnały biologiczne", str(emit_mock.call_args.kwargs.get("text") or ""))
 
     def test_system_quality_hint_classifies_zero_few_and_many_targets(self) -> None:
@@ -53,3 +54,4 @@ class F24ExplorationExobioLandingCalloutsCoverageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

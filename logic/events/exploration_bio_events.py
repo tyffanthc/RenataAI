@@ -10,6 +10,7 @@ from typing import Any, Dict
 import config
 from app.state import app_state
 from logic.events.exploration_awareness import emit_callout_or_summary
+from logic.events.exploration_high_value_events import get_short_body_name
 from logic.insight_dispatcher import emit_insight
 from logic.utils.renata_log import log_event, log_event_throttled
 
@@ -1041,24 +1042,26 @@ def handle_dss_bio_signals(ev: Dict[str, Any], gui_ref=None) -> None:
 
     DSS_BIO_WARNED_BODIES.add(body)
     body_txt = _as_text(body)
+    system_txt = _current_system(ev)
+    short_body_txt = get_short_body_name(body_txt, system_txt)
     if bio_count >= 3:
-        msg = f"Planeta {body_txt} ma liczne sygnały biologiczne. Warto wylądować."
+        msg = f"Planeta {short_body_txt} ma liczne sygnały biologiczne. Warto wylądować."
     else:
-        msg = f"Planeta {body_txt} ma mało sygnałów biologicznych. Możliwy krótki rekonesans."
+        msg = f"Planeta {short_body_txt} ma mało sygnałów biologicznych. Możliwy krótki rekonesans."
 
-    _log_bio_signals_diag("emit", body=body_txt, system=_current_system(ev), bio_count=bio_count, reason="bio_signals_found")
+    _log_bio_signals_diag("emit", body=body_txt, system=system_txt, bio_count=bio_count, reason="bio_signals_found")
 
     emit_callout_or_summary(
         text=msg,
         gui_ref=gui_ref,
         message_id="MSG.BIO_SIGNALS_HIGH",
         source="exploration_bio_events",
-        system_name=_current_system(ev),
+        system_name=system_txt,
         body_name=body_txt,
         callout_key=f"bio_signals:{_as_text(body).lower() or 'unknown'}",
         event_type="BODY_DISCOVERED",
         priority="P2_NORMAL",
-        context={"raw_text": msg, "body": body_txt, "system": _current_system(ev), "bio_signals_count": bio_count},
+        context={"raw_text": msg, "body": body_txt, "system": system_txt, "bio_signals_count": bio_count},
     )
 
 

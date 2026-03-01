@@ -119,6 +119,47 @@ class F3DssHelperCompletionTests(unittest.TestCase):
         self.assertTrue(ctx.get("in_combat"))
         self.assertEqual(ctx.get("combat_state"), "active")
 
+    def test_dss_completed_text_uses_short_body_name(self) -> None:
+        with patch("logic.events.exploration_dss_events.emit_insight") as emit_mock:
+            dss_events.handle_dss_scan_complete(
+                {
+                    "event": "SAAScanComplete",
+                    "StarSystem": "SMOKE_DSS_SYSTEM",
+                    "BodyName": "SMOKE_DSS_SYSTEM A 3",
+                    "ProbesUsed": 4,
+                    "EfficiencyTarget": 8,
+                },
+                gui_ref=None,
+            )
+
+        completion_calls = [
+            call for call in emit_mock.call_args_list if call.kwargs.get("message_id") == "MSG.DSS_COMPLETED"
+        ]
+        self.assertEqual(len(completion_calls), 1)
+        ctx = completion_calls[0].kwargs.get("context") or {}
+        raw_text = str(ctx.get("raw_text") or "")
+        self.assertIn("A 3", raw_text)
+        self.assertNotIn("SMOKE_DSS_SYSTEM A 3", raw_text)
+
+    def test_first_mapped_text_uses_short_body_name(self) -> None:
+        with patch("logic.events.exploration_dss_events.emit_insight") as emit_mock:
+            dss_events.handle_dss_scan_complete(
+                {
+                    "event": "SAAScanComplete",
+                    "StarSystem": "SMOKE_DSS_SYSTEM",
+                    "BodyName": "SMOKE_DSS_SYSTEM A 5",
+                    "WasMapped": False,
+                },
+                gui_ref=None,
+            )
+
+        first_mapped_calls = [call for call in emit_mock.call_args_list if call.kwargs.get("message_id") == "MSG.FIRST_MAPPED"]
+        self.assertEqual(len(first_mapped_calls), 1)
+        ctx = first_mapped_calls[0].kwargs.get("context") or {}
+        raw_text = str(ctx.get("raw_text") or "")
+        self.assertIn("A 5", raw_text)
+        self.assertNotIn("SMOKE_DSS_SYSTEM A 5", raw_text)
+
 
 if __name__ == "__main__":
     unittest.main()

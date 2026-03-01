@@ -211,6 +211,7 @@ def handle_dss_scan_complete(ev: Dict[str, Any], gui_ref=None) -> None:
 
     system_name = _system_label(ev)
     body_name = _body_label(ev)
+    short_body_name = get_short_body_name(body_name, system_name)
     body_id = (_system_key(system_name), _body_key(body_name))
     if body_id in DSS_COMPLETED_BODIES:
         return
@@ -239,9 +240,9 @@ def handle_dss_scan_complete(ev: Dict[str, Any], gui_ref=None) -> None:
         )
         efficient = False
 
-    completion_text = f"Mapowanie DSS ukonczone: {body_name}."
+    completion_text = f"Mapowanie DSS ukonczone: {short_body_name}."
     if efficient:
-        completion_text = f"Mapowanie DSS ukonczone: {body_name}. Bonus efektywnosci zaliczony."
+        completion_text = f"Mapowanie DSS ukonczone: {short_body_name}. Bonus efektywnosci zaliczony."
 
     emit_insight(
         completion_text,
@@ -284,7 +285,7 @@ def handle_dss_scan_complete(ev: Dict[str, Any], gui_ref=None) -> None:
         )
 
     if _is_first_mapped_confirmed(ev):
-        first_mapped_text = f"Potwierdzono first mapped dla {body_name}."
+        first_mapped_text = f"Potwierdzono first mapped dla {short_body_name}."
         emit_insight(
             first_mapped_text,
             gui_ref=gui_ref,
