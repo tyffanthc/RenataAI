@@ -1301,13 +1301,7 @@ class LogbookTab(tk.Frame):
 
     def _sync_logbook_feed_context_menu_state(self, feed_item: dict | None = None) -> None:
         item = dict(feed_item or self._selected_logbook_item() or {})
-        raw_event = item.get("raw_event")
-        has_entry_mapping = False
-        if isinstance(raw_event, dict):
-            try:
-                has_entry_mapping = isinstance(build_mvp_entry_draft(raw_event), dict)
-            except Exception:
-                has_entry_mapping = False
+        has_entry_mapping = isinstance(self._build_entry_draft_from_feed_item(item), dict)
         try:
             state_entry = "normal" if has_entry_mapping else "disabled"
             # 0: save, 1: save+edit, 3: append existing (after separator)
@@ -1327,6 +1321,84 @@ class LogbookTab(tk.Frame):
             return None
         item = self._logbook_item_to_payload.get(self._selected_logbook_item_id)
         return dict(item) if isinstance(item, dict) else None
+
+    def _build_generic_entry_draft_from_feed_item(
+        self,
+        feed_item: dict[str, Any],
+        raw_event: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        event_name = str(feed_item.get("event_name") or raw_event.get("event") or "").strip()
+        if not event_name:
+            return None
+
+        timestamp = str(raw_event.get("timestamp") or feed_item.get("timestamp") or "").strip()
+        if not timestamp:
+            timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+        summary = str(feed_item.get("summary") or "").strip() or event_name
+        system_name = str(feed_item.get("system_name") or raw_event.get("StarSystem") or "").strip()
+        station_name = str(feed_item.get("station_name") or raw_event.get("StationName") or "").strip()
+        body_name = str(feed_item.get("body_name") or raw_event.get("BodyName") or raw_event.get("Body") or "").strip()
+        category_path = str(feed_item.get("default_category") or "").strip() or _CATEGORY_FALLBACK
+        event_class = str(feed_item.get("event_class") or "").strip()
+        class_tag = event_class.lower().replace(" ", "_") if event_class else ""
+        title = summary if summary.lower().startswith(event_name.lower()) else f"{event_name} - {summary}"
+
+        tags: list[str] = ["journal", "event", event_name.lower()]
+        if class_tag:
+            tags.append(class_tag)
+        if system_name:
+            tags.append("system")
+        tags = list(dict.fromkeys(tags))
+
+        body_lines = [
+            f"Event: {event_name}",
+            f"Podsumowanie: {summary}",
+            f"Czas: {timestamp}",
+            f"System: {system_name or '-'}",
+            f"Stacja: {station_name or '-'}",
+            f"Obiekt: {body_name or '-'}",
+            "",
+            "Raw event:",
+            json.dumps(raw_event, ensure_ascii=False, indent=2, sort_keys=True),
+        ]
+        return {
+            "category_path": category_path,
+            "title": title,
+            "body": "\n".join(body_lines),
+            "tags": tags,
+            "entry_type": "journal_event_generic",
+            "location": {
+                "system_name": system_name or None,
+                "station_name": station_name or None,
+                "body_name": body_name or None,
+            },
+            "source": {
+                "kind": "journal_event",
+                "event_name": event_name,
+                "event_time": timestamp,
+            },
+            "payload": {
+                "journal_event": dict(raw_event),
+                "logbook_feed": {
+                    "event_class": event_class or None,
+                    "summary": summary,
+                },
+            },
+        }
+
+    def _build_entry_draft_from_feed_item(self, feed_item: dict[str, Any] | None) -> dict[str, Any] | None:
+        item = dict(feed_item or {})
+        raw_event = item.get("raw_event")
+        if not isinstance(raw_event, dict):
+            return None
+        try:
+            draft = build_mvp_entry_draft(raw_event)
+        except Exception:
+            draft = None
+        if isinstance(draft, dict):
+            return draft
+        return self._build_generic_entry_draft_from_feed_item(item, raw_event)
 
     def _show_system_on_map(self, system_name: Any, *, status_var: tk.StringVar, source: str) -> bool:
         target = str(system_name or "").strip()
@@ -1397,11 +1469,11 @@ class LogbookTab(tk.Frame):
         if not isinstance(raw_event, dict):
             self.logbook_status_var.set("Brak surowego eventu Journal dla tej pozycji.")
             return None, None
-        draft = build_mvp_entry_draft(raw_event)
+        draft = self._build_entry_draft_from_feed_item(feed_item)
         if not isinstance(draft, dict):
             event_name = str(feed_item.get("event_name") or "").strip() or "unknown"
             self.logbook_status_var.set(
-                f"Event {event_name} nie ma jeszcze mapowania MVP do Entry."
+                f"Event {event_name} nie moze zostac zapisany jako Entry."
             )
             return None, None
         return feed_item, draft
@@ -2699,7 +2771,7 @@ class LogbookTab(tk.Frame):
                 "coords_lat": None,
                 "coords_lon": None,
             },
-            "source": {"kind": "map_ppm"},
+            "source": {"kind": "manual"},
         }
         try:
             created = self.repository.create_entry(payload)
