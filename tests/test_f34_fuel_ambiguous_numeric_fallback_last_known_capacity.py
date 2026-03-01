@@ -104,13 +104,15 @@ class F34FuelAmbiguousNumericFallbackLastKnownCapacityTests(unittest.TestCase):
 
         with (
             patch("logic.events.fuel_events.log_event_throttled") as log_mock,
+            patch("logic.events.fuel_events._FUEL_LOGGER.debug") as debug_mock,
             patch("logic.events.fuel_events.emit_insight", return_value=True),
             patch.object(fuel_events.DEBOUNCER, "can_send", return_value=True),
         ):
             fuel_events.handle_status_update(status)
 
         reasons = [str(call.kwargs.get("reason") or "") for call in log_mock.call_args_list]
-        self.assertIn("ambiguous_numeric_without_capacity_fallback_applied", reasons)
+        debug_parts = " | ".join(" ".join(str(arg) for arg in call.args) for call in debug_mock.call_args_list)
+        self.assertIn("ambiguous_numeric_without_capacity_fallback_applied", debug_parts)
         self.assertNotIn("ambiguous_numeric_without_capacity", reasons)
 
 

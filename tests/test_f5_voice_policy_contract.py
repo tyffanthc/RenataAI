@@ -32,6 +32,7 @@ class F5VoicePolicyContractTests(unittest.TestCase):
         expected = {
             "MSG.EXOBIO_RANGE_READY": ("context", "explore", "BYPASS_GLOBAL"),
             "MSG.EXOBIO_SAMPLE_LOGGED": ("context", "explore", "ALWAYS_SAY"),
+            "MSG.EXOBIO_SPECIES_COMPLETE": ("context", "explore", "ALWAYS_SAY"),
             "MSG.FSS_PROGRESS_25": ("context", "explore", "BYPASS_GLOBAL"),
             "MSG.FUEL_CRITICAL": ("critical", "alert", "ALWAYS_SAY"),
         }

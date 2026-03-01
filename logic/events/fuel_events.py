@@ -1,5 +1,6 @@
 import config
 import math
+import logging
 from logic.utils import DEBOUNCER
 from logic.insight_dispatcher import emit_insight
 from logic.utils.renata_log import log_event_throttled
@@ -12,6 +13,7 @@ LOW_FUEL_FLAG_PENDING = False
 LOW_FUEL_FLAG_PENDING_TS = 0.0
 _FUEL_STATUS_INITIALIZED = False
 _FUEL_SEEN_VALID_SAMPLE = False
+_FUEL_LOGGER = logging.getLogger(__name__)
 
 
 def _reset_low_fuel_pending_confirmation() -> None:
@@ -22,12 +24,25 @@ def _reset_low_fuel_pending_confirmation() -> None:
 
 def _log_uncertain_startup_sample_event(*, reason: str, action: str = "ignored") -> None:
     action_norm = str(action or "ignored").strip().lower() or "ignored"
+    reason_norm = str(reason or "unknown").strip()
+    if reason_norm in {
+        "missing_fuel_and_capacity",
+        "zero_without_capacity",
+        "ambiguous_numeric_without_capacity_fallback_applied",
+    }:
+        _FUEL_LOGGER.debug(
+            "[FUEL] fuel startup uncertain sample %s reason=%s action=%s",
+            action_norm,
+            reason_norm,
+            action_norm,
+        )
+        return
     log_event_throttled(
-        f"fuel_startup_uncertain_sample_{action_norm}:{str(reason or 'unknown')}",
+        f"fuel_startup_uncertain_sample_{action_norm}:{reason_norm}",
         5000,
         "FUEL",
         f"fuel startup uncertain sample {action_norm}",
-        reason=str(reason or "unknown"),
+        reason=reason_norm,
         action=action_norm,
     )
 

@@ -49,6 +49,7 @@ TTS_TEMPLATE_REGISTRY: Dict[str, dict[str, object]] = {
     "MSG.FIRST_MAPPED": {"template": "Pierwsze mapowanie potwierdzone.", "raw_text_first": True},
     "MSG.TRADE_JACKPOT": {"template": "Wykryto silny sygnał handlowy.", "raw_text_first": True},
     "MSG.EXOBIO_SAMPLE_LOGGED": {"template": "Próbka biologiczna zapisana.", "raw_text_first": True},
+    "MSG.EXOBIO_SPECIES_COMPLETE": {"template": "Skanowanie gatunku zakończone.", "raw_text_first": True},
     "MSG.EXOBIO_NEW_ENTRY": {"template": "Nowy wpis biologiczny dodany.", "raw_text_first": True},
     "MSG.EXOBIO_RANGE_READY": {"template": "Dystans do kolejnej próbki gotowy.", "raw_text_first": True},
     "MSG.FSS_PROGRESS_25": {"template": "Dwadzieścia pięć procent systemu przeskanowane.", "raw_text_first": False},

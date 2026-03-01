@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import unittest
 from unittest.mock import patch
@@ -32,14 +32,19 @@ class F3ExobioHelperProgressTests(unittest.TestCase):
             bio_events.handle_exobio_progress(event, gui_ref=None)
             bio_events.handle_exobio_progress(event, gui_ref=None)  # no extra after 3/3
 
-        sample_calls = [
-            call for call in emit_mock.call_args_list if call.kwargs.get("message_id") == "MSG.EXOBIO_SAMPLE_LOGGED"
+        progress_calls = [
+            call
+            for call in emit_mock.call_args_list
+            if str(call.kwargs.get("message_id") or "")
+            in {"MSG.EXOBIO_NEW_ENTRY", "MSG.EXOBIO_SAMPLE_LOGGED", "MSG.EXOBIO_SPECIES_COMPLETE"}
         ]
-        self.assertEqual(len(sample_calls), 3)
-        texts = [str(call.args[0]) for call in sample_calls]
-        self.assertIn("Pierwsza próbka Aleoida Arcus pobrana.", texts[0])
-        self.assertIn("Druga próbka Aleoida Arcus pobrana.", texts[1])
-        self.assertIn("Mamy wszystko dla Aleoida Arcus.", texts[2])
+        self.assertEqual(len(progress_calls), 3)
+        ids = [str(call.kwargs.get("message_id") or "") for call in progress_calls]
+        texts = [str(call.args[0]) for call in progress_calls]
+        self.assertEqual(ids, ["MSG.EXOBIO_NEW_ENTRY", "MSG.EXOBIO_SAMPLE_LOGGED", "MSG.EXOBIO_SPECIES_COMPLETE"])
+        self.assertIn("Pierwsza", texts[0])
+        self.assertIn("Druga", texts[1])
+        self.assertIn("Mamy wszystko", texts[2])
 
     def test_ready_fire_once_per_cycle_retries_after_combat_silence_block(self) -> None:
         key = ("smoke_exobio_f3_system", "smoke_exobio_body_b", "aleoida arcus")

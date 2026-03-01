@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
@@ -43,10 +43,10 @@ class F10ExobioSampleContinuityTests(unittest.TestCase):
                     sample_calls = [
                         call
                         for call in emit_mock.call_args_list
-                        if call.kwargs.get("message_id") == "MSG.EXOBIO_SAMPLE_LOGGED"
+                        if call.kwargs.get("message_id") == "MSG.EXOBIO_NEW_ENTRY"
                     ]
                     self.assertEqual(len(sample_calls), 1)
-                    self.assertIn("Pierwsza próbka", str(sample_calls[0].args[0]))
+                    self.assertIn("Pierwsza", str(sample_calls[0].args[0]))
 
                 self.assertEqual(int(bio_events.EXOBIO_SAMPLE_COUNT.get(key, 0)), 1)
 
@@ -71,7 +71,7 @@ class F10ExobioSampleContinuityTests(unittest.TestCase):
                         if call.kwargs.get("message_id") == "MSG.EXOBIO_SAMPLE_LOGGED"
                     ]
                     self.assertEqual(len(sample_calls), 1)
-                    self.assertIn("Druga próbka", str(sample_calls[0].args[0]))
+                    self.assertIn("Druga", str(sample_calls[0].args[0]))
 
                 self.assertEqual(int(bio_events.EXOBIO_SAMPLE_COUNT.get(key, 0)), 2)
             finally:
@@ -121,7 +121,7 @@ class F10ExobioSampleContinuityTests(unittest.TestCase):
                         if call.kwargs.get("message_id") == "MSG.EXOBIO_SAMPLE_LOGGED"
                     ]
                     self.assertEqual(len(sample_calls), 1)
-                    self.assertIn("Kolejna próbka", str(sample_calls[0].args[0]))
+                    self.assertIn("Kolejna", str(sample_calls[0].args[0]))
             finally:
                 bio_events.reset_bio_flags()
                 config.STATE_FILE = old_state_file

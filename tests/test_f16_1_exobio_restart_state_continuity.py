@@ -45,7 +45,8 @@ def _collect_sample_messages(emit_mock) -> list[str]:
     return [
         str(call.args[0])
         for call in emit_mock.call_args_list
-        if call.kwargs.get("message_id") == "MSG.EXOBIO_SAMPLE_LOGGED"
+        if str(call.kwargs.get("message_id") or "")
+        in {"MSG.EXOBIO_NEW_ENTRY", "MSG.EXOBIO_SAMPLE_LOGGED", "MSG.EXOBIO_SPECIES_COMPLETE"}
     ]
 
 

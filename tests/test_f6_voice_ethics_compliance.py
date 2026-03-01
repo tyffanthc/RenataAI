@@ -84,6 +84,7 @@ class F6VoiceEthicsComplianceTests(unittest.TestCase):
     def test_policy_exception_matrix_matches_public_voice_policy(self) -> None:
         expected = {
             "MSG.EXOBIO_SAMPLE_LOGGED": ("context", "explore", "ALWAYS_SAY"),
+            "MSG.EXOBIO_SPECIES_COMPLETE": ("context", "explore", "ALWAYS_SAY"),
             "MSG.EXOBIO_RANGE_READY": ("context", "explore", "BYPASS_GLOBAL"),
             "MSG.FSS_PROGRESS_25": ("context", "explore", "BYPASS_GLOBAL"),
             "MSG.FSS_PROGRESS_50": ("context", "explore", "BYPASS_GLOBAL"),

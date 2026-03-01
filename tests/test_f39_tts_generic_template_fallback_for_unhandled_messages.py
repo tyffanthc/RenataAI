@@ -24,6 +24,7 @@ class F39TtsGenericTemplateFallbackForUnhandledMessagesTests(unittest.TestCase):
             "MSG.DSS_COMPLETED",
             "MSG.DSS_PROGRESS",
             "MSG.EXOBIO_SAMPLE_LOGGED",
+            "MSG.EXOBIO_SPECIES_COMPLETE",
             "MSG.EXOBIO_NEW_ENTRY",
             "MSG.EXOBIO_RANGE_READY",
             "MSG.FIRST_MAPPED",

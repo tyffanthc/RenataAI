@@ -325,6 +325,16 @@ INSIGHT_CLASS_BY_MESSAGE_ID: Dict[str, InsightClassSpec] = {
         default_cooldown_seconds=0.0,
         dedup_template="exobio_sample:{system}:{body}",
     ),
+    "MSG.EXOBIO_SPECIES_COMPLETE": InsightClassSpec(
+        class_id="EXOBIO_SPECIES_COMPLETE",
+        canonical_event="BIO_PROGRESS",
+        kind="exploration",
+        decision_space="exobio_completion",
+        default_priority="P1_HIGH",
+        default_cooldown_scope="entity",
+        default_cooldown_seconds=0.0,
+        dedup_template="exobio_species_complete:{system}:{body}:{species}",
+    ),
     "MSG.EXOBIO_RANGE_READY": InsightClassSpec(
         class_id="EXOBIO_RANGE_READY",
         canonical_event="BIO_PROGRESS",
@@ -625,6 +635,12 @@ TTS_POLICY_BY_MESSAGE_ID: Dict[str, TTSPolicySpec] = {
     ),
     "MSG.EXOBIO_SAMPLE_LOGGED": TTSPolicySpec(
         message_id="MSG.EXOBIO_SAMPLE_LOGGED",
+        intent="context",
+        category="explore",
+        cooldown_policy="ALWAYS_SAY",
+    ),
+    "MSG.EXOBIO_SPECIES_COMPLETE": TTSPolicySpec(
+        message_id="MSG.EXOBIO_SPECIES_COMPLETE",
         intent="context",
         category="explore",
         cooldown_policy="ALWAYS_SAY",

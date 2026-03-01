@@ -62,6 +62,7 @@ _MODULE_CLASS_BY_MESSAGE = {
     "MSG.DSS_PROGRESS": "EXPLORATION",
     "MSG.FIRST_MAPPED": "EXPLORATION",
     "MSG.EXOBIO_SAMPLE_LOGGED": "EXPLORATION",
+    "MSG.EXOBIO_SPECIES_COMPLETE": "EXPLORATION",
     "MSG.EXOBIO_RANGE_READY": "EXPLORATION",
     "MSG.EXOBIO_NEW_ENTRY": "EXPLORATION",
     "MSG.FOOTFALL": "EXPLORATION",
@@ -606,6 +607,9 @@ def _apply_priority_matrix(
 ) -> tuple[bool, str, bool]:
     if bool((insight.context or {}).get("voice_ui_user_action_bypass")):
         return allow_tts, "ui_user_action_bypass", False
+
+    if bool((insight.context or {}).get("bypass_priority_matrix")):
+        return allow_tts, "bypass_priority_matrix", False
 
     if bool((insight.context or {}).get("fss_milestone_sequence")):
         return allow_tts, allow_reason, False

@@ -113,6 +113,7 @@ class F34QualityGatesAndSmokeTests(unittest.TestCase):
         with (
             patch("logic.events.fuel_events.emit_insight", return_value=True) as emit_mock,
             patch("logic.events.fuel_events.log_event_throttled") as log_mock,
+            patch("logic.events.fuel_events._FUEL_LOGGER.debug") as debug_mock,
             patch.object(fuel_events.DEBOUNCER, "can_send", return_value=True),
         ):
             fuel_events.handle_status_update(low_with_capacity)
@@ -128,8 +129,9 @@ class F34QualityGatesAndSmokeTests(unittest.TestCase):
         self.assertTrue(bool(fuel_events.LOW_FUEL_WARNED))
         self.assertAlmostEqual(float(getattr(app_state, "fuel_capacity") or 0.0), 20.0, places=3)
         reasons = [str(call.kwargs.get("reason") or "") for call in log_mock.call_args_list]
+        debug_parts = " | ".join(" ".join(str(arg) for arg in call.args) for call in debug_mock.call_args_list)
         self.assertIn("bootstrap_current_system_unknown", reasons)
-        self.assertIn("ambiguous_numeric_without_capacity_fallback_applied", reasons)
+        self.assertIn("ambiguous_numeric_without_capacity_fallback_applied", debug_parts)
 
     def test_smoke_capacity_confirmation_and_jump_range_regression(self) -> None:
         with app_state.lock:
@@ -173,4 +175,3 @@ class F34QualityGatesAndSmokeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

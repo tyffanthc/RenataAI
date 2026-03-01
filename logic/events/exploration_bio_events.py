@@ -453,7 +453,7 @@ def recover_exobio_from_journal_lines(
             continue
 
         species = _species_name(ev)
-        body = _as_text(ev.get("BodyName")) or _as_text(ev.get("Body")) or _as_text(ev.get("BodyID"))
+        body_raw = _as_text(ev.get("BodyName")) or _as_text(ev.get("Body")) or _as_text(ev.get("BodyID"))
         system_name = _as_text(ev.get("StarSystem"))
         used_fallback_for_event = False
         if not system_name:
@@ -462,7 +462,16 @@ def recover_exobio_from_journal_lines(
                 used_system_fallback += 1
                 used_fallback_for_event = True
 
-        if not (species and body and system_name):
+        if not (species and system_name):
+            continue
+
+        key_event = dict(ev)
+        if system_name and not _as_text(key_event.get("StarSystem")):
+            key_event["StarSystem"] = system_name
+        body = _canonical_body_for_key(key_event, system_name)
+        if not body:
+            body = body_raw
+        if not body:
             continue
 
         key = (system_name.lower(), body.lower(), species.lower())
@@ -478,7 +487,7 @@ def recover_exobio_from_journal_lines(
             EXOBIO_RANGE_TRACKERS.pop(key, None)
             EXOBIO_RANGE_READY_WARNED.discard(key)
 
-        if _is_numeric_token(_as_text(body)) or used_fallback_for_event:
+        if _is_numeric_token(_as_text(body_raw)) or used_fallback_for_event:
             EXOBIO_RECOVERY_UNCERTAIN_KEYS.add(key)
 
     if events_recovered and persist:
@@ -1119,16 +1128,13 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
         sequence_uncertain = key in EXOBIO_RECOVERY_UNCERTAIN_KEYS
 
         if sample_count == 1:
-            if sequence_uncertain:
-                msg = f"Kolejna próbka {subject} pobrana."
-            else:
-                msg = f"Pierwsza próbka {subject} pobrana."
+            msg = f"Nowy wpis biologiczny. Pierwsza próbka {subject} pobrana."
             ctx = _exobio_context(system_name=system_name, body_name=body, species=species, payload=ev)
             ctx["raw_text"] = msg
             emit_insight(
                 msg,
                 gui_ref=gui_ref,
-                message_id="MSG.EXOBIO_SAMPLE_LOGGED",
+                message_id="MSG.EXOBIO_NEW_ENTRY",
                 source="exploration_bio_events",
                 event_type="BIO_PROGRESS",
                 context=ctx,
@@ -1166,15 +1172,16 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
                 msg = f"Mamy wszystko dla {subject}. Skanowanie gatunku zakończone."
             ctx = _exobio_context(system_name=system_name, body_name=body, species=species, payload=ev)
             ctx["raw_text"] = msg
+            ctx["bypass_priority_matrix"] = True
             emit_insight(
                 msg,
                 gui_ref=gui_ref,
-                message_id="MSG.EXOBIO_SAMPLE_LOGGED",
+                message_id="MSG.EXOBIO_SPECIES_COMPLETE",
                 source="exploration_bio_events",
                 event_type="BIO_PROGRESS",
                 context=ctx,
-                priority="P2_NORMAL",
-                dedup_key=f"exobio_sample:{system_name}:{body}:{species}:3",
+                priority="P1_HIGH",
+                dedup_key=f"exobio_species_complete:{system_name}:{body}:{species}",
                 cooldown_scope="entity",
                 cooldown_seconds=0.0,
             )

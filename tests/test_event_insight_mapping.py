@@ -30,6 +30,7 @@ class EventInsightMappingTests(unittest.TestCase):
             "MSG.DSS_PROGRESS",
             "MSG.FIRST_MAPPED",
             "MSG.EXOBIO_SAMPLE_LOGGED",
+            "MSG.EXOBIO_SPECIES_COMPLETE",
             "MSG.EXOBIO_RANGE_READY",
             "MSG.EXOBIO_NEW_ENTRY",
             "MSG.EXPLORATION_SYSTEM_SUMMARY",
