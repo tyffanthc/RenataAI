@@ -83,6 +83,19 @@ def _normalize_type(value: Any) -> str:
     return "station"
 
 
+def _normalize_pad_size(value: Any) -> str:
+    text = _as_text(value).upper()
+    if not text:
+        return ""
+    if text.startswith("L") or "LARGE" in text:
+        return "L"
+    if text.startswith("M") or "MEDIUM" in text:
+        return "M"
+    if text.startswith("S") or "SMALL" in text:
+        return "S"
+    return ""
+
+
 def _normalize_service_token(value: Any) -> str:
     raw = _as_text(value).casefold()
     return "".join(ch for ch in raw if ch.isalnum())
@@ -204,6 +217,14 @@ def normalize_station_candidate(
             or row.get("stationType")
             or row.get("subType")
         ),
+        "max_landing_pad_size": _normalize_pad_size(
+            row.get("max_landing_pad_size")
+            or row.get("maxLandingPadSize")
+            or row.get("max_landing_pad")
+            or row.get("maxLandingPad")
+            or row.get("landing_pad_size")
+            or row.get("landingPadSize")
+        ),
         "services": _extract_services(row),
         "distance_ly": _safe_optional_float(
             row.get("distance_ly")
@@ -258,6 +279,8 @@ def _candidate_score(candidate: Dict[str, Any]) -> int:
     if candidate.get("distance_ly") is not None:
         score += 1
     if candidate.get("distance_ls") is not None:
+        score += 1
+    if _normalize_pad_size(candidate.get("max_landing_pad_size")):
         score += 1
     return score
 
@@ -330,6 +353,13 @@ def _merge_candidate_pair(current: Dict[str, Any], incoming: Dict[str, Any]) -> 
         out["station_name"] = _as_text(base.get("station_name"))
     if not _as_text(out.get("name")):
         out["name"] = _candidate_station_name(base)
+    out_pad = _normalize_pad_size(out.get("max_landing_pad_size"))
+    base_pad = _normalize_pad_size(base.get("max_landing_pad_size"))
+    if not out_pad and base_pad:
+        out["max_landing_pad_size"] = base_pad
+    elif out_pad and base_pad and out_pad != base_pad:
+        if "L" in {out_pad, base_pad}:
+            out["max_landing_pad_size"] = "L"
     return out
 
 
@@ -1011,3 +1041,41 @@ def filter_candidates_by_service(
         for item in candidates
         if isinstance(item, dict) and bool((item.get("services") or {}).get(key))
     ]
+
+
+def _candidate_supports_large_pad(candidate: Dict[str, Any]) -> bool:
+    station_type = _normalize_type(candidate.get("type"))
+    if station_type == "outpost":
+        return False
+    if station_type == "fleet_carrier":
+        return True
+    pad_size = _normalize_pad_size(
+        candidate.get("max_landing_pad_size")
+        or candidate.get("maxLandingPadSize")
+        or candidate.get("landing_pad_size")
+    )
+    if pad_size in {"S", "M"}:
+        return False
+    return True
+
+
+def filter_candidates_by_pad_requirement(
+    candidates: Iterable[Dict[str, Any]],
+    *,
+    needs_large_pad: bool,
+    auto_lock_enabled: bool = True,
+) -> List[Dict[str, Any]]:
+    rows = [dict(item) for item in candidates if isinstance(item, dict)]
+    if not bool(needs_large_pad) or not bool(auto_lock_enabled):
+        return rows
+
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        row["max_landing_pad_size"] = _normalize_pad_size(
+            row.get("max_landing_pad_size")
+            or row.get("maxLandingPadSize")
+            or row.get("landing_pad_size")
+        )
+        if _candidate_supports_large_pad(row):
+            out.append(row)
+    return out

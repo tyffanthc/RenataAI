@@ -10,6 +10,7 @@ from app.state import app_state
 from logic.cash_in_station_candidates import (
     build_station_candidates,
     collect_then_rank_station_candidates,
+    filter_candidates_by_pad_requirement,
     filter_candidates_by_service,
     station_candidates_from_playerdb,
     station_candidates_from_offline_index,
@@ -528,6 +529,16 @@ def _pick_fallback_station_candidate(
     service: str,
 ) -> dict[str, Any] | None:
     rows = [dict(item) for item in candidates if isinstance(item, dict)]
+    if not rows:
+        return None
+
+    ship_size_auto_lock_enabled = bool(config.get("cash_in.ship_size_auto_lock_enabled", True))
+    needs_large_pad = bool(getattr(app_state, "needs_large_pad", False))
+    rows = filter_candidates_by_pad_requirement(
+        rows,
+        needs_large_pad=needs_large_pad,
+        auto_lock_enabled=ship_size_auto_lock_enabled,
+    )
     if not rows:
         return None
 
@@ -1054,12 +1065,30 @@ def _build_profiled_options(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     trust_score = _trust_score(trust_status, confidence)
     service_norm = _normalize_cash_in_service(service)
-    filtered = filter_candidates_by_service(candidates, service=service_norm)
+    raw_rows = [dict(item) for item in candidates if isinstance(item, dict)]
+    ship_size_auto_lock_enabled = bool(config.get("cash_in.ship_size_auto_lock_enabled", True))
+    needs_large_pad = bool(getattr(app_state, "needs_large_pad", False))
+    pad_filtered_rows = filter_candidates_by_pad_requirement(
+        raw_rows,
+        needs_large_pad=needs_large_pad,
+        auto_lock_enabled=ship_size_auto_lock_enabled,
+    )
+    pad_filter_applied = bool(needs_large_pad and ship_size_auto_lock_enabled)
+    pad_filtered_out_count = (
+        max(0, len(raw_rows) - len(pad_filtered_rows))
+        if pad_filter_applied
+        else 0
+    )
+    filtered = filter_candidates_by_service(pad_filtered_rows, service=service_norm)
     if not filtered:
         return [], {
             "enabled": False,
             "reason": "no_service_candidates",
             "service": service_norm,
+            "ship_needs_large_pad": needs_large_pad,
+            "ship_size_auto_lock_enabled": ship_size_auto_lock_enabled,
+            "ship_pad_filter_applied": pad_filter_applied,
+            "ship_pad_filtered_out_count": pad_filtered_out_count,
             "service_candidates_count": 0,
             "service_non_carrier_count": 0,
             "service_carrier_count": 0,
@@ -1165,6 +1194,10 @@ def _build_profiled_options(
         "enabled": True,
         "service": service_norm,
         "profiles": [str((opt or {}).get("profile") or "") for opt in options],
+        "ship_needs_large_pad": needs_large_pad,
+        "ship_size_auto_lock_enabled": ship_size_auto_lock_enabled,
+        "ship_pad_filter_applied": pad_filter_applied,
+        "ship_pad_filtered_out_count": pad_filtered_out_count,
         "docked": docked,
         "secure_fallback_to_nearest": secure_fallback,
         "secure_fallback_to_safe": secure_fallback,

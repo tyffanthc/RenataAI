@@ -72,6 +72,18 @@ class AppState:
         "collectorlimpetcontroller",
         "refinery",
     )
+    _LARGE_PAD_SHIP_KEYS = {
+        "anaconda",
+        "belugaliner",
+        "type9",
+        "type9heavy",
+        "type10",
+        "type10defender",
+        "federationcorvette",
+        "imperialcutter",
+        "orca",
+        "imperialclipper",
+    }
 
     def __init__(self):
         self.lock = threading.Lock()
@@ -163,6 +175,7 @@ class AppState:
             saved_route_profile = ""
         self.route_profile: str = saved_route_profile
         self.is_off_route: bool = bool(config.STATE.get("route_is_off_route", False))
+        self.needs_large_pad: bool = bool(config.STATE.get("needs_large_pad", False))
         self.inventory = config.STATE.get("inventory", {})
         self.pending_station_clipboard_target_system: str | None = None
         self.pending_station_clipboard_station: str | None = None
@@ -227,6 +240,32 @@ class AppState:
         self._mode_signal_mining_last_ts: float = 0.0
         self._mode_signal_mining_loadout: bool = False
         self._mode_last_emit_signature: str = ""
+
+    @classmethod
+    def _ship_type_requires_large_pad(cls, ship_type: str) -> bool:
+        token = "".join(ch for ch in str(ship_type or "").strip().lower() if ch.isalnum())
+        if not token:
+            return False
+        if token in cls._LARGE_PAD_SHIP_KEYS:
+            return True
+        return False
+
+    def set_needs_large_pad(self, needs_large_pad: bool, *, source: str = "runtime") -> bool:
+        changed = False
+        value = bool(needs_large_pad)
+        with self.lock:
+            if bool(self.needs_large_pad) != value:
+                self.needs_large_pad = value
+                config.STATE["needs_large_pad"] = value
+                changed = True
+        if changed:
+            log_event_throttled(
+                "state.needs_large_pad",
+                500,
+                "STATE",
+                f"needs_large_pad={int(value)} source={source}",
+            )
+        return value
 
     def set_system(self, system_name):
         if not system_name:
@@ -699,6 +738,23 @@ class AppState:
             if event_name == "Loadout":
                 modules = ev.get("Modules")
                 self._mode_signal_mining_loadout = self._detect_mining_loadout_from_modules(modules)
+                ship_type_raw = str(
+                    ev.get("Ship")
+                    or ev.get("ShipType")
+                    or ev.get("ShipType_Localised")
+                    or ""
+                ).strip()
+                if ship_type_raw:
+                    needs_large_pad = self._ship_type_requires_large_pad(ship_type_raw)
+                    if bool(self.needs_large_pad) != bool(needs_large_pad):
+                        self.needs_large_pad = bool(needs_large_pad)
+                        config.STATE["needs_large_pad"] = bool(needs_large_pad)
+                        log_event_throttled(
+                            "state.needs_large_pad",
+                            500,
+                            "STATE",
+                            f"needs_large_pad={int(bool(needs_large_pad))} source={source}.loadout ship={ship_type_raw}",
+                        )
 
             return dict(self._recompute_auto_mode_locked(source=source))
 
