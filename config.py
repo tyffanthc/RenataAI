@@ -22,7 +22,7 @@ from logic.context_state_contract import (
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _SETTINGS_SOURCE_LOGGED = False
-APP_VERSION = "v0.9.4"
+APP_VERSION = "v0.9.5"
 
 
 def _renata_user_home_dir() -> str:
