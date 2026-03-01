@@ -9,6 +9,7 @@ import config
 from app.state import app_state
 from logic.cash_in_station_candidates import (
     build_station_candidates,
+    collect_then_rank_station_candidates,
     filter_candidates_by_service,
     station_candidates_from_playerdb,
     station_candidates_from_offline_index,
@@ -2168,13 +2169,12 @@ def _build_station_candidates_runtime(
         )
         nearby_reason = _as_text(cross_meta.get("nearby_reason")).lower()
         if cross_candidates:
-            combined: list[dict[str, Any] | str] = []
-            combined.extend(candidates)
-            combined.extend(cross_candidates)
-            candidates = build_station_candidates(
-                combined,
+            candidates = collect_then_rank_station_candidates(
+                source_rows={
+                    "RUNTIME_LOCAL": candidates,
+                    "CROSS_SYSTEM": cross_candidates,
+                },
                 default_system=system,
-                source_hint="CROSS_SYSTEM",
                 freshness_ts=freshness_ts,
                 limit=limit,
             )
@@ -2885,5 +2885,4 @@ def trigger_cash_in_assistant(
         cooldown_seconds=cooldown_seconds,
     )
     return True
-
 

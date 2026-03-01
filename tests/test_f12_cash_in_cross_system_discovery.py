@@ -203,6 +203,66 @@ class F12CashInCrossSystemDiscoveryTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertFalse(cross_mock.called)
 
+    def test_runtime_cross_system_merge_uses_collect_then_rank_for_duplicate_market(self) -> None:
+        payload = self._base_payload()
+        local_no_service = [
+            {
+                "market_id": "3221999001",
+                "name": "Shared Port",
+                "system_name": "F12_ORIGIN",
+                "type": "station",
+                "services": {"has_uc": False, "has_vista": True},
+                "distance_ly": 42.0,
+                "distance_ls": 1500.0,
+                "freshness_ts": "2026-02-25T00:00:00Z",
+                "source": "EDSM",
+            }
+        ]
+        cross_candidates = [
+            {
+                "market_id": "3221999001",
+                "name": "Shared Port",
+                "system_name": "F12_NEAR",
+                "type": "station",
+                "services": {"has_uc": True, "has_vista": False},
+                "distance_ly": 27.0,
+                "distance_ls": 900.0,
+                "freshness_ts": "2026-03-01T00:00:00Z",
+                "source": "SPANSH",
+            }
+        ]
+        cross_meta = {"systems_requested": 4, "systems_with_candidates": 1}
+
+        with (
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_for_system_from_providers",
+                return_value=local_no_service,
+            ),
+            patch(
+                "logic.events.cash_in_assistant.station_candidates_cross_system_from_providers",
+                return_value=(cross_candidates, cross_meta),
+            ),
+            patch("logic.events.cash_in_assistant.emit_insight") as emit_mock,
+        ):
+            ok = cash_in_assistant.trigger_cash_in_assistant(mode="manual", summary_payload=payload)
+
+        self.assertTrue(ok)
+        ctx = dict(emit_mock.call_args.kwargs.get("context") or {})
+        structured = dict(ctx.get("cash_in_payload") or {})
+        station_meta = dict(structured.get("station_candidates_meta") or {})
+        candidates = [dict(item) for item in (structured.get("station_candidates") or []) if isinstance(item, dict)]
+
+        self.assertEqual(str(station_meta.get("source_status") or ""), "providers_cross_system")
+        self.assertEqual(len(candidates), 1)
+        row = dict(candidates[0])
+        self.assertEqual(str(row.get("market_id") or ""), "3221999001")
+        self.assertEqual(str(row.get("freshness_ts") or ""), "2026-03-01T00:00:00Z")
+        self.assertEqual(float(row.get("distance_ly") or 0.0), 27.0)
+        self.assertIn("EDSM", str(row.get("source") or ""))
+        self.assertIn("SPANSH", str(row.get("source") or ""))
+        services = dict(row.get("services") or {})
+        self.assertTrue(bool(services.get("has_uc")))
+
 
 if __name__ == "__main__":
     unittest.main()
