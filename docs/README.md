@@ -18,6 +18,8 @@ Renata to asystent decyzyjny, nie autopilot.
 - Trade pokazuje `Wiek rynku K/S`, `Cumulative Profit` i fallback wyliczania `Skoki [szt]`.
 - Cash-In smart navigation: collect-then-rank multi-source, global dedupe/ranking, profile semantyczne i auto-target do schowka.
 - Cash-In ship awareness: filtr stacji pod rozmiar statku (`needs_large_pad`) + runtime toggles (`SHIP/EXP/CAR`) w pulpicie.
+- Dziennik/Logbook: model `Entry`, feed zdarzen kapitana, mapowanie Journal -> Entry, filtry/klasy/sortowanie i cache feedu po restarcie.
+- Player Local DB (SQLite): ingest zdarzen lotu/marketu/sprzedazy, lokalne query runtime dla Cash-In i Mapy, migracje schematu i metadata systemowe.
 - Exploration callouty (FSS, high-value hints, ExoBio sample flow).
 - Eksploracja FSS: inteligentne liczenie cial (filtr pasow asteroid/Belt), poprawny progres i domkniecie 100% przy pelnym skanie.
 - Eksploracja ExoBio: pelna asysta probek 1/2/3 (`nowy wpis` -> `kolejna probka` -> `gatunek kompletny`) z koncowa wycena i wysokim priorytetem mowy dla finalu.
@@ -25,15 +27,19 @@ Renata to asystent decyzyjny, nie autopilot.
 - UX/TTS: krotkie, human-friendly nazwy cial niebieskich w komunikatach glosowych (bez twardego prefiksu nazwy systemu).
 - Stabilnosc paliwa na starcie: potwierdzanie `fuel_capacity`, fallback last-known i guards bootstrap bez falszywych alertow krytycznych.
 - Globalny pipeline TTS (Piper/pyttsx3) z polityka anti-spam.
+- Runtime stability hardening: FIFO worker TTS, timeout guards i lock-safe odczyty stanu pod dlugie sesje bez przyciec.
 - Konfigurowalne UI tabel (Treeview, kolumny, sort, copy/export) + spojny globalny styl scrollbarow.
 
-## Najwazniejsze zmiany od v0.9.4 do v0.9.5 (wg LAST_TICKET)
+## Najwazniejsze zmiany od v0.9.4 do v0.9.5
 - Cash-In (F11-F17, F32-F33): pelny pipeline kandydatow stacji, profile semantyczne, ship-size constraints, clipboard auto-target i quality gates.
-- Player Local DB (F16 + F34): rozszerzone migracje/schema, bridge danych runtime, pamiec visited nav beacons.
-- Mapa i UI (F20-F22, F31): rozbudowany widok mapy, warstwy, legendy, filtry, persistence i regresje startup/center.
+- Dziennik/Logbook (F8-F10, F19): `Entry` offline-first, feed Journal z whitelist, mapowanie event->entry, cache/restore i UX klas/filtrow.
+- Player Local DB (F16 + F31 + F34): rozszerzone migracje/schema (`v1..v4`), bridge danych runtime, star metadata, pamiec visited nav beacons.
+- Mapa i UI (F20-F22, F23, F31): rozbudowany widok mapy, warstwy, legendy, filtry, persistence, auto-refresh po update PlayerDB i regresje startup/center.
 - Eksploracja (F24-F31, F34-F36): stabilniejsze sekwencje FSS/DSS/ExoBio, lepsze callouty i odporna persystencja po restarcie.
 - Fuel runtime (F23, F34, F36): hardening low-fuel/startup path, mniej spamu, bardziej przewidywalne alerty krytyczne.
 - TTS/Voice UX (F17-F19, F35-F36): lepsze priorytety i kolejkowanie dla krytycznych komunikatow oraz krotsze nazwy cial.
+- Runtime jump gating: podsumowanie eksploracji przy wyjsciu z systemu uruchamiane tylko dla `StartJump(Hyperspace)` (bez falszywego triggera dla `Supercruise`).
+- Runtime/UI resilience: poprawki timerow/kolejek i wydajnosci mapy (debounce, batch lookup, prefetch) dla stabilniejszego dzialania przy dlugim locie.
 
 ## Jak Renata dziala (high-level)
 1. Main loop czyta pliki gry (Journal + watchery pomocnicze).

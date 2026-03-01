@@ -15,11 +15,15 @@ Added:
 - Pamiec boi nawigacyjnych (`visited_nav_beacons`) i suppress intro o pasywnym skanie w systemach juz odwiedzonych (F34).
 - Smart Cash-In 2.0: collect-then-rank multi-provider, globalny dedupe/ranking, profile semantyczne, ship-size pad filter, auto-target do schowka, toggles w pulpicie (F32/F33).
 - Rozszerzenia mapy i danych lokalnych gracza (PLAYERDB bridge/migrations, map metadata + quality gates) domkniete w paczkach F16/F20-F22/F31.
+- Dziennik/Logbook v2: model `Entry`, mapowanie Journal -> Entry, akcje kontekstowe, integracja z nawigacja/chips i cache feedu po restarcie (F8/F9/F10/F19).
+- Personal Galaxy Map w `Dziennik -> Mapa`: warstwy, filtry, legenda, PPM actions, Trade Compare v2, persistence view state, auto-center i auto-refresh po update PlayerDB (F20/F21/F22/F23/F31).
 
 Changed:
 - Eksploracja FSS liczy progres po realnych cialach (bez pasow asteroid/Belt), z poprawnym domykaniem 100% i poprawiona sekwencja milestone/fullscan (F30/F34/F35).
 - Routing glosu dla krytycznych komunikatow exploration/exobio ma twardsze priorytety i bypass tam, gdzie wymagane sa callouty decyzji (F24/F35/F36).
 - Cash-In profile i UI zostaly ujednolicone do nazw funkcjonalnych (`NEAREST/SECURE/EXPRESS/PLANETARY_VISTA`) z kompatybilnoscia aliasow legacy (F32/F33).
+- PlayerDB rozszerzono od bazowego bridge do modelu map/exploration/cash-in (schema/migracje, ingest, provider, metadata gwiazd, visited nav-beacons) (F16/F31/F34).
+- Runtime safety hardening dla dlugich sesji: lock-safe accessory `app_state`, bezpieczniejsze timery/queue GUI, watchdog lifecycle dla workerow i mniej ryzyka deadlockow/freeze (pakiety follow-up F23/F31/F36).
 
 Fixed:
 - Naprawiono blad mianownika w postepie FSS (pasy asteroid nie psuja procentu, brak falszywego 75% przy prostych systemach) (F30/F34/F35).
@@ -27,6 +31,11 @@ Fixed:
 - Naprawiono ucinanie waznych komunikatow przez matryce priorytetow i globalny cooldown TTS (w tym multi-body high-value oraz ExoBio 3/3) (F35/F36).
 - Naprawiono startup fuel false-positive (`fuel startup uncertain`, `ambiguous_numeric_without_capacity`) przez potwierdzanie capacity, fallback last-known i bootstrap guards (F34/F36).
 - Naprawiono powtarzanie "pasywnie z boi" oraz komunikaty zrodla danych w znanych/niezamieszkalych systemach (F34).
+- Naprawiono trigger podsumowania eksploracji przy `StartJump`: flush pending exit summary tylko dla `JumpType=Hyperspace` (bez falszywego triggera na `Supercruise`).
+- Naprawiono rozjazd runtime value po sprzedazy i po restarcie: domenowe resety po `SellExplorationData`/`SellOrganicData` + recovery respektuje eventy sprzedazy (`CASHIN-VALUE-INTEGRITY-SELL-RESET-01`).
+- Naprawiono szereg regresji TTS/runtime: FIFO worker kolejki mowy, timeout guards (Piper/Winsound) i mniejsze ryzyko nakladania/ucinania komunikatow w dlugiej sesji.
+- Naprawiono wydajnosc i odpornosc mapy przy duzych danych: debounce reloadow, batch lookup flag stacji (bez N+1), prefetch drilldown i stabilniejsze auto-refresh/reselection.
+- Naprawiono niespojnosci polskich znakow (diakrytyki/mojibake) w templatekach TTS i wybranych tekstach UI, z normalizacja UTF-8 w calloutach.
 
 Zakres release:
 - v0.9.5 obejmuje domkniete paczki z `LAST_TICKET` od F11 do F36 (cash-in, playerdb, logbook, mapa, exploration, fuel, TTS, quality gates/smoke).
@@ -80,6 +89,43 @@ Zakres release:
 - Rozpisano etap F16 (PLAYER_LOCAL_DB) w dokumentacji.
 - Runtime bridge dla cash-in:
   - fallback order preferuje lokalne dane gracza (`local_known`) przed `offline_index`.
+
+### FLOW-F8/F9/F10 - DZIENNIK, LOGBOOK, PERSISTENCJA (P0/P1)
+- Domknieto fundament Dziennika:
+  - model `Entry` + storage offline-first i migracje,
+  - mapowanie `Journal -> Entry` + akcje "utworz wpis",
+  - integracja nawigacji z chipsami system/station/body.
+- Domknieto UX Dziennika:
+  - context menu, move/edit metadata, filtry data + multitagi.
+- Domknieto persistence i continuity:
+  - kontrakt `app_state` (ui/preferences/domain/anti-spam),
+  - restore kontekstu po restarcie (w tym continuity ExoBio z journala).
+
+### FLOW-F19 - LOGBOOK CAPTAIN FEED V2 (P0/P1)
+- Logbook feed z cache/restore po restarcie i po power-loss.
+- Rozszerzone pokrycie eventow kapitanskich + klasy i sortowanie feedu.
+- Rozbudowany panel informacyjny/podsumowania bez utraty czytelnosci.
+- Journal replay smoke dla typowej sesji lotu (skoki, ladowanie, exobio, sprzedaz, incydenty).
+
+### FLOW-F20/F21/F22/F23/F31 - PERSONAL GALAXY MAP (P0/P1)
+- Mapa osadzona jako podzakladka `Dziennik -> Mapa` (MVP + UX polish).
+- Render trasy i wezlow podrozy, drilldown system/station, warstwy i legenda.
+- PPM actions, tooltipy, akcje map->entry, Trade Compare v2 (multiselect/modal/usability).
+- Persistence stanu mapy: center/zoom/warstwy/filtry + restore po restarcie.
+- Auto-refresh mapy po update PlayerDB (deferred refresh + debounce).
+- Rozszerzenia F31:
+  - metadata gwiazd (schema + ingest + provider),
+  - visual coding + tooltip details,
+  - auto-center na current system na starcie,
+  - tryb renderowania `Trasa/Mapa` z coords view.
+
+### CASHIN-VALUE-INTEGRITY-SELL-RESET-01 (P0)
+- Runtime `SystemValueEngine` dostal domenowe resety wartosci:
+  - `cartography`,
+  - `exobiology`,
+  - `all`.
+- Eventy `SellExplorationData` / `SellOrganicData` (oraz `MultiSellExplorationData`) resetuja odpowiednia domene wartosci sesji.
+- Bootstrap recovery uwzglednia eventy sprzedazy i nie odtwarza juz sprzedanych wartosci do `cash_in_session_estimated`.
 
 ### FLOW-F6-RELEASE-HARDENING-AND-SMOKE-01 (P0)
 - Domknieto finalny gate FREE/PUB dla F6:
