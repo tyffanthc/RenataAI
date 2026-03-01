@@ -70,6 +70,23 @@ class TestF60BootstrapFssStateRecovery(unittest.TestCase):
         self.assertEqual(int(fss_events.FSS_DISCOVERED), 2)
         self.assertEqual(int(fss_events.FSS_TOTAL_BODIES), 2)
 
+    def test_bootstrap_ignores_belt_cluster_entries_in_discovered_counter(self) -> None:
+        lines = [
+            _j("Location", StarSystem="BELT_SYS"),
+            _j("FSSDiscoveryScan", BodyCount=6),
+            _j("Scan", BodyName="BELT_SYS A Belt Cluster 1", BodyID=301, ScanType="AutoScan"),
+            _j("Scan", BodyName="BELT_SYS A Belt Cluster 2", BodyID=302, ScanType="AutoScan"),
+            _j("Scan", BodyName="BELT_SYS A 1", BodyID=303, ScanType="Detailed"),
+            _j("Scan", BodyName="BELT_SYS A 2", BodyID=304, ScanType="Detailed"),
+        ]
+
+        stats = fss_events.bootstrap_fss_state_from_journal_lines(lines, max_lines=200)
+
+        self.assertTrue(bool(stats.get("restored")))
+        self.assertEqual(int(fss_events.FSS_DISCOVERED), 2)
+        self.assertEqual(int(stats.get("discovered") or 0), 2)
+        self.assertEqual(int(fss_events.FSS_TOTAL_BODIES), 6)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -52,10 +52,10 @@ _NON_MANUAL_FSS_SCAN_TYPES = {"autoscan", "navbeacondetail", "basic"}
 
 
 def _progress_count_for_thresholds() -> int:
-    """Progress used by FSS milestones (prefers manual counter when available)."""
-    manual = int(FSS_DISCOVERED_MANUAL or 0)
-    if manual > 0:
-        return manual
+    """
+    Progress used by FSS milestones.
+    Milestones should follow the same body counter semantics as in-game Bodies N/*.
+    """
     return int(FSS_DISCOVERED or 0)
 
 
@@ -280,6 +280,21 @@ def _scan_body_label(ev: Dict[str, Any]) -> Any:
     return ev.get("BodyName") or ev.get("BodyID") or ev.get("Body") or None
 
 
+def _is_real_celestial_body(ev: Dict[str, Any]) -> bool:
+    """
+    Keep FSS body progress aligned with in-game Bodies counter.
+    Ignore non-body scan artifacts such as asteroid belt clusters and barycentres.
+    """
+    body_name = str(ev.get("BodyName") or ev.get("Body") or "").strip().casefold()
+    if not body_name:
+        return True
+    if "belt cluster" in body_name:
+        return False
+    if "barycentre" in body_name or "barycenter" in body_name:
+        return False
+    return True
+
+
 def _scan_body_keys(ev: Dict[str, Any]) -> set[str]:
     """
     Build a small alias set for one body scan so mixed payloads (`BodyName` vs `BodyID`)
@@ -467,6 +482,8 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
     global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES, FIRST_SYS_OPPORTUNITY_WARNED
 
     if not body_name:
+        return
+    if not _is_real_celestial_body(ev):
         return
     scan_type_norm = str(ev.get("ScanType") or "").strip().casefold()
     if scan_type_norm:
@@ -718,6 +735,8 @@ def bootstrap_fss_state_from_journal_lines(
             continue
 
         if typ != "Scan":
+            continue
+        if not _is_real_celestial_body(ev):
             continue
 
         scan_type_norm = str(ev.get("ScanType") or "").strip().casefold()

@@ -142,6 +142,29 @@ class F30FssMilestoneCatchupAndBodyDedupeTests(unittest.TestCase):
         self.assertIn("MSG.FIRST_DISCOVERY", emitted)
         self.assertLess(emitted.index("MSG.FSS_PROGRESS_25"), emitted.index("MSG.FIRST_DISCOVERY"))
 
+    def test_handle_scan_ignores_belt_cluster_from_fss_progress(self) -> None:
+        fss_events.FSS_TOTAL_BODIES = 10
+        with (
+            patch("logic.events.exploration_fss_events._check_fss_thresholds") as thresholds_mock,
+            patch("logic.events.exploration_fss_events._maybe_speak_fss_full") as full_mock,
+            patch("logic.events.exploration_fss_events.check_high_value_planet") as high_value_mock,
+        ):
+            fss_events.handle_scan(
+                {
+                    "event": "Scan",
+                    "BodyName": "TEST SYS A Belt Cluster 3",
+                    "BodyID": 123,
+                    "ScanType": "AutoScan",
+                },
+                gui_ref=None,
+            )
+
+        self.assertEqual(int(fss_events.FSS_DISCOVERED or 0), 0)
+        self.assertEqual(int(fss_events.FSS_DISCOVERED_MANUAL or 0), 0)
+        thresholds_mock.assert_not_called()
+        full_mock.assert_not_called()
+        high_value_mock.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
