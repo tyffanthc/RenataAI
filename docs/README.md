@@ -11,14 +11,29 @@ Renata to asystent decyzyjny, nie autopilot.
 - podaje krotsze, kontekstowe komunikaty TTS,
 - ogranicza spam i dba o czytelnosc informacji.
 
-## Co Renata robi dzisiaj (v0.9.4)
+## Co Renata robi dzisiaj (v0.9.5)
 - Zakladki Spansh: `Neutron`, `Riches`, `Ammonia`, `ELW`, `HMC`, `Exomastery`, `Trade`.
 - Route workflow z auto-clipboard i wskazaniem kolejnego celu.
 - Trade helper z walidacja danych, split-view i panelem szczegolow kroku.
 - Trade pokazuje `Wiek rynku K/S`, `Cumulative Profit` i fallback wyliczania `Skoki [szt]`.
-- Exploration callouty (FSS, high-value hints, exobio sample flow).
+- Cash-In smart navigation: collect-then-rank multi-source, global dedupe/ranking, profile semantyczne i auto-target do schowka.
+- Cash-In ship awareness: filtr stacji pod rozmiar statku (`needs_large_pad`) + runtime toggles (`SHIP/EXP/CAR`) w pulpicie.
+- Exploration callouty (FSS, high-value hints, ExoBio sample flow).
+- Eksploracja FSS: inteligentne liczenie cial (filtr pasow asteroid/Belt), poprawny progres i domkniecie 100% przy pelnym skanie.
+- Eksploracja ExoBio: pelna asysta probek 1/2/3 (`nowy wpis` -> `kolejna probka` -> `gatunek kompletny`) z koncowa wycena i wysokim priorytetem mowy dla finalu.
+- Nawigacja: pamiec boi nawigacyjnych per system (visited nav beacons), bez powtarzania intro o pasywnym skanie w znanych ukladach.
+- UX/TTS: krotkie, human-friendly nazwy cial niebieskich w komunikatach glosowych (bez twardego prefiksu nazwy systemu).
+- Stabilnosc paliwa na starcie: potwierdzanie `fuel_capacity`, fallback last-known i guards bootstrap bez falszywych alertow krytycznych.
 - Globalny pipeline TTS (Piper/pyttsx3) z polityka anti-spam.
 - Konfigurowalne UI tabel (Treeview, kolumny, sort, copy/export) + spojny globalny styl scrollbarow.
+
+## Najwazniejsze zmiany od v0.9.4 do v0.9.5 (wg LAST_TICKET)
+- Cash-In (F11-F17, F32-F33): pelny pipeline kandydatow stacji, profile semantyczne, ship-size constraints, clipboard auto-target i quality gates.
+- Player Local DB (F16 + F34): rozszerzone migracje/schema, bridge danych runtime, pamiec visited nav beacons.
+- Mapa i UI (F20-F22, F31): rozbudowany widok mapy, warstwy, legendy, filtry, persistence i regresje startup/center.
+- Eksploracja (F24-F31, F34-F36): stabilniejsze sekwencje FSS/DSS/ExoBio, lepsze callouty i odporna persystencja po restarcie.
+- Fuel runtime (F23, F34, F36): hardening low-fuel/startup path, mniej spamu, bardziej przewidywalne alerty krytyczne.
+- TTS/Voice UX (F17-F19, F35-F36): lepsze priorytety i kolejkowanie dla krytycznych komunikatow oraz krotsze nazwy cial.
 
 ## Jak Renata dziala (high-level)
 1. Main loop czyta pliki gry (Journal + watchery pomocnicze).

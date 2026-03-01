@@ -1,11 +1,35 @@
 # CHANGELOG.md
 
-Ostatnia aktualizacja: 2026-02-21
+Ostatnia aktualizacja: 2026-03-01
 Zakres: skondensowane zmiany release na podstawie `docs/internal/LAST_TICKET.MD`.
 
 ---
 
 ## v0.9.5 - changelog (domkniety)
+
+### Added / Changed / Fixed (zbiorczo, commit history z LAST_TICKET od v0.9.4 do v0.9.5)
+
+Added:
+- System krotkich nazw TTS dla planet/cial (`System A 2` -> `A 2`) w calloutach exploration i DSS hintach (F35).
+- Nowy flow komunikatow ExoBio: `Nowy wpis` -> `Kolejna probka` -> `Gatunek skompletowany` + finalna wycena 3/3 (F36).
+- Pamiec boi nawigacyjnych (`visited_nav_beacons`) i suppress intro o pasywnym skanie w systemach juz odwiedzonych (F34).
+- Smart Cash-In 2.0: collect-then-rank multi-provider, globalny dedupe/ranking, profile semantyczne, ship-size pad filter, auto-target do schowka, toggles w pulpicie (F32/F33).
+- Rozszerzenia mapy i danych lokalnych gracza (PLAYERDB bridge/migrations, map metadata + quality gates) domkniete w paczkach F16/F20-F22/F31.
+
+Changed:
+- Eksploracja FSS liczy progres po realnych cialach (bez pasow asteroid/Belt), z poprawnym domykaniem 100% i poprawiona sekwencja milestone/fullscan (F30/F34/F35).
+- Routing glosu dla krytycznych komunikatow exploration/exobio ma twardsze priorytety i bypass tam, gdzie wymagane sa callouty decyzji (F24/F35/F36).
+- Cash-In profile i UI zostaly ujednolicone do nazw funkcjonalnych (`NEAREST/SECURE/EXPRESS/PLANETARY_VISTA`) z kompatybilnoscia aliasow legacy (F32/F33).
+
+Fixed:
+- Naprawiono blad mianownika w postepie FSS (pasy asteroid nie psuja procentu, brak falszywego 75% przy prostych systemach) (F30/F34/F35).
+- Usunieto zbedny spam diagnostyczny paliwa z glownego widoku (`MSG_QUEUE`); startup fuel diagnostics trafiaja do debug/file log (F36).
+- Naprawiono ucinanie waznych komunikatow przez matryce priorytetow i globalny cooldown TTS (w tym multi-body high-value oraz ExoBio 3/3) (F35/F36).
+- Naprawiono startup fuel false-positive (`fuel startup uncertain`, `ambiguous_numeric_without_capacity`) przez potwierdzanie capacity, fallback last-known i bootstrap guards (F34/F36).
+- Naprawiono powtarzanie "pasywnie z boi" oraz komunikaty zrodla danych w znanych/niezamieszkalych systemach (F34).
+
+Zakres release:
+- v0.9.5 obejmuje domkniete paczki z `LAST_TICKET` od F11 do F36 (cash-in, playerdb, logbook, mapa, exploration, fuel, TTS, quality gates/smoke).
 
 ### FLOW-F11-CASH-IN-ASSISTANT-HARDENING (P0/P1)
 - Domknieto paczke F11:

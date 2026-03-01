@@ -41,6 +41,7 @@ W telemetry context musza byc widoczne:
 ### Exobiology
 - Pobranie probki (z nazwa obiektu) musi byc slyszalne za kazdym razem.
 - Komunikat READY ("osiagnieto odleglosc") musi byc slyszalny raz na cykl probki.
+- Finalizacja gatunku (3/3) jest komunikatem krytycznym dla decyzji i nie powinna byc tlumiona przez zwykly matrix/cooldown flow.
 
 ### FSS
 - Progi postepu (25/50/75), "ostatnia planeta do skanowania" i "system przeskanowany" musza byc slyszalne.

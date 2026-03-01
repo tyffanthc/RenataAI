@@ -23,28 +23,25 @@ All trademarks and brand names belong to their respective owners.
 - `docs/COMPLIANCE_CHECKLIST.md` - compliance + licenses
 - `docs/README_TRANSFER.md` - handoff summary (this file)
 
-## Recent updates (0.9.4-preview)
-- Trade normalization hardened for `commodity` and `commodities[]` payload variants.
-- Trade table now maps and renders:
-  - commodity aggregate labels (`Commodity +N`),
-  - cumulative profit,
-  - market age buy/sell pair (`Wiek rynku K/S`),
-  - fallback jump count per leg.
-- Trade details panel expanded:
-  - per-leg commodity breakdown,
-  - buy/sell prices from nested source/destination fields when available.
-- Trade UX/layout updates:
-  - split-view (route + details),
-  - compact startup with details opened by selection,
-  - improved empty-state behavior in route planners.
-- FSS wording/order polished:
-  - stable 25/50/75/100 flow,
-  - last-body cue only at N-1/N,
-  - full-scan line at N/N.
-- Fuel low false positives reduced for startup/SCO transient status samples.
-- Global UI consistency pass:
-  - unified scrollbar styling,
-  - improved popup/window chrome consistency.
+## Recent updates (0.9.5)
+- Cash-In smart navigation package (F11-F17, F32-F33):
+  - collect-then-rank mixed-source candidates,
+  - semantic profiles (`NEAREST/SECURE/EXPRESS/PLANETARY_VISTA`),
+  - ship-size pad filtering and clipboard target handoff.
+- Exploration hardening (F30/F34/F35/F36):
+  - real-body FSS progress (without Belt/Barycentre inflation),
+  - short TTS body names for DSS/high-value callouts,
+  - nav beacon memory for passive-ingest intro suppression in revisited systems.
+- ExoBio reliability and voice flow (F36):
+  - deterministic sample 1/2/3 message IDs,
+  - canonical body-key recovery after restart,
+  - protected 3/3 completion voice path (no accidental priority suppression).
+- Fuel startup hardening (F34/F36):
+  - confirmed capacity guards and last-known fallback for ambiguous samples,
+  - startup diagnostics moved out of main visible queue (debug/file log path).
+- PlayerDB and map ecosystem matured (F16/F20-F22/F31):
+  - schema/migration bridge expansion,
+  - map rendering/filter/persistence quality gates closed.
 
 ## Where to look in code
 - UI tabs: `gui/tabs/*`

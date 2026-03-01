@@ -1,4 +1,4 @@
-# R.E.N.A.T.A. (RenataAI) - Features (v0.9.4-preview)
+# R.E.N.A.T.A. (RenataAI) - Features (v0.9.5)
 
 R.E.N.A.T.A. = Route, Exploration & Navigation Assistant for Trading & Analysis.
 
@@ -57,6 +57,13 @@ Common flow: request -> normalize -> render -> status update.
 - Split-view layout (route table + details panel).
 - Jackpot thresholds and jackpot voice alerts.
 
+## Cash-In capabilities (smart navigation)
+- Collect-then-rank orchestration across mixed sources (local/offline/provider/playerdb).
+- Global dedupe and freshness-aware ranking with semantic profiles.
+- Profile set: `NEAREST`, `SECURE`, `EXPRESS`, `PLANETARY_VISTA` (+ legacy alias compatibility).
+- Ship-size awareness (`needs_large_pad`) to avoid invalid outpost targets for large ships.
+- Auto-target clipboard handoff for selected destination system.
+
 ## Voice (TTS)
 - Message-ID based text preprocessor.
 - FREE voice policy (critical/context/silent).
@@ -69,14 +76,27 @@ Common flow: request -> normalize -> render -> status update.
 
 ## Exploration/event logic
 - Fuel warning threshold with startup/transient guards.
+- Fuel startup hardening:
+  - confirmed `fuel_capacity` gating,
+  - fallback to last-known capacity for ambiguous numeric samples,
+  - bootstrap guard when current system is unknown.
+- Fuel startup diagnostics are debug-log only for non-actionable uncertainty paths.
 - First discovery and first footfall messages.
 - FSS milestone messages (25/50/75/100) through message_id policy.
 - Full-scan handling with ordered last-body behavior.
+- FSS progress uses real-body counting (filters non-body scans like Belt/Barycentre).
 - High-value world detection (ELW/WW/terraformable + DSS hint flow).
+- High-value/DSS callouts support short body names for TTS (`System A 2` -> `A 2`).
 - Exobio cues:
   - high bio signals,
   - range-ready cue after second sample,
   - real distance check from `Status.json` with species threshold.
+- ExoBio sample sequence is explicit by message ID:
+  - sample 1 -> `MSG.EXOBIO_NEW_ENTRY`,
+  - sample 2 -> `MSG.EXOBIO_SAMPLE_LOGGED`,
+  - sample 3 -> `MSG.EXOBIO_SPECIES_COMPLETE` (high priority, non-suppressible path).
+- ExoBio recovery after restart uses canonical body-key generation shared with runtime.
+- Navigation memory for visited nav beacons suppresses repeated passive-ingest intro in revisited systems.
 - Smuggler alert (illegal cargo).
 
 ## Startup and reliability

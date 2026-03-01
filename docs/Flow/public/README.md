@@ -3,9 +3,10 @@
 Publiczna dokumentacja Renaty.
 
 ## Status (FREE/PUB)
-- Ostatnia aktualizacja: 2026-02-21
+- Ostatnia aktualizacja: 2026-03-01
 - Fazy 1-5: DONE
 - Faza 6: DONE (FREE release hardening + smoke)
+- Post-F6 (v0.9.5): DONE (runtime hardening i porzadki UX/TTS bez zmiany granic FREE/PUB).
 
 ## Zakres
 - filozofia i granice produktu,
