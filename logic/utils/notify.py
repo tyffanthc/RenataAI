@@ -1,6 +1,7 @@
 import threading
 import pyttsx3
 import queue
+import time
 from datetime import datetime
 from typing import Any, Callable
 import config
@@ -100,6 +101,35 @@ def _should_drop_stale_system_tts(item: dict[str, Any]) -> bool:
         message_id=message_id,
         queued_system=queued_system_norm,
         current_system=current_system_norm,
+    )
+    return True
+
+
+def _should_drop_stale_tts_by_age(item: dict[str, Any]) -> bool:
+    try:
+        ttl = float(item.get("max_queue_age_sec") or 0.0)
+    except Exception:
+        return False
+    if ttl <= 0.0:
+        return False
+    try:
+        enqueued_ts = float(item.get("enqueued_monotonic") or 0.0)
+    except Exception:
+        return False
+    if enqueued_ts <= 0.0:
+        return False
+    age = max(0.0, time.monotonic() - enqueued_ts)
+    if age <= ttl:
+        return False
+    log_event_throttled(
+        "tts:queue_drop_stale_age",
+        2000,
+        "TTS",
+        "dropping stale queued TTS item by age",
+        message_id=str(item.get("message_id") or ""),
+        age_sec=round(age, 3),
+        ttl_sec=round(ttl, 3),
+        system=_normalize_system_token(item.get("context_system")),
     )
     return True
 
@@ -378,6 +408,7 @@ def _start_tts_thread(tekst: str, *, message_id: str | None = None, context: dic
     global _TTS_THREAD_ACTIVE
     should_start_worker = False
     queue_item: dict[str, Any] = {"text": str(tekst or "")}
+    queue_item["enqueued_monotonic"] = float(time.monotonic())
     msg = str(message_id or "").strip()
     if msg:
         queue_item["message_id"] = msg
@@ -385,6 +416,12 @@ def _start_tts_thread(tekst: str, *, message_id: str | None = None, context: dic
         context_system = context.get("system")
         if context_system:
             queue_item["context_system"] = str(context_system)
+        try:
+            max_age = float(context.get("tts_max_queue_age_sec") or 0.0)
+        except Exception:
+            max_age = 0.0
+        if max_age > 0.0:
+            queue_item["max_queue_age_sec"] = max_age
     with _TTS_THREAD_GUARD_LOCK:
         _enqueue_tts_item_unlocked(queue_item)
         if not _TTS_THREAD_ACTIVE:
@@ -423,6 +460,8 @@ def _tts_worker_loop() -> None:
             if isinstance(payload, dict):
                 tekst = str(payload.get("text") or "")
                 if not tekst:
+                    continue
+                if _should_drop_stale_tts_by_age(payload):
                     continue
                 if _should_drop_stale_system_tts(payload):
                     continue

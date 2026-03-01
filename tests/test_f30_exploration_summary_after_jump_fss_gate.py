@@ -117,7 +117,7 @@ class F30ExplorationSummaryAfterJumpFssGateTests(unittest.TestCase):
             fss_events._wire_exit_summary_to_runtime(gui_ref=None)
 
         self.assertFalse(trigger_mock.called)
-        self.assertFalse(bool(fss_events.FSS_PENDING_EXIT_SUMMARY))
+        self.assertTrue(bool(fss_events.FSS_PENDING_EXIT_SUMMARY))
 
     def test_detailed_scan_type_counts_as_manual_progress(self) -> None:
         fss_events.handle_fss_discovery_scan({"BodyCount": 1}, gui_ref=None)
@@ -129,7 +129,7 @@ class F30ExplorationSummaryAfterJumpFssGateTests(unittest.TestCase):
         self.assertTrue(bool(fss_events.FSS_HAD_DISCOVERY_SCAN))
         self.assertTrue(bool(fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN))
 
-    def test_navbeacon_full_and_all_bodies_found_does_not_arm_summary(self) -> None:
+    def test_navbeacon_full_and_all_bodies_found_arms_summary_via_passive_gate(self) -> None:
         fss_events.handle_fss_discovery_scan({"BodyCount": 2}, gui_ref=None)
         fss_events.handle_scan(
             {"BodyName": "F30_SUMMARY_GATE_SYS A", "BodyID": 1, "ScanType": "NavBeaconDetail"},
@@ -141,9 +141,9 @@ class F30ExplorationSummaryAfterJumpFssGateTests(unittest.TestCase):
         )
         self.assertFalse(bool(fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN))
         fss_events.handle_fss_all_bodies_found({"event": "FSSAllBodiesFound"}, gui_ref=None)
-        self.assertFalse(bool(fss_events.FSS_PENDING_EXIT_SUMMARY))
+        self.assertTrue(bool(fss_events.FSS_PENDING_EXIT_SUMMARY))
 
-    def test_navbeacon_path_emits_passive_callouts_without_arming_exit_summary(self) -> None:
+    def test_navbeacon_path_emits_passive_callouts_and_arms_exit_summary(self) -> None:
         with (
             patch("logic.events.exploration_fss_events.DEBOUNCER.can_send", return_value=True),
             patch("logic.events.exploration_fss_events.emit_insight") as emit_mock,
@@ -158,7 +158,7 @@ class F30ExplorationSummaryAfterJumpFssGateTests(unittest.TestCase):
                 gui_ref=None,
             )
 
-        self.assertFalse(bool(fss_events.FSS_PENDING_EXIT_SUMMARY))
+        self.assertTrue(bool(fss_events.FSS_PENDING_EXIT_SUMMARY))
         emit_ids = [str(call.kwargs.get("message_id") or "") for call in emit_mock.call_args_list]
         self.assertIn("MSG.FSS_PASSIVE_DATA_INGESTED", emit_ids)
         self.assertIn("MSG.FSS_PASSIVE_SYSTEM_COMPLETE", emit_ids)

@@ -109,7 +109,7 @@ class F3QualityGatesAndSmokeTests(unittest.TestCase):
             )
 
         message_ids = [call.kwargs.get("message_id") for call in emit_mock.call_args_list]
-        self.assertIn("MSG.ELW_DETECTED", message_ids)
+        self.assertIn("MSG.HIGH_VALUE_DSS_HINT", message_ids)
         self.assertIn("MSG.BIO_SIGNALS_HIGH", message_ids)
         self.assertEqual(message_ids.count("MSG.EXPLORATION_AWARENESS_SUMMARY"), 1)
         self.assertEqual(len(message_ids), 4)

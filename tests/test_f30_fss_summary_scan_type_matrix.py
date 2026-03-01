@@ -45,19 +45,19 @@ class F30FssSummaryScanTypeMatrixTests(unittest.TestCase):
 
     def test_runtime_scan_type_matrix_for_manual_gate(self) -> None:
         matrix = [
-            ("AutoScan", False),
-            ("NavBeaconDetail", False),
-            ("Basic", False),
-            ("Detailed", True),
-            ("Analyse", False),  # unknown values default to non-manual (safe)
-            (None, False),
+            ("AutoScan", False, True),
+            ("NavBeaconDetail", False, True),
+            ("Basic", False, False),
+            ("Detailed", True, True),
+            ("Analyse", False, False),  # unknown values default to non-manual (safe)
+            (None, False, False),
         ]
-        for idx, (scan_type, expected_manual) in enumerate(matrix):
+        for idx, (scan_type, expected_manual, expected_pending) in enumerate(matrix):
             with self.subTest(scan_type=scan_type):
                 fss_events.reset_fss_progress()
                 self._run_runtime_full_scan(f"F30_MATRIX_RUNTIME_{idx}", scan_type)
                 self.assertEqual(bool(fss_events.FSS_HAD_MANUAL_PROGRESS_SCAN), expected_manual)
-                self.assertEqual(bool(fss_events.FSS_PENDING_EXIT_SUMMARY), expected_manual)
+                self.assertEqual(bool(fss_events.FSS_PENDING_EXIT_SUMMARY), expected_pending)
 
     def test_runtime_mixed_scans_arms_summary_only_after_detailed(self) -> None:
         system = "F30_MATRIX_RUNTIME_MIXED"

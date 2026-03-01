@@ -95,6 +95,59 @@ class RouteAwarenessStateTests(unittest.TestCase):
         self.assertEqual(snap.get("next_system"), "Beta")
         self.assertEqual(int(snap.get("route_progress_percent") or 0), 0)
 
+    def test_navroute_update_fallbacks_when_spansh_awareness_is_incomplete(self) -> None:
+        route_manager.set_route(["S1", "S2"], "neutron")
+        app_state.update_route_awareness(
+            route_mode="awareness",
+            route_target="",
+            route_progress_percent=0,
+            next_system="",
+            is_off_route=False,
+            source="test.spansh.incomplete",
+        )
+        app_state.set_system("Alpha")
+        navigation_events.handle_navroute_update(
+            {
+                "event": "NavRoute",
+                "EndSystem": "Gamma",
+                "Route": [
+                    {"StarSystem": "Alpha"},
+                    {"StarSystem": "Beta"},
+                    {"StarSystem": "Gamma"},
+                ],
+            }
+        )
+        snap = app_state.get_route_awareness_snapshot()
+        self.assertEqual(snap.get("route_mode"), "awareness")
+        self.assertEqual(snap.get("route_target"), "Gamma")
+        self.assertEqual(snap.get("next_system"), "Beta")
+
+    def test_navroute_update_stays_with_spansh_when_complete_and_on_route(self) -> None:
+        route_manager.set_route(["S1", "S2"], "neutron")
+        app_state.update_route_awareness(
+            route_mode="awareness",
+            route_target="Spansh Target",
+            route_progress_percent=50,
+            next_system="Spansh Next",
+            is_off_route=False,
+            source="test.spansh.complete",
+        )
+        app_state.set_system("Alpha")
+        navigation_events.handle_navroute_update(
+            {
+                "event": "NavRoute",
+                "EndSystem": "Gamma",
+                "Route": [
+                    {"StarSystem": "Alpha"},
+                    {"StarSystem": "Beta"},
+                    {"StarSystem": "Gamma"},
+                ],
+            }
+        )
+        snap = app_state.get_route_awareness_snapshot()
+        self.assertEqual(snap.get("route_target"), "Spansh Target")
+        self.assertEqual(snap.get("next_system"), "Spansh Next")
+
 
 if __name__ == "__main__":
     unittest.main()

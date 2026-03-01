@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import queue
+import time
 import unittest
+from unittest.mock import patch
 
 from logic.utils import notify as notify_module
 
@@ -57,6 +59,20 @@ class F62TtsFssPriorityAndCoalescingTests(unittest.TestCase):
 
         order = _drain_message_ids(notify_module._TTS_SPEECH_QUEUE)
         self.assertEqual(order, ["MSG.FSS_PROGRESS_75", "MSG.FSS_PROGRESS_50"])
+
+    def test_worker_drops_tts_item_when_queue_ttl_expired(self) -> None:
+        notify_module._TTS_SPEECH_QUEUE.put(
+            {
+                "text": "stale milestone",
+                "message_id": "MSG.FSS_PROGRESS_25",
+                "context_system": "SYS A",
+                "enqueued_monotonic": float(time.monotonic() - 30.0),
+                "max_queue_age_sec": 20.0,
+            }
+        )
+        with patch("logic.utils.notify._speak_tts") as speak_mock:
+            notify_module._tts_worker_loop()
+        speak_mock.assert_not_called()
 
 
 if __name__ == "__main__":

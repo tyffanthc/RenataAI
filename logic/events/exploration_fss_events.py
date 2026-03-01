@@ -123,17 +123,21 @@ def _wire_exit_summary_to_runtime(gui_ref=None, *, trigger_source: str | None = 
     global FSS_LAST_SCAN_TYPE, FSS_LAST_MANUAL_SCAN_TYPE
 
     system_name = getattr(app_state, "current_system", None)
-    # BUGS_FIX 16.5:
-    # Arm summary only when BOTH conditions are met:
-    # 1) player explicitly triggered FSS discovery scan (honk/FSS entry path)
-    # 2) at least one non-AutoScan body progress event was counted
-    # This prevents transit systems from arming summary from auto star scans.
+    # BUGS_FIX 16.80:
+    # Arm summary when discovery scan exists and full closure reached.
+    # Primary gate is manual Detailed participation, but passive full ingest can
+    # also arm summary when the system reached N/N without manual scan.
     has_discovery = bool(FSS_HAD_DISCOVERY_SCAN)
     has_manual = bool(FSS_HAD_MANUAL_PROGRESS_SCAN)
     manual_scan_type = str(FSS_LAST_MANUAL_SCAN_TYPE or "").strip().casefold()
     has_manual_type = manual_scan_type in _MANUAL_FSS_SCAN_TYPES
     manual_discovered = int(FSS_DISCOVERED_MANUAL or 0)
-    if not (has_discovery and has_manual and has_manual_type):
+    total_bodies = int(FSS_TOTAL_BODIES or 0)
+    discovered_bodies = int(FSS_DISCOVERED or 0)
+    has_full_closure = total_bodies > 0 and discovered_bodies >= total_bodies
+    has_manual_gate = has_manual and has_manual_type
+    has_passive_full_gate = bool(FSS_PASSIVE_FULL_WARNED) and has_full_closure
+    if not (has_discovery and has_full_closure and (has_manual_gate or has_passive_full_gate)):
         log_event_throttled(
             "exploration.fss.exit_summary_arm_blocked",
             5000,
@@ -146,9 +150,11 @@ def _wire_exit_summary_to_runtime(gui_ref=None, *, trigger_source: str | None = 
             had_discovery=has_discovery,
             had_manual=has_manual,
             has_manual_type=has_manual_type,
-            discovered=int(FSS_DISCOVERED or 0),
+            had_passive_full=bool(FSS_PASSIVE_FULL_WARNED),
+            has_full_closure=has_full_closure,
+            discovered=discovered_bodies,
             discovered_manual=manual_discovered,
-            total=int(FSS_TOTAL_BODIES or 0),
+            total=total_bodies,
             full_warned=bool(FSS_FULL_WARNED),
         )
         return
@@ -161,9 +167,9 @@ def _wire_exit_summary_to_runtime(gui_ref=None, *, trigger_source: str | None = 
     # transit systems do not spam summary/cash-in while the commander is still busy.
     FSS_PENDING_EXIT_SUMMARY = True
     FSS_PENDING_EXIT_SUMMARY_SYSTEM = str(system_name or "").strip() or None
-    total_discovered = int(FSS_DISCOVERED or 0)
+    total_discovered = discovered_bodies
     FSS_PENDING_EXIT_SUMMARY_SCANNED = total_discovered if total_discovered > 0 else None
-    FSS_PENDING_EXIT_SUMMARY_TOTAL = int(FSS_TOTAL_BODIES) if int(FSS_TOTAL_BODIES or 0) > 0 else None
+    FSS_PENDING_EXIT_SUMMARY_TOTAL = total_bodies if total_bodies > 0 else None
     log_event(
         "FSS",
         "exit_summary_armed",
@@ -173,9 +179,10 @@ def _wire_exit_summary_to_runtime(gui_ref=None, *, trigger_source: str | None = 
         manual_scan_type_last=str(FSS_LAST_MANUAL_SCAN_TYPE or ""),
         had_discovery=bool(FSS_HAD_DISCOVERY_SCAN),
         had_manual=bool(FSS_HAD_MANUAL_PROGRESS_SCAN),
-        discovered=int(FSS_DISCOVERED or 0),
+        had_passive_full=bool(FSS_PASSIVE_FULL_WARNED),
+        discovered=discovered_bodies,
         discovered_manual=manual_discovered,
-        total=int(FSS_TOTAL_BODIES or 0),
+        total=total_bodies,
     )
 
 
@@ -404,6 +411,7 @@ def _maybe_emit_passive_scan_callouts(gui_ref=None, *, scan_type: str | None = N
                 cooldown_seconds=120.0,
             )
         FSS_PASSIVE_FULL_WARNED = True
+        _wire_exit_summary_to_runtime(gui_ref=gui_ref, trigger_source="passive_ingest")
 
 
 def _sync_milestone_flags_after_late_body_count() -> None:
@@ -473,13 +481,15 @@ def _check_fss_thresholds(gui_ref=None):
         _, deb_key, msg_id, text = newly_reached[-1]
         if DEBOUNCER.can_send(deb_key, 120, context=system_name):
             dedup_suffix = "25" if deb_key.endswith("25") else ("50" if deb_key.endswith("50") else "75")
+            milestone_ctx = _fss_gate_context(system_name)
+            milestone_ctx["tts_max_queue_age_sec"] = 20.0
             emit_insight(
                 text,
                 gui_ref=gui_ref,
                 message_id=msg_id,
                 source="exploration_fss_events",
                 event_type="SYSTEM_SCANNED",
-                context=_fss_gate_context(system_name),
+                context=milestone_ctx,
                 priority="P2_NORMAL",
                 dedup_key=f"fss{dedup_suffix}:{system_name or 'unknown'}",
                 cooldown_scope="entity",

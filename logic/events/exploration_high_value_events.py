@@ -10,9 +10,8 @@ from logic.utils.renata_log import log_event_throttled
 
 
 # --- HIGH VALUE PLANETS (S2-LOGIC-03) ---
-HV_ELW_WARNED = False          # Earth-like World
-HV_WW_WARNED = False           # Water World
-HV_HMC_T_WARNED = False        # Terraformable HMC
+# Track notified bodies per session instead of one global flag per class.
+HV_SCANNED_BODIES: Set[str] = set()
 
 
 def _body_label(ev: Dict[str, Any]) -> str:
@@ -35,10 +34,8 @@ def _dss_hint_text(body: str, fallback: str) -> str:
 
 def reset_high_value_flags() -> None:
     """Reset local anti-spam flags for high-value planet alerts."""
-    global HV_ELW_WARNED, HV_WW_WARNED, HV_HMC_T_WARNED
-    HV_ELW_WARNED = False
-    HV_WW_WARNED = False
-    HV_HMC_T_WARNED = False
+    global HV_SCANNED_BODIES
+    HV_SCANNED_BODIES = set()
 
 
 def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
@@ -60,7 +57,16 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
     planet_class = str(planet_class_raw).lower()
     terraform_state = str(ev.get("TerraformState") or "").lower()
 
-    global HV_ELW_WARNED, HV_WW_WARNED, HV_HMC_T_WARNED
+    global HV_SCANNED_BODIES
+
+    body_id = ev.get("BodyID")
+    body = _body_label(ev)
+    body_key = str(body_id).strip() if body_id is not None else body
+    body_key = str(body_key or "").strip()
+    if not body_key:
+        return
+    if body_key in HV_SCANNED_BODIES:
+        return
 
     def has_body_type(keyword: str, terraformable: str | None = None) -> bool:
         try:
@@ -83,71 +89,39 @@ def check_high_value_planet(ev: Dict[str, Any], gui_ref=None):
             )
             return False
 
+    raw_text: str | None = None
+    callout_key: str | None = None
+
     # 1) Earth-like World
-    if (
-        (not HV_ELW_WARNED)
-        and "earth-like" in planet_class
-        and has_body_type("earth-like")
-    ):
-        body = _body_label(ev)
+    if "earth-like" in planet_class and has_body_type("earth-like"):
         raw_text = _dss_hint_text(body, "Wykryto planetę ziemiopodobną. Wysoka wartość.")
-        emit_callout_or_summary(
-            text=raw_text,
-            gui_ref=gui_ref,
-            message_id="MSG.ELW_DETECTED",
-            source="exploration_high_value_events",
-            system_name=_system_label(ev),
-            body_name=body,
-            callout_key=f"elw:{body or 'unknown'}",
-            event_type="BODY_DISCOVERED",
-            priority="P2_NORMAL",
-            context={"raw_text": raw_text, "body": body},
-        )
-        HV_ELW_WARNED = True
-        return
+        callout_key = f"hv_dss_hint:elw:{body_key}"
 
     # 2) Water World
-    if (
-        (not HV_WW_WARNED)
-        and "water world" in planet_class
-        and has_body_type("water world")
-    ):
-        body = _body_label(ev)
+    elif "water world" in planet_class and has_body_type("water world"):
         raw_text = _dss_hint_text(body, "Wykryto oceaniczny świat. Bardzo wartościowy.")
-        emit_callout_or_summary(
-            text=raw_text,
-            gui_ref=gui_ref,
-            message_id="MSG.WW_DETECTED",
-            source="exploration_high_value_events",
-            system_name=_system_label(ev),
-            body_name=body,
-            callout_key=f"ww:{body or 'unknown'}",
-            event_type="BODY_DISCOVERED",
-            priority="P2_NORMAL",
-            context={"raw_text": raw_text, "body": body},
-        )
-        HV_WW_WARNED = True
-        return
+        callout_key = f"hv_dss_hint:ww:{body_key}"
 
     # 3) Terraformable High Metal Content World
-    if (
-        (not HV_HMC_T_WARNED)
-        and "high metal content" in planet_class
+    elif (
+        "high metal content" in planet_class
         and ("terra" in terraform_state)
         and has_body_type("high metal content", terraformable="yes")
     ):
-        body = _body_label(ev)
         raw_text = _dss_hint_text(body, "Wykryto terraformowalny świat.")
+        callout_key = f"hv_dss_hint:hmc_terraformable:{body_key}"
+
+    if raw_text and callout_key:
         emit_callout_or_summary(
             text=raw_text,
             gui_ref=gui_ref,
-            message_id="MSG.TERRAFORMABLE_DETECTED",
+            message_id="MSG.HIGH_VALUE_DSS_HINT",
             source="exploration_high_value_events",
             system_name=_system_label(ev),
             body_name=body,
-            callout_key=f"hmc_terraformable:{body or 'unknown'}",
+            callout_key=callout_key,
             event_type="BODY_DISCOVERED",
             priority="P2_NORMAL",
             context={"raw_text": raw_text, "body": body},
         )
-        HV_HMC_T_WARNED = True
+        HV_SCANNED_BODIES.add(body_key)

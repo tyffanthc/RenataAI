@@ -1,5 +1,3 @@
-import time
-
 import config
 from logic.utils import DEBOUNCER
 from logic.insight_dispatcher import emit_insight
@@ -11,8 +9,8 @@ from logic.utils.renata_log import log_event_throttled
 LOW_FUEL_WARNED = False
 LOW_FUEL_FLAG_PENDING = False
 LOW_FUEL_FLAG_PENDING_TS = 0.0
-LOW_FUEL_FLAG_CONFIRM_WINDOW_SEC = 8.0
 _FUEL_STATUS_INITIALIZED = False
+_FUEL_SEEN_VALID_SAMPLE = False
 
 
 def _reset_low_fuel_pending_confirmation() -> None:
@@ -39,22 +37,19 @@ def handle_status_update(status: dict, gui_ref=None):
     if not config.get("fuel_warning", True):
         return
 
-    global LOW_FUEL_WARNED, LOW_FUEL_FLAG_PENDING, LOW_FUEL_FLAG_PENDING_TS, _FUEL_STATUS_INITIALIZED
+    global LOW_FUEL_WARNED, LOW_FUEL_FLAG_PENDING, LOW_FUEL_FLAG_PENDING_TS
+    global _FUEL_STATUS_INITIALIZED, _FUEL_SEEN_VALID_SAMPLE
 
     if not isinstance(status, dict):
         return
 
     if not _FUEL_STATUS_INITIALIZED:
         _FUEL_STATUS_INITIALIZED = True
-        # Pierwsza probka po starcie: cichy tryb, bez TTS.
-        # Stan LOW_FUEL_WARNED ustawia sie normalnie w dalszej logice.
-        _fuel_startup_suppress = True
-    else:
-        _fuel_startup_suppress = False
 
     # Zadokowany statek -> ignorujemy alert i resetujemy stan.
     if bool(status.get("Docked")):
         LOW_FUEL_WARNED = False
+        _FUEL_SEEN_VALID_SAMPLE = False
         _reset_low_fuel_pending_confirmation()
         return
 
@@ -96,12 +91,16 @@ def handle_status_update(status: dict, gui_ref=None):
     try:
         if fuel_main is not None:
             val = float(fuel_main)
+            if val > 0.0:
+                _FUEL_SEEN_VALID_SAMPLE = True
 
-            # Startup transient: czasami dostajemy chwilowe zero bez pojemnosci.
+            # Startup transient: chwilowe zero bez pojemnosci ignorujemy tylko
+            # do czasu pierwszej poprawnej probki > 0 po starcie/resecie.
             if (
                 val == 0.0
                 and not low_fuel_flag
                 and not has_cap_main
+                and not _FUEL_SEEN_VALID_SAMPLE
             ):
                 _reset_low_fuel_pending_confirmation()
                 _log_uncertain_startup_sample_ignored(reason="zero_without_capacity")
@@ -142,25 +141,12 @@ def handle_status_update(status: dict, gui_ref=None):
     low_fuel = (fuel_percent < min_fuel_percent) if fuel_percent is not None else low_fuel_flag
 
     if low_fuel and not LOW_FUEL_WARNED:
-        # Dla "flag-only" oraz niepewnych probek liczbowych wymagamy potwierdzenia:
-        # druga probka low_fuel w oknie czasu.
-        needs_confirmation = ((fuel_percent is None) or uncertain_low_sample) and (not _fuel_startup_suppress)
-        if needs_confirmation:
-            now = time.time()
-            if not LOW_FUEL_FLAG_PENDING:
-                LOW_FUEL_FLAG_PENDING = True
-                LOW_FUEL_FLAG_PENDING_TS = now
-                return
-            if (now - LOW_FUEL_FLAG_PENDING_TS) > LOW_FUEL_FLAG_CONFIRM_WINDOW_SEC:
-                LOW_FUEL_FLAG_PENDING_TS = now
-                return
-            LOW_FUEL_FLAG_PENDING = False
-            LOW_FUEL_FLAG_PENDING_TS = 0.0
+        _reset_low_fuel_pending_confirmation()
 
         LOW_FUEL_WARNED = True
 
         system_name = status.get("StarSystem") or status.get("SystemName") or None
-        if (not _fuel_startup_suppress) and DEBOUNCER.can_send("LOW_FUEL", 300, context=system_name):
+        if DEBOUNCER.can_send("LOW_FUEL", 300, context=system_name):
             emit_insight(
                 "Warning. Fuel reserves critical.",
                 gui_ref=gui_ref,

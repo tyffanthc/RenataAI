@@ -22,6 +22,7 @@ class EventInsightMappingTests(unittest.TestCase):
             "MSG.FSS_PASSIVE_DATA_INGESTED",
             "MSG.FSS_PASSIVE_SYSTEM_COMPLETE",
             "MSG.SYSTEM_FULLY_SCANNED",
+            "MSG.HIGH_VALUE_DSS_HINT",
             "MSG.FIRST_DISCOVERY_OPPORTUNITY",
             "MSG.DSS_TARGET_HINT",
             "MSG.DSS_COMPLETED",

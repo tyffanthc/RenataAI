@@ -397,7 +397,15 @@ def handle_navroute_update(navroute_data: Dict[str, object], gui_ref=None) -> No
         has_spansh_route = bool(getattr(route_manager, "route", None))
         has_spansh_milestones = bool(getattr(app_state, "spansh_milestones", None))
         if has_spansh_route or has_spansh_milestones:
-            return
+            snap = app_state.get_route_awareness_snapshot()
+            spansh_off_route = bool(snap.get("is_off_route"))
+            spansh_target = str(snap.get("route_target") or "").strip()
+            spansh_next = str(snap.get("next_system") or "").strip()
+            spansh_incomplete = (not spansh_target) or (not spansh_next)
+            # Keep spansh awareness as primary only when it is complete and on-route.
+            # Otherwise allow NavRoute-based fallback awareness from game data.
+            if not (spansh_off_route or spansh_incomplete):
+                return
 
         current_norm = " ".join(str(app_state.get_current_system_name() or "").strip().split()).casefold()
         ordered_norm = [" ".join(str(value).strip().split()).casefold() for value in systems]

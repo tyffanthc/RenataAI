@@ -12,16 +12,19 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         self._saved_pending = fuel_events.LOW_FUEL_FLAG_PENDING
         self._saved_pending_ts = fuel_events.LOW_FUEL_FLAG_PENDING_TS
         self._saved_initialized = bool(getattr(fuel_events, "_FUEL_STATUS_INITIALIZED", False))
+        self._saved_seen_valid = bool(getattr(fuel_events, "_FUEL_SEEN_VALID_SAMPLE", False))
         fuel_events.LOW_FUEL_WARNED = False
         fuel_events.LOW_FUEL_FLAG_PENDING = False
         fuel_events.LOW_FUEL_FLAG_PENDING_TS = 0.0
         fuel_events._FUEL_STATUS_INITIALIZED = False
+        fuel_events._FUEL_SEEN_VALID_SAMPLE = False
 
     def tearDown(self) -> None:
         fuel_events.LOW_FUEL_WARNED = self._saved_warned
         fuel_events.LOW_FUEL_FLAG_PENDING = self._saved_pending
         fuel_events.LOW_FUEL_FLAG_PENDING_TS = self._saved_pending_ts
         fuel_events._FUEL_STATUS_INITIALIZED = self._saved_initialized
+        fuel_events._FUEL_SEEN_VALID_SAMPLE = self._saved_seen_valid
 
     def test_uncertain_numeric_samples_without_lowfuel_flag_do_not_trigger_or_arm_pending(self) -> None:
         status = {
@@ -89,7 +92,7 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         self.assertEqual(kwargs.get("message_id"), "MSG.FUEL_CRITICAL")
         self.assertEqual(kwargs.get("source"), "fuel_events")
 
-    def test_flag_only_low_fuel_still_requires_confirmation_and_then_alerts(self) -> None:
+    def test_flag_only_low_fuel_alerts_immediately_after_init(self) -> None:
         prime_ok_status = {
             "Docked": False,
             "LowFuel": False,
@@ -109,16 +112,12 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         ):
             fuel_events.handle_status_update(prime_ok_status)
             fuel_events.handle_status_update(status)
-            self.assertEqual(emit_mock.call_count, 0)
-            self.assertTrue(bool(fuel_events.LOW_FUEL_FLAG_PENDING))
-
-            fuel_events.handle_status_update(status)
 
         self.assertTrue(bool(fuel_events.LOW_FUEL_WARNED))
         self.assertFalse(bool(fuel_events.LOW_FUEL_FLAG_PENDING))
         self.assertEqual(emit_mock.call_count, 1)
 
-    def test_startup_with_already_low_fuel_is_suppressed_but_marked_warned(self) -> None:
+    def test_startup_with_already_low_fuel_alerts_immediately(self) -> None:
         status = {
             "Docked": False,
             "LowFuel": False,
@@ -132,7 +131,7 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         ):
             fuel_events.handle_status_update(status)
 
-        self.assertEqual(emit_mock.call_count, 0)
+        self.assertEqual(emit_mock.call_count, 1)
         self.assertTrue(bool(fuel_events.LOW_FUEL_WARNED))
 
 
