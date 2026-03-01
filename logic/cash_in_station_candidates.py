@@ -382,6 +382,32 @@ def build_station_candidates(
     return merge_station_candidates(normalized, limit=limit)
 
 
+def collect_then_rank_station_candidates(
+    *,
+    source_rows: Dict[str, Iterable[Dict[str, Any] | str]],
+    default_system: str = "",
+    freshness_ts: str = "",
+    limit: int = 24,
+) -> List[Dict[str, Any]]:
+    """
+    Collect-then-rank orchestrator for mixed sources.
+    Each source contributes rows that are normalized first, then globally deduped/ranked.
+    """
+    aggregate: List[Dict[str, Any]] = []
+    collect_limit = max(8, int(limit or 24) * 3)
+    for source_hint, rows in dict(source_rows or {}).items():
+        built = build_station_candidates(
+            rows or [],
+            default_system=default_system,
+            source_hint=_as_text(source_hint).upper(),
+            freshness_ts=freshness_ts,
+            limit=collect_limit,
+        )
+        if built:
+            aggregate.extend([dict(item) for item in built if isinstance(item, dict)])
+    return merge_station_candidates(aggregate, limit=limit)
+
+
 def station_candidates_for_system_from_providers(
     system_name: str,
     *,
