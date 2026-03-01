@@ -54,6 +54,8 @@ class ExitSummaryData:
     c_cartography: float = 0.0
     c_exobiology: float = 0.0
     total_value: float = 0.0
+    potential_first_logged_bonus: float = 0.0
+    has_first_footfall_opportunity: bool = False
 
     # --- Discovery status (EPIC 3) ---
     discovery_system_previously_discovered: Optional[bool] = None
@@ -119,6 +121,12 @@ class ExitSummaryGenerator:
         data.c_cartography = _finite_float(getattr(stats, "c_cartography", 0.0))
         data.c_exobiology = _finite_float(getattr(stats, "c_exobiology", 0.0))
         data.bonus_discovery = _finite_float(getattr(stats, "bonus_discovery", 0.0))
+        data.potential_first_logged_bonus = _finite_float(
+            getattr(stats, "potential_first_logged_bonus", 0.0)
+        )
+        data.has_first_footfall_opportunity = bool(
+            getattr(stats, "has_first_footfall_opportunity", False)
+        )
         data.total_value = data.c_cartography + data.c_exobiology + data.bonus_discovery
         # Discovery status (EPIC 3)
         if hasattr(self.engine, "get_discovery_status"):

@@ -13,6 +13,16 @@ EXOBIO_URL = "https://elite-dangerous.fandom.com/wiki/Exobiologist"
 EXPLORER_URL = "https://elite-dangerous.fandom.com/wiki/Explorer"
 OUTPUT_FILE = config.renata_user_home_file("renata_science_data.xlsx")
 
+# Formula params are informational here. Runtime valuation in SystemValueEngine
+# is authoritative and uses MassEM + in-game flags. Wiki sheet remains fallback.
+_FORMULA_PARAMS_BY_BODY_TYPE = {
+    "Earth-like World": (64831.0, 0.249),
+    "Water World": (29057.0, 0.149),
+    "Ammonia World": (96932.0, 0.216),
+    "High Metal Content Planet": (1279.0, 0.035),
+    "Rocky Body": (720.0, 0.025),
+}
+
 
 def _fetch_html(url: str) -> str:
     """
@@ -230,6 +240,24 @@ def build_cartography_sheet() -> "pd.DataFrame":
     })
 
     carto_sheet = carto_sheet[carto_sheet["Body_Type"].notna()].reset_index(drop=True)
+
+    def _formula_k(body_type: str) -> float | None:
+        params = _FORMULA_PARAMS_BY_BODY_TYPE.get(str(body_type or "").strip())
+        if not params:
+            return None
+        return float(params[0])
+
+    def _formula_q(body_type: str) -> float | None:
+        params = _FORMULA_PARAMS_BY_BODY_TYPE.get(str(body_type or "").strip())
+        if not params:
+            return None
+        return float(params[1])
+
+    # Runtime uses dynamic UC formula first; this sheet stays as fallback values.
+    carto_sheet["Formula_k"] = carto_sheet["Body_Type"].map(_formula_k)
+    carto_sheet["Formula_q"] = carto_sheet["Body_Type"].map(_formula_q)
+    carto_sheet["Runtime_Priority"] = "fallback_wiki"
+
     return carto_sheet
 
 

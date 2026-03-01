@@ -26,6 +26,10 @@ TTS_TEMPLATE_REGISTRY: Dict[str, dict[str, object]] = {
     },
     "MSG.SYSTEM_FULLY_SCANNED": {"template": "Skan systemu zakończony.", "raw_text_first": False},
     "MSG.HIGH_VALUE_DSS_HINT": {"template": "Wykryto obiekt wysokiej wartości. Warto wykonać mapowanie DSS.", "raw_text_first": True},
+    "MSG.HIGH_VALUE_FIRST_LOGGED_ALERT": {
+        "template": "Patryk, brak śladów stóp na tej planecie. Próbki biologiczne będą warte pięć razy więcej!",
+        "raw_text_first": True,
+    },
     "MSG.ELW_DETECTED": {"template": "Wykryto planetę ziemiopodobną. Wysoka wartość.", "raw_text_first": True},
     "MSG.FOOTFALL": {"template": "Pierwszy krok zarejestrowany.", "raw_text_first": False},
     "MSG.ROUTE_FOUND": {"template": "Trasa wyznaczona.", "raw_text_first": False},

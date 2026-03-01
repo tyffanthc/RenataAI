@@ -74,7 +74,7 @@ class F4ExplorationSummaryBaseTests(unittest.TestCase):
         self.assertTrue(bool(ctx.get("force_tts")))
         raw_text = str(ctx.get("raw_text") or "")
         self.assertIn("Podsumowanie gotowe.", raw_text)
-        self.assertIn("Dane warte", raw_text)
+        self.assertIn("Szacowana wartość", raw_text)
         payload = dict(ctx.get("summary_payload") or {})
         self.assertEqual(payload.get("system"), "F4_SUMMARY_TEST_SYSTEM")
         self.assertTrue(bool(payload.get("highlights")))

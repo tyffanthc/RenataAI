@@ -445,5 +445,89 @@ class SystemValueEngineTests(unittest.TestCase):
         self.assertGreater(float(recounted.c_exobiology or 0.0), 0.0)
         self.assertEqual(len(recounted.seen_species), 1)
 
+    def test_uc_formula_uses_mass_em_for_supported_planet_types(self) -> None:
+        event = {
+            "event": "Scan",
+            "StarSystem": "TEST_SYS_UC_FORMULA",
+            "BodyName": "TEST_SYS_UC_FORMULA 1",
+            "PlanetClass": "Water world",
+            "TerraformState": "Terraformable",
+            "WasDiscovered": False,
+            "WasMapped": False,
+            "MassEM": 1.0,
+        }
+
+        self.engine.analyze_scan_event(event)
+        stats = self.engine.get_system_stats("TEST_SYS_UC_FORMULA")
+        self.assertIsNotNone(stats)
+        # Formula path should exceed legacy table fallback (1000 Cr).
+        self.assertGreater(float(stats.c_cartography or 0.0), 1000.0)
+        self.assertGreater(float(stats.bonus_discovery or 0.0), 0.0)
+
+    def test_dss_efficiency_bonus_applies_when_probes_used_within_target(self) -> None:
+        scan_event = {
+            "event": "Scan",
+            "StarSystem": "TEST_SYS_UC_DSS_EFF",
+            "BodyName": "TEST_SYS_UC_DSS_EFF 1",
+            "PlanetClass": "Water world",
+            "TerraformState": "Terraformable",
+            "WasDiscovered": False,
+            "WasMapped": False,
+            "MassEM": 1.0,
+        }
+        saa_done = {
+            "event": "SAAScanComplete",
+            "StarSystem": "TEST_SYS_UC_DSS_EFF",
+            "BodyName": "TEST_SYS_UC_DSS_EFF 1",
+            "ProbesUsed": 6,
+            "EfficiencyTarget": 8,
+        }
+
+        self.engine.analyze_scan_event(scan_event)
+        before = self.engine.get_system_stats("TEST_SYS_UC_DSS_EFF")
+        self.assertIsNotNone(before)
+        total_before = float(before.c_cartography or 0.0) + float(before.bonus_discovery or 0.0)
+
+        self.engine.analyze_dss_scan_complete_event(saa_done)
+        after = self.engine.get_system_stats("TEST_SYS_UC_DSS_EFF")
+        self.assertIsNotNone(after)
+        total_after = float(after.c_cartography or 0.0) + float(after.bonus_discovery or 0.0)
+
+        self.assertGreater(total_after, total_before)
+        body_state = dict((after.cartography_bodies or {}).get("TEST_SYS_UC_DSS_EFF 1") or {})
+        self.assertTrue(bool(body_state.get("efficiency_bonus_applied")))
+
+    def test_exobio_first_logged_multiplier_tracks_potential_bonus(self) -> None:
+        # Scan payload with biology hint marks body as first-logged opportunity.
+        self.engine.analyze_scan_event(
+            {
+                "event": "Scan",
+                "StarSystem": "TEST_SYS_EXO_5X",
+                "BodyName": "TEST_SYS_EXO_5X 1",
+                "PlanetClass": "Rocky body",
+                "TerraformState": "",
+                "WasDiscovered": True,
+                "WasMapped": False,
+                "Genuses": [{"Genus": "Aleoida"}],
+            }
+        )
+
+        self.engine.analyze_biology_event(
+            {
+                "event": "ScanOrganic",
+                "StarSystem": "TEST_SYS_EXO_5X",
+                "BodyName": "TEST_SYS_EXO_5X 1",
+                "Species_Localised": "Aleoida Arcus",
+                "FirstDiscovery": False,
+                "FirstFootfall": False,
+            }
+        )
+        stats = self.engine.get_system_stats("TEST_SYS_EXO_5X")
+        self.assertIsNotNone(stats)
+        # Base species value is 100 -> with 5x opportunity this should be 500.
+        self.assertAlmostEqual(float(stats.c_exobiology or 0.0), 500.0, places=3)
+        self.assertAlmostEqual(float(getattr(stats, "potential_first_logged_bonus", 0.0) or 0.0), 400.0, places=3)
+        self.assertTrue(bool(getattr(stats, "has_first_footfall_opportunity", False)))
+
 if __name__ == "__main__":
     unittest.main()

@@ -215,6 +215,16 @@ INSIGHT_CLASS_BY_MESSAGE_ID: Dict[str, InsightClassSpec] = {
         default_cooldown_seconds=30.0,
         dedup_template="exp_callout:{system}:hv_dss:{body}",
     ),
+    "MSG.HIGH_VALUE_FIRST_LOGGED_ALERT": InsightClassSpec(
+        class_id="EXP_HIGH_VALUE_FIRST_LOGGED",
+        canonical_event="BODY_DISCOVERED",
+        kind="exploration",
+        decision_space="exobio_first_logged",
+        default_priority="P2_NORMAL",
+        default_cooldown_scope="entity",
+        default_cooldown_seconds=45.0,
+        dedup_template="exp_callout:{system}:first_logged:{body}",
+    ),
     "MSG.ELW_DETECTED": InsightClassSpec(
         class_id="EXP_ELW_CALLOUT",
         canonical_event="BODY_DISCOVERED",
@@ -541,6 +551,11 @@ TTS_POLICY_BY_MESSAGE_ID: Dict[str, TTSPolicySpec] = {
     ),
     "MSG.HIGH_VALUE_DSS_HINT": TTSPolicySpec(
         message_id="MSG.HIGH_VALUE_DSS_HINT",
+        intent="context",
+        category="explore",
+    ),
+    "MSG.HIGH_VALUE_FIRST_LOGGED_ALERT": TTSPolicySpec(
+        message_id="MSG.HIGH_VALUE_FIRST_LOGGED_ALERT",
         intent="context",
         category="explore",
     ),

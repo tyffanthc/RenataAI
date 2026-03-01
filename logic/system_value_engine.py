@@ -25,6 +25,22 @@ from typing import Any, Dict, Optional, Set, Tuple, List
 
 import pandas as pd
 
+_UC_FIRST_DISCOVERY_MULT = 2.6
+_UC_FIRST_MAPPED_MULT = 3.7
+_UC_EFFICIENCY_MULT = 1.25
+
+# Dynamic UC formula params: V = k + (k * q * m**0.2)
+# Keys are normalized body types (lower-case).
+_UC_FORMULA_PARAMS: Dict[str, Tuple[float, float]] = {
+    "earth-like world": (64831.0, 0.249),
+    "water world": (29057.0, 0.149),
+    "ammonia world": (96932.0, 0.216),
+    "high metal content planet": (1279.0, 0.035),
+    "high metal content world": (1279.0, 0.035),
+    "rocky body": (720.0, 0.025),
+    "rocky world": (720.0, 0.025),
+}
+
 
 @dataclass
 class SystemStats:
@@ -62,6 +78,11 @@ class SystemStats:
     # False â€“ wszystkie znane nam ciaĹ‚a sÄ… â€žWasDiscovered == Falseâ€ť
     # None  â€“ brak danych / niejednoznaczne
     system_previously_discovered: Optional[bool] = None
+    # Exobiology first-logged opportunity (Vista 5x potential).
+    has_first_footfall_opportunity: bool = False
+    potential_first_logged_bonus: float = 0.0
+    first_footfall_bodies: Set[str] = field(default_factory=set)
+    exobio_body_multipliers: Dict[str, float] = field(default_factory=dict)
 
 
 class SystemValueEngine:
@@ -264,32 +285,57 @@ class SystemValueEngine:
             return
 
         was_mapped = bool(event.get("WasMapped") or event.get("Mapped"))
-        mapped_from_scan_allowed = bool(was_mapped and (was_discovered is False or was_discovered == 0))
+        is_first_discovery = bool(was_discovered is False or was_discovered == 0)
+        is_first_mapped = bool(not was_mapped)
+        mapped_from_scan_allowed = bool(was_mapped and is_first_discovery)
 
-        # Bazowa wartoĹ›Ä‡: FSS lub DSS
-        fss_value = self._finite_row_float(row, "FSS_Base_Value")
-        dss_value = self._finite_row_float(row, "DSS_Mapped_Value")
-        fd_mapped = self._finite_row_float(row, "First_Discovery_Mapped_Value")
+        # Base valuation uses dynamic UC formula when MassEM + supported body type are available.
+        # Fallback to table values for unsupported bodies or missing MassEM.
+        row_fss_value = self._finite_row_float(row, "FSS_Base_Value")
+        row_dss_value = self._finite_row_float(row, "DSS_Mapped_Value")
+        row_fd_mapped = self._finite_row_float(row, "First_Discovery_Mapped_Value")
+        mass_em = self._scan_mass_em(event)
+        formula_values = self.calculate_body_value(
+            body_type,
+            mass_em,
+            is_first_discovery=is_first_discovery,
+            is_first_mapped=is_first_mapped,
+            efficiency_bonus=False,
+        )
+        uses_formula = isinstance(formula_values, dict)
+        if uses_formula:
+            fss_value = float(formula_values.get("fss_base", 0.0) or 0.0)
+            fss_bonus = float(formula_values.get("fss_bonus", 0.0) or 0.0)
+            dss_value = float(formula_values.get("dss_base", 0.0) or 0.0)
+            dss_bonus = float(formula_values.get("dss_bonus", 0.0) or 0.0)
+        else:
+            fss_value = row_fss_value
+            dss_value = row_dss_value
+            # Legacy fallback keeps old approximation from cartography sheet.
+            if is_first_discovery and dss_value > 0.0:
+                if mapped_from_scan_allowed:
+                    fss_bonus = max(0.0, row_fd_mapped - dss_value)
+                    dss_bonus = max(0.0, row_fd_mapped - dss_value)
+                elif fss_value > 0.0:
+                    ratio = row_fd_mapped / dss_value if dss_value else 1.0
+                    fss_bonus = max(0.0, fss_value * (ratio - 1.0))
+                    dss_bonus = max(0.0, row_fd_mapped - dss_value)
+                else:
+                    fss_bonus = 0.0
+                    dss_bonus = 0.0
+            else:
+                fss_bonus = 0.0
+                dss_bonus = 0.0
 
         if mapped_from_scan_allowed:
             base_value = dss_value
+            bonus = dss_bonus
         else:
             base_value = fss_value
+            bonus = fss_bonus
 
-        stats.c_cartography += base_value
-
-        # Bonus First Discovery (dla planet / ciaĹ‚)
-        bonus = 0.0
-        if was_discovered is False or was_discovered == 0:
-            if mapped_from_scan_allowed and dss_value > 0:
-                # RĂłĹĽnica miÄ™dzy â€žzwykĹ‚ymâ€ť DSS a â€žFirst Discovery mappedâ€ť
-                bonus = max(0.0, fd_mapped - dss_value)
-            elif fss_value > 0 and dss_value > 0:
-                # Przy braku osobnej kolumny dla FSS+FD â€” przybliĹĽenie:
-                ratio = fd_mapped / dss_value if dss_value else 1.0
-                bonus = max(0.0, fss_value * (ratio - 1.0))
-
-        stats.bonus_discovery_cartography += bonus
+        stats.c_cartography += float(base_value or 0.0)
+        stats.bonus_discovery_cartography += float(bonus or 0.0)
         self._sync_bonus_aggregate(stats)
         if bonus > 0:
             stats.any_discovery_bonuses = True
@@ -299,13 +345,26 @@ class SystemValueEngine:
             "body_type": body_type,
             "terraformable": terraformable,
             "was_discovered": was_discovered,
+            "was_mapped_initial": was_mapped,
             "fss_value": fss_value,
             "dss_value": dss_value,
-            "fd_mapped": fd_mapped,
+            "fss_bonus": fss_bonus,
+            "dss_bonus": dss_bonus,
             "base_applied": base_value,
             "bonus_applied": bonus,
             "mapped_accounted": bool(mapped_from_scan_allowed),
+            "uses_uc_formula": bool(uses_formula),
+            "mass_em": (float(mass_em) if mass_em is not None else None),
         }
+
+        # Track first-logged 5x opportunity baseline from Scan payload.
+        body_key = str(body_id)
+        if self._event_first_footfall(event):
+            stats.first_footfall_bodies.add(body_key)
+            stats.exobio_body_multipliers[body_key] = 1.0
+        elif self._event_has_biology_hint(event) and body_key not in stats.first_footfall_bodies:
+            stats.exobio_body_multipliers[body_key] = 5.0
+            stats.has_first_footfall_opportunity = True
 
         # High-Value Targets (ELW / WW / terraformable)
         if self._is_high_value_target(body_type, terraformable):
@@ -358,17 +417,45 @@ class SystemValueEngine:
         current_base = float(row.get("base_applied", 0.0) or 0.0)
         current_bonus = float(row.get("bonus_applied", 0.0) or 0.0)
         dss_value = float(row.get("dss_value", 0.0) or 0.0)
-        fd_mapped = float(row.get("fd_mapped", 0.0) or 0.0)
+        dss_bonus = float(row.get("dss_bonus", 0.0) or 0.0)
         was_discovered = row.get("was_discovered")
+        uses_uc_formula = bool(row.get("uses_uc_formula"))
+        body_type = str(row.get("body_type") or "")
+        mass_em = self._safe_float(row.get("mass_em"))
+        was_mapped_initial = bool(row.get("was_mapped_initial"))
 
         if dss_value <= 0.0:
             row["mapped_accounted"] = True
             return
 
+        is_first_discovery = bool(was_discovered is False or was_discovered == 0)
+        probes_used = self._safe_float(event.get("ProbesUsed"))
+        efficiency_target = self._safe_float(event.get("EfficiencyTarget"))
+        has_efficiency_bonus = bool(
+            probes_used is not None
+            and efficiency_target is not None
+            and probes_used > 0.0
+            and efficiency_target > 0.0
+            and probes_used <= efficiency_target
+        )
+
         target_base = dss_value
-        target_bonus = 0.0
-        if was_discovered is False or was_discovered == 0:
-            target_bonus = max(0.0, fd_mapped - dss_value)
+        target_bonus = dss_bonus
+        if uses_uc_formula and mass_em is not None and body_type:
+            formula_values = self.calculate_body_value(
+                body_type,
+                mass_em,
+                is_first_discovery=is_first_discovery,
+                is_first_mapped=bool(not was_mapped_initial),
+                efficiency_bonus=has_efficiency_bonus,
+            )
+            if isinstance(formula_values, dict):
+                target_base = float(formula_values.get("dss_base", target_base) or target_base)
+                target_bonus = float(formula_values.get("dss_bonus", target_bonus) or target_bonus)
+        elif has_efficiency_bonus:
+            # Legacy fallback path: no UC formula available, apply +25% to mapped valuation.
+            target_base = float(target_base) * _UC_EFFICIENCY_MULT
+            target_bonus = float(target_bonus) * _UC_EFFICIENCY_MULT
 
         stats.c_cartography += (target_base - current_base)
         stats.bonus_discovery_cartography += (target_bonus - current_bonus)
@@ -378,10 +465,12 @@ class SystemValueEngine:
 
         row["base_applied"] = target_base
         row["bonus_applied"] = target_bonus
+        row["dss_value"] = target_base
+        row["dss_bonus"] = target_bonus
         row["mapped_accounted"] = True
+        row["efficiency_bonus_applied"] = bool(has_efficiency_bonus)
 
         # Keep high-value breakdown in sync after DSS upgrades.
-        body_type = str(row.get("body_type") or "")
         terraformable = str(row.get("terraformable") or "No")
         if body_type and self._is_high_value_target(body_type, terraformable):
             self._upsert_high_value_target(
@@ -435,12 +524,10 @@ class SystemValueEngine:
         if row is None:
             return
 
+        body_key = self._body_key_from_event(event)
         base_value = float(row.get("Base_Value", 0.0) or 0.0)
         fd_bonus = float(row.get("First_Discovery_Bonus", 0.0) or 0.0)
         total_ff = float(row.get("Total_First_Footfall", 0.0) or 0.0)
-
-        # dolicz bazowÄ… wartoĹ›Ä‡ biologii
-        stats.c_exobiology += base_value
 
         # Flagi "first discovery / first footfall" z eventu
         is_first_discovery = bool(
@@ -452,6 +539,17 @@ class SystemValueEngine:
             event.get("FirstFootfall")
             or event.get("FirstScan")
         )
+        if body_key and is_first_footfall:
+            stats.first_footfall_bodies.add(body_key)
+            stats.exobio_body_multipliers[body_key] = 1.0
+
+        exobio_multiplier = self._resolve_exobio_multiplier(stats, body_key)
+        if body_key and exobio_multiplier > 1.0:
+            stats.exobio_body_multipliers[body_key] = exobio_multiplier
+            stats.has_first_footfall_opportunity = True
+
+        effective_base = float(base_value) * float(exobio_multiplier)
+        stats.c_exobiology += effective_base
 
         bonus = 0.0
         if is_first_discovery:
@@ -461,6 +559,9 @@ class SystemValueEngine:
         if is_first_footfall and total_ff > 0:
             extra_ff = max(0.0, total_ff - (base_value + fd_bonus))
             bonus += extra_ff
+
+        if exobio_multiplier > 1.0 and base_value > 0.0:
+            stats.potential_first_logged_bonus += (base_value * (exobio_multiplier - 1.0))
 
         stats.bonus_discovery_exobiology += bonus
         self._sync_bonus_aggregate(stats)
@@ -565,17 +666,20 @@ class SystemValueEngine:
         c_carto = 0.0
         c_exo = 0.0
         bonus = 0.0
+        potential_first_logged_bonus = 0.0
         for s in self.systems.values():
             self._ensure_bonus_components(s)
             c_carto += float(s.c_cartography or 0.0)
             c_exo += float(s.c_exobiology or 0.0)
             bonus += float(s.bonus_discovery or 0.0)
+            potential_first_logged_bonus += float(getattr(s, "potential_first_logged_bonus", 0.0) or 0.0)
         total = c_carto + c_exo + bonus
 
         return {
             "c_cartography": c_carto,
             "c_exobiology": c_exo,
             "bonus_discovery": bonus,
+            "potential_first_logged_bonus": potential_first_logged_bonus,
             "total": total,
         }
 
@@ -625,6 +729,14 @@ class SystemValueEngine:
             setattr(stats, "bonus_discovery_cartography", float(getattr(stats, "bonus_discovery", 0.0) or 0.0))
         if not hasattr(stats, "bonus_discovery_exobiology"):
             setattr(stats, "bonus_discovery_exobiology", 0.0)
+        if not hasattr(stats, "has_first_footfall_opportunity"):
+            setattr(stats, "has_first_footfall_opportunity", False)
+        if not hasattr(stats, "potential_first_logged_bonus"):
+            setattr(stats, "potential_first_logged_bonus", 0.0)
+        if not hasattr(stats, "first_footfall_bodies"):
+            setattr(stats, "first_footfall_bodies", set())
+        if not hasattr(stats, "exobio_body_multipliers"):
+            setattr(stats, "exobio_body_multipliers", {})
         self._sync_bonus_aggregate(stats)
 
     def _clear_cartography_state(self, stats: SystemStats) -> None:
@@ -644,6 +756,10 @@ class SystemValueEngine:
         stats.c_exobiology = 0.0
         stats.bonus_discovery_exobiology = 0.0
         stats.seen_species.clear()
+        stats.has_first_footfall_opportunity = False
+        stats.potential_first_logged_bonus = 0.0
+        stats.first_footfall_bodies.clear()
+        stats.exobio_body_multipliers.clear()
         self._sync_bonus_aggregate(stats)
         if stats.total_scanned_bodies <= 0 and stats.bodies_first_discovery_count <= 0:
             stats.any_discovery_bonuses = bool(stats.bonus_discovery > 0.0)
@@ -662,6 +778,10 @@ class SystemValueEngine:
         stats.bodies_previously_discovered_count = 0
         stats.any_discovery_bonuses = False
         stats.system_previously_discovered = None
+        stats.has_first_footfall_opportunity = False
+        stats.potential_first_logged_bonus = 0.0
+        stats.first_footfall_bodies.clear()
+        stats.exobio_body_multipliers.clear()
         self._sync_bonus_aggregate(stats)
 
     @staticmethod
@@ -692,6 +812,103 @@ class SystemValueEngine:
                 "estimated_value": target_value,
             }
         )
+
+    @staticmethod
+    def _safe_float(value: Any) -> Optional[float]:
+        try:
+            out = float(value)
+        except Exception:
+            return None
+        if not math.isfinite(out):
+            return None
+        return out
+
+    def _scan_mass_em(self, event: Dict[str, Any]) -> Optional[float]:
+        mass = self._safe_float(event.get("MassEM"))
+        if mass is not None and mass > 0.0:
+            return mass
+        # Some payloads may carry lowercase key.
+        mass = self._safe_float(event.get("mass_em"))
+        if mass is not None and mass > 0.0:
+            return mass
+        return None
+
+    @staticmethod
+    def _formula_body_key(body_type: str) -> str:
+        return str(body_type or "").strip().casefold()
+
+    def calculate_body_value(
+        self,
+        planet_type: str,
+        mass_em: float,
+        *,
+        is_first_discovery: bool = False,
+        is_first_mapped: bool = False,
+        efficiency_bonus: bool = False,
+    ) -> Optional[Dict[str, float]]:
+        params = _UC_FORMULA_PARAMS.get(self._formula_body_key(planet_type))
+        mass = self._safe_float(mass_em)
+        if params is None or mass is None or mass <= 0.0:
+            return None
+        k, q = params
+        base = float(k + (k * q * (mass ** 0.2)))
+        if not math.isfinite(base) or base <= 0.0:
+            return None
+
+        fss_base = base
+        fss_bonus = (fss_base * (_UC_FIRST_DISCOVERY_MULT - 1.0)) if is_first_discovery else 0.0
+
+        dss_base = base * (_UC_FIRST_MAPPED_MULT if is_first_mapped else 1.0)
+        dss_bonus = (dss_base * (_UC_FIRST_DISCOVERY_MULT - 1.0)) if is_first_discovery else 0.0
+
+        if efficiency_bonus:
+            dss_base *= _UC_EFFICIENCY_MULT
+            dss_bonus *= _UC_EFFICIENCY_MULT
+
+        return {
+            "fss_base": float(fss_base),
+            "fss_bonus": float(fss_bonus),
+            "dss_base": float(dss_base),
+            "dss_bonus": float(dss_bonus),
+            "base_nominal": float(base),
+        }
+
+    @staticmethod
+    def _event_has_biology_hint(event: Dict[str, Any]) -> bool:
+        genuses = event.get("Genuses")
+        if isinstance(genuses, list) and len(genuses) > 0:
+            return True
+        signals = event.get("Signals")
+        if isinstance(signals, list):
+            for signal in signals:
+                if not isinstance(signal, dict):
+                    continue
+                sig_type = str(signal.get("Type") or "").strip().casefold()
+                if "biological" in sig_type:
+                    return True
+        if bool(event.get("Biological")):
+            return True
+        return False
+
+    @staticmethod
+    def _event_first_footfall(event: Dict[str, Any]) -> bool:
+        return bool(event.get("FirstFootfall") or event.get("FirstScan"))
+
+    @staticmethod
+    def _body_key_from_event(event: Dict[str, Any]) -> str:
+        body = event.get("BodyName") or event.get("Body") or event.get("BodyID")
+        return str(body or "").strip()
+
+    def _resolve_exobio_multiplier(self, stats: SystemStats, body_key: str) -> float:
+        key = str(body_key or "").strip()
+        if not key:
+            return 1.0
+        if key in stats.first_footfall_bodies:
+            stats.exobio_body_multipliers[key] = 1.0
+            return 1.0
+        if float(stats.exobio_body_multipliers.get(key, 1.0) or 1.0) > 1.0:
+            return 5.0
+        return 1.0
 
     # --- Cartography helpers -------------------------------------------------
 

@@ -24,6 +24,7 @@ EXOBIO_RANGE_READY_WARNED = set()  # (system, body, species) -> range-ready alre
 EXOBIO_RANGE_TRACKERS = {}  # (system, body, species) -> distance tracker state
 EXOBIO_LAST_STATUS_POS = {}  # last known position from Status.json
 EXOBIO_RECOVERY_UNCERTAIN_KEYS = set()  # (system, body, species) -> numbering uncertainty
+EXOBIO_FIRST_LOGGED_ALERTED_BODIES = set()  # (system, body) -> one first-logged alert per body
 
 _EXOBIO_KEY_DELIM = "||"
 _EXOBIO_PERSIST_MIN_INTERVAL_SEC = 2.0
@@ -74,7 +75,7 @@ def reset_bio_flags(*, persist: bool = False) -> None:
     global DSS_BIO_WARNED_BODIES, EXOBIO_SCAN_WARNED, EXOBIO_CODEX_WARNED
     global EXOBIO_SAMPLE_COUNT, EXOBIO_SAMPLE_COMPLETE
     global EXOBIO_RANGE_READY_WARNED, EXOBIO_RANGE_TRACKERS, EXOBIO_LAST_STATUS_POS
-    global EXOBIO_RECOVERY_UNCERTAIN_KEYS
+    global EXOBIO_RECOVERY_UNCERTAIN_KEYS, EXOBIO_FIRST_LOGGED_ALERTED_BODIES
     DSS_BIO_WARNED_BODIES = set()
     EXOBIO_SCAN_WARNED = set()
     EXOBIO_CODEX_WARNED = set()
@@ -84,6 +85,7 @@ def reset_bio_flags(*, persist: bool = False) -> None:
     EXOBIO_RANGE_TRACKERS = {}
     EXOBIO_LAST_STATUS_POS = {}
     EXOBIO_RECOVERY_UNCERTAIN_KEYS = set()
+    EXOBIO_FIRST_LOGGED_ALERTED_BODIES = set()
     if persist:
         _persist_exobio_state(force=True)
 
@@ -694,6 +696,53 @@ def _estimate_collected_species_value(ev: Dict[str, Any], species: str) -> tuple
         return None, False
 
 
+def _maybe_emit_first_logged_alert(system_name: str, body: str, *, gui_ref=None) -> None:
+    body_txt = _as_text(body)
+    system_txt = _as_text(system_name)
+    if not body_txt or not system_txt:
+        return
+
+    global EXOBIO_FIRST_LOGGED_ALERTED_BODIES
+    alert_key = (system_txt.lower(), body_txt.lower())
+    if alert_key in EXOBIO_FIRST_LOGGED_ALERTED_BODIES:
+        return
+
+    multiplier = 1.0
+    try:
+        stats = app_state.system_value_engine.get_system_stats(system_txt)
+        if stats is None:
+            return
+        body_map = getattr(stats, "exobio_body_multipliers", {}) or {}
+        multiplier = float(body_map.get(body_txt, 1.0) or 1.0)
+    except Exception as exc:
+        _log_exobio_fallback(
+            "first_logged_alert.read_state",
+            "failed to resolve exobio first-logged multiplier",
+            exc,
+        )
+        return
+
+    if multiplier <= 1.0:
+        return
+
+    msg = "Patryk, brak śladów stóp na tej planecie. Próbki biologiczne będą warte pięć razy więcej!"
+    ctx = _exobio_context(system_name=system_txt, body_name=body_txt, species="", payload={})
+    ctx["raw_text"] = msg
+    emit_insight(
+        msg,
+        gui_ref=gui_ref,
+        message_id="MSG.HIGH_VALUE_FIRST_LOGGED_ALERT",
+        source="exploration_bio_events",
+        event_type="BODY_DISCOVERED",
+        context=ctx,
+        priority="P2_NORMAL",
+        dedup_key=f"first_logged:{system_txt}:{body_txt}",
+        cooldown_scope="entity",
+        cooldown_seconds=45.0,
+    )
+    EXOBIO_FIRST_LOGGED_ALERTED_BODIES.add(alert_key)
+
+
 def _format_cr(value: float | None) -> str:
     if value is None:
         return ""
@@ -1046,6 +1095,7 @@ def handle_exobio_progress(ev: Dict[str, Any], gui_ref=None) -> None:
             return
 
         key = (system_name.lower(), body.lower(), species.lower())
+        _maybe_emit_first_logged_alert(system_name, body, gui_ref=gui_ref)
         if key in EXOBIO_SAMPLE_COMPLETE:
             return
 

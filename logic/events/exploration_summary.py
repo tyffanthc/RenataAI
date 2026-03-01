@@ -22,6 +22,7 @@ class ExplorationSummaryPayload:
     cash_in_signal: str
     cash_in_system_estimated: float
     cash_in_session_estimated: float
+    potential_first_logged_bonus_estimated: float
     confidence: str
     mode: str
     signature: str
@@ -180,6 +181,9 @@ def _build_payload(
         cash_in_signal=cash_signal,
         cash_in_system_estimated=_safe_float(data.total_value),
         cash_in_session_estimated=_safe_float((totals or {}).get("total")),
+        potential_first_logged_bonus_estimated=_safe_float(
+            getattr(data, "potential_first_logged_bonus", 0.0)
+        ),
         confidence=confidence,
         mode=_as_text(mode) or "auto",
         signature="",
@@ -192,9 +196,17 @@ def _build_tts_line(payload: ExplorationSummaryPayload) -> str:
     value = _safe_float(payload.cash_in_session_estimated)
     if value <= 0.0:
         value = _safe_float(payload.cash_in_system_estimated)
+    potential = _safe_float(payload.potential_first_logged_bonus_estimated)
+    if potential > 0.0:
+        return (
+            "Podsumowanie gotowe. "
+            f"Szacowana wartość: {format_credits(value)}. "
+            f"Potencjalny bonus first logged: {format_credits(potential)}. "
+            f"{payload.next_step}."
+        )
     return (
         "Podsumowanie gotowe. "
-        f"Dane warte {format_credits(value)}. "
+        f"Szacowana wartość: {format_credits(value)}. "
         f"{payload.next_step}."
     )
 
