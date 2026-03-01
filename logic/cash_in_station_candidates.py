@@ -44,6 +44,32 @@ def _safe_optional_float(value: Any) -> float | None:
         return None
 
 
+def _safe_freshness_epoch(value: Any) -> float:
+    text = _as_text(value)
+    if not text:
+        return 0.0
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return float(dt.timestamp())
+    except Exception:
+        return 0.0
+
+
+def _source_preference_score(value: Any) -> int:
+    token = _as_text(value).upper()
+    if not token:
+        return 0
+    if "SPANSH" in token or "EDSM" in token:
+        return 4
+    if "PLAYERDB" in token:
+        return 3
+    if "OFFLINE_INDEX" in token:
+        return 2
+    if "LOCAL_KNOWN" in token or "SWR_CACHE" in token:
+        return 1
+    return 0
+
+
 def _normalize_type(value: Any) -> str:
     text = _as_text(value).lower()
     if not text:
@@ -162,7 +188,16 @@ def normalize_station_candidate(
     )
     candidate = {
         "name": name,
+        "station_name": name,
         "system_name": system_name or default_system or "unknown",
+        "market_id": (
+            _as_text(
+                row.get("market_id")
+                or row.get("marketId")
+                or row.get("MarketID")
+            )
+            or None
+        ),
         "type": _normalize_type(
             row.get("type")
             or row.get("station_type")
@@ -195,6 +230,9 @@ def normalize_station_candidate(
 
 
 def _candidate_key(candidate: Dict[str, Any]) -> str:
+    market_id = _as_text(candidate.get("market_id"))
+    if market_id:
+        return f"market::{market_id.casefold()}"
     system_name = _as_text(candidate.get("system_name")).casefold()
     station_name = _as_text(candidate.get("name")).casefold()
     return f"{system_name}::{station_name}"
@@ -230,12 +268,24 @@ def _merge_sources(left: str, right: str) -> str:
 
 
 def _merge_candidate_pair(current: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
-    out = dict(current)
-    if _candidate_score(incoming) > _candidate_score(current):
-        out = dict(incoming)
-        base = current
-    else:
-        base = incoming
+    current_freshness = _safe_freshness_epoch(current.get("freshness_ts"))
+    incoming_freshness = _safe_freshness_epoch(incoming.get("freshness_ts"))
+    current_source_score = _source_preference_score(current.get("source"))
+    incoming_source_score = _source_preference_score(incoming.get("source"))
+    current_quality_score = _candidate_score(current)
+    incoming_quality_score = _candidate_score(incoming)
+
+    prefer_incoming = False
+    if incoming_freshness > current_freshness:
+        prefer_incoming = True
+    elif incoming_freshness == current_freshness:
+        if incoming_source_score > current_source_score:
+            prefer_incoming = True
+        elif incoming_source_score == current_source_score and incoming_quality_score > current_quality_score:
+            prefer_incoming = True
+
+    out = dict(incoming if prefer_incoming else current)
+    base = current if prefer_incoming else incoming
 
     out["source"] = _merge_sources(out.get("source"), base.get("source"))
 
@@ -264,8 +314,16 @@ def _merge_candidate_pair(current: Dict[str, Any], incoming: Dict[str, Any]) -> 
                     out_system=_as_text(out.get("system_name")),
                 )
 
-    if not _as_text(out.get("freshness_ts")) and _as_text(base.get("freshness_ts")):
+    if (
+        _safe_freshness_epoch(base.get("freshness_ts"))
+        > _safe_freshness_epoch(out.get("freshness_ts"))
+    ):
         out["freshness_ts"] = _as_text(base.get("freshness_ts"))
+
+    if out.get("market_id") is None and base.get("market_id") is not None:
+        out["market_id"] = base.get("market_id")
+    if not _as_text(out.get("station_name")) and _as_text(base.get("station_name")):
+        out["station_name"] = _as_text(base.get("station_name"))
     return out
 
 
