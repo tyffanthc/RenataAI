@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
+import config
+from app.state import app_state
 from logic.events import fuel_events
 
 
@@ -13,11 +15,16 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         self._saved_pending_ts = fuel_events.LOW_FUEL_FLAG_PENDING_TS
         self._saved_initialized = bool(getattr(fuel_events, "_FUEL_STATUS_INITIALIZED", False))
         self._saved_seen_valid = bool(getattr(fuel_events, "_FUEL_SEEN_VALID_SAMPLE", False))
+        self._saved_fuel_capacity = getattr(app_state, "fuel_capacity", None)
+        self._saved_state_fuel_capacity = config.STATE.get("fuel_capacity")
         fuel_events.LOW_FUEL_WARNED = False
         fuel_events.LOW_FUEL_FLAG_PENDING = False
         fuel_events.LOW_FUEL_FLAG_PENDING_TS = 0.0
         fuel_events._FUEL_STATUS_INITIALIZED = False
         fuel_events._FUEL_SEEN_VALID_SAMPLE = False
+        with app_state.lock:
+            app_state.fuel_capacity = None
+        config.STATE.pop("fuel_capacity", None)
 
     def tearDown(self) -> None:
         fuel_events.LOW_FUEL_WARNED = self._saved_warned
@@ -25,6 +32,12 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         fuel_events.LOW_FUEL_FLAG_PENDING_TS = self._saved_pending_ts
         fuel_events._FUEL_STATUS_INITIALIZED = self._saved_initialized
         fuel_events._FUEL_SEEN_VALID_SAMPLE = self._saved_seen_valid
+        with app_state.lock:
+            app_state.fuel_capacity = self._saved_fuel_capacity
+        if self._saved_state_fuel_capacity is None:
+            config.STATE.pop("fuel_capacity", None)
+        else:
+            config.STATE["fuel_capacity"] = self._saved_state_fuel_capacity
 
     def test_uncertain_numeric_samples_without_lowfuel_flag_do_not_trigger_or_arm_pending(self) -> None:
         status = {

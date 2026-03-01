@@ -20,13 +20,15 @@ def _reset_low_fuel_pending_confirmation() -> None:
     LOW_FUEL_FLAG_PENDING_TS = 0.0
 
 
-def _log_uncertain_startup_sample_ignored(*, reason: str) -> None:
+def _log_uncertain_startup_sample_event(*, reason: str, action: str = "ignored") -> None:
+    action_norm = str(action or "ignored").strip().lower() or "ignored"
     log_event_throttled(
-        f"fuel_startup_uncertain_sample_ignored:{str(reason or 'unknown')}",
+        f"fuel_startup_uncertain_sample_{action_norm}:{str(reason or 'unknown')}",
         5000,
         "FUEL",
-        "fuel startup uncertain sample ignored",
+        f"fuel startup uncertain sample {action_norm}",
         reason=str(reason or "unknown"),
+        action=action_norm,
     )
 
 
@@ -144,12 +146,20 @@ def handle_status_update(status: dict, gui_ref=None):
     except (TypeError, ValueError):
         has_cap_main = False
     confirmed_capacity = _resolve_confirmed_fuel_capacity(status)
+    fallback_cap_main = None
+    if not has_cap_main and confirmed_capacity is not None:
+        fallback_cap_main = float(confirmed_capacity)
+    effective_cap_main = float(cap_main) if has_cap_main else fallback_cap_main
+    has_effective_cap_main = bool(
+        effective_cap_main is not None and math.isfinite(float(effective_cap_main)) and float(effective_cap_main) > 0.0
+    )
+    fallback_applied = False
 
     # Startup/no-data sample: brak flagi low-fuel + brak danych o paliwie i pojemnosci
     # oznacza brak decyzji diagnostycznej (nie armujemy alertu).
     if fuel_main is None and not low_fuel_flag and not has_cap_main:
         _reset_low_fuel_pending_confirmation()
-        _log_uncertain_startup_sample_ignored(reason="missing_fuel_and_capacity")
+        _log_uncertain_startup_sample_event(reason="missing_fuel_and_capacity", action="ignored")
         return
 
     try:
@@ -167,7 +177,7 @@ def handle_status_update(status: dict, gui_ref=None):
                 and not _FUEL_SEEN_VALID_SAMPLE
             ):
                 _reset_low_fuel_pending_confirmation()
-                _log_uncertain_startup_sample_ignored(reason="zero_without_capacity")
+                _log_uncertain_startup_sample_event(reason="zero_without_capacity", action="ignored")
                 return
 
             # 0..1 traktujemy jako procent 0..100.
@@ -175,21 +185,35 @@ def handle_status_update(status: dict, gui_ref=None):
                 fuel_percent = val * 100.0
                 # Przy braku pojemnosci i braku flagi low-fuel traktujemy probe
                 # jako niepewna (typowy transient startup/SCO).
-                if not low_fuel_flag and not has_cap_main:
+                if not low_fuel_flag and not has_effective_cap_main:
                     uncertain_low_sample = True
-            elif has_cap_main:
-                fuel_percent = (val / float(cap_main)) * 100.0
+                elif not low_fuel_flag and not has_cap_main and has_effective_cap_main:
+                    fuel_percent = (val / float(effective_cap_main)) * 100.0
+                    fallback_applied = True
+            elif has_effective_cap_main:
+                fuel_percent = (val / float(effective_cap_main)) * 100.0
+                if not low_fuel_flag and not has_cap_main:
+                    fallback_applied = True
             elif not low_fuel_flag:
                 # Wysoka wartosc bez pojemnosci tez jest niejednoznaczna semantycznie.
                 uncertain_low_sample = True
     except (TypeError, ValueError):
         fuel_percent = None
 
+    if fallback_applied:
+        _log_uncertain_startup_sample_event(
+            reason="ambiguous_numeric_without_capacity_fallback_applied",
+            action="fallback_applied",
+        )
+
     # Niepewna probka liczbowa (np. transient startup/SCO/launch) bez flagi low-fuel z gry
     # nie moze budowac alertu ani pending-confirmation. Traktujemy jako "brak decyzji".
     if uncertain_low_sample and not low_fuel_flag:
         _reset_low_fuel_pending_confirmation()
-        _log_uncertain_startup_sample_ignored(reason="ambiguous_numeric_without_capacity")
+        _log_uncertain_startup_sample_event(
+            reason="ambiguous_numeric_without_capacity_sample_rejected",
+            action="sample_rejected",
+        )
         return
 
     try:
@@ -207,7 +231,7 @@ def handle_status_update(status: dict, gui_ref=None):
     if low_fuel and not LOW_FUEL_WARNED:
         if confirmed_capacity is None:
             _reset_low_fuel_pending_confirmation()
-            _log_uncertain_startup_sample_ignored(reason="fuel_capacity_unconfirmed")
+            _log_uncertain_startup_sample_event(reason="fuel_capacity_unconfirmed", action="ignored")
             return
 
         _reset_low_fuel_pending_confirmation()
