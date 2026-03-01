@@ -50,6 +50,14 @@ TTS_TEMPLATE_REGISTRY: Dict[str, dict[str, object]] = {
     "MSG.FSS_PROGRESS_50": {"template": "Połowa systemu przeskanowana.", "raw_text_first": False},
     "MSG.FSS_PROGRESS_75": {"template": "Siedemdziesiąt pięć procent systemu przeskanowane.", "raw_text_first": False},
     "MSG.FSS_LAST_BODY": {"template": "Ostatnia planeta do skanowania.", "raw_text_first": False},
+    "MSG.FSS_PASSIVE_DATA_INGESTED": {
+        "template": "Dane systemu pobrane pasywnie z boi nawigacyjnej.",
+        "raw_text_first": False,
+    },
+    "MSG.FSS_PASSIVE_SYSTEM_COMPLETE": {
+        "template": "Pełny obraz ciał systemu dostępny pasywnie. Bez ręcznego skanowania FSS.",
+        "raw_text_first": False,
+    },
     "MSG.EXPLORATION_SYSTEM_SUMMARY": {"template": "Podsumowanie eksploracji gotowe.", "raw_text_first": True},
     "MSG.EXPLORATION_AWARENESS_SUMMARY": {"template": "Podsumowanie uwag eksploracyjnych gotowe.", "raw_text_first": True},
     "MSG.CASH_IN_ASSISTANT": {"template": "Cash-in. Sprawdź decyzje w panelu.", "raw_text_first": True},

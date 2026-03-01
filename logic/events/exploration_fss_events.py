@@ -37,6 +37,8 @@ FSS_HAD_DISCOVERY_SCAN = False
 FSS_HAD_MANUAL_PROGRESS_SCAN = False
 FSS_LAST_SCAN_TYPE = None
 FSS_LAST_MANUAL_SCAN_TYPE = None
+FSS_PASSIVE_DATA_WARNED = False
+FSS_PASSIVE_FULL_WARNED = False
 FSS_PENDING_EXIT_SUMMARY = False
 FSS_PENDING_EXIT_SUMMARY_SYSTEM = None
 FSS_PENDING_EXIT_SUMMARY_SCANNED = None
@@ -49,6 +51,7 @@ FIRST_SYS_OPPORTUNITY_WARNED = False    # ostrozny komunikat "mozliwy first" prz
 
 _MANUAL_FSS_SCAN_TYPES = {"detailed"}
 _NON_MANUAL_FSS_SCAN_TYPES = {"autoscan", "navbeacondetail", "basic"}
+_PASSIVE_PROGRESS_SCAN_TYPES = {"autoscan", "navbeacondetail"}
 
 
 def _progress_count_for_thresholds() -> int:
@@ -229,6 +232,7 @@ def reset_fss_progress(*, preserve_exobio: bool = False) -> None:
     global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED, FSS_FULL_WARNED
     global FSS_HAD_DISCOVERY_SCAN, FSS_HAD_MANUAL_PROGRESS_SCAN
     global FSS_LAST_SCAN_TYPE, FSS_LAST_MANUAL_SCAN_TYPE
+    global FSS_PASSIVE_DATA_WARNED, FSS_PASSIVE_FULL_WARNED
     global FSS_PENDING_EXIT_SUMMARY, FSS_PENDING_EXIT_SUMMARY_SYSTEM
     global FSS_PENDING_EXIT_SUMMARY_SCANNED, FSS_PENDING_EXIT_SUMMARY_TOTAL
     global FIRST_SYS_DISC_WARNED, FIRST_BODY_DISC_WARNED_BODIES, FIRST_SYS_OPPORTUNITY_WARNED
@@ -249,6 +253,8 @@ def reset_fss_progress(*, preserve_exobio: bool = False) -> None:
     FSS_HAD_MANUAL_PROGRESS_SCAN = False
     FSS_LAST_SCAN_TYPE = None
     FSS_LAST_MANUAL_SCAN_TYPE = None
+    FSS_PASSIVE_DATA_WARNED = False
+    FSS_PASSIVE_FULL_WARNED = False
     FSS_PENDING_EXIT_SUMMARY = False
     FSS_PENDING_EXIT_SUMMARY_SYSTEM = None
     FSS_PENDING_EXIT_SUMMARY_SCANNED = None
@@ -336,6 +342,65 @@ def _is_manual_progress_scan(scan_type_raw: Any) -> bool:
         scan_type=scan_type,
     )
     return False
+
+
+def _is_passive_progress_scan(scan_type_raw: Any) -> bool:
+    scan_type = str(scan_type_raw or "").strip().casefold()
+    if not scan_type:
+        return False
+    return scan_type in _PASSIVE_PROGRESS_SCAN_TYPES
+
+
+def _maybe_emit_passive_scan_callouts(gui_ref=None, *, scan_type: str | None = None) -> None:
+    """
+    Passive FSS awareness path (Nav Beacon / AutoScan).
+    This path must not arm exit summary (manual gate remains unchanged).
+    """
+    global FSS_PASSIVE_DATA_WARNED, FSS_PASSIVE_FULL_WARNED
+
+    system_name = app_state.get_current_system_name() or None
+    scan_type_norm = str(scan_type or "").strip().casefold()
+    is_passive = _is_passive_progress_scan(scan_type_norm)
+
+    if is_passive and not FSS_PASSIVE_DATA_WARNED:
+        if DEBOUNCER.can_send("FSS_PASSIVE_DATA", 120, context=system_name):
+            emit_insight(
+                "Dane systemu pobrane pasywnie z boi nawigacyjnej.",
+                gui_ref=gui_ref,
+                message_id="MSG.FSS_PASSIVE_DATA_INGESTED",
+                source="exploration_fss_events",
+                event_type="SYSTEM_SCANNED",
+                context=_fss_gate_context(system_name),
+                priority="P3_LOW",
+                dedup_key=f"fss_passive_data:{system_name or 'unknown'}",
+                cooldown_scope="entity",
+                cooldown_seconds=120.0,
+            )
+        FSS_PASSIVE_DATA_WARNED = True
+
+    progress_count = int(_progress_count_for_summary_gate() or 0)
+    total_count = int(FSS_TOTAL_BODIES or 0)
+    if (
+        is_passive
+        and (not FSS_PASSIVE_FULL_WARNED)
+        and total_count > 0
+        and progress_count >= total_count
+        and (not bool(FSS_HAD_MANUAL_PROGRESS_SCAN))
+    ):
+        if DEBOUNCER.can_send("FSS_PASSIVE_FULL", 120, context=system_name):
+            emit_insight(
+                "Pełny obraz ciał systemu dostępny pasywnie. Bez ręcznego skanowania FSS.",
+                gui_ref=gui_ref,
+                message_id="MSG.FSS_PASSIVE_SYSTEM_COMPLETE",
+                source="exploration_fss_events",
+                event_type="SYSTEM_SCANNED",
+                context=_fss_gate_context(system_name),
+                priority="P2_NORMAL",
+                dedup_key=f"fss_passive_full:{system_name or 'unknown'}",
+                cooldown_scope="entity",
+                cooldown_seconds=120.0,
+            )
+        FSS_PASSIVE_FULL_WARNED = True
 
 
 def _sync_milestone_flags_after_late_body_count() -> None:
@@ -519,6 +584,8 @@ def handle_scan(ev: Dict[str, Any], gui_ref=None):
         if is_manual_progress:
             _check_fss_thresholds(gui_ref)
             _maybe_speak_fss_full(gui_ref, trigger_source="Scan")
+        else:
+            _maybe_emit_passive_scan_callouts(gui_ref, scan_type=scan_type_norm)
         check_high_value_planet(ev, gui_ref)
 
         # --- S2-LOGIC-05: First Discovery detection ---
