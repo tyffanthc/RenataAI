@@ -1,4 +1,5 @@
 import config
+import math
 from logic.utils import DEBOUNCER
 from logic.insight_dispatcher import emit_insight
 from logic.utils.renata_log import log_event_throttled
@@ -27,6 +28,68 @@ def _log_uncertain_startup_sample_ignored(*, reason: str) -> None:
         "fuel startup uncertain sample ignored",
         reason=str(reason or "unknown"),
     )
+
+
+def _safe_positive_float(value) -> float | None:
+    try:
+        if value is None:
+            return None
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(out):
+        return None
+    if out <= 0.0:
+        return None
+    return float(out)
+
+
+def _extract_status_fuel_capacity(status: dict) -> float | None:
+    cap = (status or {}).get("FuelCapacity") or {}
+    if not isinstance(cap, dict):
+        return _safe_positive_float(cap)
+
+    main = _safe_positive_float(cap.get("Main") or cap.get("main") or cap.get("FuelMain"))
+    reserve = _safe_positive_float(
+        cap.get("Reserve")
+        or cap.get("Reservoir")
+        or cap.get("reserve")
+        or cap.get("reservoir")
+        or cap.get("FuelReservoir")
+    )
+    total = float(main or 0.0) + float(reserve or 0.0)
+    if total > 0.0:
+        return float(total)
+    return None
+
+
+def _resolve_confirmed_fuel_capacity(status: dict) -> float | None:
+    status_capacity = _extract_status_fuel_capacity(status)
+    if status_capacity is not None:
+        try:
+            from app.state import app_state
+
+            prev = _safe_positive_float(getattr(app_state, "fuel_capacity", None))
+            app_state.fuel_capacity = float(status_capacity)
+            config.STATE["fuel_capacity"] = float(status_capacity)
+            if prev is None or abs(float(prev) - float(status_capacity)) > 0.0001:
+                log_event_throttled(
+                    "fuel_capacity_confirmed_from_status",
+                    500,
+                    "FUEL",
+                    "fuel capacity confirmed from status sample",
+                    fuel_capacity=float(status_capacity),
+                )
+        except Exception:
+            pass
+        return float(status_capacity)
+
+    try:
+        from app.state import app_state
+
+        return _safe_positive_float(getattr(app_state, "fuel_capacity", None))
+    except Exception:
+        return None
 
 
 def handle_status_update(status: dict, gui_ref=None):
@@ -80,6 +143,7 @@ def handle_status_update(status: dict, gui_ref=None):
         has_cap_main = bool(cap_main and float(cap_main) > 0.0)
     except (TypeError, ValueError):
         has_cap_main = False
+    confirmed_capacity = _resolve_confirmed_fuel_capacity(status)
 
     # Startup/no-data sample: brak flagi low-fuel + brak danych o paliwie i pojemnosci
     # oznacza brak decyzji diagnostycznej (nie armujemy alertu).
@@ -141,6 +205,11 @@ def handle_status_update(status: dict, gui_ref=None):
     low_fuel = (fuel_percent < min_fuel_percent) if fuel_percent is not None else low_fuel_flag
 
     if low_fuel and not LOW_FUEL_WARNED:
+        if confirmed_capacity is None:
+            _reset_low_fuel_pending_confirmation()
+            _log_uncertain_startup_sample_ignored(reason="fuel_capacity_unconfirmed")
+            return
+
         _reset_low_fuel_pending_confirmation()
 
         LOW_FUEL_WARNED = True
