@@ -118,7 +118,7 @@ class F17QualityGatesAndSmokeTests(unittest.TestCase):
             app.on_cash_in_assistant_action(
                 "set_route",
                 {
-                    "profile": "SAFE",
+                    "profile": "NEAREST",
                     "target": {
                         "system_name": "F17_SMOKE_TARGET_SYS",
                         "name": "F17 Smoke Station",

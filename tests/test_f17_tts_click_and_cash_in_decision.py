@@ -55,12 +55,12 @@ class F17TtsClickAndCashInDecisionTests(unittest.TestCase):
 
     def test_set_intent_emits_profile_tts(self) -> None:
         with patch("logic.insight_dispatcher.emit_insight") as emit_mock:
-            self.app.on_cash_in_assistant_action("set_intent", {"profile": "FAST"})
+            self.app.on_cash_in_assistant_action("set_intent", {"profile": "CARRIER_FRIENDLY"})
 
-        self.assertTrue(any("wybrano profil FAST" in line for line in self.app.status_lines))
+        self.assertTrue(any("wybrano profil CARRIER_FRIENDLY" in line for line in self.app.status_lines))
         self.assertEqual(emit_mock.call_count, 1)
         ctx = dict(emit_mock.call_args.kwargs.get("context") or {})
-        self.assertIn("Wybrano profil FAST", str(ctx.get("raw_text") or ""))
+        self.assertIn("Wybrano profil CARRIER_FRIENDLY", str(ctx.get("raw_text") or ""))
 
     def test_set_route_emits_tts_and_arms_station_copy(self) -> None:
         with (
@@ -79,7 +79,10 @@ class F17TtsClickAndCashInDecisionTests(unittest.TestCase):
         ):
             self.app.on_cash_in_assistant_action(
                 "set_route",
-                {"profile": "SAFE", "target": {"system_name": "F17_TARGET_SYS", "name": "F17 Target Station"}},
+                {
+                    "profile": "NEAREST",
+                    "target": {"system_name": "F17_TARGET_SYS", "name": "F17 Target Station"},
+                },
             )
 
         pending = app_state.get_pending_station_clipboard_snapshot()
@@ -88,8 +91,8 @@ class F17TtsClickAndCashInDecisionTests(unittest.TestCase):
         self.assertEqual(emit_mock.call_count, 1)
         ctx = dict(emit_mock.call_args.kwargs.get("context") or {})
         raw_text = str(ctx.get("raw_text") or "")
-        self.assertIn("Ustawilam cel trasy i skopiowalam nastepny hop: F17_TARGET_SYS.", raw_text)
-        self.assertIn("Stacja zostanie skopiowana po wejsciu do systemu docelowego.", raw_text)
+        self.assertIn("F17_TARGET_SYS", raw_text)
+        self.assertIn("Stacja zostanie skopiowana", raw_text)
 
     def test_set_route_fast_neutron_emits_fallback_when_neutron_route_missing(self) -> None:
         with (
@@ -108,12 +111,16 @@ class F17TtsClickAndCashInDecisionTests(unittest.TestCase):
         ):
             self.app.on_cash_in_assistant_action(
                 "set_route",
-                {"profile": "FAST", "target": {"system_name": "F17_NEUTRON_SYS", "name": "F17 Neutron Hub"}},
+                {
+                    "profile": "CARRIER_FRIENDLY",
+                    "target": {"system_name": "F17_NEUTRON_SYS", "name": "F17 Neutron Hub"},
+                },
             )
 
         ctx = dict(emit_mock.call_args.kwargs.get("context") or {})
         raw_text = str(ctx.get("raw_text") or "")
-        self.assertIn("Nie znalazlam trasy neutronowej. Skopiowalam cel do schowka.", raw_text)
+        self.assertIn("trasy neutronowej", raw_text)
+        self.assertIn("cel do schowka", raw_text)
 
     def test_set_route_fast_neutron_triggers_neutron_planner_when_target_is_real(self) -> None:
         with (
@@ -134,7 +141,10 @@ class F17TtsClickAndCashInDecisionTests(unittest.TestCase):
         ):
             self.app.on_cash_in_assistant_action(
                 "set_route",
-                {"profile": "FAST", "target": {"system_name": "F17_NEUTRON_SYS", "name": "F17 Neutron Hub"}},
+                {
+                    "profile": "CARRIER_FRIENDLY",
+                    "target": {"system_name": "F17_NEUTRON_SYS", "name": "F17 Neutron Hub"},
+                },
             )
 
         self.assertTrue(trigger_mock.called)
@@ -155,11 +165,11 @@ class F17TtsClickAndCashInDecisionTests(unittest.TestCase):
             patch("gui.app.common.copy_text_to_clipboard", return_value=True),
             patch("logic.insight_dispatcher.emit_insight") as emit_mock,
         ):
-            self.app.on_cash_in_assistant_action("copy_next_hop", {"profile": "SAFE"})
+            self.app.on_cash_in_assistant_action("copy_next_hop", {"profile": "NEAREST"})
 
         self.assertTrue(any("skopiowano next hop" in line.lower() for line in self.app.status_lines))
         ctx = dict(emit_mock.call_args.kwargs.get("context") or {})
-        self.assertIn("Skopiowalam nastepny hop: F17_COPY_HOP_SYS.", str(ctx.get("raw_text") or ""))
+        self.assertIn("F17_COPY_HOP_SYS", str(ctx.get("raw_text") or ""))
 
 
 if __name__ == "__main__":

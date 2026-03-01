@@ -60,6 +60,29 @@ def _as_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+CASH_IN_PROFILE_NEAREST = "NEAREST"
+CASH_IN_PROFILE_SECURE_PORT = "SECURE_PORT"
+CASH_IN_PROFILE_CARRIER_FRIENDLY = "CARRIER_FRIENDLY"
+
+_CASH_IN_PROFILE_ALIASES = {
+    "": CASH_IN_PROFILE_NEAREST,
+    "1": CASH_IN_PROFILE_NEAREST,
+    "2": CASH_IN_PROFILE_SECURE_PORT,
+    "3": CASH_IN_PROFILE_CARRIER_FRIENDLY,
+    "SAFE": CASH_IN_PROFILE_NEAREST,
+    "FAST": CASH_IN_PROFILE_CARRIER_FRIENDLY,
+    "SECURE": CASH_IN_PROFILE_SECURE_PORT,
+    CASH_IN_PROFILE_NEAREST: CASH_IN_PROFILE_NEAREST,
+    CASH_IN_PROFILE_SECURE_PORT: CASH_IN_PROFILE_SECURE_PORT,
+    CASH_IN_PROFILE_CARRIER_FRIENDLY: CASH_IN_PROFILE_CARRIER_FRIENDLY,
+}
+
+
+def _normalize_cash_in_profile(value: Any, *, default: str = CASH_IN_PROFILE_NEAREST) -> str:
+    key = _as_text(value).upper()
+    return _CASH_IN_PROFILE_ALIASES.get(key, default)
+
+
 def _safe_float(value: Any) -> float:
     try:
         return float(value or 0.0)
@@ -599,17 +622,21 @@ def _attach_fallback_target_to_options(
 
 
 def _infer_profile_for_option(option: dict[str, Any]) -> str:
-    profile = _as_text(option.get("profile")).upper()
-    if profile in {"SAFE", "FAST", "SECURE"}:
+    profile = _normalize_cash_in_profile(option.get("profile"))
+    if profile in {
+        CASH_IN_PROFILE_NEAREST,
+        CASH_IN_PROFILE_SECURE_PORT,
+        CASH_IN_PROFILE_CARRIER_FRIENDLY,
+    }:
         return profile
     option_id = _as_text(option.get("option_id")).lower()
     strategy = _as_text(option.get("strategy")).lower()
     combined = f"{option_id}:{strategy}"
-    if "now" in combined or "secure" in combined:
-        return "SECURE"
-    if "later" in combined or "fast" in combined:
-        return "FAST"
-    return "SAFE"
+    if "now" in combined or "secure" in combined or "port" in combined:
+        return CASH_IN_PROFILE_SECURE_PORT
+    if "carrier" in combined or "later" in combined or "fast" in combined:
+        return CASH_IN_PROFILE_CARRIER_FRIENDLY
+    return CASH_IN_PROFILE_NEAREST
 
 
 def _build_ui_contract_for_option(option: dict[str, Any]) -> dict[str, Any]:
@@ -825,6 +852,7 @@ def _candidate_sort_key(
     carrier_ok_for_fast_mode: bool,
     hutton_threshold_ls: float,
 ) -> tuple[float, float, float, float, str]:
+    profile_norm = _normalize_cash_in_profile(profile)
     is_carrier = _candidate_is_carrier(candidate)
     hutton_guard = _is_hutton_guard(candidate, threshold_ls=hutton_threshold_ls)
     dist_ly = _candidate_distance_ly(candidate)
@@ -834,19 +862,19 @@ def _candidate_sort_key(
     carrier_penalty = 0.0
     hutton_penalty = 1.0 if hutton_guard else 0.0
 
-    if profile == "SAFE":
+    if profile_norm == CASH_IN_PROFILE_NEAREST:
         if service == "uc" and is_carrier:
             carrier_penalty += 1.0
             if avoid_carriers_for_uc:
                 carrier_penalty += 2.0
         return (carrier_penalty, hutton_penalty, dist_ly, dist_ls, name_key)
 
-    if profile == "FAST":
+    if profile_norm == CASH_IN_PROFILE_CARRIER_FRIENDLY:
         if service == "uc" and is_carrier and not carrier_ok_for_fast_mode:
             carrier_penalty += 2.0
         return (carrier_penalty, dist_ly, hutton_penalty, dist_ls, name_key)
 
-    # SECURE fallback path uses SAFE key.
+    # SECURE_PORT fallback path uses NEAREST key.
     if service == "uc" and is_carrier:
         carrier_penalty += 1.0
     return (carrier_penalty, hutton_penalty, dist_ly, dist_ls, name_key)
@@ -890,15 +918,16 @@ def _estimate_eta_minutes(
     distance_ly: float | None,
     docked_here: bool = False,
 ) -> int | None:
-    if docked_here and profile == "SECURE":
+    profile_norm = _normalize_cash_in_profile(profile)
+    if docked_here and profile_norm == CASH_IN_PROFILE_SECURE_PORT:
         return 0
     if distance_ly is None:
         return None
     ly = max(0.0, float(distance_ly))
     factor = 0.42
-    if profile == "FAST":
+    if profile_norm == CASH_IN_PROFILE_CARRIER_FRIENDLY:
         factor = 0.30
-    elif profile == "SAFE":
+    elif profile_norm == CASH_IN_PROFILE_NEAREST:
         factor = 0.45
     return max(2, int(round(ly * factor)) + 2)
 
@@ -915,6 +944,7 @@ def _build_profile_option(
     secure_fallback_to_safe: bool = False,
     docked_here: bool = False,
 ) -> dict[str, Any]:
+    profile_norm = _normalize_cash_in_profile(profile)
     payout = _resolve_payout_for_candidate(
         service=service,
         candidate=candidate,
@@ -930,17 +960,17 @@ def _build_profile_option(
     time_score = 55
     if eta_minutes is not None:
         time_score = _clamp_0_100(100 - min(90, eta_minutes * 2))
-    if docked_here and profile == "SECURE":
+    if docked_here and profile_norm == CASH_IN_PROFILE_SECURE_PORT:
         time_score = 99
 
     payout_ratio = float(payout.get("payout_ratio") or 1.0)
     profit_score = _clamp_0_100(55 + (payout_ratio * 40.0))
     risk_score = 72
-    if profile == "SAFE":
+    if profile_norm == CASH_IN_PROFILE_NEAREST:
         risk_score = 84
-    elif profile == "FAST":
+    elif profile_norm == CASH_IN_PROFILE_CARRIER_FRIENDLY:
         risk_score = 68
-    elif profile == "SECURE":
+    elif profile_norm == CASH_IN_PROFILE_SECURE_PORT:
         risk_score = 90 if docked_here else 78
 
     hutton_guard = _is_hutton_guard(candidate, threshold_ls=hutton_threshold_ls)
@@ -949,12 +979,12 @@ def _build_profile_option(
         risk_score = max(0, risk_score - int(max(0, hutton_penalty_score)))
         warnings.append("distance_ls_high")
 
-    option_id = f"cash_in_{profile.lower()}_{_candidate_name(candidate).lower().replace(' ', '_')[:24]}"
+    option_id = f"cash_in_{profile_norm.lower()}_{_candidate_name(candidate).lower().replace(' ', '_')[:24]}"
     option = {
         "option_id": option_id,
-        "label": f"{profile} -> {_candidate_name(candidate)} ({_candidate_system(candidate)})",
-        "strategy": f"{profile.lower()}_station_candidate",
-        "profile": profile,
+        "label": f"{profile_norm} -> {_candidate_name(candidate)} ({_candidate_system(candidate)})",
+        "strategy": f"{profile_norm.lower()}_station_candidate",
+        "profile": profile_norm,
         "service": service,
         "target": {
             "name": _candidate_name(candidate),
@@ -986,6 +1016,7 @@ def _build_profile_option(
             "trust_score": trust_score,
         },
         "warnings": warnings,
+        "secure_fallback_to_nearest": bool(secure_fallback_to_safe),
         "secure_fallback_to_safe": bool(secure_fallback_to_safe),
     }
     option["scores"]["overall_score"] = _score_overall(
@@ -997,7 +1028,7 @@ def _build_profile_option(
     option["reasoning"] = {
         "time_text": (
             "docked i usluga dostepna, cash-in tu i teraz"
-            if docked_here and profile == "SECURE"
+            if docked_here and profile_norm == CASH_IN_PROFILE_SECURE_PORT
             else f"ETA ~{eta_minutes} min" if eta_minutes is not None else "ETA nieznane"
         ),
         "profit_text": (
@@ -1058,22 +1089,22 @@ def _build_profiled_options(
             secure_candidate = candidate
             break
 
-    safe_sorted = sorted(
+    nearest_sorted = sorted(
         filtered,
         key=lambda row: _candidate_sort_key(
             row,
-            profile="SAFE",
+            profile=CASH_IN_PROFILE_NEAREST,
             service=service_norm,
             avoid_carriers_for_uc=avoid_carriers_for_uc,
             carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
             hutton_threshold_ls=hutton_threshold_ls,
         ),
     )
-    fast_sorted = sorted(
+    carrier_friendly_sorted = sorted(
         filtered,
         key=lambda row: _candidate_sort_key(
             row,
-            profile="FAST",
+            profile=CASH_IN_PROFILE_CARRIER_FRIENDLY,
             service=service_norm,
             avoid_carriers_for_uc=avoid_carriers_for_uc,
             carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
@@ -1081,17 +1112,17 @@ def _build_profiled_options(
         ),
     )
 
-    safe_candidate = safe_sorted[0] if safe_sorted else None
-    fast_candidate = fast_sorted[0] if fast_sorted else None
+    nearest_candidate = nearest_sorted[0] if nearest_sorted else None
+    carrier_friendly_candidate = carrier_friendly_sorted[0] if carrier_friendly_sorted else None
     if secure_candidate is None:
-        secure_candidate = safe_candidate
-        secure_fallback = docked and safe_candidate is not None
+        secure_candidate = nearest_candidate
+        secure_fallback = docked and nearest_candidate is not None
 
     options: list[dict[str, Any]] = []
     if secure_candidate is not None:
         options.append(
             _build_profile_option(
-                profile="SECURE",
+                profile=CASH_IN_PROFILE_SECURE_PORT,
                 candidate=secure_candidate,
                 service=service_norm,
                 trust_score=trust_score,
@@ -1102,11 +1133,11 @@ def _build_profiled_options(
                 docked_here=(not secure_fallback and docked),
             )
         )
-    if safe_candidate is not None:
+    if nearest_candidate is not None:
         options.append(
             _build_profile_option(
-                profile="SAFE",
-                candidate=safe_candidate,
+                profile=CASH_IN_PROFILE_NEAREST,
+                candidate=nearest_candidate,
                 service=service_norm,
                 trust_score=trust_score,
                 payout_contract=payout_contract,
@@ -1114,11 +1145,11 @@ def _build_profiled_options(
                 hutton_penalty_score=hutton_penalty_score,
             )
         )
-    if fast_candidate is not None:
+    if carrier_friendly_candidate is not None:
         options.append(
             _build_profile_option(
-                profile="FAST",
-                candidate=fast_candidate,
+                profile=CASH_IN_PROFILE_CARRIER_FRIENDLY,
+                candidate=carrier_friendly_candidate,
                 service=service_norm,
                 trust_score=trust_score,
                 payout_contract=payout_contract,
@@ -1135,6 +1166,7 @@ def _build_profiled_options(
         "service": service_norm,
         "profiles": [str((opt or {}).get("profile") or "") for opt in options],
         "docked": docked,
+        "secure_fallback_to_nearest": secure_fallback,
         "secure_fallback_to_safe": secure_fallback,
         "hard_filter_count": len(filtered),
         "service_candidates_count": len(filtered),
@@ -1168,7 +1200,7 @@ def resolve_cash_in_option_target(option: dict[str, Any] | None) -> dict[str, st
         or payload.get("station")
         or ""
     ).strip()
-    profile = str(payload.get("profile") or "").strip().upper()
+    profile = _normalize_cash_in_profile(payload.get("profile"))
 
     target_display = target_system
     if target_station and target_system:
@@ -1177,9 +1209,9 @@ def resolve_cash_in_option_target(option: dict[str, Any] | None) -> dict[str, st
         target_display = target_station
 
     route_profile = "SAFE"
-    if profile == "FAST":
+    if profile == CASH_IN_PROFILE_CARRIER_FRIENDLY:
         route_profile = "FAST_NEUTRON"
-    elif profile == "SECURE":
+    elif profile == CASH_IN_PROFILE_SECURE_PORT:
         route_profile = "SECURE"
 
     is_real = _option_has_real_target(payload)

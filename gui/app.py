@@ -1965,17 +1965,28 @@ class RenataApp:
 
     @staticmethod
     def _resolve_cash_in_profile_label(option_payload: dict) -> str:
-        profile = str((option_payload or {}).get("profile") or "").strip().upper()
-        if profile in {"SAFE", "FAST", "SECURE"}:
+        aliases = {
+            "1": "NEAREST",
+            "2": "SECURE_PORT",
+            "3": "CARRIER_FRIENDLY",
+            "SAFE": "NEAREST",
+            "FAST": "CARRIER_FRIENDLY",
+            "SECURE": "SECURE_PORT",
+            "NEAREST": "NEAREST",
+            "SECURE_PORT": "SECURE_PORT",
+            "CARRIER_FRIENDLY": "CARRIER_FRIENDLY",
+        }
+        profile = aliases.get(str((option_payload or {}).get("profile") or "").strip().upper(), "")
+        if profile:
             return profile
         label = str((option_payload or {}).get("label") or "").strip().upper()
-        if label.startswith("SAFE"):
-            return "SAFE"
-        if label.startswith("FAST"):
-            return "FAST"
-        if label.startswith("SECURE"):
-            return "SECURE"
-        return "SAFE"
+        if label.startswith("NEAREST") or label.startswith("SAFE"):
+            return "NEAREST"
+        if label.startswith("SECURE_PORT") or label.startswith("SECURE"):
+            return "SECURE_PORT"
+        if label.startswith("CARRIER_FRIENDLY") or label.startswith("FAST"):
+            return "CARRIER_FRIENDLY"
+        return "NEAREST"
 
     @staticmethod
     def _has_ready_neutron_route_for_target(target_system: str) -> bool:
@@ -2158,10 +2169,10 @@ class RenataApp:
                     target_system = str(result.get("target_system") or "").strip()
                     target_station = str(result.get("target_station") or "").strip()
                     route_profile = str(result.get("route_profile") or "SAFE").strip().upper() or "SAFE"
-                    if route_profile == "FAST_NEUTRON":
-                        profile_hint = "FAST/NEUTRON"
-                    else:
-                        profile_hint = route_profile
+                    selected_profile = self._resolve_cash_in_profile_label(
+                        {"profile": str(result.get("profile") or "").strip() or option_payload.get("profile")}
+                    )
+                    profile_hint = selected_profile
                     copied_system = False
                     copied_station_now = False
                     pending_station_armed = False

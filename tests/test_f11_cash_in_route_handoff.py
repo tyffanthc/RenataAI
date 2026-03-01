@@ -44,7 +44,7 @@ class F11CashInRouteHandoffTests(unittest.TestCase):
             return {"route_mode": "intent", "route_target": target}
 
         option = {
-            "profile": "FAST",
+            "profile": "CARRIER_FRIENDLY",
             "target": {
                 "system_name": "Lalande 5761",
                 "name": "Pook Hub",
@@ -73,7 +73,7 @@ class F11CashInRouteHandoffTests(unittest.TestCase):
 
     def test_handoff_without_target_returns_error(self) -> None:
         out = cash_in_assistant.handoff_cash_in_to_route_intent(
-            {"label": "SAFE"},
+            {"label": "NEAREST"},
             set_route_intent=lambda *_a, **_k: {},
             allow_auto_route=False,
         )
@@ -89,7 +89,7 @@ class F11CashInRouteHandoffTests(unittest.TestCase):
 
         out = cash_in_assistant.handoff_cash_in_to_route_intent(
             {
-                "profile": "SAFE",
+                "profile": "NEAREST",
                 "target": {"system_name": "Barnard's Star", "name": "Miller Depot"},
             },
             set_route_intent=app_state.set_route_intent,

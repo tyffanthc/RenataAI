@@ -61,7 +61,7 @@ class F11CashInRouteProfilePersistenceTests(unittest.TestCase):
 
         out = cash_in_assistant.handoff_cash_in_to_route_intent(
             {
-                "profile": "FAST",
+                "profile": "CARRIER_FRIENDLY",
                 "target": {"system_name": "Luyten's Star", "name": "Ashby City"},
             },
             set_route_intent=_setter,
@@ -83,7 +83,7 @@ class F11CashInRouteProfilePersistenceTests(unittest.TestCase):
 
         out = cash_in_assistant.handoff_cash_in_to_route_intent(
             {
-                "profile": "SECURE",
+                "profile": "SECURE_PORT",
                 "target": {"system_name": "Sirius", "name": "Patterson Enterprise"},
             },
             set_route_intent=_setter,
@@ -97,7 +97,7 @@ class F11CashInRouteProfilePersistenceTests(unittest.TestCase):
 
     def test_persist_profile_helper_updates_route_state_only_when_enabled(self) -> None:
         option = {
-            "profile": "SECURE",
+            "profile": "SECURE_PORT",
             "target": {"system_name": "Ross 154", "name": "Miller Depot"},
         }
         disabled = cash_in_assistant.persist_cash_in_route_profile(

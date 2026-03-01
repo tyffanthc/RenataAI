@@ -73,8 +73,8 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
             trust_status="TRUST_HIGH",
             confidence="high",
         )
-        safe = next(item for item in options if item.get("profile") == "SAFE")
-        fast = next(item for item in options if item.get("profile") == "FAST")
+        safe = next(item for item in options if item.get("profile") == "NEAREST")
+        fast = next(item for item in options if item.get("profile") == "CARRIER_FRIENDLY")
         self.assertEqual(((safe.get("target") or {}).get("name") or ""), "Safe Station")
         self.assertEqual(((fast.get("target") or {}).get("name") or ""), "Fast Carrier")
         self.assertEqual(meta.get("hard_filter_count"), 2)
@@ -108,7 +108,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
             trust_status="TRUST_HIGH",
             confidence="high",
         )
-        fast = next(item for item in options if item.get("profile") == "FAST")
+        fast = next(item for item in options if item.get("profile") == "CARRIER_FRIENDLY")
         self.assertEqual(((fast.get("target") or {}).get("name") or ""), "Safe Station")
 
     def test_hutton_guard_adds_warning_without_rejecting_candidate(self) -> None:
@@ -164,7 +164,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
             trust_status="TRUST_HIGH",
             confidence="high",
         )
-        secure = next(item for item in options if item.get("profile") == "SECURE")
+        secure = next(item for item in options if item.get("profile") == "SECURE_PORT")
         self.assertEqual(((secure.get("target") or {}).get("name") or ""), "Dock Hub")
         self.assertEqual(secure.get("eta_minutes"), 0)
         self.assertFalse(bool(secure.get("secure_fallback_to_safe")))
@@ -201,7 +201,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
             trust_status="TRUST_HIGH",
             confidence="high",
         )
-        secure = next(item for item in options if item.get("profile") == "SECURE")
+        secure = next(item for item in options if item.get("profile") == "SECURE_PORT")
         self.assertEqual(((secure.get("target") or {}).get("name") or ""), "Safe UC")
         self.assertTrue(bool(secure.get("secure_fallback_to_safe")))
         self.assertTrue(bool(meta.get("secure_fallback_to_safe")))
@@ -241,7 +241,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
         first = dict(enriched[0])
         self.assertEqual(first.get("ui_contract_version"), "F11_UI_V1")
         ui = dict(first.get("ui_contract") or {})
-        self.assertIn(ui.get("label"), {"SAFE", "FAST", "SECURE"})
+        self.assertIn(ui.get("label"), {"NEAREST", "CARRIER_FRIENDLY", "SECURE_PORT"})
         self.assertIn("target", ui)
         self.assertIn("payout", ui)
         self.assertIn("eta", ui)
