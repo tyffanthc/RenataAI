@@ -82,6 +82,15 @@ class PulpitTab(ttk.Frame):
         self._current_cash_in_signature: str = ""
         self._cash_selected_option_id: str = ""
         self._cash_service_mode: str = "uc"
+        self._cash_ship_auto_lock_enabled: bool = bool(
+            config.get("cash_in.ship_size_auto_lock_enabled", True)
+        )
+        self._cash_express_mode_enabled: bool = bool(
+            config.get("cash_in.express_mode_enabled", True)
+        )
+        self._cash_allow_carriers_enabled: bool = bool(
+            config.get("cash_in.carrier_ok_for_fast_mode", True)
+        )
         self._current_survival_payload: dict = {}
         self._current_combat_payload: dict = {}
         self._current_risk_payload: dict = {}
@@ -235,6 +244,27 @@ class PulpitTab(ttk.Frame):
         )
         self.btn_cash_mode_uc.pack(side="right", padx=(0, 8))
 
+        self.btn_cash_toggle_car = ttk.Button(
+            btn_frame,
+            text="[CAR] ON",
+            command=self._toggle_cash_nav_allow_carriers,
+        )
+        self.btn_cash_toggle_car.pack(side="right", padx=(0, 6))
+
+        self.btn_cash_toggle_exp = ttk.Button(
+            btn_frame,
+            text="[EXP] ON",
+            command=self._toggle_cash_nav_express_mode,
+        )
+        self.btn_cash_toggle_exp.pack(side="right", padx=(0, 6))
+
+        self.btn_cash_toggle_ship = ttk.Button(
+            btn_frame,
+            text="[SHIP] ON",
+            command=self._toggle_cash_nav_ship_lock,
+        )
+        self.btn_cash_toggle_ship.pack(side="right", padx=(0, 6))
+
         btn_cash_in_skip = ttk.Button(
             btn_frame,
             text="Pomijam cash-in",
@@ -242,6 +272,7 @@ class PulpitTab(ttk.Frame):
         )
         btn_cash_in_skip.pack(side="right", padx=(0, 8))
         self._sync_cash_service_mode_buttons()
+        self._sync_cash_nav_toggle_buttons()
 
         self.console_area = ttk.Frame(self)
         self.console_area.pack(fill="both", expand=True, padx=5, pady=(0, 5))
@@ -595,6 +626,7 @@ class PulpitTab(ttk.Frame):
             self._show_info_panel("cash", "Brak aktywnej sugestii cash-in.")
             return
 
+        self._sync_cash_nav_toggle_buttons()
         options = self._cash_options()
         selected_option = self._get_selected_cash_option()
         selected_id = str((selected_option or {}).get("option_id") or "").strip()
@@ -618,6 +650,12 @@ class PulpitTab(ttk.Frame):
                 f"{self._fmt_cr(payload.get('session_value_estimated'))} Cr (sesja)"
             ),
             f"Tryb uslugi: {self._cash_service_mode_label(self._cash_service_mode)}",
+            (
+                "Smart-nav: "
+                f"[SHIP {'ON' if self._cash_ship_auto_lock_enabled else 'OFF'}] "
+                f"[EXP {'ON<5k' if self._cash_express_mode_enabled else 'OFF'}] "
+                f"[CAR {'ON' if self._cash_allow_carriers_enabled else 'OFF'}]"
+            ),
             f"Wybrana: {selected_idx}. {selected_label} -> {selected_target}",
         ]
 
@@ -1253,6 +1291,65 @@ class PulpitTab(ttk.Frame):
             else:
                 self.btn_cash_mode_ucvista.state(["!disabled"])
 
+    def _refresh_cash_nav_toggle_snapshot(self) -> None:
+        self._cash_ship_auto_lock_enabled = bool(
+            config.get("cash_in.ship_size_auto_lock_enabled", True)
+        )
+        self._cash_express_mode_enabled = bool(
+            config.get("cash_in.express_mode_enabled", True)
+        )
+        self._cash_allow_carriers_enabled = bool(
+            config.get("cash_in.carrier_ok_for_fast_mode", True)
+        )
+
+    def _sync_cash_nav_toggle_buttons(self) -> None:
+        self._refresh_cash_nav_toggle_snapshot()
+        ship = "ON" if self._cash_ship_auto_lock_enabled else "OFF"
+        exp = "ON<5k" if self._cash_express_mode_enabled else "OFF"
+        car = "ON" if self._cash_allow_carriers_enabled else "OFF"
+        if hasattr(self, "btn_cash_toggle_ship"):
+            self.btn_cash_toggle_ship.config(text=f"[SHIP] {ship}")
+        if hasattr(self, "btn_cash_toggle_exp"):
+            self.btn_cash_toggle_exp.config(text=f"[EXP] {exp}")
+        if hasattr(self, "btn_cash_toggle_car"):
+            self.btn_cash_toggle_car.config(text=f"[CAR] {car}")
+
+    def _persist_cash_nav_settings(self, patch: dict[str, Any]) -> None:
+        payload = {str(key): value for key, value in dict(patch or {}).items()}
+        if not payload:
+            return
+        try:
+            config.save(payload)
+            return
+        except Exception as exc:
+            self.log(f"[CASH_IN] Blad zapisu ustawien smart-nav: {exc}")
+        runtime_settings = getattr(config.config, "_settings", None)
+        if isinstance(runtime_settings, dict):
+            runtime_settings.update(payload)
+
+    def _apply_cash_nav_toggle(self, key: str, value: bool) -> None:
+        self._persist_cash_nav_settings({str(key): bool(value)})
+        self._sync_cash_nav_toggle_buttons()
+        self._show_loading_panel("cash")
+        ok = self._request_cash_in_assistant(
+            mode="manual",
+            summary_seed=self._build_cash_summary_seed(),
+        )
+        if not ok:
+            self._show_info_panel("cash", "Cash-in: nie udalo sie odswiezyc rankingu po zmianie toggla.")
+
+    def _toggle_cash_nav_ship_lock(self) -> None:
+        current = bool(config.get("cash_in.ship_size_auto_lock_enabled", True))
+        self._apply_cash_nav_toggle("cash_in.ship_size_auto_lock_enabled", not current)
+
+    def _toggle_cash_nav_express_mode(self) -> None:
+        current = bool(config.get("cash_in.express_mode_enabled", True))
+        self._apply_cash_nav_toggle("cash_in.express_mode_enabled", not current)
+
+    def _toggle_cash_nav_allow_carriers(self) -> None:
+        current = bool(config.get("cash_in.carrier_ok_for_fast_mode", True))
+        self._apply_cash_nav_toggle("cash_in.carrier_ok_for_fast_mode", not current)
+
     def _build_cash_summary_seed(self) -> dict[str, Any]:
         payload = dict(self._current_cash_in_payload or {})
         if payload:
@@ -1443,6 +1540,7 @@ class PulpitTab(ttk.Frame):
         self._current_cash_in_payload = dict(payload)
         self._current_cash_in_signature = str(payload.get("signature") or "").strip()
         self._sync_cash_service_mode_buttons()
+        self._sync_cash_nav_toggle_buttons()
         options = self._cash_options()
         selected = str(self._cash_selected_option_id or "").strip()
         selected_exists = False

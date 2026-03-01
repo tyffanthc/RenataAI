@@ -363,6 +363,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "cash_in.dump_download_path": renata_user_home_file("galaxy_stations.json.gz"),
     "cash_in.avoid_carriers_for_uc": True,
     "cash_in.carrier_ok_for_fast_mode": True,
+    "cash_in.express_mode_enabled": True,
     "cash_in.express_max_distance_ls": 5_000.0,
     "cash_in.planetary_vista_max_gravity_g": 2.0,
     "cash_in.ship_size_auto_lock_enabled": True,

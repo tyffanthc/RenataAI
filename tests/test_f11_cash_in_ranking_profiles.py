@@ -18,6 +18,7 @@ class F11CashInRankingProfilesTests(unittest.TestCase):
         app_state.current_station = ""
         config.config._settings["cash_in.avoid_carriers_for_uc"] = True
         config.config._settings["cash_in.carrier_ok_for_fast_mode"] = True
+        config.config._settings["cash_in.express_mode_enabled"] = True
         config.config._settings["cash_in.express_max_distance_ls"] = 5_000.0
         config.config._settings["cash_in.planetary_vista_max_gravity_g"] = 2.0
         config.config._settings["cash_in.hutton_guard_ls_threshold"] = 500_000

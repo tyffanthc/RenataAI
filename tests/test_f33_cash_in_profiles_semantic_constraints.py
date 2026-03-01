@@ -19,6 +19,7 @@ class F33CashInProfilesSemanticConstraintsTests(unittest.TestCase):
         app_state.is_docked = False
 
         config.config._settings["cash_in.carrier_ok_for_fast_mode"] = True
+        config.config._settings["cash_in.express_mode_enabled"] = True
         config.config._settings["cash_in.express_max_distance_ls"] = 5_000.0
         config.config._settings["cash_in.planetary_vista_max_gravity_g"] = 2.0
         config.config._settings["cash_in.hutton_guard_ls_threshold"] = 500_000.0

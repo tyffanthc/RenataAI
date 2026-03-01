@@ -960,6 +960,11 @@ def _candidate_sort_key(
         return (0.0, hutton_penalty, dist_ly, dist_ls, 0.0, name_key)
 
     if profile_norm == CASH_IN_PROFILE_EXPRESS:
+        if express_max_distance_ls >= 1e11:
+            # EXPRESS toggle OFF -> degrade to nearest-like ordering
+            # while preserving optional anti-carrier penalty for UC.
+            carrier_penalty = 1.0 if (service == "uc" and is_carrier and not carrier_ok_for_fast_mode) else 0.0
+            return (carrier_penalty, dist_ly, dist_ls, hutton_penalty, 0.0, name_key)
         express_penalty = 0.0 if dist_ls <= max(0.0, express_max_distance_ls) else 1.0
         carrier_penalty = 1.0 if (service == "uc" and is_carrier and not carrier_ok_for_fast_mode) else 0.0
         # EXPRESS: short supercruise first, then ly.
@@ -1212,7 +1217,11 @@ def _build_profiled_options(
     carrier_ok_for_fast_mode = bool(config.get("cash_in.carrier_ok_for_fast_mode", True))
     hutton_threshold_ls = float(config.get("cash_in.hutton_guard_ls_threshold", 500_000.0) or 500_000.0)
     hutton_penalty_score = int(config.get("cash_in.hutton_guard_score_penalty", 18) or 18)
+    express_mode_enabled = bool(config.get("cash_in.express_mode_enabled", True))
     express_max_distance_ls = float(config.get("cash_in.express_max_distance_ls", 5_000.0) or 5_000.0)
+    express_max_distance_ls_effective = (
+        express_max_distance_ls if express_mode_enabled else 1e12
+    )
     planetary_vista_max_gravity_g = float(
         config.get("cash_in.planetary_vista_max_gravity_g", 2.0) or 2.0
     )
@@ -1231,7 +1240,7 @@ def _build_profiled_options(
             service=service_norm,
             carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
             hutton_threshold_ls=hutton_threshold_ls,
-            express_max_distance_ls=express_max_distance_ls,
+            express_max_distance_ls=express_max_distance_ls_effective,
             planetary_vista_max_gravity_g=planetary_vista_max_gravity_g,
         ),
     )
@@ -1256,7 +1265,7 @@ def _build_profiled_options(
                 service=service_norm,
                 carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
                 hutton_threshold_ls=hutton_threshold_ls,
-                express_max_distance_ls=express_max_distance_ls,
+                express_max_distance_ls=express_max_distance_ls_effective,
                 planetary_vista_max_gravity_g=planetary_vista_max_gravity_g,
             ),
         )
@@ -1268,7 +1277,7 @@ def _build_profiled_options(
     express_rows = [
         row
         for row in filtered
-        if _candidate_distance_ls(row) <= max(0.0, express_max_distance_ls)
+        if _candidate_distance_ls(row) <= max(0.0, express_max_distance_ls_effective)
     ]
     express_sorted = sorted(
         express_rows or filtered,
@@ -1278,7 +1287,7 @@ def _build_profiled_options(
             service=service_norm,
             carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
             hutton_threshold_ls=hutton_threshold_ls,
-            express_max_distance_ls=express_max_distance_ls,
+            express_max_distance_ls=express_max_distance_ls_effective,
             planetary_vista_max_gravity_g=planetary_vista_max_gravity_g,
         ),
     )
@@ -1301,7 +1310,7 @@ def _build_profiled_options(
             service=service_norm,
             carrier_ok_for_fast_mode=carrier_ok_for_fast_mode,
             hutton_threshold_ls=hutton_threshold_ls,
-            express_max_distance_ls=express_max_distance_ls,
+            express_max_distance_ls=express_max_distance_ls_effective,
             planetary_vista_max_gravity_g=planetary_vista_max_gravity_g,
         ),
     )
@@ -1379,7 +1388,9 @@ def _build_profiled_options(
         "secure_candidates_count": len(secure_rows),
         "express_candidates_count": len(express_rows),
         "express_fallback_to_nearest": express_fallback,
+        "express_mode_enabled": express_mode_enabled,
         "express_max_distance_ls": express_max_distance_ls,
+        "express_max_distance_ls_effective": express_max_distance_ls_effective,
         "planetary_vista_candidates_count": len(planetary_rows),
         "planetary_vista_fallback_to_nearest": planetary_fallback,
         "planetary_vista_max_gravity_g": planetary_vista_max_gravity_g,
