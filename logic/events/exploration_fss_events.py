@@ -33,6 +33,7 @@ FSS_50_WARNED = False
 FSS_75_WARNED = False
 FSS_LAST_WARNED = False
 FSS_FULL_WARNED = False
+FSS_SIGNALS_COMPLETE_WARNED = False
 FSS_HAD_DISCOVERY_SCAN = False
 FSS_HAD_MANUAL_PROGRESS_SCAN = False
 FSS_LAST_SCAN_TYPE = None
@@ -230,6 +231,7 @@ def reset_fss_progress(*, preserve_exobio: bool = False) -> None:
     """
     global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_DISCOVERED_MANUAL, FSS_SCANNED_BODIES
     global FSS_25_WARNED, FSS_50_WARNED, FSS_75_WARNED, FSS_LAST_WARNED, FSS_FULL_WARNED
+    global FSS_SIGNALS_COMPLETE_WARNED
     global FSS_HAD_DISCOVERY_SCAN, FSS_HAD_MANUAL_PROGRESS_SCAN
     global FSS_LAST_SCAN_TYPE, FSS_LAST_MANUAL_SCAN_TYPE
     global FSS_PASSIVE_DATA_WARNED, FSS_PASSIVE_FULL_WARNED
@@ -249,6 +251,7 @@ def reset_fss_progress(*, preserve_exobio: bool = False) -> None:
     FSS_75_WARNED = False
     FSS_LAST_WARNED = False
     FSS_FULL_WARNED = False
+    FSS_SIGNALS_COMPLETE_WARNED = False
     FSS_HAD_DISCOVERY_SCAN = False
     FSS_HAD_MANUAL_PROGRESS_SCAN = False
     FSS_LAST_SCAN_TYPE = None
@@ -721,9 +724,11 @@ def handle_fss_all_bodies_found(ev: Dict[str, Any], gui_ref=None):
     """
     Obsluga eventu FSSAllBodiesFound - wszystko znalezione.
     """
-    global FSS_TOTAL_BODIES, FSS_DISCOVERED
+    global FSS_TOTAL_BODIES, FSS_DISCOVERED, FSS_SIGNALS_COMPLETE_WARNED
     if FSS_TOTAL_BODIES <= 0:
         return
+
+    system_name = app_state.get_current_system_name() or None
 
     # FSSAllBodiesFound confirms discovery coverage in FSS, but should not
     # overwrite our Scan-based progress counter. Otherwise Renata can announce
@@ -731,6 +736,23 @@ def handle_fss_all_bodies_found(ev: Dict[str, Any], gui_ref=None):
     if int(FSS_DISCOVERED or 0) >= int(FSS_TOTAL_BODIES or 0):
         _check_fss_thresholds(gui_ref)
         _maybe_speak_fss_full(gui_ref, trigger_source="FSSAllBodiesFound")
+        return
+
+    if not FSS_SIGNALS_COMPLETE_WARNED:
+        if DEBOUNCER.can_send("FSS_SIGNALS_COMPLETE_PENDING", 120, context=system_name):
+            emit_insight(
+                "Wszystkie sygnały FSS znalezione. Brak jeszcze pełnych danych części ciał.",
+                gui_ref=gui_ref,
+                message_id="MSG.FSS_SIGNALS_COMPLETE_PENDING_CLASSIFY",
+                source="exploration_fss_events",
+                event_type="SYSTEM_SCANNED",
+                context=_fss_gate_context(system_name),
+                priority="P3_LOW",
+                dedup_key=f"fss_signals_pending:{system_name or 'unknown'}",
+                cooldown_scope="entity",
+                cooldown_seconds=120.0,
+            )
+        FSS_SIGNALS_COMPLETE_WARNED = True
 
 
 def bootstrap_fss_state_from_journal_lines(
@@ -872,6 +894,7 @@ def bootstrap_fss_state_from_journal_lines(
     FSS_FULL_WARNED = bool(
         int(FSS_TOTAL_BODIES or 0) > 0 and int(summary_progress) >= int(FSS_TOTAL_BODIES or 0)
     )
+    FSS_SIGNALS_COMPLETE_WARNED = False
 
     stats["restored"] = True
     stats["total_bodies"] = int(FSS_TOTAL_BODIES)

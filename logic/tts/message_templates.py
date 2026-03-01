@@ -51,6 +51,10 @@ TTS_TEMPLATE_REGISTRY: Dict[str, dict[str, object]] = {
     "MSG.FSS_PROGRESS_75": {"template": "Siedemdziesiąt pięć procent systemu przeskanowane.", "raw_text_first": False},
     "MSG.FSS_LAST_BODY": {"template": "Ostatnia planeta do skanowania.", "raw_text_first": False},
     "MSG.FSS_BODYCOUNT_SYNCED": {"template": "Zsynchronizowano licznik ciał systemu.", "raw_text_first": False},
+    "MSG.FSS_SIGNALS_COMPLETE_PENDING_CLASSIFY": {
+        "template": "Wszystkie sygnały FSS znalezione. Brak jeszcze pełnych danych części ciał.",
+        "raw_text_first": False,
+    },
     "MSG.FSS_PASSIVE_DATA_INGESTED": {
         "template": "Dane systemu pobrane pasywnie z boi nawigacyjnej.",
         "raw_text_first": False,

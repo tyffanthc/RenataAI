@@ -21,6 +21,7 @@ class F24FssAllBodiesFoundDoesNotForceFullScanTests(unittest.TestCase):
         fss_events.FSS_FULL_WARNED = False
 
         with (
+            patch("logic.events.exploration_fss_events.DEBOUNCER.can_send", return_value=True),
             patch("logic.events.exploration_fss_events.emit_insight") as emit_mock,
             patch("logic.events.exploration_fss_events._wire_exit_summary_to_runtime") as summary_mock,
         ):
@@ -29,8 +30,10 @@ class F24FssAllBodiesFoundDoesNotForceFullScanTests(unittest.TestCase):
         self.assertEqual(fss_events.FSS_DISCOVERED, 17)
         self.assertFalse(bool(fss_events.FSS_FULL_WARNED))
         self.assertFalse(summary_mock.called)
+        message_ids = [str(call.kwargs.get("message_id") or "") for call in emit_mock.call_args_list]
         # No full-scan callout should be emitted by FSSAllBodiesFound in partial Scan progress.
-        self.assertEqual(emit_mock.call_count, 0)
+        self.assertNotIn("MSG.SYSTEM_FULLY_SCANNED", message_ids)
+        self.assertIn("MSG.FSS_SIGNALS_COMPLETE_PENDING_CLASSIFY", message_ids)
 
     def test_all_bodies_found_does_not_promote_scan_counter_to_full_at_17_of_18(self) -> None:
         fss_events.FSS_TOTAL_BODIES = 18
@@ -38,6 +41,7 @@ class F24FssAllBodiesFoundDoesNotForceFullScanTests(unittest.TestCase):
         fss_events.FSS_FULL_WARNED = False
 
         with (
+            patch("logic.events.exploration_fss_events.DEBOUNCER.can_send", return_value=True),
             patch("logic.events.exploration_fss_events.emit_insight") as emit_mock,
             patch("logic.events.exploration_fss_events._wire_exit_summary_to_runtime") as summary_mock,
         ):
@@ -46,7 +50,9 @@ class F24FssAllBodiesFoundDoesNotForceFullScanTests(unittest.TestCase):
         self.assertEqual(fss_events.FSS_DISCOVERED, 17)
         self.assertFalse(bool(fss_events.FSS_FULL_WARNED))
         self.assertFalse(summary_mock.called)
-        self.assertEqual(emit_mock.call_count, 0)
+        message_ids = [str(call.kwargs.get("message_id") or "") for call in emit_mock.call_args_list]
+        self.assertNotIn("MSG.SYSTEM_FULLY_SCANNED", message_ids)
+        self.assertIn("MSG.FSS_SIGNALS_COMPLETE_PENDING_CLASSIFY", message_ids)
 
     def test_alias_duplicate_does_not_turn_18_of_19_into_false_full_scan(self) -> None:
         fss_events.FSS_TOTAL_BODIES = 19
@@ -90,6 +96,23 @@ class F24FssAllBodiesFoundDoesNotForceFullScanTests(unittest.TestCase):
         self.assertTrue(summary_mock.called)
         message_ids = [call.kwargs.get("message_id") for call in emit_mock.call_args_list]
         self.assertIn("MSG.SYSTEM_FULLY_SCANNED", message_ids)
+
+    def test_all_bodies_found_partial_emits_pending_only_once(self) -> None:
+        fss_events.FSS_TOTAL_BODIES = 10
+        fss_events.FSS_DISCOVERED = 7
+        fss_events.FSS_FULL_WARNED = False
+
+        with (
+            patch("logic.events.exploration_fss_events.DEBOUNCER.can_send", return_value=True),
+            patch("logic.events.exploration_fss_events.emit_insight") as emit_mock,
+            patch("logic.events.exploration_fss_events._wire_exit_summary_to_runtime") as summary_mock,
+        ):
+            fss_events.handle_fss_all_bodies_found({"event": "FSSAllBodiesFound"}, gui_ref=None)
+            fss_events.handle_fss_all_bodies_found({"event": "FSSAllBodiesFound"}, gui_ref=None)
+
+        self.assertFalse(summary_mock.called)
+        message_ids = [str(call.kwargs.get("message_id") or "") for call in emit_mock.call_args_list]
+        self.assertEqual(message_ids.count("MSG.FSS_SIGNALS_COMPLETE_PENDING_CLASSIFY"), 1)
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ class EventInsightMappingTests(unittest.TestCase):
             "MSG.FSS_PROGRESS_75",
             "MSG.FSS_LAST_BODY",
             "MSG.FSS_BODYCOUNT_SYNCED",
+            "MSG.FSS_SIGNALS_COMPLETE_PENDING_CLASSIFY",
             "MSG.FSS_PASSIVE_DATA_INGESTED",
             "MSG.FSS_PASSIVE_SYSTEM_COMPLETE",
             "MSG.SYSTEM_FULLY_SCANNED",
