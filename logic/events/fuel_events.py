@@ -94,6 +94,25 @@ def _resolve_confirmed_fuel_capacity(status: dict) -> float | None:
         return None
 
 
+def _resolve_runtime_current_system_name() -> str:
+    try:
+        from app.state import app_state
+
+        accessor = getattr(app_state, "get_current_system_name", None)
+        if callable(accessor):
+            return str(accessor() or "").strip()
+        return str(getattr(app_state, "current_system", "") or "").strip()
+    except Exception:
+        return ""
+
+
+def _is_unknown_system_name(system_name: str | None) -> bool:
+    norm = str(system_name or "").strip()
+    if not norm:
+        return True
+    return norm.casefold() in {"unknown", "none", "n/a", "-", "?"}
+
+
 def handle_status_update(status: dict, gui_ref=None):
     """
     Czysta logika niskiego paliwa oparta o przekazany dict status.
@@ -234,11 +253,21 @@ def handle_status_update(status: dict, gui_ref=None):
             _log_uncertain_startup_sample_event(reason="fuel_capacity_unconfirmed", action="ignored")
             return
 
+        runtime_system_name = _resolve_runtime_current_system_name()
+        if _is_unknown_system_name(runtime_system_name):
+            _reset_low_fuel_pending_confirmation()
+            _log_uncertain_startup_sample_event(reason="bootstrap_current_system_unknown", action="ignored")
+            return
+
         _reset_low_fuel_pending_confirmation()
 
         LOW_FUEL_WARNED = True
 
-        system_name = status.get("StarSystem") or status.get("SystemName") or None
+        system_name = str(status.get("StarSystem") or status.get("SystemName") or "").strip()
+        if _is_unknown_system_name(system_name):
+            system_name = runtime_system_name
+        if _is_unknown_system_name(system_name):
+            system_name = None
         if DEBOUNCER.can_send("LOW_FUEL", 300, context=system_name):
             emit_insight(
                 "Warning. Fuel reserves critical.",

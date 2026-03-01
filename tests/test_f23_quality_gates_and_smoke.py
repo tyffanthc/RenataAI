@@ -39,6 +39,8 @@ class F23QualityGatesAndSmokeTests(unittest.TestCase):
         self._saved_seen_valid = bool(getattr(fuel_events, "_FUEL_SEEN_VALID_SAMPLE", False))
         self._saved_fuel_capacity = getattr(app_state, "fuel_capacity", None)
         self._saved_state_fuel_capacity = config.STATE.get("fuel_capacity")
+        self._saved_current_system = getattr(app_state, "current_system", None)
+        self._saved_state_sys = config.STATE.get("sys")
         fuel_events.LOW_FUEL_WARNED = False
         fuel_events.LOW_FUEL_FLAG_PENDING = False
         fuel_events.LOW_FUEL_FLAG_PENDING_TS = 0.0
@@ -46,7 +48,9 @@ class F23QualityGatesAndSmokeTests(unittest.TestCase):
         fuel_events._FUEL_SEEN_VALID_SAMPLE = False
         with app_state.lock:
             app_state.fuel_capacity = None
+            app_state.current_system = "F23_QG_FUEL_TEST_SYS"
         config.STATE.pop("fuel_capacity", None)
+        config.STATE["sys"] = "F23_QG_FUEL_TEST_SYS"
 
     def tearDown(self) -> None:
         fuel_events.LOW_FUEL_WARNED = self._saved_warned
@@ -56,10 +60,15 @@ class F23QualityGatesAndSmokeTests(unittest.TestCase):
         fuel_events._FUEL_SEEN_VALID_SAMPLE = self._saved_seen_valid
         with app_state.lock:
             app_state.fuel_capacity = self._saved_fuel_capacity
+            app_state.current_system = self._saved_current_system
         if self._saved_state_fuel_capacity is None:
             config.STATE.pop("fuel_capacity", None)
         else:
             config.STATE["fuel_capacity"] = self._saved_state_fuel_capacity
+        if self._saved_state_sys is None:
+            config.STATE.pop("sys", None)
+        else:
+            config.STATE["sys"] = self._saved_state_sys
 
     def test_smoke_f23_focus_policy_blocks_runtime_force_but_keeps_user_dialog_focus(self) -> None:
         win_runtime = _FakeWindow()

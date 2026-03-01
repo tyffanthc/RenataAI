@@ -17,6 +17,8 @@ class F34FuelCriticalGuardCapacityConfirmedTests(unittest.TestCase):
         self._saved_seen_valid = bool(getattr(fuel_events, "_FUEL_SEEN_VALID_SAMPLE", False))
         self._saved_fuel_capacity = getattr(app_state, "fuel_capacity", None)
         self._saved_state_fuel_capacity = config.STATE.get("fuel_capacity")
+        self._saved_current_system = getattr(app_state, "current_system", None)
+        self._saved_state_sys = config.STATE.get("sys")
 
         fuel_events.LOW_FUEL_WARNED = False
         fuel_events.LOW_FUEL_FLAG_PENDING = False
@@ -25,7 +27,9 @@ class F34FuelCriticalGuardCapacityConfirmedTests(unittest.TestCase):
         fuel_events._FUEL_SEEN_VALID_SAMPLE = False
         with app_state.lock:
             app_state.fuel_capacity = None
+            app_state.current_system = "F34_CAPACITY_GUARD_TEST_SYS"
         config.STATE.pop("fuel_capacity", None)
+        config.STATE["sys"] = "F34_CAPACITY_GUARD_TEST_SYS"
 
     def tearDown(self) -> None:
         fuel_events.LOW_FUEL_WARNED = self._saved_warned
@@ -35,10 +39,15 @@ class F34FuelCriticalGuardCapacityConfirmedTests(unittest.TestCase):
         fuel_events._FUEL_SEEN_VALID_SAMPLE = self._saved_seen_valid
         with app_state.lock:
             app_state.fuel_capacity = self._saved_fuel_capacity
+            app_state.current_system = self._saved_current_system
         if self._saved_state_fuel_capacity is None:
             config.STATE.pop("fuel_capacity", None)
         else:
             config.STATE["fuel_capacity"] = self._saved_state_fuel_capacity
+        if self._saved_state_sys is None:
+            config.STATE.pop("sys", None)
+        else:
+            config.STATE["sys"] = self._saved_state_sys
 
     def test_flag_only_low_fuel_is_suppressed_until_capacity_confirmed(self) -> None:
         status = {
@@ -105,4 +114,3 @@ class F34FuelCriticalGuardCapacityConfirmedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

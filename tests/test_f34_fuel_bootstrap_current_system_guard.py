@@ -8,7 +8,7 @@ from app.state import app_state
 from logic.events import fuel_events
 
 
-class F23FuelWarningTransientHardeningTests(unittest.TestCase):
+class F34FuelBootstrapCurrentSystemGuardTests(unittest.TestCase):
     def setUp(self) -> None:
         self._saved_warned = fuel_events.LOW_FUEL_WARNED
         self._saved_pending = fuel_events.LOW_FUEL_FLAG_PENDING
@@ -19,6 +19,7 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         self._saved_state_fuel_capacity = config.STATE.get("fuel_capacity")
         self._saved_current_system = getattr(app_state, "current_system", None)
         self._saved_state_sys = config.STATE.get("sys")
+
         fuel_events.LOW_FUEL_WARNED = False
         fuel_events.LOW_FUEL_FLAG_PENDING = False
         fuel_events.LOW_FUEL_FLAG_PENDING_TS = 0.0
@@ -26,9 +27,9 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         fuel_events._FUEL_SEEN_VALID_SAMPLE = False
         with app_state.lock:
             app_state.fuel_capacity = None
-            app_state.current_system = "F23_FUEL_TEST_SYS"
+            app_state.current_system = "Unknown"
         config.STATE.pop("fuel_capacity", None)
-        config.STATE["sys"] = "F23_FUEL_TEST_SYS"
+        config.STATE["sys"] = "Unknown"
 
     def tearDown(self) -> None:
         fuel_events.LOW_FUEL_WARNED = self._saved_warned
@@ -48,109 +49,62 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
         else:
             config.STATE["sys"] = self._saved_state_sys
 
-    def test_uncertain_numeric_samples_without_lowfuel_flag_do_not_trigger_or_arm_pending(self) -> None:
-        status = {
-            "Docked": False,
-            "LowFuel": False,
-            "Fuel": {"FuelMain": 0.12},  # ambiguous without FuelCapacity
-            "FuelCapacity": {},
-        }
-        with (
-            patch("logic.events.fuel_events.emit_insight") as emit_mock,
-            patch.object(fuel_events.DEBOUNCER, "can_send", return_value=True),
-        ):
-            fuel_events.handle_status_update(status)
-            fuel_events.handle_status_update(status)
-
-        self.assertFalse(emit_mock.called)
-        self.assertFalse(bool(fuel_events.LOW_FUEL_FLAG_PENDING))
-        self.assertFalse(bool(fuel_events.LOW_FUEL_WARNED))
-
-    def test_missing_fuel_and_capacity_sample_without_flag_is_ignored_and_resets_pending(self) -> None:
-        status = {
-            "Docked": False,
-            "LowFuel": False,
-            "Fuel": {},
-            "FuelCapacity": {},
-        }
-        # Seed pending to ensure "no-decision" startup sample clears stale confirmation state.
-        fuel_events.LOW_FUEL_FLAG_PENDING = True
-        fuel_events.LOW_FUEL_FLAG_PENDING_TS = 123.0
-        with (
-            patch("logic.events.fuel_events.emit_insight") as emit_mock,
-            patch.object(fuel_events.DEBOUNCER, "can_send", return_value=True),
-        ):
-            fuel_events.handle_status_update(status)
-
-        self.assertFalse(emit_mock.called)
-        self.assertFalse(bool(fuel_events.LOW_FUEL_FLAG_PENDING))
-        self.assertEqual(float(fuel_events.LOW_FUEL_FLAG_PENDING_TS), 0.0)
-        self.assertFalse(bool(fuel_events.LOW_FUEL_WARNED))
-
-    def test_real_low_fuel_from_reliable_numeric_sample_still_alerts(self) -> None:
-        prime_ok_status = {
-            "Docked": False,
-            "LowFuel": False,
-            "Fuel": {"FuelMain": 10.0},
-            "FuelCapacity": {"Main": 20.0},
-        }
+    def test_bootstrap_unknown_system_blocks_fuel_critical_even_with_confirmed_capacity(self) -> None:
         status = {
             "Docked": False,
             "LowFuel": False,
             "Fuel": {"FuelMain": 2.0},
-            "FuelCapacity": {"Main": 20.0},  # 10%
-            "StarSystem": "F23_REAL_LOW_FUEL_SYS",
-        }
-        with (
-            patch("logic.events.fuel_events.emit_insight", return_value=True) as emit_mock,
-            patch.object(fuel_events.DEBOUNCER, "can_send", return_value=True),
-        ):
-            fuel_events.handle_status_update(prime_ok_status)
-            fuel_events.handle_status_update(status)
-
-        self.assertTrue(bool(fuel_events.LOW_FUEL_WARNED))
-        self.assertEqual(emit_mock.call_count, 1)
-        kwargs = dict(emit_mock.call_args.kwargs)
-        self.assertEqual(kwargs.get("message_id"), "MSG.FUEL_CRITICAL")
-        self.assertEqual(kwargs.get("source"), "fuel_events")
-
-    def test_flag_only_low_fuel_alerts_immediately_after_init(self) -> None:
-        prime_ok_status = {
-            "Docked": False,
-            "LowFuel": False,
-            "Fuel": {"FuelMain": 10.0},
             "FuelCapacity": {"Main": 20.0},
-        }
-        status = {
-            "Docked": False,
-            "LowFuel": True,
-            "Fuel": {},
-            "FuelCapacity": {},
-            "StarSystem": "F23_FLAG_ONLY_SYS",
+            "StarSystem": "F34_STATUS_HAS_SYSTEM_BUT_BOOTSTRAP_UNKNOWN",
         }
         with (
             patch("logic.events.fuel_events.emit_insight", return_value=True) as emit_mock,
             patch.object(fuel_events.DEBOUNCER, "can_send", return_value=True),
         ):
-            fuel_events.handle_status_update(prime_ok_status)
             fuel_events.handle_status_update(status)
 
-        self.assertTrue(bool(fuel_events.LOW_FUEL_WARNED))
-        self.assertFalse(bool(fuel_events.LOW_FUEL_FLAG_PENDING))
-        self.assertEqual(emit_mock.call_count, 1)
+        self.assertEqual(emit_mock.call_count, 0)
+        self.assertFalse(bool(fuel_events.LOW_FUEL_WARNED))
 
-    def test_startup_with_already_low_fuel_alerts_immediately(self) -> None:
+    def test_known_runtime_system_allows_fuel_critical(self) -> None:
+        with app_state.lock:
+            app_state.current_system = "F34_BOOTSTRAP_KNOWN_SYS"
+        config.STATE["sys"] = "F34_BOOTSTRAP_KNOWN_SYS"
+
         status = {
             "Docked": False,
             "LowFuel": False,
             "Fuel": {"FuelMain": 2.0},
-            "FuelCapacity": {"Main": 20.0},  # 10%
-            "StarSystem": "F23_STARTUP_SUPPRESS_SYS",
+            "FuelCapacity": {"Main": 20.0},
         }
         with (
             patch("logic.events.fuel_events.emit_insight", return_value=True) as emit_mock,
             patch.object(fuel_events.DEBOUNCER, "can_send", return_value=True),
         ):
+            fuel_events.handle_status_update(status)
+
+        self.assertEqual(emit_mock.call_count, 1)
+        self.assertTrue(bool(fuel_events.LOW_FUEL_WARNED))
+
+    def test_alert_unlocks_after_runtime_system_becomes_known(self) -> None:
+        status = {
+            "Docked": False,
+            "LowFuel": False,
+            "Fuel": {"FuelMain": 2.0},
+            "FuelCapacity": {"Main": 20.0},
+            "StarSystem": "F34_BOOTSTRAP_UNLOCK_SYS",
+        }
+        with (
+            patch("logic.events.fuel_events.emit_insight", return_value=True) as emit_mock,
+            patch.object(fuel_events.DEBOUNCER, "can_send", return_value=True),
+        ):
+            fuel_events.handle_status_update(status)
+            self.assertEqual(emit_mock.call_count, 0)
+            self.assertFalse(bool(fuel_events.LOW_FUEL_WARNED))
+
+            with app_state.lock:
+                app_state.current_system = "F34_BOOTSTRAP_UNLOCK_SYS"
+            config.STATE["sys"] = "F34_BOOTSTRAP_UNLOCK_SYS"
             fuel_events.handle_status_update(status)
 
         self.assertEqual(emit_mock.call_count, 1)
@@ -159,3 +113,4 @@ class F23FuelWarningTransientHardeningTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
