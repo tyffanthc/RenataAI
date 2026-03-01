@@ -85,7 +85,10 @@ class F11QualityGatesAndSmokeTests(unittest.TestCase):
         for option in options:
             self.assertEqual(str(option.get("ui_contract_version") or ""), "F11_UI_V1")
             ui = dict(option.get("ui_contract") or {})
-            self.assertIn(str(ui.get("label") or ""), {"SAFE", "FAST", "SECURE"})
+            self.assertIn(
+                str(ui.get("label") or ""),
+                {"SAFE", "FAST", "SECURE", "NEAREST", "CARRIER_FRIENDLY", "SECURE_PORT"},
+            )
             self.assertTrue(isinstance(ui.get("target"), dict))
             self.assertTrue(isinstance(ui.get("payout"), dict))
             self.assertTrue(isinstance(ui.get("eta"), dict))
