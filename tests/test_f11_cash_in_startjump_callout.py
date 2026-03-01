@@ -154,6 +154,30 @@ class F11CashInStartJumpCalloutTests(unittest.TestCase):
 
         self.assertEqual(callout_mock.call_count, 0)
 
+    def test_event_handler_startjump_hyperspace_flushes_pending_exploration_summary(self) -> None:
+        router = EventHandler()
+        with patch(
+            "logic.events.exploration_fss_events.flush_pending_exit_summary_on_jump",
+            return_value=True,
+        ) as flush_mock:
+            router.handle_event(json.dumps({"event": "StartJump", "JumpType": "Hyperspace"}))
+
+        self.assertEqual(flush_mock.call_count, 1)
+
+    def test_event_handler_startjump_supercruise_does_not_flush_pending_exploration_summary(self) -> None:
+        router = EventHandler()
+        with (
+            patch(
+                "logic.events.exploration_fss_events.flush_pending_exit_summary_on_jump",
+                return_value=True,
+            ) as flush_mock,
+            patch("logic.event_handler.log_event_throttled") as log_mock,
+        ):
+            router.handle_event(json.dumps({"event": "StartJump", "JumpType": "Supercruise"}))
+
+        self.assertEqual(flush_mock.call_count, 0)
+        self.assertGreaterEqual(log_mock.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

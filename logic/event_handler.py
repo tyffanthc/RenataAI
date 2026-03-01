@@ -590,14 +590,26 @@ class EventHandler:
 
         # StartJump: podsumowanie eksploracji ma pojawic sie przed skokiem (hyperspace)
         if typ == "StartJump":
-            try:
-                exploration_fss_events.flush_pending_exit_summary_on_jump(gui_ref=gui_ref)
-            except Exception as exc:
-                _log_router_fallback(
-                    "startjump.exploration_summary.flush",
-                    "startjump event: failed to flush armed exploration summary",
-                    exc,
+            jump_type = str(ev.get("JumpType") or "").strip().casefold()
+            if jump_type == "hyperspace":
+                try:
+                    exploration_fss_events.flush_pending_exit_summary_on_jump(gui_ref=gui_ref)
+                except Exception as exc:
+                    _log_router_fallback(
+                        "startjump.exploration_summary.flush",
+                        "startjump event: failed to flush armed exploration summary",
+                        exc,
+                        event=str(typ),
+                        jump_type=str(ev.get("JumpType") or ""),
+                    )
+            else:
+                log_event_throttled(
+                    "startjump.exploration_summary.skip_non_hyperspace",
+                    5000,
+                    "FSS",
+                    "startjump event skipped exploration summary flush (non-hyperspace)",
                     event=str(typ),
+                    jump_type=str(ev.get("JumpType") or ""),
                 )
             return
 
