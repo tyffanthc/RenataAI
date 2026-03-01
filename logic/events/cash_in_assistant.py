@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 import os
@@ -109,7 +109,7 @@ def _risk_label(score: int) -> str:
     if score >= 75:
         return "Niskie"
     if score >= 50:
-        return "Średnie"
+        return "Ĺšrednie"
     return "Wysokie"
 
 
@@ -117,7 +117,7 @@ def _trust_label(score: int) -> str:
     if score >= 75:
         return "Wysoki"
     if score >= 50:
-        return "Średni"
+        return "Ĺšredni"
     return "Niski"
 
 
@@ -345,7 +345,7 @@ def _build_options(
 
     option_now = {
         "option_id": "cash_in_now",
-        "label": "RozwaĹĽ cash-in teraz",
+        "label": "RozwaÄąÄ˝ cash-in teraz",
         "strategy": "secure_now",
         "estimated_value": int(round(session_value)),
         "eta_minutes": 18,
@@ -358,7 +358,7 @@ def _build_options(
             "trust_score": trust_score,
         },
         "reasoning": {
-            "time_text": "najszybsze domkniÄ™cie ryzyka",
+            "time_text": "najszybsze domkniĂ„â„˘cie ryzyka",
             "profit_text": f"zabezpiecza ok. {_format_cr(session_value)} Cr",
             "risk_text": "maleje ekspozycja na utrate danych",
             "trust_text": _trust_label(trust_score),
@@ -377,7 +377,7 @@ def _build_options(
         profit_finish = 76 if potential_gain >= 1_500_000 else 66
         option_finish = {
             "option_id": "cash_in_finish_system",
-            "label": "RozwaĹĽ domkniÄ™cie systemu i cash-in pĂłĹşniej",
+            "label": "RozwaÄąÄ˝ domkniĂ„â„˘cie systemu i cash-in pÄ‚Ĺ‚ÄąĹźniej",
             "strategy": "finish_then_cash_in",
             "estimated_value": int(round(session_value + potential_gain)),
             "eta_minutes": int(40 + min(35, remaining * 3)),
@@ -390,7 +390,7 @@ def _build_options(
                 "trust_score": trust_score,
             },
             "reasoning": {
-                "time_text": f"wymaga domkniÄ™cia ok. {remaining} obiektĂłw",
+                "time_text": f"wymaga domkniĂ„â„˘cia ok. {remaining} obiektÄ‚Ĺ‚w",
                 "profit_text": f"potencjalnie +{_format_cr(potential_gain)} Cr",
                 "risk_text": "umiarkowany wzrost ekspozycji czasowej",
                 "trust_text": _trust_label(trust_score),
@@ -406,7 +406,7 @@ def _build_options(
 
     option_later = {
         "option_id": "cash_in_later",
-        "label": "RozwaĹĽ dalszÄ… eksploracjÄ™ przed cash-in",
+        "label": "RozwaÄąÄ˝ dalszĂ„â€¦ eksploracjĂ„â„˘ przed cash-in",
         "strategy": "continue_then_cash_in",
         "estimated_value": int(round(session_value + max(system_value * 0.4, 500_000.0))),
         "eta_minutes": 75,
@@ -436,7 +436,7 @@ def _build_options(
     if len(options) < 2:
         fallback = dict(option_now)
         fallback["option_id"] = "cash_in_after_short_leg"
-        fallback["label"] = "RozwaĹĽ cash-in po 1-2 skokach"
+        fallback["label"] = "RozwaÄąÄ˝ cash-in po 1-2 skokach"
         fallback["strategy"] = "short_delay"
         fallback["eta_minutes"] = 35
         fallback["scores"] = dict(option_now["scores"])
@@ -1761,7 +1761,7 @@ def _build_edge_case_meta(
         )
         ui_hint = (
             f"EDSM limit 100 LY: requested={req_txt} LY, effective={eff_txt} LY. "
-            "Wynik nearby ma obniĹĽonÄ… pewnoĹ›Ä‡."
+            "Wynik nearby ma obniÄąÄ˝onĂ„â€¦ pewnoÄąâ€şĂ„â€ˇ."
         )
     elif "provider_empty" in reasons:
         req_txt = (
@@ -1779,28 +1779,28 @@ def _build_edge_case_meta(
             "Szukanie kontynuowane fallbackiem."
         )
     elif "provider_circuit_open" in reasons and "local_known_fallback" in reasons:
-        ui_hint = "Provider stacyjny chwilowo niedostÄ™pny: pokazuje lokalny cache znanych stacji/systemĂłw."
+        ui_hint = "Provider stacyjny chwilowo niedostĂ„â„˘pny: pokazuje lokalny cache znanych stacji/systemÄ‚Ĺ‚w."
     elif "provider_down_503" in reasons and "local_known_fallback" in reasons:
-        ui_hint = "Provider stacyjny chwilowo niedostÄ™pny (HTTP 503): pokazuje lokalny cache znanych stacji/systemĂłw."
+        ui_hint = "Provider stacyjny chwilowo niedostĂ„â„˘pny (HTTP 503): pokazuje lokalny cache znanych stacji/systemÄ‚Ĺ‚w."
     elif "providers_empty" in reasons and "local_known_fallback" in reasons:
         ui_hint = "Provider nie zwrocil danych: pokazuje lokalny cache znanych stacji/systemow."
     elif "provider_circuit_open" in reasons and "stale_cache" in reasons:
-        ui_hint = "Provider stacyjny chwilowo niedostÄ™pny: wynik z cache (stale)."
+        ui_hint = "Provider stacyjny chwilowo niedostĂ„â„˘pny: wynik z cache (stale)."
     elif "provider_down_503" in reasons and "stale_cache" in reasons:
-        ui_hint = "Provider stacyjny chwilowo niedostÄ™pny: wynik z cache (stale)."
+        ui_hint = "Provider stacyjny chwilowo niedostĂ„â„˘pny: wynik z cache (stale)."
     elif "stale_cache" in reasons:
         ui_hint = "Wynik z cache (stale): traktuj decyzje orientacyjnie."
     elif "provider_circuit_open" in reasons:
-        ui_hint = "Provider stacyjny chwilowo niedostÄ™pny (circuit open). UĹĽyj decyzji orientacyjnej."
+        ui_hint = "Provider stacyjny chwilowo niedostĂ„â„˘pny (circuit open). UÄąÄ˝yj decyzji orientacyjnej."
     elif "provider_down_503" in reasons:
-        ui_hint = "Provider stacyjny chwilowo niedostÄ™pny (HTTP 503). UĹĽyj decyzji orientacyjnej."
+        ui_hint = "Provider stacyjny chwilowo niedostĂ„â„˘pny (HTTP 503). UÄąÄ˝yj decyzji orientacyjnej."
     elif "providers_empty" in reasons or "no_station_data" in reasons or "no_service_candidates" in reasons:
         ui_hint = "Dane stacyjne ograniczone: traktuj decyzje orientacyjnie."
     elif "no_non_carrier" in reasons:
         if service_norm == "uc":
             ui_hint = "Brak non-carrier dla UC: carrier moze miec fee 25%."
         else:
-            ui_hint = "Brak non-carrier dla Vista: sprawdĹş status payout i freshness."
+            ui_hint = "Brak non-carrier dla Vista: sprawdÄąĹź status payout i freshness."
 
     return {
         "reasons": reasons,
@@ -1843,9 +1843,9 @@ def _append_edge_case_note(base_note: str, edge_case_meta: dict[str, Any]) -> st
     if "offline" in reasons:
         extra_parts.append("Tryb offline/przerwane logi: rekomendacja orientacyjna.")
     if "provider_circuit_open" in reasons:
-        extra_parts.append("Provider stacyjny chwilowo niedostÄ™pny (circuit open).")
+        extra_parts.append("Provider stacyjny chwilowo niedostĂ„â„˘pny (circuit open).")
     if "provider_down_503" in reasons:
-        extra_parts.append("Provider stacyjny chwilowo niedostÄ™pny (HTTP 503).")
+        extra_parts.append("Provider stacyjny chwilowo niedostĂ„â„˘pny (HTTP 503).")
     if "provider_radius_cap" in reasons:
         extra_parts.append("EDSM nearby ograniczony limitem 100 LY (provider cap).")
     if "provider_empty" in reasons:
@@ -1864,10 +1864,10 @@ def _append_edge_case_note(base_note: str, edge_case_meta: dict[str, Any]) -> st
     if "no_offline_index_hit" in reasons:
         extra_parts.append("Offline index stacji nie zwrocil hitu dla regionu.")
     if "providers_empty" in reasons or "no_station_data" in reasons or "no_service_candidates" in reasons:
-        extra_parts.append("Brak peĹ‚nych danych stacyjnych.")
+        extra_parts.append("Brak peÄąâ€šnych danych stacyjnych.")
     if "no_non_carrier" in reasons:
         if _as_text(meta.get("service")).lower() == "uc":
-            extra_parts.append("Brak non-carrier dla UC (sprawdĹş fee carriera).")
+            extra_parts.append("Brak non-carrier dla UC (sprawdÄąĹź fee carriera).")
         else:
             extra_parts.append("Brak non-carrier dla Vista.")
     if not extra_parts:
@@ -2448,66 +2448,66 @@ def _build_tts_line(payload: CashInAssistantPayload) -> str:
     }
     if edge_reasons:
         if "offline" in edge_reasons:
-            return "Cash-in: tryb offline lub przerwane logi. Rekomendacja orientacyjna, sprawdĹş panel."
+            return "Cash-in: tryb offline lub przerwane logi. Rekomendacja orientacyjna, sprawdź panel."
         if "provider_circuit_open" in edge_reasons and "offline_index" in edge_reasons:
-            return "Cash-in: provider stacyjny chwilowo niedostÄ™pny. UĹĽywam offline indexu stacji, sprawdĹş panel."
+            return "Cash-in: provider stacyjny chwilowo niedostępny. Używam offline indexu stacji, sprawdź panel."
         if "provider_down_503" in edge_reasons and "offline_index" in edge_reasons:
-            return "Cash-in: provider stacyjny zwraca bĹ‚Ä…d 503. UĹĽywam offline indexu stacji, sprawdĹş panel."
+            return "Cash-in: provider stacyjny zwraca błąd 503. Używam offline indexu stacji, sprawdź panel."
         if "providers_empty" in edge_reasons and "offline_index" in edge_reasons:
-            return "Cash-in: provider nie zwrĂłciĹ‚ danych. UĹĽywam offline indexu stacji, sprawdĹş panel."
+            return "Cash-in: provider nie zwrócił danych. Używam offline indexu stacji, sprawdź panel."
         if "offline_index" in edge_reasons:
-            return "Cash-in: korzystam z offline indexu stacji. SprawdĹş panel i ustaw trasÄ™."
+            return "Cash-in: korzystam z offline indexu stacji. Sprawdź panel i ustaw trasę."
         if "provider_circuit_open" in edge_reasons and "local_known_fallback" in edge_reasons:
-            return "Cash-in: provider stacyjny chwilowo niedostÄ™pny. PokazujÄ™ lokalny cache znanych stacji, sprawdĹş panel."
+            return "Cash-in: provider stacyjny chwilowo niedostępny. Pokazuję lokalny cache znanych stacji, sprawdź panel."
         if "provider_down_503" in edge_reasons and "local_known_fallback" in edge_reasons:
-            return "Cash-in: provider stacyjny zwraca bĹ‚Ä…d 503. PokazujÄ™ lokalny cache znanych stacji, sprawdĹş panel."
+            return "Cash-in: provider stacyjny zwraca błąd 503. Pokazuję lokalny cache znanych stacji, sprawdź panel."
         if "providers_empty" in edge_reasons and "local_known_fallback" in edge_reasons:
-            return "Cash-in: provider nie zwrĂłciĹ‚ danych. PokazujÄ™ lokalny cache znanych stacji, sprawdĹş panel."
+            return "Cash-in: provider nie zwrócił danych. Pokazuję lokalny cache znanych stacji, sprawdź panel."
         if "provider_circuit_open" in edge_reasons and "stale_cache" in edge_reasons:
-            return "Cash-in: provider stacyjny chwilowo niedostÄ™pny. PokazujÄ™ wynik z cache stale, sprawdĹş panel."
+            return "Cash-in: provider stacyjny chwilowo niedostępny. Pokazuję wynik z cache stale, sprawdź panel."
         if "provider_down_503" in edge_reasons and "stale_cache" in edge_reasons:
-            return "Cash-in: provider stacyjny zwraca bĹ‚Ä…d 503. PokazujÄ™ wynik z cache stale, sprawdĹş panel."
+            return "Cash-in: provider stacyjny zwraca błąd 503. Pokazuję wynik z cache stale, sprawdź panel."
         if "provider_radius_cap" in edge_reasons and "provider_empty" in edge_reasons:
-            return "Cash-in: EDSM nearby ograniczony limitem 100 LY i bez wynikĂłw. UĹĽywam fallbacku, sprawdĹş panel."
+            return "Cash-in: EDSM nearby ograniczony limitem 100 LY i bez wyników. Używam fallbacku, sprawdź panel."
         if "provider_radius_cap" in edge_reasons:
-            return "Cash-in: EDSM nearby ograniczony limitem 100 LY. Traktuj decyzjÄ™ orientacyjnie i sprawdĹş panel."
+            return "Cash-in: EDSM nearby ograniczony limitem 100 LY. Traktuj decyzję orientacyjnie i sprawdź panel."
         if "provider_empty" in edge_reasons:
-            return "Cash-in: provider nearby zwrĂłciĹ‚ pusty wynik. SprawdĹş panel i fallback."
+            return "Cash-in: provider nearby zwrócił pusty wynik. Sprawdź panel i fallback."
         if "local_known_fallback" in edge_reasons:
             return "Cash-in: pokazuje lokalny cache znanych stacji. Traktuj decyzje orientacyjnie."
         if "no_offline_index_hit" in edge_reasons:
-            return "Cash-in: offline index stacji nie zwrĂłciĹ‚ hitu. Rekomendacja orientacyjna, sprawdĹş panel."
+            return "Cash-in: offline index stacji nie zwrócił hitu. Rekomendacja orientacyjna, sprawdź panel."
         if "stale_cache" in edge_reasons:
             return "Cash-in: pokazuje wynik z cache stale. Traktuj decyzje orientacyjnie."
         if "provider_circuit_open" in edge_reasons:
-            return "Cash-in: provider stacyjny chwilowo niedostÄ™pny. UĹĽywam trybu orientacyjnego, sprawdĹş panel."
+            return "Cash-in: provider stacyjny chwilowo niedostępny. Używam trybu orientacyjnego, sprawdź panel."
         if "provider_down_503" in edge_reasons:
-            return "Cash-in: provider stacyjny zwraca bĹ‚Ä…d 503. Rekomendacja orientacyjna, sprawdĹş panel."
+            return "Cash-in: provider stacyjny zwraca błąd 503. Rekomendacja orientacyjna, sprawdź panel."
         if "no_non_carrier" in edge_reasons and (
             "providers_empty" in edge_reasons
             or "no_station_data" in edge_reasons
             or "no_service_candidates" in edge_reasons
         ):
             if _normalize_cash_in_service(payload.service) == "uc":
-                return "Cash-in: dane stacyjne ograniczone i dla UC widzÄ™ tylko carriery. SprawdĹş panel."
-            return "Cash-in: dane stacyjne ograniczone i brak non-carrier dla Vista. SprawdĹş panel."
+                return "Cash-in: dane stacyjne ograniczone i dla UC widzę tylko carriery. Sprawdź panel."
+            return "Cash-in: dane stacyjne ograniczone i brak non-carrier dla Vista. Sprawdź panel."
         if (
             "providers_empty" in edge_reasons
             or "no_station_data" in edge_reasons
             or "no_service_candidates" in edge_reasons
         ):
-            return "Cash-in: brak peĹ‚nych danych stacyjnych. Rekomendacja orientacyjna, sprawdĹş panel."
+            return "Cash-in: brak pełnych danych stacyjnych. Rekomendacja orientacyjna, sprawdź panel."
         if "no_non_carrier" in edge_reasons:
             if _normalize_cash_in_service(payload.service) == "uc":
-                return "Cash-in: dla UC widzÄ™ tylko carriery. SprawdĹş fee i zdecyduj."
-            return "Cash-in: dla Vista widzÄ™ tylko carriery. SprawdĹş status payout i zdecyduj."
+                return "Cash-in: dla UC widzę tylko carriery. Sprawdź fee i zdecyduj."
+            return "Cash-in: dla Vista widzę tylko carriery. Sprawdź status payout i zdecyduj."
 
     count = len(payload.options or [])
     if count >= 3:
-        return "Cash-in: mam trzy opcje w panelu. RozwaĹĽ teraz, po domkniÄ™ciu systemu albo pĂłĹşniej."
+        return "Cash-in: mam trzy opcje w panelu. Rozważ teraz, po domknięciu systemu albo później."
     if count == 2:
-        return "Cash-in: mam dwie opcje w panelu. RozwaĹĽ teraz albo pĂłĹşniej."
-    return "Cash-in: sprawdĹş opcje w panelu i zdecyduj."
+        return "Cash-in: mam dwie opcje w panelu. Rozważ teraz albo później."
+    return "Cash-in: sprawdź opcje w panelu i zdecyduj."
 
 
 def _normalize_confidence_level(value: Any) -> str:
@@ -2562,19 +2562,19 @@ def _build_startjump_tts_line(
     conf = _normalize_confidence_level(confidence) or "low"
     if conf == "high":
         return (
-            "Cash-in: Twoje dane naukowe sÄ… warte "
-            f"{_format_cr(session_value)} Cr, a w ostatnim systemie zarobiĹ‚eĹ› "
+            "Cash-in: Twoje dane naukowe są warte "
+            f"{_format_cr(session_value)} Cr, a w ostatnim systemie zarobiłeś "
             f"{_format_cr(system_value)} Cr."
         )
     if conf == "mid":
         session_approx = _round_orientational_value(session_value)
         system_approx = _round_orientational_value(system_value)
         return (
-            "Cash-in orientacyjnie: Ĺ‚Ä…cznie okoĹ‚o "
-            f"{_format_cr(session_approx)} Cr, a ostatni system okoĹ‚o "
+            "Cash-in orientacyjnie: łącznie około "
+            f"{_format_cr(session_approx)} Cr, a ostatni system około "
             f"{_format_cr(system_approx)} Cr."
         )
-    return f"Cash-in: niska pewnoĹ›Ä‡ wyceny. VaR(Data): {_signal_to_var_tier(signal)}."
+    return f"Cash-in: niska pewność wyceny. VaR(Data): {_signal_to_var_tier(signal)}."
 
 
 def trigger_startjump_cash_in_callout(
@@ -2885,4 +2885,5 @@ def trigger_cash_in_assistant(
         cooldown_seconds=cooldown_seconds,
     )
     return True
+
 
