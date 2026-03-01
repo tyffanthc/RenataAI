@@ -144,15 +144,15 @@ class F11CashInStartJumpCalloutTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(emit_mock.call_count, 0)
 
-    def test_event_handler_routes_startjump_to_cash_in_callout(self) -> None:
+    def test_event_handler_does_not_route_startjump_to_cash_in_callout(self) -> None:
         router = EventHandler()
         with patch(
-            "logic.event_handler.cash_in_assistant.trigger_startjump_cash_in_callout",
+            "logic.events.cash_in_assistant.trigger_startjump_cash_in_callout",
             return_value=True,
         ) as callout_mock:
             router.handle_event(json.dumps({"event": "StartJump", "JumpType": "Hyperspace"}))
 
-        self.assertEqual(callout_mock.call_count, 1)
+        self.assertEqual(callout_mock.call_count, 0)
 
 
 if __name__ == "__main__":

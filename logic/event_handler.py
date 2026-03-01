@@ -10,7 +10,6 @@ from logic.events import exploration_misc_events
 from logic.events import navigation_events
 from logic.events import trade_events
 from logic.events import smuggler_events
-from logic.events import cash_in_assistant
 from logic.events import survival_rebuy_awareness
 from logic.events import combat_awareness
 from logic.events import high_g_warning
@@ -586,15 +585,6 @@ class EventHandler:
                 _log_router_fallback(
                     "startjump.exploration_summary.flush",
                     "startjump event: failed to flush armed exploration summary",
-                    exc,
-                    event=str(typ),
-                )
-            try:
-                cash_in_assistant.trigger_startjump_cash_in_callout(event=ev, gui_ref=gui_ref)
-            except Exception as exc:
-                _log_router_fallback(
-                    "startjump.cash_in_callout",
-                    "startjump event: cash-in callout failed",
                     exc,
                     event=str(typ),
                 )
